@@ -3,6 +3,7 @@ id: doc-6
 title: タスクID からの Git・Pull Request 履歴参照 設計
 type: specification
 created_date: '2026-07-21 10:05'
+updated_date: '2026-07-22'
 ---
 # タスクID からの Git・Pull Request 履歴参照 設計
 
@@ -42,7 +43,7 @@ TASK-10 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書
 
 - 所有プロジェクトの `git_remote_present` が真のとき、`project_root` の Git remote URL を取得し、ホスト種別を判別する。判別は remote URL のホスト部で行う（例 `github.com` → GitHub）。SSH 形式（`git@github.com:owner/repo.git`）と HTTPS 形式の双方から owner/repo を取り出せる形に正規化する。
 - remote URL の取得も固定サブコマンドと引数配列で実行する（doc-3 の Git remote 有無属性判定と同じ実行方針）。
-- ホスト種別を判別できない、または `git_remote_present` が偽のときは、関連解決（6 章）を行わず、コミット一覧と Pull Request URL を各々独立に表示するに留める。
+- ホスト種別を判別できない、または `git_remote_present` が偽のとき（Git remote 不在、decision-6）は、関連解決（6 章）を行わず、コミット一覧と Pull Request URL を各々独立に表示するに留める。Git remote 不在は Git リポジトリ状態とは別軸であり、コミット検索（3 章）とローカルコミット履歴の表示は remote に依存せず成立する。
 
 ## 6. コミット・PR 関連解決（remote 対応時）
 
@@ -50,8 +51,8 @@ TASK-10 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書
 
 - **解決の方向**: 抽出した Pull Request URL から owner/repo と PR 番号を得て、その Pull Request に属するコミット集合を remote ホストの参照で求める。得たコミット集合と、コミット検索（3 章）で得た当該プロジェクトのコミット一覧を突き合わせ、同一コミットを関連づける。
 - **参照先**: remote ホスト種別ごとの参照手段（ホストの API 等）を用いる。手段の具体（認証の要否・レート・オフライン時の挙動）は remote ホスト種別に依存するため、本設計は「remote ホスト種別を鍵に参照手段を選ぶ」構造だけを固定し、各ホストの実装は種別ごとに追加する。判別できないホストは関連解決の対象外とする。
-- **remote 非対応・参照不能時**: 関連解決を行わず、コミット一覧（ローカル Git のみで得られる）と Pull Request URL（References から得られる）を各々独立に表示する。関連が解決できないことと、そもそも対象が存在しないこと（コミット不在・remote 不在）は区別して表示する（表示の具体は TASK-13）。
-- **ローカルのみでの縮退**: remote 参照ができない環境でも、コミット検索は `project_root` のローカル Git だけで成立する。関連解決だけを縮退させ、コミット一覧と PR URL の独立表示は保つ。
+- **remote 非対応・参照不能時**: 関連解決を行わず、コミット一覧（ローカル Git のみで得られる）と Pull Request URL（References から得られる）を各々独立に表示する。関連が解決できないことと、そもそも対象が存在しないこと（コミット不在・Git 対象不在・Git remote 不在）は区別して表示する（表示の具体は TASK-13）。
+- **縮退範囲の分離（remote 依存／非依存）**: 縮退させるのは remote 依存の機能（コミット・PR 関連解決、remote ホスト参照）だけに限る。remote 非依存の機能（コミット検索とローカルコミット履歴の表示）は、Git リポジトリが在れば remote の有無に関係なく常に成立し、縮退させない。したがって Git remote 不在でもローカルコミット履歴は表示する。ローカル履歴が消えるのは Git 対象不在（`project_root` が Git リポジトリでない）のときだけで、これは remote の有無とは別軸である。
 
 ## 7. 後続への影響
 
