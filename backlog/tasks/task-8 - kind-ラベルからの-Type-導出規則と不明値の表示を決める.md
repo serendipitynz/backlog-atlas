@@ -1,9 +1,10 @@
 ---
 id: TASK-8
 title: 'kind:* ラベルからの Type 導出規則と不明値の表示を決める'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 08:49'
+updated_date: '2026-07-21 09:51'
 labels:
   - 'kind:research'
 milestone: m-0
@@ -24,7 +25,7 @@ kind:feature / kind:bug / kind:research / kind:writing / kind:maintenance など
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 kind:* を Type として分離する規則を定義している
-- [ ] #2 未知値・複数 kind・kind 無しの表示方法を定義している
-- [ ] #3 採用結果を backlog/decisions に decision として記録している
+- [x] #1 kind:* を Type として分離する規則を定義している
+- [x] #2 未知値・複数 kind・kind 無しの表示方法を定義している
+- [x] #3 採用結果を backlog/decisions に decision として記録している
 <!-- AC:END -->
