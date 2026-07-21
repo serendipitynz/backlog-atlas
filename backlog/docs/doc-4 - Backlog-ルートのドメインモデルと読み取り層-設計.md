@@ -3,7 +3,7 @@ id: doc-4
 title: Backlog ルートのドメインモデルと読み取り層 設計
 type: specification
 created_date: '2026-07-21 09:36'
-updated_date: '2026-07-21 09:38'
+updated_date: '2026-07-22'
 ---
 # Backlog ルートのドメインモデルと読み取り層 設計
 
@@ -17,6 +17,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - **kind ラベル** … frontmatter の labels のうち `kind:` 接頭辞を持つ要素（TASK-8）。
 - **通常ラベル** … labels のうち kind ラベル以外の要素。
 - **Type** … kind ラベルから導出し、通常ラベルと分離して表示する分類値（doc-2、導出規則の確定は TASK-8）。
+- **タスク保存区分** … タスクファイルの走査元ディレクトリ（tasks / drafts / completed / archive）から決まる保管状態の分類（active / draft / completed / archive）。frontmatter の status（作業状態）とは独立の軸で、ファイルの置き場所だけで決まる（3.4）。
 
 ## 2. 読み取り層の位置づけと責務
 
@@ -25,7 +26,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 1. `config.yml` を解決し、status 定義・task_prefix・ディレクトリ構成を得る。
 2. ディレクトリ（tasks / archive / completed / drafts / milestones / docs / decisions）を走査する。cross-branch は扱わず、現在 checkout のファイルのみを対象とする（decision-2）。
 3. 各ファイルの frontmatter（YAML）と `<!-- SECTION:… -->` 区切り本文を解析する。
-4. ドメインモデルの値を構築し、各タスクに走査元ルート由来のプロジェクト（TASK-4 の決定規則）を付与する。
+4. ドメインモデルの値を構築し、各タスクに走査元ルート由来のプロジェクト（TASK-4 の決定規則）と、走査元ディレクトリ由来のタスク保存区分（3.4）を付与する。
 
 読み取り層は読み取り専用である。タスク・文書・マイルストーンの更新は Backlog 更新アダプター（Backlog CLI 委譲）が担い、本層とは経路を分ける（decision-2）。読み取り層は Type の**分離**まで行い、Type の**値の導出規則**は TASK-8 の確定を用いる（3.3）。
 
@@ -40,6 +41,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | ドメイン項目 | 由来 | 備考 |
 |---|---|---|
 | project | 走査元 Backlog ルート ↔ 台帳エントリ | TASK-4 の決定規則。frontmatter には持たない。 |
+| storageState（タスク保存区分） | 走査元ディレクトリ（tasks / drafts / completed / archive） | active / draft / completed / archive。frontmatter には持たず、ファイルの置き場所だけで決まる。status とは別軸（3.4）。 |
 | id（プロジェクト内 TASK-ID） | frontmatter `id` | 横断タスクID の右辺。 |
 | title | frontmatter `title` | |
 | status | frontmatter `status` | `config.yml` の status 定義で正規化（正規化規則は TASK-7）。 |
@@ -67,6 +69,21 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - 分離は**読み取り層で行う**。frontmatter の `labels` 配列を、`kind:` 接頭辞の有無で kind ラベルと通常ラベルへ分ける。
 - ドメインモデルのタスクは、生の `labels` ではなく分離済みの `type`（kind 由来）と `labels`（通常ラベル）を保持する。画面は通常ラベル一覧に kind ラベルを混ぜない（doc-2）。
 - Type の値そのものの導出規則（`kind:feature`→Type 名、複数 kind の扱い、不明値の表示）は TASK-8 の確定に従う。本層はその規則を適用する場を「読み取り層の分離境界」に固定するにとどめ、規則の中身は持ち込まない。未確定の間は、kind ラベルの生値を Type 候補として保持し、通常ラベルからは除いておく。
+
+### 3.4 タスク保存区分（走査元ディレクトリ由来）
+
+保存区分は frontmatter に無く、そのタスクファイルがどの走査元ディレクトリに在ったかだけで決まる。読み取り層は §2 の走査時に、ファイルの所在ディレクトリを次の規則で保存区分値へ写す。
+
+| 走査元ディレクトリ | 保存区分値 | 意味 |
+|---|---|---|
+| tasks/ | active | 日常の進捗対象。 |
+| drafts/ | draft | 下書き。 |
+| completed/ | completed | 完了整理済み。 |
+| archive/ | archive | アーカイブ済み。 |
+
+- 保存区分は status（作業状態）とは独立の軸である。status が Done のタスクでも、tasks/ に在れば active、completed/ に在れば completed になる。両者を混同しないことがこの区分を持たせる目的で、混同すると完了整理済み・アーカイブ・draft のタスクが通常の進捗表示へ混入する（doc-7）。
+- 保存区分値はこの 4 種に閉じる。タスクを読むのは上記 4 ディレクトリだけで、milestones / docs / decisions はタスクとして扱わない（§2）。上記いずれにも属さない場所でタスク様のファイルを見つけた場合は想定外スキーマ（5 章）として縮退させ、保存区分を未確定にする。
+- スイムレーンが既定で active のみを表示し、他区分をどう扱うかは doc-7（TASK-11）で定義する。本層は各タスクへ保存区分を付与するにとどめる。
 
 ## 4. 管理ファイルからの写像
 
@@ -96,3 +113,4 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - 同一 Backlog ルート更新時の競合検出・再読み込み（ファイル監視）は TASK-14。本層のドメインモデルはその再構築単位（ルート／ファイル）と整合させる。
 - References からの Pull Request 抽出・表示は TASK-12、タスク ID からの Git 履歴照合は TASK-10。
 - cross-branch を現在 checkout に限定する範囲確定は TASK-6。
+- タスク保存区分（3.4）を用いてスイムレーン既定表示を active に限定する扱いは doc-7（TASK-11、TASK-16）。
