@@ -1,9 +1,10 @@
 ---
 id: TASK-11
 title: プロジェクト別スイムレーン画面を設計する
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 08:49'
+updated_date: '2026-07-21 10:19'
 labels:
   - 'kind:feature'
 milestone: m-0
@@ -14,6 +15,7 @@ dependencies:
 documentation:
   - doc-2
   - doc-1
+  - doc-7
 priority: medium
 ordinal: 11000
 ---
@@ -26,7 +28,7 @@ ordinal: 11000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 行=プロジェクト、列=status、セル=タスクカードのレイアウトを定義している
-- [ ] #2 タスクカードに表示する項目（横断タスクID、Type、labels、priority など）を定義している
-- [ ] #3 フィルタ・並び順とプロジェクト/status のマッピング方針を定義している
+- [x] #1 行=プロジェクト、列=status、セル=タスクカードのレイアウトを定義している
+- [x] #2 タスクカードに表示する項目（横断タスクID、Type、labels、priority など）を定義している
+- [x] #3 フィルタ・並び順とプロジェクト/status のマッピング方針を定義している
 <!-- AC:END -->
