@@ -1,9 +1,10 @@
 ---
 id: TASK-7
 title: status 正規化（プロジェクト共通 / 個別）を決める
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 08:49'
+updated_date: '2026-07-21 09:51'
 labels:
   - 'kind:research'
 milestone: m-0
@@ -24,7 +25,7 @@ ordinal: 7000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 共通 status 要求か個別許容かを決め、理由を述べている
-- [ ] #2 個別を許す場合の列マッピング／未知 status の扱いを定義している
-- [ ] #3 採用結果を backlog/decisions に decision として記録している
+- [x] #1 共通 status 要求か個別許容かを決め、理由を述べている
+- [x] #2 個別を許す場合の列マッピング／未知 status の扱いを定義している
+- [x] #3 採用結果を backlog/decisions に decision として記録している
 <!-- AC:END -->
