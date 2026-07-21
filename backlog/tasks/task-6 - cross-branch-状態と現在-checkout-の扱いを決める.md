@@ -1,9 +1,10 @@
 ---
 id: TASK-6
 title: cross-branch 状態と現在 checkout の扱いを決める
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 08:49'
+updated_date: '2026-07-21 09:51'
 labels:
   - 'kind:research'
 milestone: m-0
@@ -25,7 +26,7 @@ Backlog.md の cross-branch 状態を Atlas がどこまで再現するかを決
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 初期版の範囲（現在 checkout 限定か cross-branch 集約か）を決め、理由を述べている
-- [ ] #2 限定する場合に将来 cross-branch を扱うための拡張余地を述べている
-- [ ] #3 採用結果を backlog/decisions に decision として記録している
+- [x] #1 初期版の範囲（現在 checkout 限定か cross-branch 集約か）を決め、理由を述べている
+- [x] #2 限定する場合に将来 cross-branch を扱うための拡張余地を述べている
+- [x] #3 採用結果を backlog/decisions に decision として記録している
 <!-- AC:END -->
