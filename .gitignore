@@ -10,3 +10,6 @@ target/
 
 # Logs
 *.log
+
+# Backlog.md runtime lock directory
+backlog/.locks/
