@@ -1,9 +1,10 @@
 ---
 id: TASK-9
 title: Backlog 更新アダプターを設計する
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 08:49'
+updated_date: '2026-07-21 10:07'
 labels:
   - 'kind:feature'
 milestone: m-0
@@ -13,6 +14,7 @@ dependencies:
 documentation:
   - doc-2
   - doc-1
+  - doc-5
 priority: high
 ordinal: 9000
 ---
@@ -25,7 +27,7 @@ Atlas の操作を対象プロジェクトでの Backlog CLI 呼び出しへ変�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 対象操作ごとに Backlog CLI のサブコマンドと引数配列の写像を定義している
-- [ ] #2 作業ディレクトリ指定と、ユーザー入力を引数配列で渡す（シェル連結しない）方式を定義している
-- [ ] #3 CLI 失敗・非ゼロ終了時の扱いと再読み込み契機を定義している
+- [x] #1 対象操作ごとに Backlog CLI のサブコマンドと引数配列の写像を定義している
+- [x] #2 作業ディレクトリ指定と、ユーザー入力を引数配列で渡す（シェル連結しない）方式を定義している
+- [x] #3 CLI 失敗・非ゼロ終了時の扱いと再読み込み契機を定義している
 <!-- AC:END -->
