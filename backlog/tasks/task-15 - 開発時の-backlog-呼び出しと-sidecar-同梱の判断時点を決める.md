@@ -1,9 +1,10 @@
 ---
 id: TASK-15
 title: 開発時の backlog 呼び出しと sidecar 同梱の判断時点を決める
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 08:49'
+updated_date: '2026-07-21 10:34'
 labels:
   - 'kind:research'
 milestone: m-0
@@ -25,7 +26,7 @@ ordinal: 15000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 開発時は PATH 上の backlog を用いる前提と、その最低バージョン要件を明示している
-- [ ] #2 sidecar 同梱を検討する判断時点・条件を定義している
-- [ ] #3 採用結果を backlog/decisions に decision として記録している
+- [x] #1 開発時は PATH 上の backlog を用いる前提と、その最低バージョン要件を明示している
+- [x] #2 sidecar 同梱を検討する判断時点・条件を定義している
+- [x] #3 採用結果を backlog/decisions に decision として記録している
 <!-- AC:END -->
