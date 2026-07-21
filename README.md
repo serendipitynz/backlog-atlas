@@ -57,10 +57,12 @@ Backlog Atlas owns the source of truth for tasks.
 
 ## Related planning
 
-- Planning documents: `personal-planning` repository,
-  `backlog/docs/projects/backlog-atlas/`.
-- Terminology reference: Backlog Atlas terminology table (doc-5) in that directory.
-- Bootstrap instructions: Backlog Atlas bootstrap guide (doc-6) in that directory.
+- This project's own planning lives in this repository's Backlog root
+  (`backlog/`): the terminology table (`backlog/docs/doc-1`) and the bootstrap
+  guide (`backlog/docs/doc-2`), plus tasks under `backlog/tasks/`.
+- Portfolio-level governance stays in the `personal-planning` repository under
+  `backlog/docs/portfolio/`: the project registry, operating policy, and
+  Git-linking rules that span every project.
 
 ## Language
 

@@ -53,10 +53,11 @@ sidecar 同梱は配布方法の選択であり、Backlog Atlas がタスク正�
 
 ## 関連する計画
 
-- 計画文書: `personal-planning` リポジトリの
-  `backlog/docs/projects/backlog-atlas/`。
-- 用語対応: 同ディレクトリの Backlog Atlas 用語対応表 (doc-5)。
-- 開始指示: 同ディレクトリの Backlog Atlas 開始指示書 (doc-6)。
+- 本プロジェクト自身の計画は、このリポジトリの Backlog ルート (`backlog/`) に置く。
+  用語対応表 (`backlog/docs/doc-1`)、開始指示書 (`backlog/docs/doc-2`)、および
+  `backlog/tasks/` 以下のタスク。
+- 複数プロジェクトを横断するポートフォリオ規約は `personal-planning` リポジトリの
+  `backlog/docs/portfolio/` に残す。プロジェクト対応表、運用規約、Git 連携規約。
 
 ## Language
 
