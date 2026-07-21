@@ -3,7 +3,7 @@ id: doc-3
 title: プロジェクト台帳と横断タスクID 設計
 type: specification
 created_date: '2026-07-21 09:36'
-updated_date: '2026-07-21 09:38'
+updated_date: '2026-07-22'
 ---
 # プロジェクト台帳と横断タスクID 設計
 
@@ -51,6 +51,7 @@ git_remote_present = false
 
 - `schema_version` … 台帳ファイルのスキーマ版。読み込み時に既知の版か検査し、未知の上位版は上書き保存で破壊しないよう読み取り専用で縮退する。
 - `[[project]]` … 台帳エントリの配列。並び順は表示既定順に用いる。
+- `[project.status_aliases]` … 任意。**status 別名表**（3.3）。省略時は空とみなす。上の 2 エントリは Backlog.md 既定 4 status を名称一致で対応づけられるため別名表を持たない。
 
 台帳ファイルの読み書きは Atlas 自身が行う。これは decision-2 の「Backlog **管理ファイル**は直接解析し、更新は Backlog CLI へ委譲する」境界の外側であり、Backlog CLI の管理対象ではないため矛盾しない。台帳ファイルは Backlog.md のタスク正本ではなく、Atlas の設定である。
 
@@ -64,6 +65,7 @@ git_remote_present = false
 | `project_root` | 絶対パス | 必須 | プロジェクトルート。Git 履歴・PR 参照（TASK-10）と Backlog ルートの解決基点。 |
 | `backlog_root` | 絶対パス | 必須 | Backlog ルート。既定は `project_root/backlog`。異なる場合は明示する。読み取り層（TASK-5）の入力。 |
 | `git_remote_present` | 真偽 | 必須 | **Git remote 有無属性**。エントリのプロジェクトルートに remote があるか否かを判定して台帳エントリへ保存する真偽値。 |
+| `status_aliases` | テーブル（文字列→文字列） | 任意 | **status 別名表**。プロジェクト固有 status 値を正準ステータス列へ対応づける（decision-4）。既定は空。詳細は 3.3。 |
 
 ### 3.1 slug の規則
 
@@ -79,6 +81,31 @@ git_remote_present = false
 - 登録時に判定して保存し、実行時に再判定して更新しうる（remote の後付けに追随）。プロジェクトルートが Git リポジトリでない場合は偽。
 - タスクラベルではなく台帳属性として持つ（doc-2）。この値は、コミットと Pull Request の関連解決が可能かの判断根拠であり、解決手段そのものの設計は TASK-10 に委ねる。
 
+### 3.3 status 別名表
+
+**status 別名表**とは、台帳エントリの任意属性で、プロジェクト固有 status 値を正準ステータス列（To Do / In Progress / In Review / Done）へ対応づける表を指す（decision-4）。列対応規則の別名対応を、対象 Markdown を書き換えず Atlas 側の解釈として台帳に持つためのものである（doc-2 の境界）。
+
+- **形式**: TOML の `[project.status_aliases]` サブテーブル。キーがプロジェクト固有 status 値、値が対応先の正準ステータス列名。値は正準 4 列のいずれかに限る（正準列は固定、decision-4）。空白を含む status 値はキーを引用符で囲む（例 `"In Dev" = "In Progress"`）。
+- **既定は空**: 省略時は別名なし。別名表に無い status は、名称一致（大文字小文字・前後空白を無視）で正準列へ対応づける（decision-4）。Backlog.md 既定 4 status はこれで一致するため別名表は要らない。
+- **対応づかない値**: 別名表にも名称一致にも該当しない status は未対応 status とし、スイムレーンの未対応区画へ出す（decision-4・doc-7）。値に正準 4 列以外を書いた別名は不正として無視し、当該 status を未対応として扱う。
+
+必要なプロジェクトだけが設定する例（プロジェクト固有 status を運用する場合）:
+
+```toml
+[[project]]
+slug = "example"
+project_root = "/Users/ootani/Projects/_snz/example"
+backlog_root = "/Users/ootani/Projects/_snz/example/backlog"
+git_remote_present = true
+
+# status 別名表: プロジェクト固有 status → 正準ステータス列。既定は空。
+[project.status_aliases]
+Doing = "In Progress"
+Review = "In Review"
+Closed = "Done"
+Cancelled = "Done"
+```
+
 ## 4. Backlog ルートの登録・削除手順
 
 すべて台帳ファイルに対する操作で、対象プロジェクトの管理ファイルには一切書き込まない。
@@ -89,7 +116,7 @@ git_remote_present = false
 2. Backlog ルートを解決する（既定 `project_root/backlog`、明示指定があればそれ）。`config.yml` と `tasks/` の存在を確認する。読めない場合は登録を拒否し理由を示す（TASK-5 のルート読取不能に相当）。
 3. slug を導出または利用者指定で確定し、一意性を検査する。
 4. Git remote 有無属性を判定する。
-5. 台帳エントリを組み立て、台帳ファイルへ追記して保存する。
+5. 台帳エントリを組み立て、台帳ファイルへ追記して保存する。status 別名表（3.3）は登録時は空を既定とし、必要なプロジェクトだけ後から設定する（4.3）。
 
 ### 4.2 削除
 
@@ -98,7 +125,7 @@ git_remote_present = false
 
 ### 4.3 更新
 
-- 変更してよいのは `backlog_root`・`git_remote_present`（再判定）と、表示上の並び順である。`slug` は不変。`project_root` を変える場合は同一プロジェクトの移動として扱い、slug を保って両パスを更新する。
+- 変更してよいのは `backlog_root`・`git_remote_present`（再判定）・`status_aliases`（status 別名表、3.3）と、表示上の並び順である。`slug` は不変。`project_root` を変える場合は同一プロジェクトの移動として扱い、slug を保って両パスを更新する。
 
 ## 5. 横断タスクID
 
@@ -137,3 +164,4 @@ git_remote_present = false
 - Git remote 有無属性を用いたコミット・PR の関連解決手段は TASK-10 で決める。
 - 対象 repo・Backlog ルート・コミット不在時の表示は TASK-13 で決める。
 - status のプロジェクト共通／個別は TASK-7、`kind:*` からの Type 導出は TASK-8 で決める。
+- status 別名表（3.3）は台帳エントリの任意属性として、decision-4 の列対応規則の別名対応を与える。別名表・名称一致・未対応区画を用いた正準ステータス列への対応づけとその見せ方はスイムレーン（TASK-11、doc-7）で設計する。
