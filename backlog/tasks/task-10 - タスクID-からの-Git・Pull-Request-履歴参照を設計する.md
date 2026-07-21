@@ -1,9 +1,10 @@
 ---
 id: TASK-10
 title: タスクID からの Git・Pull Request 履歴参照を設計する
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 08:49'
+updated_date: '2026-07-21 10:07'
 labels:
   - 'kind:feature'
 milestone: m-0
@@ -13,6 +14,7 @@ dependencies:
 documentation:
   - doc-2
   - doc-1
+  - doc-6
 priority: medium
 ordinal: 10000
 ---
@@ -25,7 +27,7 @@ ordinal: 10000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 タスクID → 所有プロジェクトのリポジトリ Git log → コミット一覧の検索経路を定義している
-- [ ] #2 References からの Pull Request URL 抽出規則を定義している
-- [ ] #3 remote 対応時のコミットと Pull Request の関連解決方針を定義している
+- [x] #1 タスクID → 所有プロジェクトのリポジトリ Git log → コミット一覧の検索経路を定義している
+- [x] #2 References からの Pull Request URL 抽出規則を定義している
+- [x] #3 remote 対応時のコミットと Pull Request の関連解決方針を定義している
 <!-- AC:END -->
