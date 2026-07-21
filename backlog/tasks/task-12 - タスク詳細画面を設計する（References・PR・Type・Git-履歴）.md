@@ -1,9 +1,10 @@
 ---
 id: TASK-12
 title: タスク詳細画面を設計する（References・PR・Type・Git 履歴）
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 08:49'
+updated_date: '2026-07-21 10:19'
 labels:
   - 'kind:feature'
 milestone: m-0
@@ -14,6 +15,7 @@ dependencies:
 documentation:
   - doc-2
   - doc-1
+  - doc-8
 priority: medium
 ordinal: 12000
 ---
@@ -26,7 +28,7 @@ ordinal: 12000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 詳細に表示する項目（Description、AC、Type、References、PR URL、Git 履歴）を定義している
-- [ ] #2 PR URL と Type を通常ラベル・References から分離表示する構成を定義している
-- [ ] #3 詳細からの編集操作を Backlog 更新アダプター経由に位置づけている
+- [x] #1 詳細に表示する項目（Description、AC、Type、References、PR URL、Git 履歴）を定義している
+- [x] #2 PR URL と Type を通常ラベル・References から分離表示する構成を定義している
+- [x] #3 詳細からの編集操作を Backlog 更新アダプター経由に位置づけている
 <!-- AC:END -->
