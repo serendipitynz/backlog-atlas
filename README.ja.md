@@ -44,9 +44,22 @@ Atlas は管理対象 Markdown を直接編集しない。更新は、対象プ�
 
 ## 状態
 
-現在は初期化段階である。デスクトップ実装方式 (Tauri か Wails か)、読み取り方式
-(Backlog 管理ファイルの解析か、Backlog CLI・MCP 経由か)、Backlog CLI を sidecar として
-同梱するか、配布方法は、いずれも未決定である。
+設計フェーズは完了している。decision-1〜7 を `backlog/decisions/` に、上記対象範囲を
+網羅する仕様 (`backlog/docs/doc-1`〜`doc-9`) を記録済みである。実装は未着手である。
+
+主要な決定:
+
+- デスクトップ実装方式: Tauri (コアは Rust) を採用 (decision-1)。
+- 読み取り／更新の分離: 読み取りは Backlog 管理ファイルの直接解析、更新は Backlog CLI
+  へ委譲 (decision-2)。MCP サーバー経由は採らない。
+- cross-branch: 初期版は現在の checkout に限定 (decision-3)。
+- status: プロジェクト個別の status を許し、正準ステータス列 (To Do / In Progress /
+  In Review / Done) へ対応づける (decision-4)。
+- Type: `kind:` 接頭辞の除去で導出し、複数・不在・未知を分けて表示 (decision-5)。
+- 不在・欠損: 対象不在・読取不能・該当なしを一つの空表示に丸めず区別して表示
+  (decision-6)。
+- Backlog CLI: 開発は利用者の PATH 上の `backlog` を前提とし、sidecar 同梱は後続の
+  配布判断まで先送りする (decision-7)。
 
 sidecar 同梱は配布方法の選択であり、Backlog Atlas がタスク正本を所有することを
 意味しない。

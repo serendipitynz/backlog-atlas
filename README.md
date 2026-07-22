@@ -47,10 +47,25 @@ shell string.
 
 ## Status
 
-This is the initialization stage. The desktop implementation approach (Tauri or
-Wails), the read strategy (parsing Backlog management files, or going through the
-Backlog CLI / MCP), whether the Backlog CLI is bundled as a sidecar, and the
-distribution method are all undecided.
+The design phase is complete. Decisions 1–7 are recorded in `backlog/decisions/`,
+and the specifications (`backlog/docs/doc-1`–`doc-9`) cover the scope above.
+Implementation has not started yet.
+
+Key decisions:
+
+- Desktop implementation: Tauri, with a Rust core (decision-1).
+- Read/update split: read by parsing Backlog management files directly; delegate
+  updates to the Backlog CLI (decision-2). Going through an MCP server was not
+  adopted.
+- cross-branch: limited to the current checkout in the initial version (decision-3).
+- status: per-project statuses are allowed and mapped onto the canonical status
+  columns (To Do / In Progress / In Review / Done) (decision-4).
+- Type: derived by stripping the `kind:` prefix, with multiple, absent, and unknown
+  values shown distinctly (decision-5).
+- Absence and gaps: target-absent, unreadable, and no-match are shown as distinct
+  states rather than one blank (decision-6).
+- Backlog CLI: development assumes a `backlog` on the user's PATH; bundling it as a
+  sidecar is deferred to a later distribution decision (decision-7).
 
 Bundling the Backlog CLI as a sidecar is a distribution choice; it does not mean
 Backlog Atlas owns the source of truth for tasks.
