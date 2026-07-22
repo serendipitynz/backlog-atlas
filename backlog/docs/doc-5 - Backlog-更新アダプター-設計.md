@@ -3,6 +3,7 @@ id: doc-5
 title: Backlog 更新アダプター 設計
 type: specification
 created_date: '2026-07-21 10:05'
+updated_date: '2026-07-22'
 ---
 # Backlog 更新アダプター 設計
 
@@ -40,10 +41,33 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | AC 増減・チェック | `task edit` | `<taskId>`、`--ac <text>` / `--remove-ac <index>` / `--check-ac <index>` / `--uncheck-ac <index>` |
 | 実装計画・ノート | `task edit` | `<taskId>`、`--plan <text>` / `--notes <text>` / `--append-notes <text>` |
 | 依存の設定 | `task edit` | `<taskId>`、`--depends-on <taskIds>` |
-| マイルストーン作成/編集 | `milestone`（該当サブコマンド） | 対象 ID とフィールド引数 |
-| 文書作成/編集 | `doc`（該当サブコマンド） | 対象 ID とフィールド引数 |
+| 文書作成 | `doc create` | `<title>`、`-t <type>`（readme/guide/specification/other）、`-p <path>` |
+| 文書更新 | `doc update` | `<docId>`、`--title <title>` / `--content <markdown>`（本文全置換） / `-t <type>` / `-p <path>` / `--tags <tags>` |
+| マイルストーン作成 | `milestone add` | `<name>`、`-d <description>`（説明は作成時のみ設定可） |
+| マイルストーン改称 | `milestone rename` | `<from>`、`<to>`、任意 `--no-update-tasks` |
+| マイルストーン削除 | `milestone remove` | `<name>`、`--task-handling <clear\|keep\|reassign>`、reassign 時 `--reassign-to <milestone>` |
+| マイルストーンアーカイブ | `milestone archive` | `<name>` |
 
-- 操作写像は「1 更新操作 → 1 サブコマンド呼び出し」を基本とする。1 画面操作が複数フィールドを同時に変える場合は、`task edit` の複数オプションを 1 呼び出しにまとめられる範囲でまとめ、まとめられない操作（別サブコマンドが要る）だけ複数回に分ける。
+- 操作写像は「1 更新操作 → 1 サブコマンド呼び出し」を基本とする。1 画面操作が複数フィールドを同時に変える場合は、`task edit`・`doc update` の複数オプションを 1 呼び出しにまとめられる範囲でまとめ、まとめられない操作（別サブコマンドが要る）だけ複数回に分ける。
+
+### 3.1 v1.47.1 に存在しない更新操作
+
+動作確認版 v1.47.1 の CLI を実地確認した（`doc --help`・`milestone --help` と各サブコマンドの `--help`）。次の操作は CLI に対応サブコマンドが無い。
+
+- **マイルストーン説明の更新**: `milestone` には `update`/`edit` サブコマンドが無い。説明（description）は `milestone add -d` で作成時にのみ設定でき、作成後に説明だけを更新する経路は無い。`rename` は title（名称）の変更に限られ、説明は変えない。
+- **マイルストーン任意フィールドの編集**: 上記のとおり、作成後に変更できるのは名称（`rename`）・存在（`remove`/`archive`）・紐づくタスクの扱い（`remove --task-handling`）に限られる。
+- 文書側は `doc update` が title・本文（`--content` は全置換）・type・path・tags を更新でき、部分更新（本文の一部差し替え・追記）や frontmatter の任意フィールド更新には対応しない。
+
+これらは decision-2 の「更新は Backlog CLI へ委譲」を保つ限り、CLI が提供するまで Atlas も提供しない。CLI 版が上がって対応サブコマンドが増えた場合に操作写像へ追加する（3 章末の版検査に従う）。
+
+### 3.2 GUI が提供する更新操作の範囲
+
+上記制約から、タスク詳細（doc-8）・マイルストーン操作の GUI が提供する更新操作を次に限る。
+
+- **タスク**: 3 章の `task create`/`task edit` 写像に載る操作（title・description・status・ラベル増減・AC 増減/チェック・priority・milestone・dependencies・実装計画/ノート等）。
+- **文書**: 作成（title・type・path）と更新（title・本文全置換・type・path・tags）。本文は全置換のみで、部分編集は「編集後の全文を `--content` で渡す」に帰着させる。
+- **マイルストーン**: 作成（名称・作成時の説明）・改称（名称）・削除・アーカイブ。**作成後の説明編集は GUI に出さない**（CLI 経路が無いため）。GUI は「作成時に説明を入れる」入口だけを設け、既存マイルストーンの説明編集欄は設けない。制約由来であることが分かる表示にする。
+- 管理対象 Markdown を GUI から直接書き換えない境界（doc-2）は保つ。CLI に無い操作を GUI 側の直接書き込みで代替しない。
 - 各サブコマンドの正確なオプション名は、動作確認した CLI 版の `--help` を基準に固定する。版が上がってオプションが変わる場合は、操作写像を版ごとに検査し、未知オプションは実行前に検知して当該操作を拒否する（縮退。5 章）。
 - taskId は当該プロジェクト内の TASK-ID（横断タスクID の右辺）を用いる。アダプターは対象プロジェクトを作業ディレクトリに固定するため、slug 前置は不要（doc-3 の 5.3）。
 
