@@ -41,10 +41,10 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | ドメイン項目 | 由来 | 備考 |
 |---|---|---|
 | project | 走査元 Backlog ルート ↔ 台帳エントリ | TASK-4 の決定規則。frontmatter には持たない。 |
-| storageState（タスク保存区分） | 走査元ディレクトリ（tasks / drafts / completed / archive） | active / draft / completed / archive。frontmatter には持たず、ファイルの置き場所だけで決まる。status とは別軸（3.4）。 |
-| id（プロジェクト内 TASK-ID） | frontmatter `id` | 横断タスクID の右辺。 |
+| storageState（タスク保存区分） | 走査元ディレクトリ（tasks / drafts / completed / archive/tasks / archive/drafts） | active / draft / completed / archive。frontmatter には持たず、ファイルの置き場所だけで決まる。status とは別軸（3.4）。 |
+| id（プロジェクト内 TASK-ID） | frontmatter `id` | 横断タスクID の右辺。draft は接頭辞 `DRAFT`（`DRAFT-N`）で、通常タスクの `TASK-N` とは別接頭辞（3.4）。 |
 | title | frontmatter `title` | |
-| status | frontmatter `status` | `config.yml` の status 定義で正規化（正規化規則は TASK-7）。 |
+| status | frontmatter `status` | `config.yml` の status 定義で正規化（正規化規則は TASK-7）。draft の `Draft` は CLI 既知の status だが `config.yml` の `statuses` に含まれないことがあり、未知 status として縮退させず既知値として扱う（3.4・5 章）。 |
 | type | labels の kind ラベル | 分離は本層、値の導出は TASK-8。 |
 | labels（通常ラベル） | labels の非 kind 要素 | 表示用ラベル一覧。 |
 | assignee / priority / ordinal / milestone | 同名 frontmatter | milestone は ID 参照。 |
@@ -77,12 +77,16 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | 走査元ディレクトリ | 保存区分値 | 意味 |
 |---|---|---|
 | tasks/ | active | 日常の進捗対象。 |
-| drafts/ | draft | 下書き。 |
+| drafts/ | draft | 下書き。id は `DRAFT-N`。status は `draft create` 直後は `Draft`、`task demote` 由来は元タスクの status を保持（一律ではない）。 |
 | completed/ | completed | 完了整理済み。 |
-| archive/ | archive | アーカイブ済み。 |
+| archive/tasks/ | archive | アーカイブ済みタスク。id・status は保持。 |
+| archive/drafts/ | archive | アーカイブ済み下書き。id は `DRAFT-N`、status はアーカイブ前を保持。 |
 
+- v1.47.1 実測では、`archive/` は `tasks` / `drafts` / `milestones` へネストし、タスクは `archive/tasks` と `archive/drafts` に置かれる（`archive/` 直下にタスクファイルは無い）。`archive/milestones` はアーカイブ済みマイルストーンであり、タスクとして扱わない（§3.2）。走査は `archive/` を平坦にではなく、この実構造で辿る。
+- draft は `drafts/`（保存区分 draft）と `archive/drafts/`（保存区分 archive）の両方に在りうる。id はいずれも `DRAFT-N`。status は一律 `Draft` ではなく、`draft create` 直後は `Draft`、`task demote` 由来や archive 済みは遷移前の status（例 `To Do`）を保持する（遷移の詳細は doc-5 の 3.3）。保存区分（ファイルの置き場所）と status（作業状態）は別軸である。
+- `Draft` は `config.yml` の `statuses` に含まれないことがあるが、draft が正規に取りうる既知の status であり、未知 status として縮退（5 章の想定外スキーマ）させない。status 正規化（TASK-7）は `Draft` を既知値として扱う。
 - 保存区分は status（作業状態）とは独立の軸である。status が Done のタスクでも、tasks/ に在れば active、completed/ に在れば completed になる。両者を混同しないことがこの区分を持たせる目的で、混同すると完了整理済み・アーカイブ・draft のタスクが通常の進捗表示へ混入する（doc-7）。
-- 保存区分値はこの 4 種に閉じる。タスクを読むのは上記 4 ディレクトリだけで、milestones / docs / decisions はタスクとして扱わない（§2）。上記いずれにも属さない場所でタスク様のファイルを見つけた場合は想定外スキーマ（5 章）として縮退させ、保存区分を未確定にする。
+- 保存区分値はこの 4 種に閉じる。タスクを読むのは上記の走査元ディレクトリだけで、milestones / docs / decisions はタスクとして扱わない（§2）。上記いずれにも属さない場所でタスク様のファイルを見つけた場合は想定外スキーマ（5 章）として縮退させ、保存区分を未確定にする。
 - スイムレーンが既定で active のみを表示し、他区分をどう扱うかは doc-7（TASK-11）で定義する。本層は各タスクへ保存区分を付与するにとどめる。
 
 ## 4. 管理ファイルからの写像
