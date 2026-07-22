@@ -58,7 +58,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 ### 3.2 設定・マイルストーン・文書
 
-- **設定（config）**: `config.yml` から status 定義・task_prefix・ディレクトリ構成・Backlog バージョン等を写す。読み取り層全体の解決基点であり、タスク解析より先に構築する。
+- **設定（config）**: `config.yml` から status 定義・task_prefix・ディレクトリ構成等を写す。読み取り層全体の解決基点であり、タスク解析より先に構築する。config.yml に Backlog の版情報は無い（v1.47.1 の `config.yml`・`backlog config list` に版欄は無く、status 定義・task_prefix・date_format 等のみ、実測）。版に依存しない読み取りは 4 章による。
 - **マイルストーン**: `milestones/m-N` の frontmatter（id・title）と本文（Description）を写す。タスクの milestone 参照の解決先。
 - **文書**: `docs/doc-N` の frontmatter（id・title・type・tags・日付）と本文を写す。タスクの documentation 参照の解決先。
 
@@ -91,7 +91,9 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - **SECTION 区切り**: `<!-- SECTION:NAME:BEGIN -->` … `<!-- SECTION:NAME:END -->` と `<!-- AC:BEGIN -->` … `<!-- AC:END -->` を対で切り出す。既知の NAME（DESCRIPTION・NOTES・PLAN 等）と AC を写し、未知の NAME は本文断片として保持し縮退契機とする（5 章、想定外スキーマ）。
 - **AC 項目**: AC ブロック内の `- [ ] #N …` / `- [x] #N …` を、番号・本文・checked 状態の並びへ写す。
 - **References / Pull Request URL**: references と本文 References から URL を集める。Pull Request URL の抽出・表示は TASK-12、Git 履歴照合は TASK-10 の入力とし、本層は URL を保持するにとどめる。
-- **サポート範囲**: 動作確認した Backlog バージョン範囲（現行 v1.47.1 を含む）を固定し、想定する frontmatter/SECTION スキーマを本層のスキーマ定義として明記する（decision-2）。
+- **版の扱い（書き込み CLI の版と生成元の版の分離）**: 「版」は 2 つを区別する。**書き込み CLI の版**は Atlas が更新で呼ぶ backlog CLI 実行ファイルの版で、実行時に `backlog --version` で取得できる（doc-5 の呼び出し先）。**生成元の版**はいま読んでいる管理ファイルを書いた backlog の版で、frontmatter にも config.yml にも記録が無く、ファイルからは不明である。読み取りは生成元の版に依存できないため、版番号での分岐をしない。
+- **読み取りはスキーマ能力検査で行う**: 版番号ではなく、frontmatter フィールド・SECTION・AC ブロック等の有無と構造から当該ファイルのスキーマ能力を判定して読み取る（**スキーマ能力検査**）。既知フィールド/SECTION が在れば写し、無ければ欠損として縮退させる（5 章）。想定するフィールド/SECTION の集合を本層のスキーマ定義として明記し、その有無を検査対象にする。これにより生成元の版が不明・混在でも、判別できた範囲で読める。
+- **サポート範囲**: 動作確認した版は書き込み CLI の版に対して固定する（現行 v1.47.1 を含む、decision-2）。これは更新（doc-5 の操作写像・オプション名の検査）の基準であり、生成元の版を縛るものではない。読み取り側のサポート範囲は、上記スキーマ能力検査が扱えるフィールド/SECTION 集合として定める。
 
 ## 5. 解析エラー・欠損時の扱い
 
