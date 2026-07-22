@@ -39,11 +39,18 @@ resident per project.
 
 ## Boundaries
 
-Atlas does not edit managed Markdown directly. It delegates updates to the Backlog
-CLI, run with the target project as its working directory. The Backlog update
-adapter — the part that translates an Atlas operation into a Backlog CLI call — uses
-fixed subcommands and argument arrays, and never concatenates user input into a
-shell string.
+Atlas never writes managed Markdown itself. Updates that Atlas originates are
+delegated to the Backlog CLI, run with the target project as its working directory.
+The Backlog update adapter — the part that translates an Atlas operation into a
+Backlog CLI call — uses fixed subcommands and argument arrays, and never concatenates
+user input into a shell string.
+
+One update path reaches managed Markdown outside the CLI: on the user's explicit
+request, Atlas can open a task's file in the user's own external editor. There the
+user — not Atlas — writes the file directly, without the Backlog CLI's schema
+protection. Atlas only launches the editor and picks up the save as an external
+change to reload. The invariant that Atlas itself never writes managed Markdown still
+holds; the CLI-mediated path is not the only way managed Markdown changes.
 
 ## Status
 

@@ -8,8 +8,10 @@ status: accepted
 
 各 Backlog ルートのタスク・設定・マイルストーン・文書をどう読むかを決める
 （TASK-3）。候補は (a) Backlog.md 管理ファイルの直接解析、(b) Backlog CLI 経由、
-(c) MCP 経由。更新は方式に関わらず対象プロジェクトでの Backlog CLI 呼び出しへ
-委譲する前提は不変（doc-2、AGENTS）。
+(c) MCP 経由。更新のうち Atlas が起こすものは、方式に関わらず対象プロジェクトでの
+Backlog CLI 呼び出しへ委譲する前提は不変（doc-2、AGENTS）。利用者が明示的に選ぶ
+外部エディタ経路（doc-8）はこの例外で、そこでは利用者が管理ファイルを直接編集する
+（Atlas 自身は書かず、Decision 節で後述）。
 
 判断の決め手として、導入済みの Backlog CLI（v1.47.1）の出力を実測した。CLI には
 JSON など機械可読な出力が無く、`--plain`（人間向け整形テキスト）のみである。一方、
@@ -29,8 +31,11 @@ references・milestone など）＋ `<!-- SECTION:DESCRIPTION -->` や `<!-- AC:
 
 読み取りは Backlog 管理ファイルの直接解析（案 a）を採用する。frontmatter と
 `<!-- SECTION:… -->` 区切りの本文を Atlas が直接読み、config.yml で status や
-task_prefix を解決する。更新は従来どおり Backlog CLI へ委譲する（読み書きで経路を
-分ける）。
+task_prefix を解決する。更新のうち Atlas が起こすものは従来どおり Backlog CLI へ
+委譲する（読み書きで経路を分ける）。利用者が明示的に選ぶ外部エディタ経路（doc-8）は
+本決定の対象外であり、そこでは利用者の外部エディタが管理対象 Markdown を直接編集する
+（Atlas 自身は書かず、CLI のスキーマ保護も受けない）。この例外は、読み取りを直接解析と
+する本決定を左右しない。
 
 doc-2 の要請に従い、直接解析採用に伴う次の扱いを明示する。
 

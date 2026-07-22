@@ -3,7 +3,7 @@ id: doc-2
 title: Backlog Atlas 開始指示書
 type: guide
 created_date: '2026-07-20 23:22'
-updated_date: '2026-07-21 12:15'
+updated_date: '2026-07-22'
 tags:
   - planning
   - backlog-atlas
@@ -44,8 +44,9 @@ Backlog Atlas は、複数の Backlog.md プロジェクトを扱う **Backlog.m
 ### 読み取りと更新の境界
 
 - Atlas は各 Backlog ルートのタスク、設定、マイルストーン、文書を読み取る。
-- タスク、文書、マイルストーンの更新は Backlog CLI に委譲し、管理対象の Markdown を Atlas から直接書き換えない。
+- タスク、文書、マイルストーンの更新のうち Atlas が起こすものは Backlog CLI に委譲し、管理対象の Markdown を Atlas 自身から直接書き換えない。
 - **Backlog更新アダプター**とは、Atlas の操作を対象プロジェクトでの Backlog CLI 呼び出しへ変換する部分を指す。
+- 例外として、利用者が明示的に選ぶ外部エディタ経路（doc-8）では、利用者の外部エディタが管理対象 Markdown を直接編集する。この経路でも書くのは利用者で Atlas ではなく、Atlas はエディタを起動し保存を外部変更として再読込するだけである。したがって「Atlas 自身が書かない」不変は保つが、管理対象 Markdown が変わる経路は Backlog CLI 経由に限られず、この経路では Backlog CLI のスキーマ保護を受けない。
 - Backlog CLI は、対象プロジェクトを作業ディレクトリとして、固定したサブコマンドと引数配列で実行する。ユーザー入力をシェル文字列として連結しない。
 - 読み取りをファイル解析で行うか Backlog CLI 経由で行うかは、最初の設計タスクで決定する。ファイル解析を採用する場合は、Backlog.md のバージョン差と cross-branch 状態の扱いを明示する。
 
@@ -100,7 +101,7 @@ git -C /Users/ootani/Projects/_snz/backlog-atlas init -b main
 4. **Runtime model / 起動単位**
    - Atlas プロセスは一つだけ起動する。プロジェクトごとに Backlog.md のブラウザやサーバーを常駐起動しない。
 5. **Boundaries / 境界**
-   - Atlas は管理対象 Markdown を直接変更せず、更新を対象プロジェクトでの Backlog CLI 実行へ委譲する。
+   - Atlas 自身は管理対象 Markdown を書き込まず、Atlas が起こす更新を対象プロジェクトでの Backlog CLI 実行へ委譲する。例外として、利用者が明示的に選ぶ外部エディタ経路（doc-8）では利用者の外部エディタが管理対象 Markdown を直接編集する（Atlas はエディタを起動し、保存を外部変更として再読込するだけ。CLI のスキーマ保護は受けない）ことを、現行 README と同じ意味で書く。
 6. **Status / 状態**
    - 初期化段階であり、デスクトップ実装方式、読み取り方式、Backlog CLI の sidecar 同梱、配布方法は未決定であると明記する。
 7. **Related planning / 関連する計画**
