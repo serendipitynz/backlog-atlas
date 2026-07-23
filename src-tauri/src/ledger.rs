@@ -426,9 +426,16 @@ impl Ledger {
         for p in &mut self.projects {
             p.status_aliases.retain(|_, v| is_canonical_status(v));
         }
-        // Structural invariants: slug shape + uniqueness, absolute + unique roots.
+        // Structural invariants: slug shape + uniqueness, absolute roots, and each root role
+        // unique across *different* entries. project_root and backlog_root are tracked in
+        // separate sets — mixing them would reject a project whose Backlog root is the project
+        // root itself, and would disagree with `find_root_conflict` (which is also field-scoped
+        // and cross-entry), letting register create a ledger that load then refuses. doc-3
+        // §3/§6 require one entry per project and a 1:1 entry↔Backlog-root mapping, not that
+        // the two path roles be globally distinct.
         let mut seen_slugs: Vec<&str> = Vec::new();
-        let mut seen_roots: Vec<PathBuf> = Vec::new();
+        let mut seen_project_roots: Vec<PathBuf> = Vec::new();
+        let mut seen_backlog_roots: Vec<PathBuf> = Vec::new();
         for p in &self.projects {
             if !is_valid_slug(&p.slug) {
                 return Err(LedgerError::InvalidSlug(p.slug.clone()));
@@ -438,15 +445,18 @@ impl Ledger {
             }
             seen_slugs.push(&p.slug);
 
-            for root in [&p.project_root, &p.backlog_root] {
+            for (root, seen) in [
+                (&p.project_root, &mut seen_project_roots),
+                (&p.backlog_root, &mut seen_backlog_roots),
+            ] {
                 if !root.is_absolute() {
                     return Err(LedgerError::NonAbsoluteRoot(root.display().to_string()));
                 }
                 let key = canonical_key(root);
-                if seen_roots.contains(&key) {
+                if seen.contains(&key) {
                     return Err(LedgerError::DuplicateRoot(p.slug.clone()));
                 }
-                seen_roots.push(key);
+                seen.push(key);
             }
         }
         Ok(())
@@ -1156,6 +1166,35 @@ mod tests {
             LoadedLedger::load(&path).unwrap_err(),
             LedgerError::DuplicateSlug(_)
         ));
+    }
+
+    #[test]
+    fn register_save_load_allows_backlog_root_equal_to_project_root() {
+        // A project whose Backlog root is the project root itself must survive a
+        // register → save → load round-trip: the two role fields being equal within one
+        // entry is not a duplicate-root conflict.
+        let tmp = TempDir::new();
+        let root = tmp.path.join("selfroot");
+        std::fs::create_dir_all(root.join("tasks")).unwrap();
+        std::fs::write(root.join("config.yml"), "project_name: Test\n").unwrap();
+        let path = tmp.path.join("projects.toml");
+
+        let mut loaded = LoadedLedger::load(&path).unwrap();
+        loaded
+            .ledger
+            .register(&RegisterRequest {
+                project_root: root.clone(),
+                backlog_root: Some(root.clone()),
+                slug: Some("selfroot".into()),
+            })
+            .unwrap();
+        loaded.save(&path).unwrap();
+
+        // The reload must succeed (previously DuplicateRoot from mixing the two role sets).
+        let reloaded = LoadedLedger::load(&path).unwrap();
+        assert_eq!(reloaded.ledger.projects.len(), 1);
+        assert_eq!(reloaded.ledger.projects[0].project_root, root);
+        assert_eq!(reloaded.ledger.projects[0].backlog_root, root);
     }
 
     #[test]
