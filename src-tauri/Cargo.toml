@@ -1,0 +1,25 @@
+[package]
+name = "backlog-atlas"
+version = "0.1.0"
+description = "Backlog Atlas — a multi-root Backlog.md client"
+authors = ["Takuya Otani"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name; without it the
+# two collide on Windows. See https://github.com/rust-lang/cargo/issues/8519
+name = "backlog_atlas_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+# serde stays as the IPC foundation: Tauri command arguments and return values are
+# (de)serialized through it, so every future command depends on it. serde_json and
+# any further crates (parser, Git, file watcher, editor launch) are deferred to the
+# tasks that need them, introduced with rationale per AGENTS.
+serde = { version = "1", features = ["derive"] }
