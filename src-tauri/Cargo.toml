@@ -27,6 +27,13 @@ serde = { version = "1", features = ["derive"] }
 # for typed (de)serialization; scope is limited to the ledger file. Approved as a
 # new production dependency per the TASK-25 introduction gate before adding.
 toml = "0.8"
+# serde_yaml_ng parses the YAML frontmatter of Backlog management files and config.yml
+# (doc-4 §4). A maintained fork of the now-archived serde_yaml, kept because YAML validity
+# itself is a required signal here: doc-4 §5 makes "frontmatter が YAML として読めない" a
+# distinct 解析不能 event, so a hand-rolled subset parser that silently mis-reads a
+# hand-edited file would be worse than a dependency. Scope is limited to the read layer.
+# Approved as a new production dependency per the AGENTS.md introduction gate before adding.
+serde_yaml_ng = "0.10"
 
 [dev-dependencies]
 # Test-only: asserts the domain model's JSON wire contract (doc-4 §3.1 camelCase field

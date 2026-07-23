@@ -1,10 +1,10 @@
 ---
 id: TASK-27
 title: ドメインモデルの型定義を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:06'
-updated_date: '2026-07-23 12:19'
+updated_date: '2026-07-23 21:14'
 labels:
   - 'kind:feature'
 milestone: m-1

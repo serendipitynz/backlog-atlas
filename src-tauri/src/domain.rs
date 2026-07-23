@@ -81,6 +81,31 @@ pub struct Document {
     pub body: Option<String>,
 }
 
+/// An architecture decision record (`decisions/decision-N`). doc-4 §2 has the read layer scan
+/// `decisions/`, but §3.2 defines 文書 as `docs/doc-N` only — the resolution target of a task's
+/// documentation reference. Decisions are therefore kept in their own collection rather than
+/// folded into [`Document`]: they carry `status`/`date` instead of `type`/`tags`, and mixing
+/// them would let `decision-N` answer a documentation lookup that can only mean `doc-N`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Decision {
+    pub id: String,
+    pub title: String,
+    /// frontmatter `status`, e.g. `accepted` / `proposed`. Unrelated to a task's status.
+    pub status: Option<String>,
+    pub date: Option<String>,
+    pub body: Option<String>,
+}
+
+/// A body fragment under a `SECTION:NAME` this layer does not know. doc-4 §4 requires such a
+/// fragment be *kept* (not dropped) while also being a degradation trigger, so the text lands
+/// here and the matching [`DegradeEvent::UnexpectedSchema`] lands in [`Task::health`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnknownSection {
+    /// The `NAME` in `<!-- SECTION:NAME:BEGIN -->`.
+    pub name: String,
+    pub body: String,
+}
+
 /// One acceptance-criterion item parsed from the `AC:BEGIN`…`AC:END` block, kept as the
 /// `#N` number, its body text, and its checked state — the triple required by AC #4 and
 /// doc-4 §4 "番号・本文・checked 状態の並び".
@@ -219,6 +244,8 @@ pub struct Task {
     pub implementation_plan: Option<String>,
     /// `SECTION:NOTES` body (optional).
     pub implementation_notes: Option<String>,
+    /// Bodies of SECTION names outside the known set, kept rather than dropped (§4).
+    pub unknown_sections: Vec<UnknownSection>,
     /// Parse health and, when degraded, the missing/out-of-range account (§5, AC #4).
     pub health: TaskHealth,
 }
@@ -235,6 +262,7 @@ pub struct ProjectModel {
     pub tasks: Vec<Task>,
     pub milestones: Vec<Milestone>,
     pub documents: Vec<Document>,
+    pub decisions: Vec<Decision>,
 }
 
 impl ProjectModel {
@@ -253,6 +281,11 @@ impl ProjectModel {
     /// Resolve a documentation reference within this project (AC #1).
     pub fn document(&self, id: &str) -> Option<&Document> {
         self.documents.iter().find(|d| d.id == id)
+    }
+
+    /// Look up a decision record by id (`decision-N`).
+    pub fn decision(&self, id: &str) -> Option<&Decision> {
+        self.decisions.iter().find(|d| d.id == id)
     }
 }
 
@@ -298,6 +331,7 @@ mod tests {
             acceptance_criteria: vec![],
             implementation_plan: None,
             implementation_notes: None,
+            unknown_sections: vec![],
             health,
         }
     }
@@ -313,6 +347,7 @@ mod tests {
             tasks,
             milestones,
             documents,
+            decisions: vec![],
         }
     }
 
