@@ -582,11 +582,7 @@ fn reference_resolves(
     task_ids: &[String],
     config: &Config,
 ) -> Option<bool> {
-    // A URL names something outside the root by construction.
-    if raw.contains("://") {
-        return None;
-    }
-    let id = normalize_document_ref(raw);
+    let id = in_root_reference_id(raw)?;
     if is_prefixed_number(&id, "doc") {
         return Some(documents.iter().any(|d| d.id == id));
     }
@@ -600,6 +596,49 @@ fn reference_resolves(
         return Some(task_ids.iter().any(|t| t.eq_ignore_ascii_case(&id)));
     }
     None
+}
+
+/// The in-root id a `references` value names, or `None` when the value points outside the root
+/// and is therefore not this layer's to judge.
+///
+/// The path shape has to be classified *before* the basename is normalized. Normalizing first
+/// throws the directory away, which would turn an existing external file like
+/// `/Users/someone/notes/doc-404.md` into the id `doc-404` and report it missing from a root
+/// that was never supposed to contain it.
+fn in_root_reference_id(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    // A URL, or an absolute path, names something outside the root by construction. Managed
+    // files are always referenced root- or repo-relative.
+    if raw.contains("://") || raw.starts_with('/') || raw.starts_with('\\') || has_drive_prefix(raw)
+    {
+        return None;
+    }
+    match raw.rsplit_once(['/', '\\']) {
+        // Bare form (`doc-3`, `README.md`): no directory to contradict the root. A name that is
+        // not id-shaped is filtered out by the caller's shape checks.
+        None => Some(normalize_document_ref(raw)),
+        // Path form: recognized only when the immediate parent is one of the root's own
+        // directories, which is what a managed path looks like
+        // (`backlog/docs/doc-2 - Title.md`). A relative path through some other directory
+        // names a file this layer cannot see.
+        Some((dir, name)) => {
+            let parent = dir.rsplit(['/', '\\']).next().unwrap_or("");
+            let managed = ScanDir::ALL.iter().any(|d| {
+                d.rel_path()
+                    .rsplit('/')
+                    .next()
+                    .is_some_and(|last| last == parent)
+            });
+            managed.then(|| normalize_document_ref(name))
+        }
+    }
+}
+
+/// `C:\…` / `C:/…` — a Windows absolute path.
+fn has_drive_prefix(raw: &str) -> bool {
+    let mut chars = raw.chars();
+    matches!((chars.next(), chars.next(), chars.next()),
+        (Some(c), Some(':'), Some('/' | '\\')) if c.is_ascii_alphabetic())
 }
 
 /// `documentation` holds either a bare id (`doc-3`) or the managed file's path
@@ -1405,6 +1444,36 @@ updated_date: '2026-07-22 12:25'\n\
         let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
         let model = read(&source);
         assert!(!only_task(&model).health.is_degraded());
+    }
+
+    // Review round 2 [P2]: an out-of-root path whose basename happens to be id-shaped must stay
+    // undecidable. Normalizing before classifying threw the directory away and reported an
+    // existing external file as missing from a root that never held it.
+    #[test]
+    fn an_id_shaped_path_outside_the_root_stays_undecidable() {
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nreferences:\n  - /Users/someone/notes/doc-404.md\n  - ../elsewhere/decision-404.md\n  - notes/m-404.md\n---\n";
+        let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
+        let model = read(&source);
+        assert!(
+            !only_task(&model).health.is_degraded(),
+            "external paths must not be reported missing: {:?}",
+            only_task(&model).health
+        );
+    }
+
+    #[test]
+    fn a_managed_path_is_still_decidable() {
+        // The in-root shape must keep working — this is the case the round-1 fix was for.
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nreferences:\n  - backlog/docs/doc-404 - gone.md\n---\n";
+        let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
+        let model = read(&source);
+        assert!(matches!(
+            events(only_task(&model)),
+            [DegradeEvent::DanglingReference {
+                kind: ReferenceKind::Reference,
+                ..
+            }]
+        ));
     }
 
     #[test]
