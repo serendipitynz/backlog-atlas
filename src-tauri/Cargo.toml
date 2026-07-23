@@ -27,3 +27,9 @@ serde = { version = "1", features = ["derive"] }
 # for typed (de)serialization; scope is limited to the ledger file. Approved as a
 # new production dependency per the TASK-25 introduction gate before adding.
 toml = "0.8"
+
+[dev-dependencies]
+# Test-only: asserts the domain model's JSON wire contract (doc-4 §3.1 camelCase field
+# names, enum tokens). Already present transitively via tauri, so it adds no new build;
+# scope is limited to unit tests and it is not a production dependency.
+serde_json = "1"

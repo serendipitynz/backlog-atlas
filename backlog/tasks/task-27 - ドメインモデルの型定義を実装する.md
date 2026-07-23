@@ -1,10 +1,10 @@
 ---
 id: TASK-27
 title: ドメインモデルの型定義を実装する
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-22 12:06'
-updated_date: '2026-07-22 12:07'
+updated_date: '2026-07-23 10:55'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -21,8 +21,42 @@ doc-4 §3 の設計に従い、Backlog 管理ファイルの内容を写す Atla
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 タスク・設定・マイルストーン・文書の型を定義し、1プロジェクト内で id により相互参照できる
-- [ ] #2 タスクに project（走査元ルート由来）と storageState（active/draft/completed/archive）を frontmatter とは独立の軸で保持する
-- [ ] #3 type（kind 由来）と通常ラベルを分離して保持し、生の labels を混在させない
-- [ ] #4 AC を #N・本文・checked 状態の並びで保持し、health（正常/縮退）と不足フィールドを保持する
+- [x] #1 タスク・設定・マイルストーン・文書の型を定義し、1プロジェクト内で id により相互参照できる
+- [x] #2 タスクに project（走査元ルート由来）と storageState（active/draft/completed/archive）を frontmatter とは独立の軸で保持する
+- [x] #3 type（kind 由来）と通常ラベルを分離して保持し、生の labels を混在させない
+- [x] #4 AC を #N・本文・checked 状態の並びで保持し、health（正常/縮退）と不足フィールドを保持する
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## 実装範囲（AC #1–#4）
+
+doc-4 §3 に従い、Backlog ルートの内容を写す Atlas 内部ドメインモデルの型を定義した。本タスクは型定義のみで、ファイル解析（config 解決・走査・SECTION/AC 解析）は TASK-28、status 正規化・Type 導出は TASK-29 の範囲。
+
+## 主要ファイル
+
+- `src-tauri/src/domain.rs`（新規）: Tauri 非依存の型定義。単体テスト 8 件。
+  - `StorageState`（active/draft/completed/archive）, `Config`, `Milestone`, `Document`, `AcceptanceCriterion`, `RequiredField`, `ReferenceKind`, `DegradeEvent`, `TaskHealth`, `Task`, `ProjectModel`。
+  - `ProjectModel` は config + tasks/milestones/documents を持ち、`task`/`milestone`/`document` で id により相互参照解決（AC #1）。
+- `src-tauri/src/lib.rs`: `pub mod domain;` を追加（読み取り層・コマンド層が共有する公開ドメイン語彙として公開）。
+- `src-tauri/Cargo.toml`: `[dev-dependencies] serde_json`（テストの JSON ワイヤ契約検証のみ。tauri 経由で既にツリーに在り追加ビルドなし。本番依存ではない）。
+
+## AC 対応
+
+- #1 相互参照: `ProjectModel` が 1 プロジェクト内の tasks/config/milestones/documents を保持し、id で相互参照（`task`/`milestone`/`document` ルックアップ）。id は解析可能タスクのみ `Some` を持ち、id 欠落の解析不能タスクは id 参照に載らない。
+- #2 独立軸: `Task.project`（走査元ルート由来の台帳 slug）と `Task.storage_state`（走査元ディレクトリ由来）を frontmatter とは独立に保持。status が Done でも tasks/ なら active（テストで検証）。
+- #3 ラベル分離: `type_labels`（kind 由来。TASK-8 確定まで生の kind 値を Type 候補として保持）と `labels`（通常ラベル）を別フィールドで保持し、生 labels を混在させない。
+- #4 AC 保持と health: `acceptance_criteria` は `AcceptanceCriterion { number, text, checked }` の並びで保持。`TaskHealth`（Ok/Degraded）と `DegradeEvent`（解析不能=不足必須フィールド列 / 想定外スキーマ / 参照欠損）で health と不足内容を保持。ルート読取不能はルート単位のため本型には含めない（doc-4 §5）。
+
+## 設計判断
+
+- 「判別できた事実」と「未確定・不足の明示」の同居（doc-4 §3・§5）のため、必須フィールド id/title/status を `Option` とし、解析不能ファイルも捨てず縮退タスクとして表現。`Task.source_path` は id 欠落時でも縮退表示で対象ファイルを特定するために保持。
+- ワイヤ契約は doc-4 §3.1 の camelCase 名（storageState 等）に serde rename で一致させ、対応表を IPC の契約とする。`DegradeEvent` の内部タグは `kind` フィールドと衝突するため `event` に。
+
+## 検証
+
+- `cargo fmt --check`: clean
+- `cargo clippy --all-targets -- -D warnings`: 0 警告
+- `cargo test`: 34 passed（うち domain 8 件: id 相互参照、storage_state と status の独立、project/storage_state 保持、Type と通常ラベルの分離、AC の number/text/checked、解析不能タスクの保持と不足フィールド、camelCase ワイヤ名、Degraded タグ付き直列化）
+<!-- SECTION:NOTES:END -->

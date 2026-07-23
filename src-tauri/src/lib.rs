@@ -1,3 +1,7 @@
+// Public: the domain model is the shared read-side vocabulary the read layer (TASK-28) and
+// command layer build on. Exposing it as crate API is also what keeps the types from
+// tripping dead_code before their consumers land.
+pub mod domain;
 mod ledger;
 
 use ledger::{Ledger, LoadedLedger, ParsedTaskRef, RegisterRequest, UpdateRequest};
