@@ -114,6 +114,16 @@ pub trait ScanSource {
 
     /// Contents of a path previously returned by [`ScanSource::list`].
     fn read(&self, path: &Path) -> io::Result<String>;
+
+    /// The name of the Backlog root's own directory (`backlog` for `<project>/backlog`), when
+    /// the source has one. Managed files are referenced both root-relative (`docs/doc-2 - …`)
+    /// and repo-relative (`backlog/docs/doc-2 - …`); knowing this name is what lets the second
+    /// form be recognized *exactly* rather than by guessing from the parent directory, which
+    /// would also accept an unrelated `vendor/docs/…`. `None` — the default — means only the
+    /// root-relative form is recognized.
+    fn root_dir_name(&self) -> Option<String> {
+        None
+    }
 }
 
 /// The current checkout's working tree — the only scan source in the initial version
@@ -159,5 +169,11 @@ impl ScanSource for WorkingTree {
 
     fn read(&self, path: &Path) -> io::Result<String> {
         fs::read_to_string(path)
+    }
+
+    fn root_dir_name(&self) -> Option<String> {
+        self.backlog_root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
     }
 }

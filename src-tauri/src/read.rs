@@ -90,7 +90,14 @@ pub fn read_project(slug: &str, source: &dyn ScanSource) -> Result<ProjectModel,
     let decisions = read_decisions(source)?;
     let mut tasks = read_tasks(source, slug, &config)?;
 
-    resolve_references(&mut tasks, &milestones, &documents, &decisions, &config);
+    resolve_references(
+        &mut tasks,
+        &milestones,
+        &documents,
+        &decisions,
+        &config,
+        source.root_dir_name().as_deref(),
+    );
 
     Ok(ProjectModel {
         slug: slug.to_string(),
@@ -536,6 +543,7 @@ fn resolve_references(
     documents: &[Document],
     decisions: &[Decision],
     config: &Config,
+    root_dir_name: Option<&str>,
 ) {
     let task_ids: Vec<String> = tasks.iter().filter_map(|t| t.id.clone()).collect();
     for task in tasks.iter_mut() {
@@ -558,8 +566,15 @@ fn resolve_references(
             }
         }
         for raw in &task.references {
-            if reference_resolves(raw, milestones, documents, decisions, &task_ids, config)
-                == Some(false)
+            if reference_resolves(
+                raw,
+                milestones,
+                documents,
+                decisions,
+                &task_ids,
+                config,
+                root_dir_name,
+            ) == Some(false)
             {
                 events.push(DegradeEvent::DanglingReference {
                     kind: ReferenceKind::Reference,
@@ -581,8 +596,9 @@ fn reference_resolves(
     decisions: &[Decision],
     task_ids: &[String],
     config: &Config,
+    root_dir_name: Option<&str>,
 ) -> Option<bool> {
-    let id = in_root_reference_id(raw)?;
+    let id = in_root_reference_id(raw, root_dir_name)?;
     if is_prefixed_number(&id, "doc") {
         return Some(documents.iter().any(|d| d.id == id));
     }
@@ -605,7 +621,11 @@ fn reference_resolves(
 /// throws the directory away, which would turn an existing external file like
 /// `/Users/someone/notes/doc-404.md` into the id `doc-404` and report it missing from a root
 /// that was never supposed to contain it.
-fn in_root_reference_id(raw: &str) -> Option<String> {
+///
+/// The directory part is matched against the root's own directory layout in full, not just by
+/// its last segment: `docs/…` and `<root>/docs/…` are managed paths, while `vendor/docs/…` and
+/// `../docs/…` name files somewhere else that merely end in a similarly named directory.
+fn in_root_reference_id(raw: &str, root_dir_name: Option<&str>) -> Option<String> {
     let raw = raw.trim();
     // A URL, or an absolute path, names something outside the root by construction. Managed
     // files are always referenced root- or repo-relative.
@@ -613,25 +633,17 @@ fn in_root_reference_id(raw: &str) -> Option<String> {
     {
         return None;
     }
-    match raw.rsplit_once(['/', '\\']) {
+    let Some((dir, name)) = raw.rsplit_once(['/', '\\']) else {
         // Bare form (`doc-3`, `README.md`): no directory to contradict the root. A name that is
         // not id-shaped is filtered out by the caller's shape checks.
-        None => Some(normalize_document_ref(raw)),
-        // Path form: recognized only when the immediate parent is one of the root's own
-        // directories, which is what a managed path looks like
-        // (`backlog/docs/doc-2 - Title.md`). A relative path through some other directory
-        // names a file this layer cannot see.
-        Some((dir, name)) => {
-            let parent = dir.rsplit(['/', '\\']).next().unwrap_or("");
-            let managed = ScanDir::ALL.iter().any(|d| {
-                d.rel_path()
-                    .rsplit('/')
-                    .next()
-                    .is_some_and(|last| last == parent)
-            });
-            managed.then(|| normalize_document_ref(name))
-        }
-    }
+        return Some(normalize_document_ref(raw));
+    };
+    let dir = dir.replace('\\', "/");
+    let managed = ScanDir::ALL.iter().any(|d| {
+        dir == d.rel_path()
+            || root_dir_name.is_some_and(|root| dir == format!("{root}/{}", d.rel_path()))
+    });
+    managed.then(|| normalize_document_ref(name))
 }
 
 /// `C:\…` / `C:/…` — a Windows absolute path.
@@ -779,6 +791,12 @@ date_format: yyyy-mm-dd\n";
                 .find(|(p, _)| p == path)
                 .map(|(_, text)| text.clone())
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such file"))
+        }
+
+        // Mirrors a real root, whose directory is conventionally `<project>/backlog` — that is
+        // the name the repo-relative reference form (`backlog/docs/doc-2 - …`) carries.
+        fn root_dir_name(&self) -> Option<String> {
+            Some("backlog".to_string())
         }
     }
 
@@ -1451,7 +1469,7 @@ updated_date: '2026-07-22 12:25'\n\
     // existing external file as missing from a root that never held it.
     #[test]
     fn an_id_shaped_path_outside_the_root_stays_undecidable() {
-        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nreferences:\n  - /Users/someone/notes/doc-404.md\n  - ../elsewhere/decision-404.md\n  - notes/m-404.md\n---\n";
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nreferences:\n  - /Users/someone/notes/doc-404.md\n  - ../elsewhere/decision-404.md\n  - notes/m-404.md\n  - ../docs/doc-404.md\n  - vendor/docs/doc-404.md\n  - ../backlog/docs/doc-404.md\n---\n";
         let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
         let model = read(&source);
         assert!(
