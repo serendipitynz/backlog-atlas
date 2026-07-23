@@ -23,3 +23,7 @@ tauri = { version = "2", features = [] }
 # any further crates (parser, Git, file watcher, editor launch) are deferred to the
 # tasks that need them, introduced with rationale per AGENTS.
 serde = { version = "1", features = ["derive"] }
+# toml reads/writes the project ledger (projects.toml, doc-3). Paired with serde
+# for typed (de)serialization; scope is limited to the ledger file. Approved as a
+# new production dependency per the TASK-25 introduction gate before adding.
+toml = "0.8"

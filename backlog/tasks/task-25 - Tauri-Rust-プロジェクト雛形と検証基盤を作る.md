@@ -1,10 +1,10 @@
 ---
 id: TASK-25
 title: Tauri + Rust プロジェクト雛形と検証基盤を作る
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:06'
-updated_date: '2026-07-23 00:28'
+updated_date: '2026-07-23 04:45'
 labels:
   - 'kind:maintenance'
 milestone: m-1
