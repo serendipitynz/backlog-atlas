@@ -36,6 +36,9 @@ use std::path::{Path, PathBuf};
 /// not list it, so it must not be read as an unknown value (doc-4 §3.4).
 const DRAFT_STATUS: &str = "Draft";
 
+/// Id prefix reserved for drafts, independent of `config.yml`'s `task_prefix` (doc-4 §3.1).
+const DRAFT_ID_PREFIX: &str = "DRAFT";
+
 /// Fallback task prefix when `config.yml` omits `task_prefix`. Matches the Backlog CLI's own
 /// default (measured on v1.47.1); a missing optional key must not make the root unreadable.
 const DEFAULT_TASK_PREFIX: &str = "TASK";
@@ -87,7 +90,7 @@ pub fn read_project(slug: &str, source: &dyn ScanSource) -> Result<ProjectModel,
     let decisions = read_decisions(source)?;
     let mut tasks = read_tasks(source, slug, &config)?;
 
-    resolve_references(&mut tasks, &milestones, &documents);
+    resolve_references(&mut tasks, &milestones, &documents, &decisions, &config);
 
     Ok(ProjectModel {
         slug: slug.to_string(),
@@ -108,18 +111,39 @@ fn read_config(source: &dyn ScanSource) -> Result<Config, RootError> {
     let value =
         parse::parse_frontmatter(&text).map_err(|detail| RootError::ConfigInvalid { detail })?;
 
-    // config.yml is machine-written and flat, but a malformed *optional* key must not sink the
-    // root: the per-field events collected here are discarded because there is no task to
-    // attach them to, and every field below has a usable fallback.
-    let mut ignored = Vec::new();
-    Ok(Config {
-        project_name: parse::string_field(&value, "project_name", &mut ignored),
-        task_prefix: parse::string_field(&value, "task_prefix", &mut ignored)
+    // An *absent* key is fine — every field below has a usable fallback, and doc-4 §4 makes
+    // absence normal. A key that is present in an unsupported shape is not: config.yml is the
+    // root's resolution basepoint and has no health channel to carry a partial failure, so
+    // falling back silently would hide the gap. `statuses: To Do` is the case that matters —
+    // it would yield an empty status set, which switches the unknown-status check off and
+    // reports every task healthy while AC #1 never obtained a usable status definition.
+    let mut events = Vec::new();
+    let config = Config {
+        project_name: parse::string_field(&value, "project_name", &mut events),
+        task_prefix: parse::string_field(&value, "task_prefix", &mut events)
             .unwrap_or_else(|| DEFAULT_TASK_PREFIX.to_string()),
-        statuses: parse::string_list_field(&value, "statuses", &mut ignored),
-        default_status: parse::string_field(&value, "default_status", &mut ignored),
-        date_format: parse::string_field(&value, "date_format", &mut ignored),
-    })
+        statuses: parse::string_list_field(&value, "statuses", &mut events),
+        default_status: parse::string_field(&value, "default_status", &mut events),
+        date_format: parse::string_field(&value, "date_format", &mut events),
+    };
+    if !events.is_empty() {
+        return Err(RootError::ConfigInvalid {
+            detail: describe_events(&events),
+        });
+    }
+    Ok(config)
+}
+
+/// Join the `detail` text of schema events into one root-level message.
+fn describe_events(events: &[DegradeEvent]) -> String {
+    events
+        .iter()
+        .map(|e| match e {
+            DegradeEvent::UnexpectedSchema { detail } => detail.clone(),
+            other => format!("{other:?}"),
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// List one scan directory, treating an absent directory as empty. Only `tasks/` is mandatory
@@ -226,6 +250,10 @@ fn parse_task(path: &Path, text: &str, slug: &str, dir: ScanDir, config: &Config
         &mut events,
     );
 
+    if let Some(id) = &task.id {
+        check_task_id(id, dir, config, &mut events);
+    }
+
     let (type_labels, labels) =
         split_labels(parse::string_list_field(&front, "labels", &mut events));
     task.type_labels = type_labels;
@@ -276,6 +304,54 @@ fn parse_task(path: &Path, text: &str, slug: &str, dir: ScanDir, config: &Config
 
     task.health = merge_health(task.health, events);
     task
+}
+
+/// Check the id against the two shapes doc-4 §3.1/§3.4 allow in this root — `<task_prefix>-N`
+/// and `DRAFT-N` — and against the location's expected prefix. An id that contradicts its
+/// location means the file and its storage state disagree, and since storage state is decided
+/// by location alone (§3.4), the disagreement would otherwise be invisible: a `DRAFT-1` sitting
+/// in `tasks/` would enter the active-only default swimlane as an ordinary task (doc-7).
+///
+/// Prefix matching is case-insensitive. `backlog init --defaults` writes `task_prefix: "task"`
+/// while the ids it then generates are `TASK-N` (measured on v1.47.1), so a case-sensitive
+/// comparison would degrade every task in a default-initialized root.
+fn check_task_id(id: &str, dir: ScanDir, config: &Config, events: &mut Vec<DegradeEvent>) {
+    let is_draft = is_prefixed_number(id, DRAFT_ID_PREFIX);
+    let is_task = is_prefixed_number(id, &config.task_prefix);
+    if !is_draft && !is_task {
+        events.push(DegradeEvent::UnexpectedSchema {
+            detail: format!(
+                "id `{id}` matches neither the configured task prefix `{}` nor `{DRAFT_ID_PREFIX}`",
+                config.task_prefix
+            ),
+        });
+        return;
+    }
+    let Some(expects_draft) = dir.expects_draft_id() else {
+        return;
+    };
+    if is_draft != expects_draft {
+        events.push(DegradeEvent::UnexpectedSchema {
+            detail: format!(
+                "id `{id}` does not match the id prefix `{}/` holds",
+                dir.rel_path()
+            ),
+        });
+    }
+}
+
+/// True when `s` is `<prefix>-N` with one or more digits, compared case-insensitively.
+fn is_prefixed_number(s: &str, prefix: &str) -> bool {
+    let Some(rest) = s.get(..prefix.len()) else {
+        return false;
+    };
+    if !rest.eq_ignore_ascii_case(prefix) {
+        return false;
+    }
+    let Some(digits) = s[prefix.len()..].strip_prefix('-') else {
+        return false;
+    };
+    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// A status is known when `config.yml` declares it, plus `Draft` (doc-4 §3.4). An empty
@@ -444,11 +520,24 @@ fn non_empty(text: &str) -> Option<String> {
     (!text.is_empty()).then(|| text.to_string())
 }
 
-/// Attach 参照欠損 events for milestone and documentation targets absent from the root
-/// (doc-4 §5). Frontmatter `references` is intentionally not resolved here: its values mix
-/// URLs, repo-relative paths and ids, so "absent from the root" is not decidable for them —
-/// Pull Request URLs among them are TASK-30's input.
-fn resolve_references(tasks: &mut [Task], milestones: &[Milestone], documents: &[Document]) {
+/// Attach 参照欠損 events for milestone, documentation and reference targets absent from the
+/// root (doc-4 §5).
+///
+/// `references` is only partly decidable here, so only the decidable part is judged. Its values
+/// mix in-root ids (`doc-3`), in-root file paths (`backlog/docs/doc-2 - Title.md`), paths
+/// outside the Backlog root (`README.md`) and URLs. A value that normalizes to one of the
+/// root's id shapes is resolved and flagged when missing; anything else is left alone, because
+/// "absent from the root" is not a question the read layer can answer for it — the root is all
+/// it can see (the scan-source boundary gives no access outside it), and Pull Request URLs
+/// among them are TASK-30's input.
+fn resolve_references(
+    tasks: &mut [Task],
+    milestones: &[Milestone],
+    documents: &[Document],
+    decisions: &[Decision],
+    config: &Config,
+) {
+    let task_ids: Vec<String> = tasks.iter().filter_map(|t| t.id.clone()).collect();
     for task in tasks.iter_mut() {
         let mut events = Vec::new();
         if let Some(id) = &task.milestone {
@@ -468,8 +557,49 @@ fn resolve_references(tasks: &mut [Task], milestones: &[Milestone], documents: &
                 });
             }
         }
+        for raw in &task.references {
+            if reference_resolves(raw, milestones, documents, decisions, &task_ids, config)
+                == Some(false)
+            {
+                events.push(DegradeEvent::DanglingReference {
+                    kind: ReferenceKind::Reference,
+                    target: raw.clone(),
+                });
+            }
+        }
         task.health = merge_health(std::mem::replace(&mut task.health, TaskHealth::Ok), events);
     }
+}
+
+/// Whether a `references` value points at something in this root: `Some(true)` resolved,
+/// `Some(false)` an id shape this root does not contain, `None` not decidable here (a URL, or
+/// a path that names no in-root id). Only `Some(false)` is a 参照欠損.
+fn reference_resolves(
+    raw: &str,
+    milestones: &[Milestone],
+    documents: &[Document],
+    decisions: &[Decision],
+    task_ids: &[String],
+    config: &Config,
+) -> Option<bool> {
+    // A URL names something outside the root by construction.
+    if raw.contains("://") {
+        return None;
+    }
+    let id = normalize_document_ref(raw);
+    if is_prefixed_number(&id, "doc") {
+        return Some(documents.iter().any(|d| d.id == id));
+    }
+    if is_prefixed_number(&id, "decision") {
+        return Some(decisions.iter().any(|d| d.id == id));
+    }
+    if is_prefixed_number(&id, "m") {
+        return Some(milestones.iter().any(|m| m.id == id));
+    }
+    if is_prefixed_number(&id, &config.task_prefix) || is_prefixed_number(&id, DRAFT_ID_PREFIX) {
+        return Some(task_ids.iter().any(|t| t.eq_ignore_ascii_case(&id)));
+    }
+    None
 }
 
 /// `documentation` holds either a bare id (`doc-3`) or the managed file's path
@@ -1113,6 +1243,168 @@ updated_date: '2026-07-22 12:25'\n\
             read_project("atlas", &source),
             Err(RootError::ConfigInvalid { .. })
         ));
+    }
+
+    // --- review round 1: [P2] config structural errors must not be swallowed -----------------
+
+    #[test]
+    fn a_wrong_shaped_config_field_is_a_root_failure() {
+        // `statuses: To Do` would otherwise yield an empty status set, switch the unknown-status
+        // check off, and report every task healthy while AC #1 never got a status definition.
+        let mut source = MemorySource::new();
+        source.config = Some("project_name: Test\nstatuses: To Do\n".to_string());
+        match read_project("atlas", &source) {
+            Err(RootError::ConfigInvalid { detail }) => assert!(detail.contains("statuses")),
+            other => panic!("expected ConfigInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_absent_config_key_is_still_a_normal_fallback() {
+        // Absence stays normal (doc-4 §4); only a present-but-wrong shape fails the root.
+        let mut source = MemorySource::new();
+        source.config = Some("project_name: Test\n".to_string());
+        let model = read(&source);
+        assert_eq!(model.config.task_prefix, DEFAULT_TASK_PREFIX);
+        assert!(model.config.statuses.is_empty());
+    }
+
+    // --- review round 1: [P2] task id must agree with prefix and location --------------------
+
+    #[test]
+    fn an_id_matching_no_known_prefix_degrades() {
+        let source = MemorySource::new().file(
+            ScanDir::Tasks,
+            "task-1 - a.md",
+            "---\nid: THING-1\ntitle: t\nstatus: To Do\n---\n",
+        );
+        let model = read(&source);
+        let task = only_task(&model);
+        // Everything discernible is still read; only the id shape is flagged.
+        assert_eq!(task.id.as_deref(), Some("THING-1"));
+        assert!(matches!(
+            events(task),
+            [DegradeEvent::UnexpectedSchema { .. }]
+        ));
+    }
+
+    #[test]
+    fn an_id_contradicting_its_location_degrades() {
+        // Storage state is decided by location alone (doc-4 §3.4), so without this check a
+        // DRAFT sitting in tasks/ would enter the active-only default swimlane silently.
+        let source = MemorySource::new()
+            .file(
+                ScanDir::Tasks,
+                "task-1 - a.md",
+                &task_file("DRAFT-1", "To Do"),
+            )
+            .file(
+                ScanDir::Drafts,
+                "draft-2 - b.md",
+                &task_file("TASK-2", "Draft"),
+            );
+        let model = read(&source);
+        for id in ["DRAFT-1", "TASK-2"] {
+            let task = model.task(id).unwrap();
+            assert!(
+                matches!(events(task), [DegradeEvent::UnexpectedSchema { .. }]),
+                "{id} should be flagged, got {:?}",
+                task.health
+            );
+        }
+    }
+
+    #[test]
+    fn the_task_prefix_is_matched_case_insensitively() {
+        // `backlog init --defaults` writes task_prefix: "task" while generating TASK-N ids
+        // (measured on v1.47.1); a case-sensitive check would degrade every task in such a root.
+        let mut source = MemorySource::new();
+        source.config = Some("statuses: [\"To Do\"]\ntask_prefix: \"task\"\n".to_string());
+        let source = source.file(
+            ScanDir::Tasks,
+            "task-1 - a.md",
+            &task_file("TASK-1", "To Do"),
+        );
+        let model = read(&source);
+        assert!(!only_task(&model).health.is_degraded());
+    }
+
+    #[test]
+    fn an_archive_root_task_is_not_judged_against_a_location_prefix() {
+        // Its storage state is already indeterminate, so there is no location to contradict —
+        // it must not collect a second, misleading event.
+        let source = MemorySource::new().file(
+            ScanDir::ArchiveRoot,
+            "draft-9 - old.md",
+            &task_file("DRAFT-9", "To Do"),
+        );
+        let model = read(&source);
+        assert_eq!(events(only_task(&model)).len(), 1);
+    }
+
+    // --- review round 1: [P2] references resolution where it is decidable ---------------------
+
+    #[test]
+    fn a_reference_naming_an_absent_in_root_id_is_marked() {
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nreferences:\n  - doc-404\n  - backlog/decisions/decision-9 - gone.md\n---\n";
+        let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
+        let model = read(&source);
+        let targets: Vec<_> = events(only_task(&model))
+            .iter()
+            .map(|e| match e {
+                DegradeEvent::DanglingReference {
+                    kind: ReferenceKind::Reference,
+                    target,
+                } => target.clone(),
+                other => panic!("expected a reference dangling event, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            targets,
+            vec![
+                "doc-404".to_string(),
+                "backlog/decisions/decision-9 - gone.md".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_reference_resolving_inside_the_root_is_not_marked() {
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nreferences:\n  - doc-4\n  - decision-3\n  - m-1\n  - TASK-2\n---\n";
+        let source = MemorySource::new()
+            .file(ScanDir::Tasks, "task-1 - a.md", text)
+            .file(
+                ScanDir::Tasks,
+                "task-2 - b.md",
+                &task_file("TASK-2", "Done"),
+            )
+            .file(
+                ScanDir::Docs,
+                "doc-4 - d.md",
+                "---\nid: doc-4\ntitle: d\n---\n",
+            )
+            .file(
+                ScanDir::Decisions,
+                "decision-3 - d.md",
+                "---\nid: decision-3\ntitle: d\n---\n",
+            )
+            .file(
+                ScanDir::Milestones,
+                "m-1 - m.md",
+                "---\nid: m-1\ntitle: m\n---\n",
+            );
+        let model = read(&source);
+        assert!(!model.task("TASK-1").unwrap().health.is_degraded());
+    }
+
+    #[test]
+    fn an_undecidable_reference_is_left_alone() {
+        // A URL and a path outside the Backlog root name things the read layer cannot see; the
+        // scan-source boundary gives it no access there, so it must not claim they are missing.
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nreferences:\n  - https://example.test/pull/9\n  - README.md\n  - /Users/someone/projects/thing\n---\n";
+        let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
+        let model = read(&source);
+        assert!(!only_task(&model).health.is_degraded());
     }
 
     #[test]

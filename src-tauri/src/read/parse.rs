@@ -266,7 +266,14 @@ fn finish_section(capture: &mut Capture, end_name: &str, out: &mut Body) {
             detail: format!("SECTION:{name}:BEGIN closed by SECTION:{end_name}:END"),
         });
     }
-    let text = join_trimmed(&lines);
+    store_section_body(name, &lines, out);
+}
+
+/// Put a captured SECTION body in its domain slot, or keep it as an unknown fragment. Shared
+/// with the unclosed case: doc-4 §5 degrades the broken structure but keeps what was
+/// discernible, and §4 requires an unknown SECTION's fragment to be retained either way.
+fn store_section_body(name: String, lines: &[String], out: &mut Body) {
+    let text = join_trimmed(lines);
     if !KNOWN_SECTIONS.contains(&name.as_str()) {
         out.events.push(DegradeEvent::UnexpectedSchema {
             detail: format!("unknown SECTION `{name}`"),
@@ -294,7 +301,11 @@ fn finish_ac(capture: &mut Capture, out: &mut Body) {
         });
         return;
     };
-    for line in &lines {
+    collect_ac_items(&lines, out);
+}
+
+fn collect_ac_items(lines: &[String], out: &mut Body) {
+    for line in lines {
         if line.trim().is_empty() {
             continue;
         }
@@ -307,15 +318,23 @@ fn finish_ac(capture: &mut Capture, out: &mut Body) {
     }
 }
 
-/// Report an open block at EOF or at the start of the next block.
+/// Report an open block at EOF or at the start of the next block, keeping what it captured.
+/// The missing `END` is a structure failure, but the lines before it were still readable, and
+/// dropping them would lose exactly the content doc-4 §5 says to keep.
 fn close_dangling(capture: &mut Capture, out: &mut Body) {
     match std::mem::replace(capture, Capture::None) {
-        Capture::Section { name, .. } => out.events.push(DegradeEvent::UnexpectedSchema {
-            detail: format!("SECTION:{name}:BEGIN is never closed"),
-        }),
-        Capture::Ac { .. } => out.events.push(DegradeEvent::UnexpectedSchema {
-            detail: "AC:BEGIN is never closed".to_string(),
-        }),
+        Capture::Section { name, lines } => {
+            out.events.push(DegradeEvent::UnexpectedSchema {
+                detail: format!("SECTION:{name}:BEGIN is never closed"),
+            });
+            store_section_body(name, &lines, out);
+        }
+        Capture::Ac { lines } => {
+            out.events.push(DegradeEvent::UnexpectedSchema {
+                detail: "AC:BEGIN is never closed".to_string(),
+            });
+            collect_ac_items(&lines, out);
+        }
         Capture::None | Capture::References => {}
     }
 }
@@ -489,6 +508,26 @@ notes body
 
         let stray = parse_body("<!-- AC:END -->\n");
         assert_eq!(stray.events.len(), 1);
+    }
+
+    // Review round 1 [P2]: a missing END degrades the structure but must not cost the content
+    // that was already readable (doc-4 §5 判別できたフィールドは活かし, §4 for unknown names).
+    #[test]
+    fn an_unclosed_block_keeps_what_it_captured() {
+        let known = parse_body("<!-- SECTION:DESCRIPTION:BEGIN -->\nstill readable\n");
+        assert_eq!(known.description.as_deref(), Some("still readable"));
+        assert_eq!(known.events.len(), 1);
+
+        let unknown = parse_body("<!-- SECTION:FUTURE:BEGIN -->\nfragment\n");
+        assert_eq!(unknown.unknown_sections.len(), 1);
+        assert_eq!(unknown.unknown_sections[0].body, "fragment");
+        // Two events: the missing END, and the unknown SECTION name.
+        assert_eq!(unknown.events.len(), 2);
+
+        let ac = parse_body("<!-- AC:BEGIN -->\n- [x] #1 readable item\n");
+        assert_eq!(ac.acceptance_criteria.len(), 1);
+        assert!(ac.acceptance_criteria[0].checked);
+        assert_eq!(ac.events.len(), 1);
     }
 
     #[test]

@@ -73,6 +73,18 @@ impl ScanDir {
         )
     }
 
+    /// Which id prefix doc-4 §3.4 expects of a task stored here: `Some(true)` for the draft
+    /// locations (`DRAFT-N`), `Some(false)` for the normal ones (the configured task prefix).
+    /// `None` on `ArchiveRoot` — its storage state is already indeterminate, so there is no
+    /// established location for an id to contradict.
+    pub fn expects_draft_id(self) -> Option<bool> {
+        match self {
+            ScanDir::Drafts | ScanDir::ArchiveDrafts => Some(true),
+            ScanDir::Tasks | ScanDir::Completed | ScanDir::ArchiveTasks => Some(false),
+            _ => None,
+        }
+    }
+
     /// Storage state for a task found here (doc-4 §3.4). `None` on `ArchiveRoot` means
     /// *indeterminate*, not "unknown so assume active" — the file is outside the five
     /// recognized locations, so the read layer keeps it degraded rather than letting it into
