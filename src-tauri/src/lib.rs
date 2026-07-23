@@ -3,6 +3,10 @@
 // tripping dead_code before their consumers land.
 pub mod domain;
 mod ledger;
+// Public alongside the domain model: the read layer is the other half of the read-side API the
+// command layer will call, and its scan-source boundary (decision-3) is meant to be
+// implementable from outside this module.
+pub mod read;
 
 use ledger::{Ledger, LoadedLedger, ParsedTaskRef, RegisterRequest, UpdateRequest};
 use serde::Serialize;
