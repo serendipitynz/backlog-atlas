@@ -1,8 +1,28 @@
 mod ledger;
 
 use ledger::{Ledger, LoadedLedger, ParsedTaskRef, RegisterRequest, UpdateRequest};
+use serde::Serialize;
 use std::path::PathBuf;
 use tauri::Manager;
+
+/// What every ledger command returns to the frontend: the ledger plus its compatibility
+/// state. `read_only` is true when the on-disk `schema_version` is newer than this build
+/// understands (AC #1) — the UI must disable edits in that case, so the flag has to travel
+/// with the ledger, not be discoverable only after a save fails.
+#[derive(Debug, Clone, Serialize)]
+struct LedgerResponse {
+    ledger: Ledger,
+    read_only: bool,
+}
+
+impl From<LoadedLedger> for LedgerResponse {
+    fn from(loaded: LoadedLedger) -> Self {
+        LedgerResponse {
+            ledger: loaded.ledger,
+            read_only: loaded.read_only,
+        }
+    }
+}
 
 // Smoke-test command that proves the frontend<->Rust IPC bridge works end to end.
 // It is intentionally trivial and will be replaced by the real read commands in later
@@ -19,9 +39,10 @@ fn ledger_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("projects.toml"))
 }
 
-/// Load the ledger, apply `op` to it, save, and return the resulting ledger. The read-only
-/// guard in `LoadedLedger::save` (AC #1) keeps an unknown newer file from being clobbered.
-fn mutate_ledger<F>(app: &tauri::AppHandle, op: F) -> Result<Ledger, String>
+/// Load the ledger, apply `op` to it, save, and return the resulting state. The read-only
+/// guard in `LoadedLedger::save` (AC #1) keeps an unknown newer file from being clobbered —
+/// a mutating command against a read-only ledger therefore fails at save rather than here.
+fn mutate_ledger<F>(app: &tauri::AppHandle, op: F) -> Result<LedgerResponse, String>
 where
     F: FnOnce(&mut Ledger) -> Result<(), ledger::LedgerError>,
 {
@@ -29,35 +50,50 @@ where
     let mut loaded = LoadedLedger::load(&path).map_err(|e| e.to_string())?;
     op(&mut loaded.ledger).map_err(|e| e.to_string())?;
     loaded.save(&path).map_err(|e| e.to_string())?;
-    Ok(loaded.ledger)
+    Ok(loaded.into())
 }
 
 #[tauri::command]
-fn ledger_list(app: tauri::AppHandle) -> Result<Ledger, String> {
+fn ledger_list(app: tauri::AppHandle) -> Result<LedgerResponse, String> {
     let path = ledger_path(&app)?;
-    Ok(LoadedLedger::load(&path).map_err(|e| e.to_string())?.ledger)
+    Ok(LoadedLedger::load(&path).map_err(|e| e.to_string())?.into())
 }
 
 #[tauri::command]
-fn ledger_register(app: tauri::AppHandle, request: RegisterRequest) -> Result<Ledger, String> {
+fn ledger_register(
+    app: tauri::AppHandle,
+    request: RegisterRequest,
+) -> Result<LedgerResponse, String> {
     mutate_ledger(&app, |l| l.register(&request).map(|_| ()))
 }
 
 #[tauri::command]
-fn ledger_remove(app: tauri::AppHandle, slug: String) -> Result<Ledger, String> {
+fn ledger_remove(app: tauri::AppHandle, slug: String) -> Result<LedgerResponse, String> {
     mutate_ledger(&app, |l| l.remove(&slug).map(|_| ()))
 }
 
 #[tauri::command]
-fn ledger_update(app: tauri::AppHandle, request: UpdateRequest) -> Result<Ledger, String> {
+fn ledger_update(app: tauri::AppHandle, request: UpdateRequest) -> Result<LedgerResponse, String> {
     mutate_ledger(&app, |l| l.update(&request).map(|_| ()))
 }
 
-/// Build a cross-task-id `<slug>:<TASK-ID>` for display (doc-3 §5.1). Pure derivation, so
-/// no ledger access is needed.
+/// Build a cross-task-id `<slug>:<TASK-ID>` for display (doc-3 §5.1). Validates the slug
+/// against the live ledger and the id against `task_prefix` so it can only produce ids the
+/// parser accepts (AC #7); `task_prefix` is resolved by the caller from the referenced
+/// project's config.yml.
 #[tauri::command]
-fn cross_task_id_generate(slug: String, task_id: String) -> String {
-    ledger::generate_cross_task_id(&slug, &task_id)
+fn cross_task_id_generate(
+    app: tauri::AppHandle,
+    slug: String,
+    task_id: String,
+    task_prefix: String,
+) -> Result<String, String> {
+    let path = ledger_path(&app)?;
+    let loaded = LoadedLedger::load(&path).map_err(|e| e.to_string())?;
+    loaded
+        .ledger
+        .generate_cross_task_id(&slug, &task_id, &task_prefix)
+        .map_err(|e| e.to_string())
 }
 
 /// Parse a cross-task-id (doc-3 §5.2). Validates the left slug against the live ledger and

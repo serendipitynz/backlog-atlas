@@ -124,6 +124,11 @@ pub enum LedgerError {
     InvalidSlug(String),
     DuplicateSlug(String),
     SlugNotFound(String),
+    /// A project_root/backlog_root is not absolute (doc-3 §3: roots are absolute paths).
+    NonAbsoluteRoot(String),
+    /// A project_root/backlog_root is already assigned to another entry — the ledger keeps
+    /// one entry per project root (doc-3 §3, §6). Carries the conflicting entry's slug.
+    DuplicateRoot(String),
     /// A status_aliases value is not one of the canonical columns (AC #5).
     InvalidStatusAlias {
         key: String,
@@ -159,6 +164,10 @@ impl fmt::Display for LedgerError {
             }
             LedgerError::DuplicateSlug(s) => write!(f, "slug already registered: {s:?}"),
             LedgerError::SlugNotFound(s) => write!(f, "no ledger entry with slug: {s:?}"),
+            LedgerError::NonAbsoluteRoot(p) => write!(f, "root path must be absolute: {p}"),
+            LedgerError::DuplicateRoot(s) => {
+                write!(f, "this project/Backlog root is already registered to slug {s:?}")
+            }
             LedgerError::InvalidStatusAlias { key, value } => write!(
                 f,
                 "invalid status alias {key:?} -> {value:?}: value must be one of {CANONICAL_STATUSES:?}"
@@ -208,7 +217,15 @@ impl Ledger {
             .backlog_root
             .clone()
             .unwrap_or_else(|| req.project_root.join("backlog"));
+        require_absolute(&req.project_root)?;
+        require_absolute(&backlog_root)?;
         verify_backlog_root(&backlog_root)?;
+
+        // One entry per project root (doc-3 §3, §6): reject a root already mapped elsewhere,
+        // otherwise the same task source would be read twice under two slugs.
+        if let Some(conflict) = self.find_root_conflict(&req.project_root, &backlog_root, None) {
+            return Err(LedgerError::DuplicateRoot(conflict));
+        }
 
         // Steps 3 + slug contract (§3.1, AC #8): derive or take the user slug, validate shape,
         // then enforce ledger uniqueness.
@@ -280,8 +297,29 @@ impl Ledger {
             (_, Some(br)) => Some(br.clone()),
             (None, None) => None,
         };
+        if let Some(pr) = &req.project_root {
+            require_absolute(pr)?;
+        }
         if let Some(br) = &new_backlog_root {
+            require_absolute(br)?;
             verify_backlog_root(br)?;
+        }
+
+        // Re-check the one-entry-per-root invariant against the effective new roots, skipping
+        // this same entry (doc-3 §3, §6). A move must not collide with another project.
+        let effective_project_root = req
+            .project_root
+            .clone()
+            .unwrap_or_else(|| self.projects[idx].project_root.clone());
+        let effective_backlog_root = new_backlog_root
+            .clone()
+            .unwrap_or_else(|| self.projects[idx].backlog_root.clone());
+        if let Some(conflict) = self.find_root_conflict(
+            &effective_project_root,
+            &effective_backlog_root,
+            Some(&req.slug),
+        ) {
+            return Err(LedgerError::DuplicateRoot(conflict));
         }
 
         // Apply (all inputs already validated).
@@ -356,6 +394,81 @@ impl Ledger {
             }
         }
     }
+
+    /// Build a cross-task-id `<slug>:<task_id>` for display (doc-3 §5.1). Validates the slug
+    /// against the ledger and the id against `task_prefix`/`DRAFT` so the generate/parse pair
+    /// round-trips: the generator can only produce ids the parser accepts (AC #7). This is why
+    /// generation is a fallible ledger method, not a free string join — the public Tauri
+    /// command feeds it arbitrary input.
+    pub fn generate_cross_task_id(
+        &self,
+        slug: &str,
+        task_id: &str,
+        task_prefix: &str,
+    ) -> Result<String, LedgerError> {
+        if !self.projects.iter().any(|p| p.slug == slug) {
+            return Err(LedgerError::UnknownProject(slug.to_string()));
+        }
+        if !is_task_id(task_id, task_prefix) {
+            return Err(LedgerError::InvalidTaskId(task_id.to_string()));
+        }
+        Ok(format!("{slug}:{task_id}"))
+    }
+
+    /// Enforce the ledger's semantic contracts after deserialization (doc-3 §3). `toml`
+    /// only checks Rust field shapes, so a hand-edited file could carry duplicate/invalid
+    /// slugs, relative or duplicated roots, or non-canonical status aliases. Invalid alias
+    /// values are dropped (the documented §3.3 "ignore" handling — the status then falls to
+    /// the unmatched column); structural violations are hard errors so we never operate on,
+    /// or re-save, an inconsistent ledger.
+    pub fn validate_and_sanitize(&mut self) -> Result<(), LedgerError> {
+        // Sanitize: drop alias values that are not canonical columns (doc-3 §3.3).
+        for p in &mut self.projects {
+            p.status_aliases.retain(|_, v| is_canonical_status(v));
+        }
+        // Structural invariants: slug shape + uniqueness, absolute + unique roots.
+        let mut seen_slugs: Vec<&str> = Vec::new();
+        let mut seen_roots: Vec<PathBuf> = Vec::new();
+        for p in &self.projects {
+            if !is_valid_slug(&p.slug) {
+                return Err(LedgerError::InvalidSlug(p.slug.clone()));
+            }
+            if seen_slugs.contains(&p.slug.as_str()) {
+                return Err(LedgerError::DuplicateSlug(p.slug.clone()));
+            }
+            seen_slugs.push(&p.slug);
+
+            for root in [&p.project_root, &p.backlog_root] {
+                if !root.is_absolute() {
+                    return Err(LedgerError::NonAbsoluteRoot(root.display().to_string()));
+                }
+                let key = canonical_key(root);
+                if seen_roots.contains(&key) {
+                    return Err(LedgerError::DuplicateRoot(p.slug.clone()));
+                }
+                seen_roots.push(key);
+            }
+        }
+        Ok(())
+    }
+
+    /// Return the slug of an existing entry whose project_root or backlog_root matches the
+    /// given roots (by canonical path), skipping `skip_slug`. Used to keep one entry per
+    /// project root (doc-3 §3, §6) on register and on move.
+    fn find_root_conflict(
+        &self,
+        project_root: &Path,
+        backlog_root: &Path,
+        skip_slug: Option<&str>,
+    ) -> Option<String> {
+        let pr = canonical_key(project_root);
+        let br = canonical_key(backlog_root);
+        self.projects
+            .iter()
+            .filter(|p| skip_slug != Some(p.slug.as_str()))
+            .find(|p| canonical_key(&p.project_root) == pr || canonical_key(&p.backlog_root) == br)
+            .map(|p| p.slug.clone())
+    }
 }
 
 impl LoadedLedger {
@@ -370,12 +483,18 @@ impl LoadedLedger {
             });
         }
         let text = std::fs::read_to_string(path)?;
-        let ledger: Ledger = toml::from_str(&text)?;
+        let mut ledger: Ledger = toml::from_str(&text)?;
         let read_only = match ledger.schema_version {
             v if v == KNOWN_SCHEMA_VERSION => false,
             v if v > KNOWN_SCHEMA_VERSION => true,
             v => return Err(LedgerError::UnsupportedSchemaVersion(v)),
         };
+        // Only validate a version we understand: an unknown higher version may use fields or
+        // rules this build cannot judge, so we degrade it to read-only untouched (AC #1)
+        // rather than reject it against v1 contracts.
+        if !read_only {
+            ledger.validate_and_sanitize()?;
+        }
         Ok(LoadedLedger { ledger, read_only })
     }
 
@@ -392,12 +511,6 @@ impl LoadedLedger {
         std::fs::write(path, text)?;
         Ok(())
     }
-}
-
-/// Build a cross-task-id `<slug>:<task_id>` (doc-3 §5.1). Trims each side so no whitespace
-/// surrounds the single `:` connector.
-pub fn generate_cross_task_id(slug: &str, task_id: &str) -> String {
-    format!("{}:{}", slug.trim(), task_id.trim())
 }
 
 /// True when `s` matches the slug grammar `[a-z0-9][a-z0-9-]*` (doc-3 §3.1).
@@ -459,6 +572,23 @@ fn is_prefixed_number(s: &str, prefix: &str) -> bool {
         return false;
     };
     !num.is_empty() && num.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Reject a non-absolute root (doc-3 §3: project/Backlog roots are absolute paths).
+fn require_absolute(root: &Path) -> Result<(), LedgerError> {
+    if root.is_absolute() {
+        Ok(())
+    } else {
+        Err(LedgerError::NonAbsoluteRoot(root.display().to_string()))
+    }
+}
+
+/// A canonical comparison key for a root path. `canonicalize` resolves `.`/`..`/symlinks and
+/// trailing-slash differences so two spellings of the same directory collide; when it fails
+/// (e.g. the path does not exist), fall back to the path as given so equal spellings still
+/// match. Used only for equality checks, never stored — the entry keeps the caller's path.
+fn canonical_key(root: &Path) -> PathBuf {
+    std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
 }
 
 /// Verify a Backlog root is readable: it must contain `config.yml` and a `tasks/` dir
@@ -623,14 +753,19 @@ mod tests {
     #[test]
     fn register_rejects_duplicate_slug() {
         let tmp = TempDir::new();
-        let backlog = tmp.make_backlog_root("dup");
-        let project_root = backlog.parent().unwrap().to_path_buf();
+        // Two distinct roots so the duplicate-slug path is exercised, not duplicate-root.
+        let first = tmp.make_backlog_root("dup-a");
+        let second = tmp.make_backlog_root("dup-b");
 
         let mut ledger = Ledger::empty();
-        register(&mut ledger, project_root.clone(), Some("shared"));
+        register(
+            &mut ledger,
+            first.parent().unwrap().to_path_buf(),
+            Some("shared"),
+        );
         let err = ledger
             .register(&RegisterRequest {
-                project_root,
+                project_root: second.parent().unwrap().to_path_buf(),
                 backlog_root: None,
                 slug: Some("shared".into()),
             })
@@ -672,6 +807,26 @@ mod tests {
             ledger.remove("proj").unwrap_err(),
             LedgerError::SlugNotFound(_)
         ));
+    }
+
+    #[test]
+    fn register_rejects_duplicate_root() {
+        let tmp = TempDir::new();
+        let backlog = tmp.make_backlog_root("proj");
+        let project_root = backlog.parent().unwrap().to_path_buf();
+
+        let mut ledger = Ledger::empty();
+        register(&mut ledger, project_root.clone(), Some("first"));
+        // Same root, different slug — must be rejected so one task source is not read twice.
+        let err = ledger
+            .register(&RegisterRequest {
+                project_root,
+                backlog_root: None,
+                slug: Some("second".into()),
+            })
+            .unwrap_err();
+        assert!(matches!(err, LedgerError::DuplicateRoot(_)));
+        assert_eq!(ledger.projects.len(), 1);
     }
 
     // --- update (AC #4/#5/#6) --------------------------------------------------------------
@@ -754,6 +909,35 @@ mod tests {
     }
 
     #[test]
+    fn update_rejects_move_onto_another_entrys_root() {
+        let tmp = TempDir::new();
+        let a_backlog = tmp.make_backlog_root("a");
+        let b_backlog = tmp.make_backlog_root("b");
+        let b_root = b_backlog.parent().unwrap().to_path_buf();
+
+        let mut ledger = Ledger::empty();
+        register(
+            &mut ledger,
+            a_backlog.parent().unwrap().to_path_buf(),
+            Some("a"),
+        );
+        register(&mut ledger, b_root.clone(), Some("b"));
+
+        // Moving "a" onto "b"'s root must collide (one entry per root).
+        let err = ledger
+            .update(&UpdateRequest {
+                slug: "a".into(),
+                project_root: Some(b_root),
+                backlog_root: None,
+                redetect_git_remote: false,
+                status_aliases: None,
+                new_index: None,
+            })
+            .unwrap_err();
+        assert!(matches!(err, LedgerError::DuplicateRoot(_)));
+    }
+
+    #[test]
     fn update_reorders_display_order() {
         let tmp = TempDir::new();
         let mut ledger = Ledger::empty();
@@ -800,21 +984,37 @@ mod tests {
 
     #[test]
     fn generate_and_parse_roundtrip() {
-        assert_eq!(
-            generate_cross_task_id("geomyth", "TASK-12"),
-            "geomyth:TASK-12"
-        );
-        assert_eq!(
-            generate_cross_task_id(" geomyth ", " TASK-12 "),
-            "geomyth:TASK-12"
-        );
-
         let ledger = ledger_with(&["geomyth"]);
+        let generated = ledger
+            .generate_cross_task_id("geomyth", "TASK-12", "TASK")
+            .unwrap();
+        assert_eq!(generated, "geomyth:TASK-12");
+
         let parsed = ledger
-            .parse_cross_task_id("geomyth:TASK-12", "TASK", None)
+            .parse_cross_task_id(&generated, "TASK", None)
             .unwrap();
         assert_eq!(parsed.slug, "geomyth");
         assert_eq!(parsed.task_id, "TASK-12");
+    }
+
+    #[test]
+    fn generate_rejects_unregistered_slug_and_bad_id() {
+        let ledger = ledger_with(&["geomyth"]);
+        // Unregistered slug: parser would reject it, so the generator must too.
+        assert!(matches!(
+            ledger
+                .generate_cross_task_id("nope", "TASK-1", "TASK")
+                .unwrap_err(),
+            LedgerError::UnknownProject(_)
+        ));
+        // A right side that would break the first-colon split or the id form is rejected,
+        // keeping generate/parse a round-trip pair (no "geomyth:TASK-1:extra").
+        assert!(matches!(
+            ledger
+                .generate_cross_task_id("geomyth", "TASK-1:extra", "TASK")
+                .unwrap_err(),
+            LedgerError::InvalidTaskId(_)
+        ));
     }
 
     #[test]
@@ -929,6 +1129,60 @@ mod tests {
             loaded.save(&path).unwrap_err(),
             LedgerError::ReadOnly(999)
         ));
+    }
+
+    #[test]
+    fn load_rejects_corrupt_ledger() {
+        let tmp = TempDir::new();
+        let path = tmp.path.join("projects.toml");
+        // Hand-edited file with a duplicate slug — toml accepts the shape, but the semantic
+        // pass must reject it rather than silently pick the first entry.
+        std::fs::write(
+            &path,
+            "schema_version = 1\n\
+             [[project]]\n\
+             slug = \"dup\"\n\
+             project_root = \"/a\"\n\
+             backlog_root = \"/a/backlog\"\n\
+             git_remote_present = false\n\
+             [[project]]\n\
+             slug = \"dup\"\n\
+             project_root = \"/b\"\n\
+             backlog_root = \"/b/backlog\"\n\
+             git_remote_present = false\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            LoadedLedger::load(&path).unwrap_err(),
+            LedgerError::DuplicateSlug(_)
+        ));
+    }
+
+    #[test]
+    fn load_sanitizes_invalid_status_alias() {
+        let tmp = TempDir::new();
+        let path = tmp.path.join("projects.toml");
+        // A non-canonical alias value is dropped on load (doc-3 §3.3 "ignore"), not fatal.
+        std::fs::write(
+            &path,
+            "schema_version = 1\n\
+             [[project]]\n\
+             slug = \"proj\"\n\
+             project_root = \"/a\"\n\
+             backlog_root = \"/a/backlog\"\n\
+             git_remote_present = false\n\
+             [project.status_aliases]\n\
+             Doing = \"In Progress\"\n\
+             Weird = \"Nonsense\"\n",
+        )
+        .unwrap();
+        let loaded = LoadedLedger::load(&path).unwrap();
+        let aliases = &loaded.ledger.projects[0].status_aliases;
+        assert_eq!(aliases.get("Doing").unwrap(), "In Progress");
+        assert!(
+            !aliases.contains_key("Weird"),
+            "invalid alias should be dropped"
+        );
     }
 
     #[test]
