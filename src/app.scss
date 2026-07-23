@@ -1,0 +1,12 @@
+// Minimal global baseline. Follow the user's styling policy: no Tailwind, and keep
+// per-screen styling component-scoped (Svelte <style lang="scss">). Only truly global
+// concerns belong here.
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+}
