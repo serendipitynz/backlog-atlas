@@ -87,6 +87,7 @@ name = "backlog-atlas"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "toml 0.8.2",

@@ -1,10 +1,10 @@
 ---
 id: TASK-26
 title: プロジェクト台帳（projects.toml）の読み書きと登録・削除・更新を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:06'
-updated_date: '2026-07-23 06:07'
+updated_date: '2026-07-23 10:48'
 labels:
   - 'kind:feature'
 milestone: m-1
