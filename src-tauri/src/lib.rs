@@ -15,6 +15,12 @@ mod ledger;
 // command layer will call, and its scan-source boundary (decision-3) is meant to be
 // implementable from outside this module.
 pub mod read;
+// Public: the Backlog 更新アダプター (TASK-31 / doc-5). The write-side counterpart to the read
+// layer — it maps 更新操作 to Backlog CLI invocations, runs them with the project root as the
+// working directory, and degrades to read-only when no supported CLI is present. Exposed as crate
+// API for the command layer (TASK-33) to call; it wires no Tauri command of its own yet, matching
+// how `history` is exposed.
+pub mod update;
 
 use ledger::{Ledger, LoadedLedger, ParsedTaskRef, RegisterRequest, UpdateRequest};
 use serde::Serialize;
