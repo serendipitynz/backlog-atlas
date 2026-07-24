@@ -98,6 +98,10 @@ pub enum RelationOutcome {
     /// The PR was queried at its own coordinates and its commit set intersected with the task's
     /// local commits. `commit_ids` (full SHAs from [`search_commits`]) may be empty — a *resolved*
     /// state meaning "no shared commit", not a failure (doc-6 §6 "取得成功だが関連なし").
+    // The enum-level rename_all camelCases only the variant tags, not struct-variant fields, so
+    // `commit_ids` needs its own rename to reach the wire as `commitIds` (doc-4 §3.1 camelCase
+    // contract); this mirrors how `DegradeEvent`'s variants are annotated in `domain`.
+    #[serde(rename_all = "camelCase")]
     Resolved { commit_ids: Vec<String> },
     /// The PR's host is not a kind Atlas can reference (or its coordinates were incomplete), so it
     /// is excluded from resolution and shown independently (doc-6 §6 "判別できないホストは…対象外").
@@ -468,12 +472,33 @@ pub trait PrCommitSource {
     ) -> Result<Vec<String>, RelationError>;
 }
 
-/// Resolve commit⇄PR relations (doc-6 §6). Call only for a project whose remote host was
-/// determined ([`detect_remote_host`] returned `Some`) — that is the `git_remote_present &&
-/// kind-known` gate (AC #3); this pure function assumes the caller has passed it. Each PR is
-/// queried at *its own* coordinates ([`PullRequestTarget`]), not the project's remote, so a
-/// reference to another owner/repo/host is never misattributed to the project's PR of the same
-/// number (doc-6 §6). Returns one [`PrRelation`] per input PR, in order:
+/// Entry point for commit⇄PR relation resolution with the AC #3 gate enforced (doc-6 §5, §6).
+/// Resolution runs only when the owning project's remote host is determined — `git_remote_present`
+/// is true *and* the host kind is recognized ([`detect_remote_host`] returns `Some`). When the
+/// gate fails, `source` is never consulted and an empty list is returned: the task's commits and
+/// Pull Requests stay independent (doc-6 §6 縮退, AC #3/#4). This — not [`resolve_relations`] — is
+/// the callable path, so the gate cannot be bypassed. When the gate passes, each PR is resolved at
+/// its own coordinates.
+pub fn resolve_task_relations(
+    entry: &ProjectEntry,
+    commits: &[Commit],
+    pull_requests: &[PullRequestRef],
+    source: &dyn PrCommitSource,
+) -> Vec<PrRelation> {
+    // The gate is the project's own remote (§5), read-only. Its `None` covers both a missing
+    // remote (git_remote_present false — no Git call is even made) and an unrecognized host kind.
+    if detect_remote_host(entry).is_none() {
+        return Vec::new();
+    }
+    resolve_relations(commits, pull_requests, source)
+}
+
+/// Resolve commit⇄PR relations against the local commits (doc-6 §6). Private on purpose: the AC #3
+/// project-remote gate lives in [`resolve_task_relations`], the only public path, so this cannot be
+/// reached with the gate unchecked. Each PR is queried at *its own* coordinates
+/// ([`PullRequestTarget`]), not the project's remote, so a reference to another owner/repo/host is
+/// never misattributed to the project's PR of the same number (doc-6 §6). Returns one
+/// [`PrRelation`] per input PR, in order:
 ///   - a PR whose host kind is recognized and whose owner/repo are known is queried; its
 ///     [`RelationOutcome`] is `Resolved` (commit-id intersection, possibly empty) or `LookupFailed`;
 ///   - a PR on an unrecognized host, or missing owner/repo, is `HostUnsupported` — excluded from
@@ -481,7 +506,7 @@ pub trait PrCommitSource {
 ///
 /// A failing lookup yields `LookupFailed` for that PR only; the rest still resolve (doc-6 §6
 /// "参照不能時" keeps the other views). SHA matching tolerates abbreviation (prefix either way).
-pub fn resolve_relations(
+fn resolve_relations(
     commits: &[Commit],
     pull_requests: &[PullRequestRef],
     source: &dyn PrCommitSource,
@@ -896,6 +921,62 @@ mod tests {
             status_aliases: BTreeMap::new(),
         };
         assert!(detect_remote_host(&entry).is_none());
+    }
+
+    #[test]
+    fn task_relations_gate_blocks_when_project_remote_absent() {
+        // AC #3: the callable entry (resolve_task_relations) must not consult the source when the
+        // owning project has no determined remote — git_remote_present false here — even though the
+        // PR itself is a well-formed GitHub reference. The PR-coordinate fix must not bypass this.
+        struct NeverCalled;
+        impl PrCommitSource for NeverCalled {
+            fn commits_for_pull_request(
+                &self,
+                _t: &PullRequestTarget,
+            ) -> Result<Vec<String>, RelationError> {
+                panic!("source must not be queried when the project-remote gate fails");
+            }
+        }
+        let entry = ProjectEntry {
+            slug: "p".into(),
+            project_root: PathBuf::from("/nonexistent"),
+            backlog_root: PathBuf::from("/nonexistent/backlog"),
+            git_remote_present: false,
+            status_aliases: BTreeMap::new(),
+        };
+        let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
+        let prs = vec![github_pr("https://github.com/o/r/pull/5", "o", "r", 5)];
+        assert!(resolve_task_relations(&entry, &commits, &prs, &NeverCalled).is_empty());
+    }
+
+    #[test]
+    fn pr_relation_serializes_in_camelcase_wire_shape() {
+        // doc-4 §3.1 wire contract: the whole IPC model is camelCase. The tagged enum's struct
+        // fields must reach the frontend as `commitIds`, or a resolved commit list is lost.
+        let resolved = PrRelation {
+            pull_request: "https://github.com/o/r/pull/5".into(),
+            outcome: RelationOutcome::Resolved {
+                commit_ids: vec!["aaaaaaaaaaaa1111".into()],
+            },
+        };
+        let json = serde_json::to_value(&resolved).unwrap();
+        assert_eq!(json["pullRequest"], "https://github.com/o/r/pull/5");
+        assert_eq!(json["outcome"]["state"], "resolved");
+        assert_eq!(
+            json["outcome"]["commitIds"],
+            serde_json::json!(["aaaaaaaaaaaa1111"])
+        );
+        assert!(json["outcome"].get("commit_ids").is_none());
+
+        let unsupported = serde_json::to_value(RelationOutcome::HostUnsupported).unwrap();
+        assert_eq!(unsupported["state"], "hostUnsupported");
+
+        let failed = serde_json::to_value(RelationOutcome::LookupFailed {
+            detail: "offline".into(),
+        })
+        .unwrap();
+        assert_eq!(failed["state"], "lookupFailed");
+        assert_eq!(failed["detail"], "offline");
     }
 
     // --- commit search against a real repo (AC #1, #4, doc-6 §3, §6) ------------------------
