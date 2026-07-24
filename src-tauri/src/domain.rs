@@ -70,6 +70,11 @@ pub struct Milestone {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
+    /// Source file path, the same facet [`Task::source_path`] carries. Present because doc-9 §4's
+    /// pre-update conflict check needs the file a `doc update` will rewrite: without it a document
+    /// could only be updated *unchecked*, and `doc update --content` full-replaces the body (doc-5
+    /// §3.1), so an externally edited document would be silently overwritten. Not a frontmatter field.
+    pub source_path: PathBuf,
     pub id: String,
     pub title: String,
     /// frontmatter `type`, e.g. `specification`.
@@ -366,6 +371,7 @@ mod tests {
                 description: None,
             }],
             vec![Document {
+                source_path: PathBuf::from("docs/doc-4.md"),
                 id: "doc-4".into(),
                 title: "design".into(),
                 doc_type: Some("specification".into()),
@@ -396,6 +402,7 @@ mod tests {
             vec![t],
             vec![],
             vec![Document {
+                source_path: PathBuf::from("docs/doc-2.md"),
                 id: "doc-2".into(),
                 title: "start".into(),
                 doc_type: Some("guide".into()),
