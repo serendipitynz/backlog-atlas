@@ -113,8 +113,9 @@ pub struct StatusMapping {
 }
 
 impl StatusMapping {
-    /// 未対応 status: no alias and no name match. The swimlane keeps these out of the four
-    /// columns and shows them in the row's 未対応区画 (doc-7 §5).
+    /// 未対応 status: this status has no placement column — no alias, no name match, or a value
+    /// absent from `config.yml` (which is kept out of a column even when its name matches one).
+    /// The swimlane shows these in the row's 未対応区画 rather than a canonical column (doc-7 §5).
     pub fn is_unmapped(&self) -> bool {
         self.column.is_none()
     }
@@ -131,19 +132,32 @@ impl StatusMapping {
 /// `aliases` is the ledger entry's status 別名表 (doc-3 §3.3); an empty map is the normal case
 /// and leaves plain name matching in charge.
 pub fn map_status(raw: &str, config: &Config, aliases: &BTreeMap<String, String>) -> StatusMapping {
+    let declaration = StatusDeclaration::of(raw, config);
     let column = match alias_target(aliases, raw) {
         // An alias whose value is not a canonical column is invalid and ignored, and the status
         // it names stays 未対応 (doc-3 §3.3) — it does not fall back to name matching, because a
         // deliberate alias means the writer did not want the default reading of that value.
         // `LoadedLedger::load` already drops such aliases, so this is the defense for callers
         // that build the map some other way.
+        //
+        // An explicit alias wins even for an undeclared status: the ledger entry is the user's
+        // deliberate placement instruction, so it is honored where a bare name match is not.
         Some(target) => StatusColumn::from_name(target),
+        // A status absent from `config.yml`'s declared set is 想定外スキーマ. Even when its name
+        // happens to match a canonical column, it must not be *placed* in that column — doc-7 §5
+        // and decision-4 keep such a value in the row's 未対応区画 with the stronger mark, so that
+        // malformed project data never appears in a real swimlane column. `column` here means
+        // "where to place this task", so an undeclared value yields no placement column; the
+        // resembled column is not information any consumer needs (the 未対応区画 shows `raw`).
+        // Declared / Draft / an unconfigured root (`NoDeclaredSet`, decision-4's geomyth) still
+        // name-match — for them there is no declaration to contradict.
+        None if declaration == StatusDeclaration::Undeclared => None,
         None => StatusColumn::from_name(raw),
     };
     StatusMapping {
         raw: raw.to_string(),
         column,
-        declaration: StatusDeclaration::of(raw, config),
+        declaration,
     }
 }
 
@@ -310,13 +324,39 @@ mod tests {
         assert!(mapped.is_undeclared());
     }
 
-    // A status that maps to a column can still be undeclared — the two axes are independent.
+    // AC #3 / doc-7 §5: an undeclared status stays out of a real column even when its name
+    // matches one — otherwise `In Review` on a project declaring only ["To Do", "Done"] would be
+    // placed in the In Review column instead of the row's 未対応区画. It keeps the stronger mark.
     #[test]
-    fn mapped_status_can_still_be_undeclared() {
+    fn undeclared_status_is_unmapped_even_when_its_name_matches_a_column() {
         let config = config(&["To Do", "Done"]);
         let mapped = map_status("In Review", &config, &BTreeMap::new());
+        assert!(mapped.is_unmapped());
+        assert!(mapped.is_undeclared());
+    }
+
+    // An explicit alias is the user's deliberate placement instruction, so it maps even a status
+    // that is otherwise undeclared — the alias overrides the "undeclared stays unmapped" rule.
+    #[test]
+    fn undeclared_status_with_an_alias_is_still_mapped() {
+        let config = config(&["To Do", "Done"]);
+        let mapped = map_status(
+            "Reviewing",
+            &config,
+            &aliases(&[("Reviewing", "In Review")]),
+        );
         assert_eq!(mapped.column, Some(StatusColumn::InReview));
         assert!(mapped.is_undeclared());
+    }
+
+    // An unconfigured root (NoDeclaredSet) still name-matches — nothing is declared to
+    // contradict, so its statuses are not treated as 想定外 and land in their columns.
+    #[test]
+    fn no_declared_set_status_still_name_matches_a_column() {
+        let config = config(&[]);
+        let mapped = map_status("In Review", &config, &BTreeMap::new());
+        assert_eq!(mapped.column, Some(StatusColumn::InReview));
+        assert_eq!(mapped.declaration, StatusDeclaration::NoDeclaredSet);
     }
 
     // An unconfigured root (decision-4's geomyth) must not have every task degraded.
