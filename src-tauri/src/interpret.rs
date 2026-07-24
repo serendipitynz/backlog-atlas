@@ -145,9 +145,13 @@ mod tests {
     #[test]
     fn serializes_with_camel_case_names() {
         let t = task(Some("Doing"), &["feature"], &[]);
+        // `Doing` must be a declared project-specific status for its alias to apply — an alias
+        // does not rescue a status absent from config.yml (that stays 未対応).
+        let mut config = config();
+        config.statuses.push("Doing".into());
         let aliases: BTreeMap<String, String> =
             [("Doing".to_string(), "In Progress".to_string())].into();
-        let json = serde_json::to_value(interpret_task(&t, &config(), &aliases)).unwrap();
+        let json = serde_json::to_value(interpret_task(&t, &config, &aliases)).unwrap();
         assert_eq!(json["status"]["column"], "inProgress");
         assert_eq!(json["status"]["raw"], "Doing");
         assert_eq!(json["types"][0]["value"], "feature");

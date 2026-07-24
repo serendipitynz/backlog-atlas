@@ -4,9 +4,11 @@
 //! Two questions are answered separately about the same string, because the swimlane needs
 //! both and they do not imply each other (doc-7 §5):
 //!
-//! 1. **Which column does it go to?** — alias table first, then name matching (case and
-//!    surrounding whitespace ignored). No match means 未対応 status: [`StatusMapping::column`]
-//!    is `None` and the task must go to the row's 未対応区画, never into a canonical column.
+//! 1. **Which column does it go to?** — a status absent from `config.yml` is kept unmapped
+//!    outright (doc-7 §5, below); otherwise the alias table is tried first, then name matching
+//!    (case and surrounding whitespace ignored). No column means 未対応 status:
+//!    [`StatusMapping::column`] is `None` and the task must go to the row's 未対応区画, never into
+//!    a canonical column.
 //! 2. **Is the value itself known?** — declared in `config.yml`, the draft-only `Draft`, or
 //!    declared nowhere. Only the last earns the stronger 想定外スキーマ mark (decision-4), so a
 //!    project that legitimately runs its own status is not painted as broken merely for not
@@ -133,26 +135,29 @@ impl StatusMapping {
 /// and leaves plain name matching in charge.
 pub fn map_status(raw: &str, config: &Config, aliases: &BTreeMap<String, String>) -> StatusMapping {
     let declaration = StatusDeclaration::of(raw, config);
-    let column = match alias_target(aliases, raw) {
-        // An alias whose value is not a canonical column is invalid and ignored, and the status
-        // it names stays 未対応 (doc-3 §3.3) — it does not fall back to name matching, because a
-        // deliberate alias means the writer did not want the default reading of that value.
-        // `LoadedLedger::load` already drops such aliases, so this is the defense for callers
-        // that build the map some other way.
-        //
-        // An explicit alias wins even for an undeclared status: the ledger entry is the user's
-        // deliberate placement instruction, so it is honored where a bare name match is not.
-        Some(target) => StatusColumn::from_name(target),
-        // A status absent from `config.yml`'s declared set is 想定外スキーマ. Even when its name
-        // happens to match a canonical column, it must not be *placed* in that column — doc-7 §5
-        // and decision-4 keep such a value in the row's 未対応区画 with the stronger mark, so that
-        // malformed project data never appears in a real swimlane column. `column` here means
-        // "where to place this task", so an undeclared value yields no placement column; the
-        // resembled column is not information any consumer needs (the 未対応区画 shows `raw`).
-        // Declared / Draft / an unconfigured root (`NoDeclaredSet`, decision-4's geomyth) still
-        // name-match — for them there is no declaration to contradict.
-        None if declaration == StatusDeclaration::Undeclared => None,
-        None => StatusColumn::from_name(raw),
+    // A status absent from `config.yml`'s declared set is 想定外スキーマ, and doc-7 §5 / decision-4
+    // keep it in the row's 未対応区画 with the stronger mark — never a real column, even when its
+    // name matches one. This is checked *before* the alias lookup, with no alias exception:
+    // decision-4 §13-19 defines an alias's subject as a project-specific status, i.e. one the
+    // project *declares* in config.yml, so an alias for a value that appears nowhere in config.yml
+    // does not make that inconsistency legitimate — decision-4 §65-68 admit no alias carve-out.
+    // `column` means "where to place this task", so an undeclared value yields no placement
+    // column; the resembled column is not information any consumer needs (the 未対応区画 shows
+    // `raw`).
+    let column = if declaration == StatusDeclaration::Undeclared {
+        None
+    } else {
+        match alias_target(aliases, raw) {
+            // An alias whose value is not a canonical column is invalid and ignored, and the
+            // status it names stays 未対応 (doc-3 §3.3) — it does not fall back to name matching,
+            // because a deliberate alias means the writer did not want the default reading of
+            // that value. `LoadedLedger::load` already drops such aliases, so this is the defense
+            // for callers that build the map some other way.
+            Some(target) => StatusColumn::from_name(target),
+            // No alias: a Declared / Draft / unconfigured-root (`NoDeclaredSet`, decision-4's
+            // geomyth) status name-matches, since none of them has a declaration to contradict.
+            None => StatusColumn::from_name(raw),
+        }
     };
     StatusMapping {
         raw: raw.to_string(),
@@ -335,17 +340,20 @@ mod tests {
         assert!(mapped.is_undeclared());
     }
 
-    // An explicit alias is the user's deliberate placement instruction, so it maps even a status
-    // that is otherwise undeclared — the alias overrides the "undeclared stays unmapped" rule.
+    // An alias does not override the undeclared rule: decision-4 §65-68 keep every status absent
+    // from config.yml in the 未対応区画, and an alias's subject is defined as a *declared*
+    // project-specific status — so aliasing a value that is not in config.yml does not place it
+    // in a column. (A status a project truly runs belongs in config.yml, where it is Declared and
+    // the alias applies normally, as `alias_table_maps_project_specific_statuses` shows.)
     #[test]
-    fn undeclared_status_with_an_alias_is_still_mapped() {
+    fn alias_does_not_map_a_status_absent_from_config() {
         let config = config(&["To Do", "Done"]);
         let mapped = map_status(
             "Reviewing",
             &config,
             &aliases(&[("Reviewing", "In Review")]),
         );
-        assert_eq!(mapped.column, Some(StatusColumn::InReview));
+        assert!(mapped.is_unmapped());
         assert!(mapped.is_undeclared());
     }
 
