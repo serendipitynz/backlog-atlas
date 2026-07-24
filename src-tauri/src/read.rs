@@ -26,15 +26,16 @@ use crate::domain::{
     Config, Decision, DegradeEvent, Document, Milestone, ProjectModel, ReferenceKind,
     RequiredField, StorageState, Task, TaskHealth,
 };
+// The Type/status *rules* live in `interpret` (decision-4, decision-5); doc-4 §3.3 only fixes
+// where the label separation is applied — here, at the read boundary — so this layer calls
+// them instead of holding a second copy of each rule.
+use crate::interpret::status::StatusDeclaration;
+use crate::interpret::type_value::split_labels;
 use scan::{ScanDir, ScanSource};
 use serde_yaml_ng::Value;
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
-
-/// The `Draft` status a `draft create` writes is a known status even when `config.yml` does
-/// not list it, so it must not be read as an unknown value (doc-4 §3.4).
-const DRAFT_STATUS: &str = "Draft";
 
 /// Id prefix reserved for drafts, independent of `config.yml`'s `task_prefix` (doc-4 §3.1).
 const DRAFT_ID_PREFIX: &str = "DRAFT";
@@ -279,7 +280,10 @@ fn parse_task(path: &Path, text: &str, slug: &str, dir: ScanDir, config: &Config
     // them under 保持または無視, unlike an unknown SECTION which §4 makes a degrade trigger.
 
     if let Some(status) = &task.status {
-        if !is_known_status(status, config) {
+        // Only 想定外スキーマ degrades: `Draft` is a known draft status (doc-4 §3.4) and a root
+        // that declares no status set has nothing to contradict — degrading either would flag
+        // every task of a legitimately-configured project (TASK-29, decision-4).
+        if StatusDeclaration::of(status, config) == StatusDeclaration::Undeclared {
             events.push(DegradeEvent::UnexpectedSchema {
                 detail: format!("status `{status}` is not declared in config.yml"),
             });
@@ -359,30 +363,6 @@ fn is_prefixed_number(s: &str, prefix: &str) -> bool {
         return false;
     };
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
-}
-
-/// A status is known when `config.yml` declares it, plus `Draft` (doc-4 §3.4). An empty
-/// `statuses` list disables the check entirely: with no declared set there is nothing to
-/// contradict, and flagging every task would degrade a whole root over a config omission.
-fn is_known_status(status: &str, config: &Config) -> bool {
-    config.statuses.is_empty()
-        || status == DRAFT_STATUS
-        || config.statuses.iter().any(|s| s == status)
-}
-
-/// Split `labels` into the kind-derived Type slot and normal labels — the separation doc-4
-/// §3.3 fixes at this boundary. The Type *value* rule is TASK-29's; here the raw text after
-/// `kind:` is carried as a candidate and simply kept out of `labels`.
-fn split_labels(labels: Vec<String>) -> (Vec<String>, Vec<String>) {
-    let mut kinds = Vec::new();
-    let mut normal = Vec::new();
-    for label in labels {
-        match label.strip_prefix("kind:") {
-            Some(kind) => kinds.push(kind.trim().to_string()),
-            None => normal.push(label),
-        }
-    }
-    (kinds, normal)
 }
 
 /// Read a required identity field. An absent field *and* a present-but-blank one both count as

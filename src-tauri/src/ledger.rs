@@ -11,6 +11,7 @@
 //! running app; the command layer in `lib.rs` resolves the on-disk ledger path via
 //! `app_config_dir()` and calls into here.
 
+use crate::interpret::status::StatusColumn;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -22,8 +23,15 @@ use std::path::{Path, PathBuf};
 pub const KNOWN_SCHEMA_VERSION: u32 = 1;
 
 /// Canonical status columns (decision-4). Fixed set; `status_aliases` values must be one
-/// of these (doc-3 §3.3, AC #5).
-pub const CANONICAL_STATUSES: [&str; 4] = ["To Do", "In Progress", "In Review", "Done"];
+/// of these (doc-3 §3.3, AC #5). Spelled from [`StatusColumn`] rather than repeated as
+/// literals: what the ledger accepts as an alias target and what 列対応規則 maps onto are the
+/// same four columns, and two copies could drift apart.
+pub const CANONICAL_STATUSES: [&str; 4] = [
+    StatusColumn::ToDo.as_str(),
+    StatusColumn::InProgress.as_str(),
+    StatusColumn::InReview.as_str(),
+    StatusColumn::Done.as_str(),
+];
 
 /// Right-hand-side prefix reserved for drafts in a cross-task-id (doc-3 §5.1).
 const DRAFT_PREFIX: &str = "DRAFT";
