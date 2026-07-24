@@ -2,6 +2,10 @@
 // command layer build on. Exposing it as crate API is also what keeps the types from
 // tripping dead_code before their consumers land.
 pub mod domain;
+// Public: 列対応規則 and Type 導出 (TASK-29) are the read side's interpretation half — the
+// command layer computes them next to the model it returns, and the swimlane's column
+// placement is defined by them.
+pub mod interpret;
 mod ledger;
 // Public alongside the domain model: the read layer is the other half of the read-side API the
 // command layer will call, and its scan-source boundary (decision-3) is meant to be
