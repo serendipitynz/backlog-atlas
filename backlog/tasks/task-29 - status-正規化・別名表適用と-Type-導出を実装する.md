@@ -1,10 +1,10 @@
 ---
 id: TASK-29
 title: status 正規化・別名表適用と Type 導出を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:06'
-updated_date: '2026-07-24 00:33'
+updated_date: '2026-07-24 04:33'
 labels:
   - 'kind:feature'
 milestone: m-1
