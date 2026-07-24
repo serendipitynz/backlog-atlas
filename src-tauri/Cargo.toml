@@ -34,6 +34,15 @@ toml = "0.8"
 # hand-edited file would be worse than a dependency. Scope is limited to the read layer.
 # Approved as a new production dependency per the AGENTS.md introduction gate before adding.
 serde_yaml_ng = "0.10"
+# notify subscribes to the OS file-change notifications for a Backlog root (doc-9 §3, AC #1):
+# FSEvents / inotify / ReadDirectoryChangesW behind one cross-platform API. doc-9 §7 defers the
+# watcher crate choice to implementation and requires confirming it before adding; notify is the
+# de-facto standard (cargo-watch, rust-analyzer) and the confirmed choice. Scope is limited to the
+# `sync` module's concrete watcher (WatchSession); the read-version index, conflict detection,
+# reload path, and debounce logic depend on none of it and stay unit-testable without a real
+# watcher. Approved as a new production dependency per the AGENTS.md introduction gate before adding;
+# the selection rationale and rejected alternatives are recorded in decision-11.
+notify = "8"
 
 [dev-dependencies]
 # Test-only: asserts the domain model's JSON wire contract (doc-4 §3.1 camelCase field

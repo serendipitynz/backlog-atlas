@@ -15,6 +15,12 @@ mod ledger;
 // command layer will call, and its scan-source boundary (decision-3) is meant to be
 // implementable from outside this module.
 pub mod read;
+// Public: same-root freshness — file watch, read-version index, pre-update conflict detection, and
+// the shared reload path (TASK-32 / doc-9). The read/update layers' freshness counterpart: it keeps
+// the domain model in step with a Backlog root other processes may also write, detecting external
+// change optimistically (best-effort, no cross-CLI lock). Exposed as crate API for the command layer
+// (TASK-33) to drive — it wires no Tauri command of its own yet, matching `history` and `update`.
+pub mod sync;
 // Public: the Backlog 更新アダプター (TASK-31 / doc-5). The write-side counterpart to the read
 // layer — it maps 更新操作 to Backlog CLI invocations, runs them with the project root as the
 // working directory, and degrades to read-only when no supported CLI is present. Exposed as crate
