@@ -2,6 +2,10 @@
 // command layer build on. Exposing it as crate API is also what keeps the types from
 // tripping dead_code before their consumers land.
 pub mod domain;
+// Public: the Git・Pull Request 履歴参照系 (TASK-30 / doc-6). A read-only, ledger-aware sibling
+// of the read layer: given a task id and its owning ledger entry it finds commits, extracts PR
+// URLs, and (remote permitting) relates them. Exposed as crate API for the command layer to call.
+pub mod history;
 // Public: 列対応規則 and Type 導出 (TASK-29) are the read side's interpretation half — the
 // command layer computes them next to the model it returns, and the swimlane's column
 // placement is defined by them.
