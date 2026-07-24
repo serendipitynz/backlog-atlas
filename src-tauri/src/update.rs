@@ -219,7 +219,10 @@ pub struct TaskEdit {
     pub notes: NoteEdit,
     pub add_labels: Vec<String>,
     pub remove_labels: Vec<String>,
-    /// `--depends-on` sets the whole dependency set (doc-5 §3). `None` leaves it untouched.
+    /// `--depends-on` sets the whole dependency set (doc-5 §3). `None` leaves it untouched;
+    /// `Some(empty)` is refused — `--depends-on ""` exits 0 without clearing anything in v1.47.1
+    /// (measured), the same silent-no-op trap as `--ref ""`, so clearing all dependencies is not a
+    /// capability the CLI offers and must not be reported as a success ([`RejectReason::EmptyDependencies`]).
     pub dependencies: Option<Vec<String>>,
     /// `--ref` full-replaces with a *non-empty* set (doc-5 §3, §3.1). `Some(empty)` is refused —
     /// v1.47.1 cannot empty references (doc-5 §3.1). `None` leaves references untouched.
@@ -430,6 +433,10 @@ pub enum RejectReason {
     /// `references` was `Some(empty)`. v1.47.1 cannot empty references (doc-5 §3.1); the last one
     /// must be removed through the external-editor path (doc-8), not here.
     EmptyReferences,
+    /// `dependencies` was `Some(empty)`. `--depends-on ""` exits 0 without clearing (measured), the
+    /// same silent-no-op as `--ref ""`, so clearing all dependencies is not offered — refused rather
+    /// than reported as a success (doc-5 §5 縮退).
+    EmptyDependencies,
     /// A `task edit` that would set no field. `task edit` with only a taskId changes nothing, so it
     /// is refused instead of launched (doc-5 §5).
     NothingToEdit,
@@ -450,6 +457,10 @@ impl std::fmt::Display for RejectReason {
             RejectReason::EmptyReferences => write!(
                 f,
                 "references cannot be emptied through the CLI (v1.47.1); keep at least one reference"
+            ),
+            RejectReason::EmptyDependencies => write!(
+                f,
+                "dependencies cannot be cleared through the CLI (v1.47.1); keep at least one dependency"
             ),
             RejectReason::NothingToEdit => write!(f, "task edit was requested with no field to change"),
             RejectReason::NothingToUpdate => {
@@ -555,16 +566,25 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
         NoteEdit::Append(text) => inv.opt("--append-notes", text.clone()),
     };
 
-    for label in &edit.add_labels {
-        inv = inv.opt("--add-label", label.clone());
+    // Labels are comma-joined into a single `--add-label`/`--remove-label`, not repeated per label:
+    // v1.47.1 `--add-label`/`--remove-label` take one value and a repeated flag keeps only the last
+    // (measured — they carry no "can be used multiple times" collector, unlike `--ac`/`--ref`),
+    // while a comma-separated value applies to every label. Repeating would silently drop all but
+    // the last label.
+    if !edit.add_labels.is_empty() {
+        inv = inv.opt("--add-label", edit.add_labels.join(","));
     }
-    for label in &edit.remove_labels {
-        inv = inv.opt("--remove-label", label.clone());
+    if !edit.remove_labels.is_empty() {
+        inv = inv.opt("--remove-label", edit.remove_labels.join(","));
     }
 
     if let Some(deps) = &edit.dependencies {
-        // `--depends-on` sets the whole set; an empty set clears dependencies, which — unlike
-        // references — v1.47.1 supports, so an empty vec is passed through as a single empty value.
+        // 空集合でのクリアは不可 (measured): `--depends-on ""` exits 0 without clearing, so an empty
+        // set is refused rather than reported as a success (doc-5 §5 縮退, same trap as `--ref ""`).
+        if deps.is_empty() {
+            return Err(RejectReason::EmptyDependencies);
+        }
+        // `--depends-on` sets the whole set from one comma-separated value.
         inv = inv.opt("--depends-on", deps.join(","));
     }
 
@@ -1121,6 +1141,38 @@ mod tests {
     }
 
     #[test]
+    fn multiple_labels_are_comma_joined_into_one_flag() {
+        // Regression (review [P1]): v1.47.1 `--add-label`/`--remove-label` keep only the last value
+        // when the flag is repeated (measured), so multiple labels must go in one comma-separated
+        // value or all but the last are silently dropped.
+        let cli = FakeCli::supported();
+        run_one(
+            UpdateOperation::TaskEdit {
+                task_id: "TASK-1".to_string(),
+                edit: TaskEdit {
+                    add_labels: vec!["ui".to_string(), "auth".to_string()],
+                    remove_labels: vec!["old".to_string(), "stale".to_string()],
+                    ..Default::default()
+                },
+            },
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(
+            cli.calls(),
+            vec![vec![
+                "task",
+                "edit",
+                "TASK-1",
+                "--add-label",
+                "ui,auth",
+                "--remove-label",
+                "old,stale",
+            ]]
+        );
+    }
+
+    #[test]
     fn ac_delta_uses_single_purpose_options() {
         let cli = FakeCli::supported();
         run_one(
@@ -1388,6 +1440,26 @@ mod tests {
         .unwrap_err();
         assert_eq!(err, RejectReason::EmptyReferences);
         // Refusal is before launch: no process ran (doc-5 §5).
+        assert!(cli.calls().is_empty());
+    }
+
+    #[test]
+    fn clearing_dependencies_is_refused_without_launching() {
+        // Regression (review [P1]): `--depends-on ""` exits 0 without clearing (measured), so an
+        // empty set must be refused rather than launched and reported as a success.
+        let cli = FakeCli::supported();
+        let err = run_one(
+            UpdateOperation::TaskEdit {
+                task_id: "TASK-1".to_string(),
+                edit: TaskEdit {
+                    dependencies: Some(Vec::new()),
+                    ..Default::default()
+                },
+            },
+            &cli,
+        )
+        .unwrap_err();
+        assert_eq!(err, RejectReason::EmptyDependencies);
         assert!(cli.calls().is_empty());
     }
 
