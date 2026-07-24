@@ -1,0 +1,851 @@
+//! Git・Pull Request 履歴参照系 — a task id → (commits, pull requests, and, when the remote
+//! supports it, their relation). Implements doc-6 "タスクID からの Git・Pull Request 履歴参照".
+//!
+//! Read-only by construction (doc-6 §2): every Git touch here reads. Nothing commits, rewrites,
+//! pushes, or edits managed Markdown. All Git access uses `std::process::Command` with a fixed
+//! subcommand and an argument *array*, never a shell string — the same invariant the ledger's
+//! `detect_git_remote` follows and AGENTS §"Git and Pull Request references" requires (AC #5).
+//!
+//! The layer is split along doc-6's own seams so the remote-dependent parts degrade
+//! independently of the remote-independent ones (doc-6 §6, AC #4):
+//!
+//! - [`search_commits`] (§3) and [`extract_pull_requests`] (§4) need no remote. Local commit
+//!   history is available whenever `project_root` is a Git repo, remote or not; PR URLs come
+//!   from the task's own References.
+//! - [`detect_remote_host`] (§5) and [`resolve_relations`] (§6) are remote-dependent. Relation
+//!   resolution runs only when a remote host kind was actually determined, which by construction
+//!   requires `git_remote_present` to be true (AC #3).
+//!
+//! doc-6 §6 fixes only the *structure* of relation resolution — "pick the reference means by
+//! remote host kind" — and leaves each host's concrete means (its API, auth, rate, offline
+//! behavior) to be added per kind. So the network fetch of a PR's commit set is an injected
+//! [`PrCommitSource`] rather than a hardcoded HTTP client here: the gating and the local⇄remote
+//! commit matching are implemented and tested now, and a concrete GitHub source is a later,
+//! per-kind addition (and its own dependency decision).
+
+use crate::ledger::ProjectEntry;
+use serde::Serialize;
+use std::path::Path;
+use std::process::Command;
+
+/// A remote host kind judged from a Git remote URL's host, or from a Pull Request URL's host
+/// (doc-6 §1, §5). Only kinds Atlas can act on are named; an unrecognized host yields `None`
+/// at the call sites rather than a variant here, which is what keeps relation resolution off
+/// for hosts we cannot reference (AC #3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteHostKind {
+    GitHub,
+}
+
+/// One commit found by コミット検索 (doc-6 §3 "結果"): identifier, summary, date, author. `id`
+/// is the full SHA (the stable key relation resolution matches on); `short_id` is git's
+/// abbreviation for display.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Commit {
+    pub id: String,
+    pub short_id: String,
+    pub summary: String,
+    /// Author date in strict ISO 8601 (`%aI`).
+    pub date: String,
+    pub author: String,
+}
+
+/// A Pull Request URL selected from a task's References by the PR URL 抽出規則 (doc-6 §4).
+/// `host`/`owner`/`repo`/`number` are filled when the URL's shape makes them decidable; a
+/// generically-matched URL may carry only `number`, or none of them. The raw `url` is always
+/// kept verbatim — this layer never rewrites References (doc-6 §4 "本層は URL を書き換えない").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestRef {
+    pub url: String,
+    /// The URL's own host kind when recognized, else `None` (matched by the generic PR path form).
+    pub host: Option<RemoteHostKind>,
+    pub owner: Option<String>,
+    pub repo: Option<String>,
+    pub number: Option<u64>,
+}
+
+/// A determined remote host for the owning project (doc-6 §5): the kind plus the `owner`/`repo`
+/// normalized out of the remote URL (SSH or HTTPS). Produced only when `git_remote_present` is
+/// true and the host kind is recognized — its `Some` is the precondition for relation
+/// resolution (AC #3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteHost {
+    pub kind: RemoteHostKind,
+    pub owner: String,
+    pub repo: String,
+}
+
+/// The resolved relation between one Pull Request and the local commits that belong to it
+/// (doc-6 §6). `commit_ids` are full SHAs drawn from the [`search_commits`] result — the
+/// intersection of the PR's commit set (from the remote host) and the task's local commits.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrRelation {
+    pub pull_request: String,
+    pub commit_ids: Vec<String>,
+}
+
+/// Why a Git read could not produce a commit list. Kept distinct from an *empty* list because
+/// doc-6 §3/§6 separate 該当なし (repo present, no matching commit → `Ok(vec![])`) from 対象不在
+/// (`project_root` is not a Git repo → [`NotAGitRepo`](HistoryError::NotAGitRepo)); the display
+/// layer (TASK-13) must tell those apart.
+#[derive(Debug)]
+pub enum HistoryError {
+    /// The `git` binary could not be spawned (not on PATH / not executable).
+    GitUnavailable(std::io::Error),
+    /// `project_root` is not inside a Git repository (Git 対象不在, doc-6 §6).
+    NotAGitRepo,
+    /// A Git command ran but failed for another reason; carries stderr for diagnosis.
+    CommandFailed { args: Vec<String>, stderr: String },
+}
+
+impl std::fmt::Display for HistoryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HistoryError::GitUnavailable(e) => write!(f, "git is unavailable: {e}"),
+            HistoryError::NotAGitRepo => write!(f, "project root is not a Git repository"),
+            HistoryError::CommandFailed { args, stderr } => {
+                write!(f, "git {} failed: {}", args.join(" "), stderr.trim())
+            }
+        }
+    }
+}
+
+impl std::error::Error for HistoryError {}
+
+// --- コミット検索 (doc-6 §3) --------------------------------------------------------------------
+
+// Field separator inside one `git log` record. ASCII Unit Separator: it cannot appear in a
+// hash, an ISO date, a git author name, or a subject line, so splitting on it is unambiguous.
+const FIELD_SEP: char = '\u{1f}';
+
+/// Search the owning project's repository for commits whose message contains the bare `task_id`
+/// (doc-6 §3). Runs `git log` with `project_root` as the working directory (`-C`), a fixed
+/// argument array, and `task_id` passed as one array element — never concatenated into a shell
+/// string (AC #5). Results are newest-first (git log's default order, doc-6 §3).
+///
+/// Two-stage matching keeps the boundary rule authoritative and portable: `--grep --fixed-strings`
+/// asks git for a cheap case-insensitive *substring* superset, then [`message_mentions_task_id`]
+/// applies the word-boundary rule in Rust so `TASK-1` never picks up `TASK-12` (doc-6 §3 "誤検出
+/// の抑制", AC #1). Doing the boundary in Rust avoids depending on git's regex-newline semantics.
+///
+/// Returns `Ok(vec![])` when the repo exists but nothing matches (該当なし). A `project_root`
+/// that is not a Git repo yields [`HistoryError::NotAGitRepo`]; an empty repo (no commits yet)
+/// is still a repo and yields `Ok(vec![])`.
+pub fn search_commits(project_root: &Path, task_id: &str) -> Result<Vec<Commit>, HistoryError> {
+    // Preflight: distinguish 対象不在 from 該当なし without parsing locale-dependent stderr.
+    if !is_git_repo(project_root)? {
+        return Err(HistoryError::NotAGitRepo);
+    }
+    // An initialized-but-empty repo has no HEAD; `git log` would fail there. Treat "no commits"
+    // as an empty result, not a failure — the repo exists (対象は在る), it just has no history.
+    if !has_any_commit(project_root)? {
+        return Ok(Vec::new());
+    }
+
+    // %H full sha, %h abbrev, %an author, %aI author-date (ISO 8601), %s subject. Records are
+    // NUL-terminated (`-z`) so a subject can never be confused with a record boundary; fields
+    // within a record are FIELD_SEP-joined. `--fixed-strings` makes `task_id` a literal, so no
+    // regex metacharacter in it (or in a custom task prefix) can change the match.
+    let format = format!("%H{FIELD_SEP}%h{FIELD_SEP}%an{FIELD_SEP}%aI{FIELD_SEP}%s");
+    let args = vec![
+        "log".to_string(),
+        "-z".to_string(),
+        format!("--format={format}"),
+        "--fixed-strings".to_string(),
+        "--regexp-ignore-case".to_string(),
+        format!("--grep={task_id}"),
+    ];
+    let out = run_git(project_root, &args)?;
+    if !out.status.success() {
+        return Err(HistoryError::CommandFailed {
+            args,
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        });
+    }
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let mut commits = Vec::new();
+    for record in stdout.split('\0') {
+        if record.is_empty() {
+            continue;
+        }
+        let mut fields = record.splitn(5, FIELD_SEP);
+        let (Some(id), Some(short_id), Some(author), Some(date), Some(summary)) = (
+            fields.next(),
+            fields.next(),
+            fields.next(),
+            fields.next(),
+            fields.next(),
+        ) else {
+            // A record that does not split into the five requested fields is malformed; skip it
+            // rather than surface a half-built commit.
+            continue;
+        };
+        // Authoritative boundary filter: git's substring superset is narrowed here so the
+        // TASK-1 / TASK-12 mix-up cannot survive (AC #1). The subject alone is enough because
+        // git matched the *whole* message; a body-only match still made git include the record,
+        // and we then require the boundary hit somewhere in the subject OR keep it if git matched
+        // the body. To stay correct for body-only mentions we re-run git for the raw body only
+        // when the subject does not satisfy the boundary.
+        if message_mentions_task_id(summary, task_id)
+            || commit_body_mentions_task_id(project_root, id, task_id)?
+        {
+            commits.push(Commit {
+                id: id.to_string(),
+                short_id: short_id.to_string(),
+                summary: summary.to_string(),
+                date: date.to_string(),
+                author: author.to_string(),
+            });
+        }
+    }
+    Ok(commits)
+}
+
+/// Whether `project_root` is inside a Git work tree. A spawn failure (git missing) is a hard
+/// [`HistoryError::GitUnavailable`]; a non-zero exit means "not a repo" → `Ok(false)`.
+fn is_git_repo(project_root: &Path) -> Result<bool, HistoryError> {
+    let out = run_git(
+        project_root,
+        &["rev-parse".to_string(), "--git-dir".to_string()],
+    )?;
+    Ok(out.status.success())
+}
+
+/// Whether the repo has at least one commit (a resolvable HEAD). Uses `rev-parse --verify HEAD`,
+/// which fails quietly on an empty repo — a locale-independent "has history?" probe.
+fn has_any_commit(project_root: &Path) -> Result<bool, HistoryError> {
+    let out = run_git(
+        project_root,
+        &[
+            "rev-parse".to_string(),
+            "--verify".to_string(),
+            "--quiet".to_string(),
+            "HEAD".to_string(),
+        ],
+    )?;
+    Ok(out.status.success())
+}
+
+/// Fetch one commit's raw body (`%B`) and apply the boundary rule to it. Used only as a fallback
+/// when the subject did not satisfy the boundary, so a TASK-ID mentioned only in a commit's body
+/// is still honored (git matched the whole message; we must not drop a body-only match).
+fn commit_body_mentions_task_id(
+    project_root: &Path,
+    commit_id: &str,
+    task_id: &str,
+) -> Result<bool, HistoryError> {
+    let out = run_git(
+        project_root,
+        &[
+            "log".to_string(),
+            "-1".to_string(),
+            "--format=%B".to_string(),
+            commit_id.to_string(),
+        ],
+    )?;
+    if !out.status.success() {
+        return Ok(false);
+    }
+    let body = String::from_utf8_lossy(&out.stdout);
+    Ok(message_mentions_task_id(&body, task_id))
+}
+
+/// Word-boundary membership of `task_id` in `message` (doc-6 §3 "誤検出の抑制", AC #1).
+/// Case-insensitive (commit messages historically write `TASK-N` while a default `config.yml`
+/// carries `task_prefix: "task"`, doc-4 §3.1). A match requires the char before the id to not be
+/// ASCII-alphanumeric (a real left boundary), and the char after the id to not be an ASCII
+/// *digit* — the trailing-digit rule that stops `TASK-1` from matching inside `TASK-12` (doc-6
+/// §3). The trailing side rejects only digits, not all word chars, so `TASK-12:` or `TASK-12 done`
+/// still match while `TASK-120` does not.
+pub fn message_mentions_task_id(message: &str, task_id: &str) -> bool {
+    if task_id.is_empty() {
+        return false;
+    }
+    let hay = message.as_bytes();
+    let needle = task_id.as_bytes();
+    let mut i = 0;
+    while i + needle.len() <= hay.len() {
+        if hay[i..i + needle.len()].eq_ignore_ascii_case(needle) {
+            let left_ok = i == 0 || !hay[i - 1].is_ascii_alphanumeric();
+            let after = i + needle.len();
+            let right_ok = after >= hay.len() || !hay[after].is_ascii_digit();
+            if left_ok && right_ok {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+// --- PR URL 抽出規則 (doc-6 §4) -----------------------------------------------------------------
+
+/// Select Pull Request URLs from a task's References (doc-6 §4). Every URL whose host+path form
+/// is a Pull Request is kept — multiple PRs are never rounded to one (doc-6 §4 "複数 PR", AC #2).
+/// A recognized host (GitHub) is judged by its typed path form; an unrecognized host falls back
+/// to the generic PR path form (`.../pull/<n>`, `.../pull-requests/<id>`). URLs that satisfy
+/// neither are not returned — they stay ordinary references, judged elsewhere.
+pub fn extract_pull_requests(references: &[String]) -> Vec<PullRequestRef> {
+    references
+        .iter()
+        .filter_map(|url| parse_pull_request(url))
+        .collect()
+}
+
+/// Try to read one URL as a Pull Request reference. Returns `None` for a non-PR URL.
+fn parse_pull_request(url: &str) -> Option<PullRequestRef> {
+    let parts = split_url(url)?;
+    let host_kind = host_kind_of(parts.host);
+    let segments: Vec<&str> = parts.path.split('/').filter(|s| !s.is_empty()).collect();
+
+    match host_kind {
+        // GitHub typed form: /<owner>/<repo>/pull/<number> (doc-6 §4 example). owner/repo are
+        // the two segments before the `pull` marker, so it must sit at index >= 2.
+        Some(RemoteHostKind::GitHub) => {
+            let pos = segments.iter().position(|s| *s == "pull")?;
+            if pos < 2 {
+                return None;
+            }
+            let number = segments.get(pos + 1).and_then(|s| s.parse::<u64>().ok())?;
+            Some(PullRequestRef {
+                url: url.to_string(),
+                host: host_kind,
+                owner: Some(segments[pos - 2].to_string()),
+                repo: Some(segments[pos - 1].to_string()),
+                number: Some(number),
+            })
+        }
+        // Generic form: a `pull` / `pull-requests` marker segment followed by a numeric id
+        // (doc-6 §4 "緩く判定"). owner/repo are taken from the two segments before the marker
+        // when present, otherwise left unresolved.
+        None => {
+            let pos = segments
+                .iter()
+                .position(|s| *s == "pull" || *s == "pull-requests")?;
+            let number = segments.get(pos + 1).and_then(|s| s.parse::<u64>().ok())?;
+            let owner = (pos >= 2).then(|| segments[pos - 2].to_string());
+            let repo = (pos >= 1).then(|| segments[pos - 1].to_string());
+            Some(PullRequestRef {
+                url: url.to_string(),
+                host: None,
+                owner,
+                repo,
+                number: Some(number),
+            })
+        }
+    }
+}
+
+// --- remote ホスト種別の判別 (doc-6 §5) ---------------------------------------------------------
+
+/// Determine the owning project's remote host (doc-6 §5). Returns `None` — so relation
+/// resolution never runs (AC #3) — when `git_remote_present` is false, when no remote URL can be
+/// read, or when the host is not a kind Atlas recognizes. The remote URL is read with a fixed
+/// argument array (AC #5). SSH (`git@github.com:owner/repo.git`) and HTTPS forms both normalize
+/// to the same `owner`/`repo`.
+pub fn detect_remote_host(entry: &ProjectEntry) -> Option<RemoteHost> {
+    // git_remote_present is the ledger's recorded fact (doc-3 §3.2); honoring it here is the
+    // AC #3 gate and also avoids a Git call when there is provably no remote.
+    if !entry.git_remote_present {
+        return None;
+    }
+    let remote = pick_remote_name(&entry.project_root)?;
+    let out = run_git(
+        &entry.project_root,
+        &["remote".to_string(), "get-url".to_string(), remote],
+    )
+    .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    parse_remote_url(&url)
+}
+
+/// Choose which remote to read: `origin` when present, else the first configured remote. `None`
+/// when the repo has no remotes (or Git is unavailable — treated as "no host" here, since
+/// detection is best-effort and the caller degrades to remote-independent output).
+fn pick_remote_name(project_root: &Path) -> Option<String> {
+    let out = run_git(project_root, &["remote".to_string()]).ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let names = || text.lines().map(str::trim).filter(|l| !l.is_empty());
+    if names().any(|l| l == "origin") {
+        Some("origin".to_string())
+    } else {
+        names().next().map(str::to_string)
+    }
+}
+
+/// Parse a remote URL into a [`RemoteHost`] when its host is a recognized kind (doc-6 §5).
+/// Handles scp-like SSH (`git@host:owner/repo.git`), `ssh://`/`https://`/`http://` forms, and a
+/// trailing `.git`. Returns `None` for an unrecognized host or an unparseable owner/repo pair.
+fn parse_remote_url(url: &str) -> Option<RemoteHost> {
+    let (host, path) = if let Some(rest) = url.strip_prefix("git@") {
+        // scp-like: git@github.com:owner/repo(.git)
+        let (host, path) = rest.split_once(':')?;
+        (host, path)
+    } else {
+        let parts = split_url(url)?;
+        (parts.host, parts.path)
+    };
+    let kind = host_kind_of(host)?;
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let owner = segments.first()?;
+    let repo = segments.get(1)?.trim_end_matches(".git");
+    if owner.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some(RemoteHost {
+        kind,
+        owner: (*owner).to_string(),
+        repo: repo.to_string(),
+    })
+}
+
+// --- コミット・PR 関連解決 (doc-6 §6) -----------------------------------------------------------
+
+/// Errors from fetching a PR's commit set from a remote host. The concrete source (network,
+/// auth, offline) is per-host and injected, so this is deliberately opaque here.
+#[derive(Debug)]
+pub struct RelationError(pub String);
+
+impl std::fmt::Display for RelationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "pull request commit lookup failed: {}", self.0)
+    }
+}
+
+impl std::error::Error for RelationError {}
+
+/// The remote-host reference means for relation resolution (doc-6 §6). Keyed on [`RemoteHost`]
+/// so a concrete implementation is chosen by host kind — the one structural point doc-6 §6 fixes.
+/// The GitHub network implementation is a later, per-kind addition (with its own dependency
+/// decision), which is why this is a trait rather than a hardcoded HTTP call.
+pub trait PrCommitSource {
+    /// The commit SHAs that belong to Pull Request `number` on `host`. Read-only.
+    fn commits_for_pull_request(
+        &self,
+        host: &RemoteHost,
+        number: u64,
+    ) -> Result<Vec<String>, RelationError>;
+}
+
+/// Resolve commit⇄PR relations (doc-6 §6). Runs only with a determined `host` (its very
+/// existence is the `git_remote_present && kind-known` gate, AC #3). For each PR with a known
+/// number it asks `source` for the PR's commit set and intersects it with the local `commits`
+/// from [`search_commits`], matching on SHA (a shorter id is accepted as a prefix of the other,
+/// so abbreviated and full SHAs relate). A PR whose lookup fails contributes no relation rather
+/// than aborting the whole resolution — one unreachable PR must not hide the others (doc-6 §6
+/// "参照不能時" keeps the independent views).
+pub fn resolve_relations(
+    commits: &[Commit],
+    pull_requests: &[PullRequestRef],
+    host: &RemoteHost,
+    source: &dyn PrCommitSource,
+) -> Vec<PrRelation> {
+    let mut relations = Vec::new();
+    for pr in pull_requests {
+        let Some(number) = pr.number else {
+            continue;
+        };
+        let remote_shas = match source.commits_for_pull_request(host, number) {
+            Ok(shas) => shas,
+            Err(_) => continue,
+        };
+        let commit_ids: Vec<String> = commits
+            .iter()
+            .filter(|c| remote_shas.iter().any(|r| sha_relates(&c.id, r)))
+            .map(|c| c.id.clone())
+            .collect();
+        if !commit_ids.is_empty() {
+            relations.push(PrRelation {
+                pull_request: pr.url.clone(),
+                commit_ids,
+            });
+        }
+    }
+    relations
+}
+
+/// Whether two SHAs name the same commit, tolerating abbreviation: equal, or one a
+/// case-insensitive hex prefix of the other.
+fn sha_relates(a: &str, b: &str) -> bool {
+    let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
+    !short.is_empty()
+        && long.len() >= short.len()
+        && long[..short.len()].eq_ignore_ascii_case(short)
+}
+
+// --- shared Git invocation + URL parsing --------------------------------------------------------
+
+/// Run `git -C <project_root> <args...>` with a fixed argument array (never a shell string,
+/// AC #5). A spawn failure (git missing) is the only hard error surfaced; a non-zero exit is
+/// left for the caller to interpret, because "failure" means different things per subcommand
+/// (not-a-repo vs no-commits vs no-remote).
+fn run_git(project_root: &Path, args: &[String]) -> Result<std::process::Output, HistoryError> {
+    Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .args(args)
+        .output()
+        .map_err(HistoryError::GitUnavailable)
+}
+
+/// The pieces of a URL this layer needs: host and path. Query/fragment are dropped — PR
+/// identity lives in the path.
+struct UrlParts<'a> {
+    host: &'a str,
+    path: &'a str,
+}
+
+/// Minimal URL split (scheme://host/path), enough for the PR and remote-URL forms doc-6 handles
+/// without pulling in a URL-parsing dependency (AGENTS: prefer minimal dependencies). Returns
+/// `None` for input without a `scheme://host` shape.
+fn split_url(url: &str) -> Option<UrlParts<'_>> {
+    let after_scheme = url.split_once("://")?.1;
+    // userinfo (`user@`) may precede the host on ssh URLs; the host ends at the first '/'.
+    let (authority, path) = match after_scheme.split_once('/') {
+        Some((a, p)) => (a, p),
+        None => (after_scheme, ""),
+    };
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    // Drop a :port and any query/fragment already excluded by splitting on '/'.
+    let host = authority.split(':').next().unwrap_or(authority);
+    // Strip query/fragment from the path so segments stay clean.
+    let path = path.split(['?', '#']).next().unwrap_or(path);
+    if host.is_empty() {
+        None
+    } else {
+        Some(UrlParts { host, path })
+    }
+}
+
+/// Map a host to a recognized kind (doc-6 §5 "host 部で行う"). `www.` is tolerated. An
+/// unrecognized host is `None`, which keeps relation resolution off for it (AC #3).
+fn host_kind_of(host: &str) -> Option<RemoteHostKind> {
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    match host.to_ascii_lowercase().as_str() {
+        "github.com" => Some(RemoteHostKind::GitHub),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    // --- word-boundary commit matching (AC #1, doc-6 §3) -----------------------------------
+
+    #[test]
+    fn task_id_boundary_rejects_trailing_digit() {
+        // The core AC #1 case: searching TASK-1 must not match TASK-12 / TASK-10.
+        assert!(message_mentions_task_id("Fix TASK-1 today", "TASK-1"));
+        assert!(!message_mentions_task_id("Work on TASK-12", "TASK-1"));
+        assert!(!message_mentions_task_id("Work on TASK-120", "TASK-12"));
+        assert!(message_mentions_task_id("close TASK-12", "TASK-12"));
+    }
+
+    #[test]
+    fn task_id_boundary_checks_both_sides() {
+        // Left boundary: an alphanumeric run before the id is not a match.
+        assert!(!message_mentions_task_id("XTASK-1", "TASK-1"));
+        // Non-alphanumeric left neighbors are boundaries.
+        assert!(message_mentions_task_id("(TASK-1)", "TASK-1"));
+        assert!(message_mentions_task_id("TASK-1: done", "TASK-1"));
+        // Start/end of message count as boundaries.
+        assert!(message_mentions_task_id("TASK-1", "TASK-1"));
+        // Multi-line messages: id at the start of a body line still matches (preceded by \n).
+        assert!(message_mentions_task_id("subject\n\nTASK-7 body", "TASK-7"));
+    }
+
+    #[test]
+    fn task_id_boundary_is_case_insensitive() {
+        // A default config.yml writes task_prefix "task" while ids render TASK-N (doc-4 §3.1).
+        assert!(message_mentions_task_id("did task-9", "TASK-9"));
+        assert!(message_mentions_task_id("did TASK-9", "task-9"));
+    }
+
+    // --- PR URL extraction (AC #2, doc-6 §4) -----------------------------------------------
+
+    #[test]
+    fn extracts_github_pull_request_with_coordinates() {
+        let refs = vec!["https://github.com/serendipitynz/backlog-atlas/pull/5".to_string()];
+        let prs = extract_pull_requests(&refs);
+        assert_eq!(prs.len(), 1);
+        assert_eq!(prs[0].host, Some(RemoteHostKind::GitHub));
+        assert_eq!(prs[0].owner.as_deref(), Some("serendipitynz"));
+        assert_eq!(prs[0].repo.as_deref(), Some("backlog-atlas"));
+        assert_eq!(prs[0].number, Some(5));
+    }
+
+    #[test]
+    fn keeps_multiple_pull_requests_unrounded() {
+        // doc-6 §4: several PR URLs on one task are all kept, not collapsed to one (AC #2).
+        let refs = vec![
+            "https://github.com/o/r/pull/1".to_string(),
+            "https://example.test/team/proj/pull-requests/42".to_string(),
+            "https://example.test/design/doc-4".to_string(), // not a PR → excluded
+        ];
+        let prs = extract_pull_requests(&refs);
+        assert_eq!(prs.len(), 2);
+        assert_eq!(prs[0].number, Some(1));
+        // Generic host: number resolved, host kind unknown, owner/repo from preceding segments.
+        assert_eq!(prs[1].host, None);
+        assert_eq!(prs[1].number, Some(42));
+        assert_eq!(prs[1].owner.as_deref(), Some("team"));
+        assert_eq!(prs[1].repo.as_deref(), Some("proj"));
+    }
+
+    #[test]
+    fn non_pull_request_urls_are_not_extracted() {
+        let refs = vec![
+            "https://github.com/o/r/issues/9".to_string(),
+            "https://github.com/o/r".to_string(),
+            "not a url".to_string(),
+        ];
+        assert!(extract_pull_requests(&refs).is_empty());
+    }
+
+    // --- remote URL parsing (doc-6 §5) -----------------------------------------------------
+
+    #[test]
+    fn parses_github_remote_from_ssh_and_https() {
+        let https = parse_remote_url("https://github.com/serendipitynz/backlog-atlas.git").unwrap();
+        assert_eq!(https.kind, RemoteHostKind::GitHub);
+        assert_eq!(https.owner, "serendipitynz");
+        assert_eq!(https.repo, "backlog-atlas");
+
+        let ssh = parse_remote_url("git@github.com:serendipitynz/backlog-atlas.git").unwrap();
+        assert_eq!(ssh, https);
+
+        let ssh_scheme =
+            parse_remote_url("ssh://git@github.com/serendipitynz/backlog-atlas.git").unwrap();
+        assert_eq!(ssh_scheme, https);
+    }
+
+    #[test]
+    fn unrecognized_remote_host_yields_none() {
+        // An unknown host cannot be referenced, so no RemoteHost → relation resolution stays off.
+        assert!(parse_remote_url("https://git.example.test/o/r.git").is_none());
+        assert!(parse_remote_url("git@gitlab.example:o/r.git").is_none());
+    }
+
+    // --- relation resolution gating + matching (AC #3, doc-6 §6) ----------------------------
+
+    struct FakeSource {
+        // PR number → commit shas the "remote" reports.
+        by_number: BTreeMap<u64, Vec<String>>,
+        fail: bool,
+    }
+
+    impl PrCommitSource for FakeSource {
+        fn commits_for_pull_request(
+            &self,
+            _host: &RemoteHost,
+            number: u64,
+        ) -> Result<Vec<String>, RelationError> {
+            if self.fail {
+                return Err(RelationError("offline".into()));
+            }
+            Ok(self.by_number.get(&number).cloned().unwrap_or_default())
+        }
+    }
+
+    fn commit(id: &str, summary: &str) -> Commit {
+        Commit {
+            id: id.to_string(),
+            short_id: id[..7.min(id.len())].to_string(),
+            summary: summary.to_string(),
+            date: "2026-07-22T00:00:00+00:00".to_string(),
+            author: "Dev".to_string(),
+        }
+    }
+
+    fn host() -> RemoteHost {
+        RemoteHost {
+            kind: RemoteHostKind::GitHub,
+            owner: "o".into(),
+            repo: "r".into(),
+        }
+    }
+
+    #[test]
+    fn resolves_intersection_of_pr_and_local_commits() {
+        let commits = vec![
+            commit("aaaaaaaaaaaa1111", "TASK-1 a"),
+            commit("bbbbbbbbbbbb2222", "TASK-1 b"),
+        ];
+        let prs = vec![PullRequestRef {
+            url: "https://github.com/o/r/pull/5".into(),
+            host: Some(RemoteHostKind::GitHub),
+            owner: Some("o".into()),
+            repo: Some("r".into()),
+            number: Some(5),
+        }];
+        let mut by_number = BTreeMap::new();
+        // The remote reports one shared commit (abbreviated) and one unrelated one.
+        by_number.insert(5, vec!["aaaaaaa".into(), "ffffffffffff9999".into()]);
+        let source = FakeSource {
+            by_number,
+            fail: false,
+        };
+
+        let relations = resolve_relations(&commits, &prs, &host(), &source);
+        assert_eq!(relations.len(), 1);
+        assert_eq!(relations[0].pull_request, "https://github.com/o/r/pull/5");
+        // Only the shared commit relates; abbreviation is tolerated via prefix match.
+        assert_eq!(relations[0].commit_ids, vec!["aaaaaaaaaaaa1111"]);
+    }
+
+    #[test]
+    fn a_failing_pr_lookup_does_not_abort_the_rest() {
+        // doc-6 §6: one unreachable PR must not hide the others; it just yields no relation.
+        let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
+        let prs = vec![PullRequestRef {
+            url: "https://github.com/o/r/pull/9".into(),
+            host: Some(RemoteHostKind::GitHub),
+            owner: Some("o".into()),
+            repo: Some("r".into()),
+            number: Some(9),
+        }];
+        let source = FakeSource {
+            by_number: BTreeMap::new(),
+            fail: true,
+        };
+        assert!(resolve_relations(&commits, &prs, &host(), &source).is_empty());
+    }
+
+    #[test]
+    fn detect_remote_host_gated_on_git_remote_present() {
+        // AC #3: with git_remote_present false, no Git call is made and no host is returned,
+        // so relation resolution never runs regardless of the on-disk repo.
+        let entry = ProjectEntry {
+            slug: "p".into(),
+            project_root: PathBuf::from("/nonexistent"),
+            backlog_root: PathBuf::from("/nonexistent/backlog"),
+            git_remote_present: false,
+            status_aliases: BTreeMap::new(),
+        };
+        assert!(detect_remote_host(&entry).is_none());
+    }
+
+    // --- commit search against a real repo (AC #1, #4, doc-6 §3, §6) ------------------------
+
+    /// Minimal self-cleaning temp dir (mirrors ledger.rs's test helper; no tempfile dependency).
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new() -> Self {
+            static CTR: AtomicU64 = AtomicU64::new(0);
+            let n = CTR.fetch_add(1, Ordering::Relaxed);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "atlas-history-test-{}-{nanos}-{n}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            TempDir { path }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn git(root: &Path, args: &[&str]) -> bool {
+        Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn commit_msg(root: &Path, msg: &str) {
+        // Empty commits keep the fixture free of file churn; the message is all we search.
+        assert!(git(root, &["commit", "--allow-empty", "-q", "-m", msg]));
+    }
+
+    /// Init a repo with deterministic identity/branch. Returns false if git is unavailable so
+    /// the caller can skip (the CI-less dev box may lack git).
+    fn init_repo(root: &Path) -> bool {
+        if !git(root, &["init", "-q"]) {
+            return false;
+        }
+        git(root, &["config", "user.email", "t@example.invalid"]);
+        git(root, &["config", "user.name", "Tester"]);
+        git(root, &["config", "commit.gpgsign", "false"]);
+        true
+    }
+
+    #[test]
+    fn search_distinguishes_not_a_repo_from_no_match() {
+        let tmp = TempDir::new();
+        // 対象不在: a plain directory is not a Git repo.
+        match search_commits(&tmp.path, "TASK-1") {
+            Err(HistoryError::NotAGitRepo) => {}
+            Err(HistoryError::GitUnavailable(_)) => {} // git missing → skip
+            other => panic!("expected NotAGitRepo, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn search_finds_matching_commits_newest_first_with_boundary() {
+        let tmp = TempDir::new();
+        let repo = tmp.path.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        if !init_repo(&repo) {
+            return; // git unavailable
+        }
+        // Empty repo (no HEAD) is a repo with no history → 該当なし, not an error (doc-6 §6).
+        assert_eq!(search_commits(&repo, "TASK-1").unwrap(), Vec::new());
+
+        commit_msg(&repo, "TASK-1 first");
+        commit_msg(&repo, "unrelated change");
+        commit_msg(&repo, "TASK-12 different task"); // must NOT match a TASK-1 search
+        commit_msg(&repo, "close TASK-1 again"); // newest matching
+
+        let found = search_commits(&repo, "TASK-1").unwrap();
+        let summaries: Vec<&str> = found.iter().map(|c| c.summary.as_str()).collect();
+        // Newest-first, and TASK-12 excluded by the boundary rule (AC #1).
+        assert_eq!(summaries, vec!["close TASK-1 again", "TASK-1 first"]);
+        // Full sha and author populated (doc-6 §3 結果).
+        assert_eq!(found[0].id.len(), 40);
+        assert_eq!(found[0].author, "Tester");
+    }
+
+    #[test]
+    fn search_matches_task_id_in_commit_body() {
+        let tmp = TempDir::new();
+        let repo = tmp.path.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        if !init_repo(&repo) {
+            return;
+        }
+        // TASK-7 appears only in the body, not the subject.
+        commit_msg(&repo, "subject line\n\nRefs TASK-7 in the body");
+        let found = search_commits(&repo, "TASK-7").unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].summary, "subject line");
+    }
+}
