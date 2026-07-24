@@ -422,6 +422,7 @@ fn read_documents(source: &dyn ScanSource) -> Result<Vec<Document>, RootError> {
             continue;
         };
         out.push(Document {
+            source_path: path.clone(),
             id,
             title,
             doc_type: parse::string_field(&front, "type", &mut ignored),

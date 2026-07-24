@@ -14,6 +14,7 @@
 //! | 読取版指標 | [`VersionStamp`] / [`VersionIndex`] | the version (mtime, size, content hash) of a file at the moment it was last read |
 //! | 外部変更 | — | any write to the root outside this Atlas's own update; observed, never assumed |
 //! | 更新前競合 | [`ConflictCheck::Conflict`] | recorded stamp ≠ current file, checked *before* an update launches |
+//! | 更新操作の対象（が属するファイル） | [`TargetResolution`] | which file an operation rewrites: checkable, none (a create), or unresolvable ⇒ refused (doc-9 §4) |
 //! | 再読込契機 | [`ReloadReason`] + [`SyncState::reload`] | the one path every re-read funnels through (update success, external change, future branch switch — AC #6) |
 //! | 再構築単位 | root (whole-root read via [`ScanSource`]) | doc-4's reconstruction unit; file-level is a forward refinement on the same method |
 //! | ファイル監視 | [`WatchSession`] | the read-only OS-notification subscription (doc-9 §3) |
@@ -277,6 +278,11 @@ pub enum GuardError {
     /// conflict) — e.g. a permission fault. Not a version verdict, so it is surfaced rather than
     /// silently treated as either outcome.
     Probe(io::Error),
+    /// A mutating operation's target could not be version-checked, so the action was refused **before
+    /// any CLI launched** — nothing ran and nothing changed. This is what keeps "no CLI launch without
+    /// a version check" total (doc-9 §4): an operation Atlas cannot vouch for is not run rather than
+    /// run unchecked. See [`operation_target`] for which operations land here and why.
+    UncheckableTarget { what: &'static str, detail: String },
 }
 
 /// Tracks one Backlog root's recorded versions and drives every re-read of it (doc-9 §4). Holds the
@@ -359,8 +365,11 @@ impl SyncState {
     /// the CLI only if all are in sync, then reload. The targets are derived *inside* this boundary
     /// from `model` (which the caller holds paired with this state from [`initialize`](Self::initialize)
     /// or [`reload`](Self::reload)), so the "no CLI launch on conflict" guarantee cannot be bypassed
-    /// by a caller pairing a wrong or empty target list with the action (see [`operation_target`] for
-    /// what maps to a target — the existing-task rewrites, not creates or doc/milestone updates).
+    /// by a caller pairing a wrong or empty target list with the action. Every operation ends up in
+    /// exactly one of three states, never silently skipped: checked ([`TargetResolution::Checkable`]),
+    /// legitimately unchecked because it creates a new file ([`TargetResolution::NoExistingFile`]), or
+    /// **refused before launch** because its target cannot be checked
+    /// ([`GuardError::UncheckableTarget`] — see [`operation_target`]).
     ///
     /// - **Conflict (AC #3)**: if any target diverged, the CLI is *not* launched. The root is
     ///   reloaded to show the external change (doc-9 §5) and [`GuardedUpdate::Conflict`] is returned.
@@ -386,8 +395,16 @@ impl SyncState {
         // supplied by the caller, so the check cannot be skipped. A single diverged target withholds
         // the whole launch, matching the adapter's all-or-nothing planning (doc-5 §5).
         for op in action {
-            let Some(path) = operation_target(op, model) else {
-                continue;
+            let path = match operation_target(op, model) {
+                TargetResolution::Checkable(path) => path,
+                // A create has no version Atlas has read, so there is nothing to conflict with — the
+                // only case that may legitimately pass through unchecked.
+                TargetResolution::NoExistingFile => continue,
+                // Cannot be checked ⇒ must not run. Refused here, before any launch, so nothing ran
+                // and nothing changed (doc-9 §4).
+                TargetResolution::Unresolvable { what, detail } => {
+                    return Err(GuardError::UncheckableTarget { what, detail })
+                }
             };
             if self
                 .check_conflict(&path, probe)
@@ -432,31 +449,92 @@ impl SyncState {
     }
 }
 
-/// The existing file an operation will modify, for the pre-update conflict check (doc-9 §4). Only the
-/// operations that rewrite an existing task file map to a target — those are the read-modify-write
-/// rewrites doc-9 §4.1 centers on, where overwriting an external change is the loss to prevent. A
-/// create names no existing file. Document and milestone updates also return `None`: the domain model
-/// (doc-4 §3) carries a `source_path` only for tasks, so their files are not resolvable here yet —
-/// their conflict-checking awaits the model carrying those paths, a known gap rather than a silent
-/// skip of a target that could have been resolved.
-fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> Option<PathBuf> {
-    let id = match op {
+/// What the pre-update check could determine about an operation's target (doc-9 §4).
+///
+/// The three cases are kept apart because two of them used to collapse into one `None`, which is what
+/// let a mutating operation reach the CLI unchecked (review round 2): "a create has no file to check"
+/// and "this mutation's file cannot be checked" are opposite situations, and only the first is safe to
+/// pass through. Distinct variants are what turn "no CLI launch on conflict" into a structural
+/// guarantee — every operation is either checked or refused, never silently skipped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TargetResolution {
+    /// A create: it writes a new file, so there is no version Atlas has read to conflict with (doc-9
+    /// §4 governs rewrites of files already read). Safe to pass through unchecked.
+    NoExistingFile,
+    /// The file this operation will rewrite. Its recorded version is checked before launch.
+    Checkable(PathBuf),
+    /// A mutation whose target cannot be version-checked here. Refused before launch rather than let
+    /// through: an unchecked read-modify-write is exactly the overwrite doc-9 §4.1 exists to prevent.
+    Unresolvable { what: &'static str, detail: String },
+}
+
+/// Resolve the file an operation will rewrite, for the pre-update conflict check (doc-9 §4).
+///
+/// Tasks, drafts and documents resolve to their `source_path` from the model. Milestone rename /
+/// remove / archive are deliberately *not* checkable here: `milestone rename` (without
+/// `--no-update-tasks`) and `milestone remove --task-handling clear|reassign` rewrite every task file
+/// referencing the milestone (doc-5 §3), so their real target set is the milestone file *plus* an
+/// unbounded set of task files. doc-9 §4 defines the check for 更新操作の対象 file, not for that
+/// fan-out, and inventing a rule for it here would add an undocumented decision to a contract that
+/// has none. Refusing is the safe reading — nothing is overwritten unchecked — and extending doc-9 to
+/// cover the fan-out is what would enable them.
+fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> TargetResolution {
+    let (kind, id) = match op {
+        // A create writes a file that does not exist yet: nothing read, nothing to conflict with.
+        UpdateOperation::TaskCreate(_)
+        | UpdateOperation::DocCreate(_)
+        | UpdateOperation::MilestoneAdd { .. } => return TargetResolution::NoExistingFile,
+
         UpdateOperation::TaskEdit { task_id, .. }
         | UpdateOperation::TaskComplete { task_id }
         | UpdateOperation::TaskArchive { task_id }
-        | UpdateOperation::TaskDemote { task_id } => task_id,
+        | UpdateOperation::TaskDemote { task_id } => ("task", task_id),
         UpdateOperation::DraftPromote { draft_id } | UpdateOperation::DraftArchive { draft_id } => {
-            draft_id
+            ("draft", draft_id)
         }
-        UpdateOperation::TaskCreate(_)
-        | UpdateOperation::DocCreate(_)
-        | UpdateOperation::DocUpdate { .. }
-        | UpdateOperation::MilestoneAdd { .. }
-        | UpdateOperation::MilestoneRename { .. }
-        | UpdateOperation::MilestoneRemove { .. }
-        | UpdateOperation::MilestoneArchive { .. } => return None,
+        UpdateOperation::DocUpdate { doc_id, .. } => ("document", doc_id),
+
+        UpdateOperation::MilestoneRename { from, .. } => {
+            return TargetResolution::Unresolvable {
+                what: "milestone rename",
+                detail: format!(
+                    "renaming `{from}` also rewrites every task referencing it, and doc-9 §4 does \
+                     not define the check for that fan-out"
+                ),
+            }
+        }
+        UpdateOperation::MilestoneRemove { name, .. } => {
+            return TargetResolution::Unresolvable {
+                what: "milestone remove",
+                detail: format!(
+                    "removing `{name}` also rewrites every task referencing it, and doc-9 §4 does \
+                     not define the check for that fan-out"
+                ),
+            }
+        }
+        UpdateOperation::MilestoneArchive { name } => {
+            return TargetResolution::Unresolvable {
+                what: "milestone archive",
+                detail: format!("the model carries no source path for milestone `{name}`"),
+            }
+        }
     };
-    model.task(id).map(|t| t.source_path.clone())
+
+    let path = match kind {
+        "document" => model.document(id).map(|d| d.source_path.clone()),
+        // Tasks and drafts share the task collection, keyed by their own id prefix.
+        _ => model.task(id).map(|t| t.source_path.clone()),
+    };
+    match path {
+        Some(path) => TargetResolution::Checkable(path),
+        // The id is absent from the model this state was built with, so there is no recorded version
+        // to compare and the operation would run unchecked. Refuse it: the CLI would probably fail on
+        // the id too, but that must not be the thing upholding the guarantee.
+        None => TargetResolution::Unresolvable {
+            what: "update",
+            detail: format!("{kind} `{id}` is not in the model this sync state was built from"),
+        },
+    }
 }
 
 // --- debounce (doc-9 §3, AC #1) -----------------------------------------------------------------
@@ -1469,6 +1547,7 @@ task_prefix: \"TASK\"\n";
     #[test]
     fn the_conflict_target_is_derived_from_the_operation_and_model() {
         let temp = minimal_root();
+        temp.write("docs/doc-1 - d.md", "---\nid: doc-1\ntitle: d\n---\nbody\n");
         let source = WorkingTree::new(&temp.path);
         let (model, _state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
 
@@ -1476,9 +1555,8 @@ task_prefix: \"TASK\"\n";
         // supply (or omit) it, so the check cannot be bypassed.
         assert_eq!(
             operation_target(&status_edit("Done"), &model),
-            Some(task_path(&temp))
+            TargetResolution::Checkable(task_path(&temp))
         );
-        // Transitions on an existing task resolve too.
         assert_eq!(
             operation_target(
                 &UpdateOperation::TaskArchive {
@@ -1486,9 +1564,24 @@ task_prefix: \"TASK\"\n";
                 },
                 &model
             ),
-            Some(task_path(&temp))
+            TargetResolution::Checkable(task_path(&temp))
         );
-        // A create has no existing file to guard.
+        // A document update resolves too, now that the model carries its path (round-2 fix): without
+        // it, `doc update --content` would full-replace an externally edited document unchecked.
+        assert_eq!(
+            operation_target(
+                &UpdateOperation::DocUpdate {
+                    doc_id: "doc-1".to_string(),
+                    update: crate::update::DocUpdate {
+                        content: Some("replaced".to_string()),
+                        ..Default::default()
+                    },
+                },
+                &model
+            ),
+            TargetResolution::Checkable(temp.path.join("docs").join("doc-1 - d.md"))
+        );
+        // A create writes a new file: nothing read, nothing to conflict with.
         assert_eq!(
             operation_target(
                 &UpdateOperation::TaskCreate(crate::update::TaskCreate {
@@ -1497,10 +1590,10 @@ task_prefix: \"TASK\"\n";
                 }),
                 &model
             ),
-            None
+            TargetResolution::NoExistingFile
         );
-        // An unknown id resolves to nothing — there is no file to compare (the CLI will fail on it).
-        assert_eq!(
+        // An id absent from the model cannot be checked, so it must NOT look like a create.
+        assert!(matches!(
             operation_target(
                 &UpdateOperation::TaskEdit {
                     task_id: "TASK-404".to_string(),
@@ -1511,8 +1604,157 @@ task_prefix: \"TASK\"\n";
                 },
                 &model
             ),
-            None
+            TargetResolution::Unresolvable { .. }
+        ));
+        // Milestone rename/remove fan out to every referencing task file, which doc-9 §4 does not
+        // define a check for — refused rather than run unchecked.
+        for op in [
+            UpdateOperation::MilestoneRename {
+                from: "m-1".to_string(),
+                to: "Phase 1".to_string(),
+                update_tasks: true,
+            },
+            UpdateOperation::MilestoneRemove {
+                name: "m-1".to_string(),
+                task_handling: crate::update::MilestoneTaskHandling::Clear,
+            },
+            UpdateOperation::MilestoneArchive {
+                name: "m-1".to_string(),
+            },
+        ] {
+            assert!(
+                matches!(
+                    operation_target(&op, &model),
+                    TargetResolution::Unresolvable { .. }
+                ),
+                "{op:?} must not be treated as checkable or as a create"
+            );
+        }
+    }
+
+    // Round-2 [P2] regression: an unresolved *mutating* target must be refused before launch, not
+    // waved through like a create.
+    #[test]
+    fn an_unknown_task_id_is_refused_without_launching_the_cli() {
+        let temp = minimal_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+        cli.calls.borrow_mut().clear();
+
+        let err = state
+            .guarded_update(
+                &[UpdateOperation::TaskEdit {
+                    task_id: "TASK-404".to_string(),
+                    edit: TaskEdit {
+                        status: Some("Done".to_string()),
+                        ..Default::default()
+                    },
+                }],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+            )
+            .unwrap_err();
+
+        assert!(
+            matches!(err, GuardError::UncheckableTarget { .. }),
+            "got {err:?}"
         );
+        assert!(
+            cli.action_calls().is_empty(),
+            "an unverifiable target must not reach the CLI"
+        );
+    }
+
+    // Round-2 [P2] regression: the reviewer's concrete example — `doc update --content` full-replaces
+    // a body, so an externally edited document must be a conflict, not an unchecked overwrite.
+    #[test]
+    fn an_externally_changed_document_is_a_conflict_and_does_not_launch_the_cli() {
+        let temp = minimal_root();
+        temp.write(
+            "docs/doc-1 - d.md",
+            "---\nid: doc-1\ntitle: d\n---\noriginal\n",
+        );
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+        cli.calls.borrow_mut().clear();
+
+        // Someone edits the document after Atlas read it.
+        temp.write(
+            "docs/doc-1 - d.md",
+            "---\nid: doc-1\ntitle: d\n---\nedited elsewhere\n",
+        );
+
+        let result = state
+            .guarded_update(
+                &[UpdateOperation::DocUpdate {
+                    doc_id: "doc-1".to_string(),
+                    update: crate::update::DocUpdate {
+                        content: Some("my replacement".to_string()),
+                        ..Default::default()
+                    },
+                }],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+            )
+            .unwrap();
+
+        match result {
+            GuardedUpdate::Conflict { path, .. } => {
+                assert!(path.ends_with("doc-1 - d.md"), "got {path:?}");
+            }
+            other => panic!("expected Conflict, got {other:?}"),
+        }
+        assert!(cli.action_calls().is_empty());
+        // The external edit survives: nothing overwrote it.
+        assert!(
+            std::fs::read_to_string(temp.path.join("docs").join("doc-1 - d.md"))
+                .unwrap()
+                .contains("edited elsewhere")
+        );
+    }
+
+    #[test]
+    fn a_milestone_fanout_operation_is_refused_rather_than_run_unchecked() {
+        let temp = minimal_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+        cli.calls.borrow_mut().clear();
+
+        let err = state
+            .guarded_update(
+                &[UpdateOperation::MilestoneRename {
+                    from: "m-1".to_string(),
+                    to: "Phase 1".to_string(),
+                    update_tasks: true,
+                }],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+            )
+            .unwrap_err();
+
+        assert!(
+            matches!(err, GuardError::UncheckableTarget { .. }),
+            "got {err:?}"
+        );
+        assert!(cli.action_calls().is_empty());
     }
 
     #[test]
