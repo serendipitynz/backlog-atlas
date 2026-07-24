@@ -32,7 +32,7 @@ use std::process::Command;
 /// (doc-6 §1, §5). Only kinds Atlas can act on are named; an unrecognized host yields `None`
 /// at the call sites rather than a variant here, which is what keeps relation resolution off
 /// for hosts we cannot reference (AC #3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RemoteHostKind {
     GitHub,
@@ -79,14 +79,32 @@ pub struct RemoteHost {
     pub repo: String,
 }
 
-/// The resolved relation between one Pull Request and the local commits that belong to it
-/// (doc-6 §6). `commit_ids` are full SHAs drawn from the [`search_commits`] result — the
-/// intersection of the PR's commit set (from the remote host) and the task's local commits.
+/// The per-Pull-Request result of relation resolution (doc-6 §6). One entry per extracted PR so
+/// the display layer sees every PR's state, not just the ones with a hit — [`RelationOutcome`]
+/// keeps "resolved with no shared commit", "host we cannot reference", and "lookup failed" apart,
+/// which doc-6 §6 requires the UI to distinguish from コミット不在 / Git 対象不在 / remote 不在.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrRelation {
     pub pull_request: String,
-    pub commit_ids: Vec<String>,
+    pub outcome: RelationOutcome,
+}
+
+/// What became of one PR during relation resolution (doc-6 §6). Serialized with a `state` tag,
+/// mirroring [`crate::domain::TaskHealth`], so the frontend switches on one field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum RelationOutcome {
+    /// The PR was queried at its own coordinates and its commit set intersected with the task's
+    /// local commits. `commit_ids` (full SHAs from [`search_commits`]) may be empty — a *resolved*
+    /// state meaning "no shared commit", not a failure (doc-6 §6 "取得成功だが関連なし").
+    Resolved { commit_ids: Vec<String> },
+    /// The PR's host is not a kind Atlas can reference (or its coordinates were incomplete), so it
+    /// is excluded from resolution and shown independently (doc-6 §6 "判別できないホストは…対象外").
+    HostUnsupported,
+    /// The reference means failed (network / auth / offline). This is 関連解決不能 — kept distinct
+    /// from a resolved-but-empty result and from the PR's target not existing (doc-6 §6 "参照不能").
+    LookupFailed { detail: String },
 }
 
 /// Why a Git read could not produce a commit list. Kept distinct from an *empty* list because
@@ -426,54 +444,89 @@ impl std::fmt::Display for RelationError {
 
 impl std::error::Error for RelationError {}
 
-/// The remote-host reference means for relation resolution (doc-6 §6). Keyed on [`RemoteHost`]
-/// so a concrete implementation is chosen by host kind — the one structural point doc-6 §6 fixes.
-/// The GitHub network implementation is a later, per-kind addition (with its own dependency
-/// decision), which is why this is a trait rather than a hardcoded HTTP call.
+/// One Pull Request's own coordinates, taken from the extracted PR URL (doc-6 §6 "抽出した Pull
+/// Request URL から owner/repo と PR 番号を得て"). This — not the owning project's remote — is what
+/// a PR is queried by, so a reference to a fork or a different repo is looked up where it actually
+/// lives rather than against the project's remote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestTarget {
+    pub host: RemoteHostKind,
+    pub owner: String,
+    pub repo: String,
+    pub number: u64,
+}
+
+/// The remote-host reference means for relation resolution (doc-6 §6). The concrete implementation
+/// is chosen by the target's `host` kind — the one structural point doc-6 §6 fixes. The GitHub
+/// network implementation is a later, per-kind addition (with its own dependency decision), which
+/// is why this is a trait rather than a hardcoded HTTP call.
 pub trait PrCommitSource {
-    /// The commit SHAs that belong to Pull Request `number` on `host`. Read-only.
+    /// The commit SHAs that belong to the Pull Request named by `target`. Read-only.
     fn commits_for_pull_request(
         &self,
-        host: &RemoteHost,
-        number: u64,
+        target: &PullRequestTarget,
     ) -> Result<Vec<String>, RelationError>;
 }
 
-/// Resolve commit⇄PR relations (doc-6 §6). Runs only with a determined `host` (its very
-/// existence is the `git_remote_present && kind-known` gate, AC #3). For each PR with a known
-/// number it asks `source` for the PR's commit set and intersects it with the local `commits`
-/// from [`search_commits`], matching on SHA (a shorter id is accepted as a prefix of the other,
-/// so abbreviated and full SHAs relate). A PR whose lookup fails contributes no relation rather
-/// than aborting the whole resolution — one unreachable PR must not hide the others (doc-6 §6
-/// "参照不能時" keeps the independent views).
+/// Resolve commit⇄PR relations (doc-6 §6). Call only for a project whose remote host was
+/// determined ([`detect_remote_host`] returned `Some`) — that is the `git_remote_present &&
+/// kind-known` gate (AC #3); this pure function assumes the caller has passed it. Each PR is
+/// queried at *its own* coordinates ([`PullRequestTarget`]), not the project's remote, so a
+/// reference to another owner/repo/host is never misattributed to the project's PR of the same
+/// number (doc-6 §6). Returns one [`PrRelation`] per input PR, in order:
+///   - a PR whose host kind is recognized and whose owner/repo are known is queried; its
+///     [`RelationOutcome`] is `Resolved` (commit-id intersection, possibly empty) or `LookupFailed`;
+///   - a PR on an unrecognized host, or missing owner/repo, is `HostUnsupported` — excluded from
+///     resolution, never sent to a source that would query the wrong repo (doc-6 §6 "対象外").
+///
+/// A failing lookup yields `LookupFailed` for that PR only; the rest still resolve (doc-6 §6
+/// "参照不能時" keeps the other views). SHA matching tolerates abbreviation (prefix either way).
 pub fn resolve_relations(
     commits: &[Commit],
     pull_requests: &[PullRequestRef],
-    host: &RemoteHost,
     source: &dyn PrCommitSource,
 ) -> Vec<PrRelation> {
-    let mut relations = Vec::new();
-    for pr in pull_requests {
-        let Some(number) = pr.number else {
-            continue;
-        };
-        let remote_shas = match source.commits_for_pull_request(host, number) {
-            Ok(shas) => shas,
-            Err(_) => continue,
-        };
-        let commit_ids: Vec<String> = commits
-            .iter()
-            .filter(|c| remote_shas.iter().any(|r| sha_relates(&c.id, r)))
-            .map(|c| c.id.clone())
-            .collect();
-        if !commit_ids.is_empty() {
-            relations.push(PrRelation {
-                pull_request: pr.url.clone(),
-                commit_ids,
-            });
+    pull_requests
+        .iter()
+        .map(|pr| PrRelation {
+            pull_request: pr.url.clone(),
+            outcome: resolve_one(commits, pr, source),
+        })
+        .collect()
+}
+
+/// Resolve a single PR against the local commits (doc-6 §6). Split out so the per-PR outcome —
+/// including the unsupported-host and lookup-failure cases — is decided in one place.
+fn resolve_one(
+    commits: &[Commit],
+    pr: &PullRequestRef,
+    source: &dyn PrCommitSource,
+) -> RelationOutcome {
+    // A PR is resolvable only when its own host kind is recognized and owner/repo/number are all
+    // known; anything less would force a query against the wrong repo (or no repo at all), so it
+    // is excluded from resolution rather than guessed (doc-6 §6 "対象外").
+    let (Some(host), Some(owner), Some(repo), Some(number)) =
+        (pr.host, pr.owner.clone(), pr.repo.clone(), pr.number)
+    else {
+        return RelationOutcome::HostUnsupported;
+    };
+    let target = PullRequestTarget {
+        host,
+        owner,
+        repo,
+        number,
+    };
+    match source.commits_for_pull_request(&target) {
+        Ok(remote_shas) => {
+            let commit_ids = commits
+                .iter()
+                .filter(|c| remote_shas.iter().any(|r| sha_relates(&c.id, r)))
+                .map(|c| c.id.clone())
+                .collect();
+            RelationOutcome::Resolved { commit_ids }
         }
+        Err(e) => RelationOutcome::LookupFailed { detail: e.0 },
     }
-    relations
 }
 
 /// Whether two SHAs name the same commit, tolerating abbreviation: equal, or one a
@@ -644,22 +697,49 @@ mod tests {
 
     // --- relation resolution gating + matching (AC #3, doc-6 §6) ----------------------------
 
+    /// A source keyed on the *full* PR coordinates, so a query against the wrong owner/repo/host
+    /// returns nothing — this is what lets the tests catch misattribution ([P1] review finding).
     struct FakeSource {
-        // PR number → commit shas the "remote" reports.
-        by_number: BTreeMap<u64, Vec<String>>,
+        by_target: BTreeMap<(RemoteHostKind, String, String, u64), Vec<String>>,
         fail: bool,
+    }
+
+    impl FakeSource {
+        fn with(entries: &[(&str, &str, u64, &[&str])]) -> Self {
+            let mut by_target = BTreeMap::new();
+            for (owner, repo, number, shas) in entries {
+                by_target.insert(
+                    (
+                        RemoteHostKind::GitHub,
+                        (*owner).to_string(),
+                        (*repo).to_string(),
+                        *number,
+                    ),
+                    shas.iter().map(|s| s.to_string()).collect(),
+                );
+            }
+            FakeSource {
+                by_target,
+                fail: false,
+            }
+        }
     }
 
     impl PrCommitSource for FakeSource {
         fn commits_for_pull_request(
             &self,
-            _host: &RemoteHost,
-            number: u64,
+            target: &PullRequestTarget,
         ) -> Result<Vec<String>, RelationError> {
             if self.fail {
                 return Err(RelationError("offline".into()));
             }
-            Ok(self.by_number.get(&number).cloned().unwrap_or_default())
+            let key = (
+                target.host,
+                target.owner.clone(),
+                target.repo.clone(),
+                target.number,
+            );
+            Ok(self.by_target.get(&key).cloned().unwrap_or_default())
         }
     }
 
@@ -673,11 +753,13 @@ mod tests {
         }
     }
 
-    fn host() -> RemoteHost {
-        RemoteHost {
-            kind: RemoteHostKind::GitHub,
-            owner: "o".into(),
-            repo: "r".into(),
+    fn github_pr(url: &str, owner: &str, repo: &str, number: u64) -> PullRequestRef {
+        PullRequestRef {
+            url: url.into(),
+            host: Some(RemoteHostKind::GitHub),
+            owner: Some(owner.into()),
+            repo: Some(repo.into()),
+            number: Some(number),
         }
     }
 
@@ -687,44 +769,119 @@ mod tests {
             commit("aaaaaaaaaaaa1111", "TASK-1 a"),
             commit("bbbbbbbbbbbb2222", "TASK-1 b"),
         ];
-        let prs = vec![PullRequestRef {
-            url: "https://github.com/o/r/pull/5".into(),
-            host: Some(RemoteHostKind::GitHub),
-            owner: Some("o".into()),
-            repo: Some("r".into()),
-            number: Some(5),
-        }];
-        let mut by_number = BTreeMap::new();
+        let prs = vec![github_pr("https://github.com/o/r/pull/5", "o", "r", 5)];
         // The remote reports one shared commit (abbreviated) and one unrelated one.
-        by_number.insert(5, vec!["aaaaaaa".into(), "ffffffffffff9999".into()]);
-        let source = FakeSource {
-            by_number,
-            fail: false,
-        };
+        let source = FakeSource::with(&[("o", "r", 5, &["aaaaaaa", "ffffffffffff9999"])]);
 
-        let relations = resolve_relations(&commits, &prs, &host(), &source);
+        let relations = resolve_relations(&commits, &prs, &source);
         assert_eq!(relations.len(), 1);
         assert_eq!(relations[0].pull_request, "https://github.com/o/r/pull/5");
         // Only the shared commit relates; abbreviation is tolerated via prefix match.
-        assert_eq!(relations[0].commit_ids, vec!["aaaaaaaaaaaa1111"]);
+        assert_eq!(
+            relations[0].outcome,
+            RelationOutcome::Resolved {
+                commit_ids: vec!["aaaaaaaaaaaa1111".into()],
+            }
+        );
+    }
+
+    #[test]
+    fn queries_each_pr_at_its_own_coordinates() {
+        // [P1]: a reference to a *different* owner/repo must be looked up there, not against the
+        // project's remote. Here the shared sha lives under fork/r#7; a same-number PR under o/r
+        // must not borrow it.
+        let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
+        let prs = vec![
+            github_pr("https://github.com/o/r/pull/7", "o", "r", 7),
+            github_pr("https://github.com/fork/r/pull/7", "fork", "r", 7),
+        ];
+        // Only fork/r#7 contains the local commit; o/r#7 has an unrelated sha.
+        let source = FakeSource::with(&[
+            ("o", "r", 7, &["ffffffffffff9999"]),
+            ("fork", "r", 7, &["aaaaaaa"]),
+        ]);
+
+        let relations = resolve_relations(&commits, &prs, &source);
+        assert_eq!(
+            relations[0].outcome,
+            RelationOutcome::Resolved { commit_ids: vec![] },
+            "o/r#7 must not pick up fork/r#7's commit"
+        );
+        assert_eq!(
+            relations[1].outcome,
+            RelationOutcome::Resolved {
+                commit_ids: vec!["aaaaaaaaaaaa1111".into()],
+            }
+        );
+    }
+
+    #[test]
+    fn resolved_but_empty_is_distinct_from_lookup_failure() {
+        // [P2]: "queried, no shared commit" and "lookup failed" must be different outcomes so the
+        // display layer can tell 取得成功だが関連なし from 関連解決不能 (doc-6 §6).
+        let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
+        let prs = vec![github_pr("https://github.com/o/r/pull/9", "o", "r", 9)];
+
+        // Success with no intersection → Resolved{ empty }.
+        let ok = FakeSource::with(&[("o", "r", 9, &["ffffffffffff9999"])]);
+        assert_eq!(
+            resolve_relations(&commits, &prs, &ok)[0].outcome,
+            RelationOutcome::Resolved { commit_ids: vec![] }
+        );
+
+        // Lookup error → LookupFailed, carrying the reason.
+        let mut down = FakeSource::with(&[]);
+        down.fail = true;
+        assert_eq!(
+            resolve_relations(&commits, &prs, &down)[0].outcome,
+            RelationOutcome::LookupFailed {
+                detail: "offline".into()
+            }
+        );
     }
 
     #[test]
     fn a_failing_pr_lookup_does_not_abort_the_rest() {
-        // doc-6 §6: one unreachable PR must not hide the others; it just yields no relation.
+        // doc-6 §6: one unreachable PR must not hide the others. With a source that fails every
+        // lookup, each PR still gets its own LookupFailed outcome — none is dropped.
+        let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
+        let prs = vec![
+            github_pr("https://github.com/o/r/pull/9", "o", "r", 9),
+            github_pr("https://github.com/o/r/pull/10", "o", "r", 10),
+        ];
+        let mut source = FakeSource::with(&[]);
+        source.fail = true;
+        let relations = resolve_relations(&commits, &prs, &source);
+        assert_eq!(relations.len(), 2);
+        assert!(relations
+            .iter()
+            .all(|r| matches!(r.outcome, RelationOutcome::LookupFailed { .. })));
+    }
+
+    #[test]
+    fn unsupported_host_pr_is_excluded_not_queried() {
+        // doc-6 §6 "対象外": a PR whose host kind is unknown (generic match, host None) must not be
+        // sent to a source that would query the wrong repo — it is reported HostUnsupported.
         let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
         let prs = vec![PullRequestRef {
-            url: "https://github.com/o/r/pull/9".into(),
-            host: Some(RemoteHostKind::GitHub),
-            owner: Some("o".into()),
-            repo: Some("r".into()),
-            number: Some(9),
+            url: "https://example.test/team/proj/pull-requests/42".into(),
+            host: None,
+            owner: Some("team".into()),
+            repo: Some("proj".into()),
+            number: Some(42),
         }];
-        let source = FakeSource {
-            by_number: BTreeMap::new(),
-            fail: true,
-        };
-        assert!(resolve_relations(&commits, &prs, &host(), &source).is_empty());
+        // A source that would panic if ever called — it must not be, for an unsupported host.
+        struct NeverCalled;
+        impl PrCommitSource for NeverCalled {
+            fn commits_for_pull_request(
+                &self,
+                _t: &PullRequestTarget,
+            ) -> Result<Vec<String>, RelationError> {
+                panic!("unsupported-host PR must not be queried");
+            }
+        }
+        let relations = resolve_relations(&commits, &prs, &NeverCalled);
+        assert_eq!(relations[0].outcome, RelationOutcome::HostUnsupported);
     }
 
     #[test]
