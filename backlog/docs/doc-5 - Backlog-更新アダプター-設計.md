@@ -3,7 +3,7 @@ id: doc-5
 title: Backlog 更新アダプター 設計
 type: specification
 created_date: '2026-07-21 10:05'
-updated_date: '2026-07-22'
+updated_date: '2026-07-24 10:17'
 ---
 # Backlog 更新アダプター 設計
 
@@ -42,7 +42,7 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | AC 差し替え（全体置換） | `task edit`（1 呼び出し） | `<taskId>`、既存全 index の `--remove-ac <index>` ＋ 新項目ごとの `--ac <text>` ＋ 完了項目の `--check-ac <newIndex>`（複合。`--acceptance-criteria` 単体は追加動作のため使わない、3.1） |
 | References 編集（非空全置換） | `task edit` | `<taskId>`、`--ref <reference>`（渡した非空集合で全置換、複数可。空集合へはできない、3.1） |
 | 実装計画・ノート | `task edit` | `<taskId>`、`--plan <text>` / `--notes <text>` / `--append-notes <text>` |
-| 依存の設定 | `task edit` | `<taskId>`、`--depends-on <taskIds>` |
+| 依存の設定（非空全置換） | `task edit` | `<taskId>`、`--depends-on <taskIds>`（渡した非空集合でカンマ区切り全置換。空集合へはできない、3.1） |
 | draft 昇格（tasks へ） | `draft promote` | `<taskId>`（`DRAFT-N`） |
 | draft アーカイブ | `draft archive` | `<taskId>`（`DRAFT-N`） |
 | タスクの draft 差し戻し | `task demote` | `<taskId>`（`TASK-N`。active → draft） |
@@ -57,6 +57,7 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 - 操作写像は「1 更新操作 → 1 サブコマンド呼び出し」を基本とする。1 画面操作が複数フィールドを同時に変える場合は、`task edit`・`doc update` の複数オプションを 1 呼び出しにまとめられる範囲でまとめ、まとめられない操作（別サブコマンドが要る）だけ複数回に分ける。
 - **参照の全置換（`--ref`）**: v1.47.1 の `task edit --ref` は、渡した**非空**の参照集合で**全置換**する（既存へ追加ではない）。アダプターは、読み取り層（doc-4）が持つ現在の参照を基に、追加・削除後の**全集合**を組み立てて渡す。1 件だけ加える PR URL 登録（doc-8）でも、既存参照を含めた全集合を `--ref` へ渡す。ただし空集合へはできず（`--ref ""` で消えない、3.1）、最後の 1 件を消す操作は CLI から提供しない。`--content`（`doc update`、本文全置換）も単一オプションで全置換する。
+- **依存の全置換（`--depends-on`）**: v1.47.1 の `task edit --depends-on` は、渡した非空集合でカンマ区切り全置換する（既存へ追加ではない）。`--ref` と同様に空集合へはできず、`--depends-on ""` は終了コード 0 を返すだけで既存依存を消さない（実測）。加えて各値に `task_prefix` を前置して実在検証するため、`none` 等のセンチネルは不在エラーになる。最後の 1 件を消して依存を空にする操作は CLI から提供しない（3.1）。
 - **AC の差し替え（複合）**: AC 全体の差し替えは単一オプションでは行えない（`--acceptance-criteria` は追加動作、3.1）。AC 全体を置き換えるときは、1 回の `task edit` に既存全 index の `--remove-ac`・新項目の `--ac`・完了の `--check-ac`（差し替え後の新 index を指す）を併せて渡す。AC の 1 項目単位の増減・チェックだけを行う場合は、`--ac`／`--remove-ac`／`--check-ac` を単独で使い、差し替えとは使い分ける。
 
 ### 3.1 v1.47.1 に存在しない更新操作
@@ -68,6 +69,7 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - 文書側は `doc update` が title・本文（`--content` は全置換）・type・path・tags を更新でき、部分更新（本文の一部差し替え・追記）や frontmatter の任意フィールド更新には対応しない。
 - **AC 全体を差し替える単一オプション**: `--acceptance-criteria` は名称に反し、v1.47.1 では既存 AC を残して追加する（実測。`--help` の "set" 表記と挙動が一致しない）。単一オプションでの AC 全体差し替えは無い。AC 全体の置き換えは、1 回の `task edit` に既存全 index の `--remove-ac`・新項目の `--ac`・完了の `--check-ac` を併せて渡す複合操作で行う（3 章の表）。
 - **参照を空集合にする操作**: `--ref` は非空集合を渡せば全置換するが、空文字 `--ref ""` を渡しても既存参照は消えない（実測）。最後の 1 件を消して参照を空にする操作は v1.47.1 の CLI から行えない。GUI では最後の参照削除を無効化し、必要なら外部エディタ経路（doc-8）へ案内する。
+- **依存を空集合にする操作**: `--depends-on` も非空集合を渡せば全置換するが、`--depends-on ""` は終了コード 0 でも既存依存を消さない（実測。`--ref ""` と同型の沈黙無変更）。さらに `--depends-on` は各値に `task_prefix` を前置して実在検証するため、空を意味するセンチネル値も渡せない。最後の 1 件を消して依存を空にする操作は v1.47.1 の CLI から行えない。GUI では最後の依存削除を無効化し、必要なら外部エディタ経路（doc-8）へ案内する。
 
 これらは decision-2 の「更新は Backlog CLI へ委譲」を保つ限り、CLI が提供するまで Atlas も提供しない。CLI 版が上がって対応サブコマンドが増えた場合に操作写像へ追加する（3 章末の版検査に従う）。
 
@@ -75,7 +77,7 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 上記制約から、タスク詳細（doc-8）・マイルストーン操作の GUI が提供する更新操作を次に限る。
 
-- **タスク**: 3 章の `task create`/`task edit` 写像に載る操作（title・description・status・ラベル増減・AC 増減/チェック・AC 差し替え・References 非空全置換・priority・milestone・dependencies・実装計画/ノート等）。References 非空全置換は既存値を含めた非空全集合を渡す（3 章。空集合化は不可）。AC 差し替えは複合操作（`--remove-ac`＋`--ac`＋`--check-ac` を 1 呼び出し、3 章）。
+- **タスク**: 3 章の `task create`/`task edit` 写像に載る操作（title・description・status・ラベル増減・AC 増減/チェック・AC 差し替え・References 非空全置換・priority・milestone・dependencies・実装計画/ノート等）。References・dependencies の非空全置換は既存値を含めた非空全集合を渡す（3 章。いずれも空集合化は不可）。AC 差し替えは複合操作（`--remove-ac`＋`--ac`＋`--check-ac` を 1 呼び出し、3 章）。
 - **draft**: 状態遷移（`draft promote`／`draft archive`／`task demote`）のみを提供し、draft の内容編集は GUI に出さない（3.3）。
 - **active の状態遷移**: active タスクには内容編集に加え、`task demote`（→ draft）・`task archive`（→ `archive/tasks`、status を問わず可）・`task complete`（→ `completed`、status が `Done` のときのみ可）を提供する。`task complete` は非 Done では失敗するため（5 章）、Done のタスクに限って能動化する。
 - **保存区分別の可否**: 上記タスク操作は保存区分（doc-4 の 3.4）が active のタスクに適用する。completed・archive のタスクは `task edit` が `not found`（終了コード 1）になるため、CLI による内容編集を提供しない（詳細画面での可否は doc-8 の 6.5）。
