@@ -1,10 +1,10 @@
 ---
 id: TASK-28
 title: 読み取り層（config 解決・走査・解析・保存区分・縮退）を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:06'
-updated_date: '2026-07-23 21:57'
+updated_date: '2026-07-24 00:22'
 labels:
   - 'kind:feature'
 milestone: m-1
