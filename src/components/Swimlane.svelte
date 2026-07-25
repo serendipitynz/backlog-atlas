@@ -4,8 +4,12 @@
   // — so a column can be read top-to-bottom across projects, which is the point of the screen
   // (doc-7 §2 プロジェクト横断の縦読み).
   import LaneCell from "./LaneCell.svelte";
-  import { CANONICAL_COLUMNS, type SwimlaneRow } from "../lib/swimlane";
-  import type { StatusColumn, TaskView } from "../lib/wire";
+  import {
+    CANONICAL_COLUMNS,
+    CANONICAL_COLUMN_LABEL,
+    type SwimlaneRow,
+  } from "../lib/swimlane";
+  import type { TaskView } from "../lib/wire";
 
   interface Props {
     rows: SwimlaneRow[];
@@ -30,13 +34,6 @@
     onretry,
   }: Props = $props();
 
-  const COLUMN_LABEL: Record<StatusColumn, string> = {
-    toDo: "To Do",
-    inProgress: "In Progress",
-    inReview: "In Review",
-    done: "Done",
-  };
-
   // 未対応区画は常設ではない (doc-7 §5): the column appears only while some row has a task in
   // it, and disappears again once none does.
   let hasUnmapped = $derived(
@@ -53,7 +50,7 @@
 <div class="grid" class:with-unmapped={hasUnmapped}>
   <div class="head corner">プロジェクト</div>
   {#each CANONICAL_COLUMNS as column (column)}
-    <div class="head">{COLUMN_LABEL[column]}</div>
+    <div class="head">{CANONICAL_COLUMN_LABEL[column]}</div>
   {/each}
   {#if hasUnmapped}
     <div class="head unmapped">未対応</div>
@@ -130,10 +127,13 @@
     // Rows keep their content height; leftover space stays at the bottom instead of being
     // shared out, which would stretch the header and every row of a short grid.
     align-content: start;
-    // Takes the rest of the screen and scrolls inside itself, so the filter bar and the
-    // selection footer stay put while the grid moves.
+    // Takes the rest of the screen and scrolls inside itself, so the filter bar stays put while
+    // the grid moves. `min-width: 0` is what lets it *give up* width to the detail panel beside
+    // it: without it a flex item refuses to shrink below its content, and the panel would be
+    // pushed off the clipped edge of the screen instead of the columns scrolling.
     flex: 1;
     min-height: 0;
+    min-width: 0;
     overflow: auto;
 
     &.with-unmapped {
