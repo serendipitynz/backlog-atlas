@@ -36,6 +36,19 @@ export const CANONICAL_COLUMNS: readonly StatusColumn[] = [
   "done",
 ] as const;
 
+/**
+ * What each canonical column is called on screen (decision-4). Defined beside the columns
+ * themselves because the detail screen shows the same mapping — doc-8 §3 asks the heading to put
+ * a task's status next to the canonical column it maps to — and two copies of these four names
+ * could drift apart.
+ */
+export const CANONICAL_COLUMN_LABEL: Record<StatusColumn, string> = {
+  toDo: "To Do",
+  inProgress: "In Progress",
+  inReview: "In Review",
+  done: "Done",
+};
+
 /** One row × one canonical column. Empty `tasks` is an empty cell — 該当タスク無し (doc-7 §6). */
 export interface LaneCell {
   column: StatusColumn;
@@ -167,7 +180,6 @@ export function unreadableDetail(error: CommandError): string {
     case "rootUnreadable":
     case "ledger":
     case "watchFailed":
-    case "gitFailed":
     case "updateRejected":
     case "versionProbeFailed":
     case "reloadFailed":

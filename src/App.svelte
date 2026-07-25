@@ -7,9 +7,10 @@
   // and a reorder is written back through `ledger_update` (doc-7 §5 allows reflecting it
   // there), so the order the user arranges survives a restart. Row visibility is the opposite —
   // doc-7 §5 calls it 一時的 — so `hidden` never leaves this component.
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import FilterBar from "./components/FilterBar.svelte";
   import Swimlane from "./components/Swimlane.svelte";
+  import TaskDetail from "./components/TaskDetail.svelte";
   import {
     asCommandError,
     ledgerList,
@@ -18,15 +19,17 @@
     projectOpen,
     projectWatchStart,
     projectWatchStop,
+    taskHistoryRead,
     workspaceOpen,
   } from "./lib/commands";
-  import { cardIdentity } from "./lib/card";
+  import type { HistoryState } from "./lib/detail";
+  import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
-  import type { ProjectLoad, TaskView } from "./lib/wire";
+  import type { ProjectEntry, ProjectLoad, TaskView } from "./lib/wire";
   import type { UnlistenFn } from "@tauri-apps/api/event";
 
-  let order = $state<string[]>([]);
+  let entries = $state<ProjectEntry[]>([]);
   let loadBySlug = $state<Record<string, ProjectLoad>>({});
   let hidden = $state<string[]>([]);
   let filter = $state<CardFilter>(DEFAULT_FILTER);
@@ -36,10 +39,24 @@
   let fatal = $state<string | null>(null);
   /** A failure of an action the user took; the grid stays usable. */
   let notice = $state<string | null>(null);
-  let selected = $state<TaskView | null>(null);
+  /**
+   * The open task, held as (slug, file path) rather than as the `TaskView` itself: a reload
+   * replaces every view object, and a captured one would keep the detail panel showing the
+   * task as it was read before the change (doc-9 §3 継続検出). The path is the key because a
+   * 解析不能 task has no id (doc-4 §5) and must still be openable.
+   */
+  let selectedRef = $state<{ slug: string; sourcePath: string } | null>(null);
+  /**
+   * The Git 履歴 read the screen holds, tagged with the task and the call it came from. The panel
+   * shows it only while its key matches the open task, so a selection change reads as 読み込み中
+   * rather than as the previous task's commits; `history-read.ts` owns the other half — which of
+   * several in-flight calls may store its answer.
+   */
+  let historyRead = $state<HistoryRead | null>(null);
 
   let unlisten: UnlistenFn | null = null;
 
+  let order = $derived(entries.map((entry) => entry.slug));
   let loads = $derived(new Map(Object.entries(loadBySlug)));
   let rows = $derived(
     buildSwimlane({ order, loads, hidden: new Set(hidden), filter }),
@@ -56,6 +73,40 @@
   // 保存区分印 goes on cards only once a division beyond active is in play (doc-7 §3).
   let showStorageMark = $derived(filter.storage.some((state) => state !== "active"));
   let hiddenRows = $derived(hidden.filter((slug) => order.includes(slug)));
+
+  // The open task, resolved against the *current* read of its root, so a reload refreshes the
+  // panel instead of leaving it on the version the card was clicked from.
+  let selectedSnapshot = $derived.by(() => {
+    if (selectedRef === null) return null;
+    const load = loadBySlug[selectedRef.slug];
+    return load?.state === "loaded" ? load.project : null;
+  });
+  let selectedView = $derived.by(() => {
+    const path = selectedRef?.sourcePath;
+    if (path === undefined) return null;
+    return selectedSnapshot?.tasks.find((view) => view.task.sourcePath === path) ?? null;
+  });
+  let selectedEntry = $derived(
+    entries.find((entry) => entry.slug === selectedRef?.slug) ?? null,
+  );
+  /**
+   * Which task a Git 履歴 read belongs to. `null` when there is nothing to read: no selection, or
+   * a task with no TASK-ID — コミット検索 keys on the id (doc-6 §3), while the References-derived
+   * PR 区画 needs no Git read at all. Serialized rather than concatenated, so no two (slug, id)
+   * pairs can collide into one key — and with no separator byte that would make this file binary.
+   */
+  let historyKey = $derived(
+    selectedView === null || selectedView.task.id === null
+      ? null
+      : historyKeyOf(selectedView.task.project, selectedView.task.id),
+  );
+  /** The read belonging to the *current* selection; anything else counts as not yet read. */
+  let history = $derived.by((): HistoryState => {
+    if (selectedView !== null && selectedView.task.id === null) return { state: "noTaskId" };
+    return historyRead !== null && historyRead.key === historyKey
+      ? historyRead.value
+      : { state: "loading" };
+  });
 
   onMount(async () => {
     // Subscribed before the first read so a change landing during startup is not missed.
@@ -84,7 +135,7 @@
     loading = true;
     try {
       const response = await ledgerList();
-      order = response.ledger.project.map((entry) => entry.slug);
+      entries = response.ledger.project;
       ledgerReadOnly = response.readOnly;
 
       const opened = await workspaceOpen();
@@ -139,13 +190,37 @@
     if (neighbour === undefined) return;
     try {
       const response = await ledgerReorder(slug, order.indexOf(neighbour));
-      order = response.ledger.project.map((entry) => entry.slug);
+      entries = response.ledger.project;
       ledgerReadOnly = response.readOnly;
       notice = null;
     } catch (error) {
       notice = `行の並べ替えに失敗しました: ${unreadableDetail(asCommandError(error))}`;
     }
   }
+
+  /** Open one task's detail panel (doc-7 §3 カードを選ぶとタスク詳細画面を開く). */
+  function open(view: TaskView): void {
+    selectedRef = { slug: view.task.project, sourcePath: view.task.sourcePath };
+  }
+
+  /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
+  const loadHistory = createHistoryLoader({
+    read: taskHistoryRead,
+    peek: () => untrack(() => historyRead),
+    store: (read) => (historyRead = read),
+    describeError: (error) => unreadableDetail(asCommandError(error)),
+  });
+
+  // Read on a new selection, keyed by task alone: the PR/References separation comes with the
+  // snapshot (doc-8 §4), so References changes need no re-read, and commits are not file state —
+  // no watch reports a new one — so refreshing those is the panel's 再取得 button. `historyKey` is
+  // the whole dependency; reading the view here would re-fetch on every unrelated root's reload.
+  $effect(() => {
+    if (historyKey === null) return;
+    const view = untrack(() => selectedView);
+    if (view === null || view.task.id === null) return;
+    void loadHistory(view.task.project, view.task.id);
+  });
 
   function hide(slug: string): void {
     if (!hidden.includes(slug)) hidden = [...hidden, slug];
@@ -193,27 +268,49 @@
   {:else if order.length === 0}
     <p class="status">登録済みプロジェクトがありません。台帳への登録は TASK-39 の画面で行います。</p>
   {:else}
-    <Swimlane
-      {rows}
-      {showStorageMark}
-      selectedPath={selected?.task.sourcePath ?? null}
-      canReorder={!ledgerReadOnly}
-      onselect={(view) => (selected = view)}
-      onmove={move}
-      onhide={hide}
-      onretry={retry}
-    />
-  {/if}
+    <!-- The grid and the detail panel share the remaining height; the panel is beside the grid
+         rather than over it, so a task can be read while its row stays visible (doc-8 §2). -->
+    <div class="body">
+      <Swimlane
+        {rows}
+        {showStorageMark}
+        selectedPath={selectedRef?.sourcePath ?? null}
+        canReorder={!ledgerReadOnly}
+        onselect={open}
+        onmove={move}
+        onhide={hide}
+        onretry={retry}
+      />
 
-  {#if selected}
-    <!-- カードを選ぶとタスク詳細画面を開く (doc-7 §3). The detail screen itself is TASK-35;
-         until it lands, the selection is shown here so the entry point is already wired. -->
-    <footer class="selection">
-      <span class="identity">{cardIdentity(selected)}</span>
-      <span class="title">{selected.task.title ?? "（title 不明）"}</span>
-      <span class="path">{selected.task.sourcePath}</span>
-      <button type="button" onclick={() => (selected = null)}>閉じる</button>
-    </footer>
+      <!-- カードを選ぶとタスク詳細画面を開く (doc-7 §3, doc-8 §2). -->
+      {#if selectedRef !== null}
+        {#if selectedView !== null && selectedSnapshot !== null}
+          {@const view = selectedView}
+          <TaskDetail
+            {view}
+            snapshot={selectedSnapshot}
+            entry={selectedEntry}
+            {history}
+            onselect={open}
+            onreloadHistory={() =>
+              view.task.id === null
+                ? undefined
+                : void loadHistory(view.task.project, view.task.id)}
+            onclose={() => (selectedRef = null)}
+          />
+        {:else}
+          <!-- The task was open when its root stopped yielding it — deleted, moved, or the root
+               became unreadable. Distinct from an empty panel: the selection is still named. -->
+          <aside class="detail-gone">
+            <p>
+              {selectedRef.sourcePath} は現在の読み取り結果にありません（削除・移動、または
+              ルート読取不能の可能性）。
+            </p>
+            <button type="button" onclick={() => (selectedRef = null)}>閉じる</button>
+          </aside>
+        {/if}
+      {/if}
+    </div>
   {/if}
 </main>
 
@@ -286,22 +383,25 @@
     opacity: 0.7;
   }
 
-  .selection {
+  .body {
     display: flex;
-    align-items: baseline;
-    gap: 0.6rem;
-    padding: 0.4rem 0.75rem;
-    border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  .detail-gone {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: min(30rem, 45vw);
+    padding: 0.6rem 0.75rem;
+    border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
     font-size: 0.75rem;
 
-    .identity {
-      font-variant-numeric: tabular-nums;
-      opacity: 0.75;
-    }
-
-    .path {
-      margin-left: auto;
-      opacity: 0.55;
+    p {
+      margin: 0;
     }
 
     button {

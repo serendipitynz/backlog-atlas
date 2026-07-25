@@ -11,11 +11,20 @@
 //! The one part that does live in the read layer is splitting `labels` into kind and normal
 //! labels, because doc-4 §3.3 fixes that separation at the read boundary. The *rule* still lives
 //! here ([`type_value::split_labels`]); `read` calls it so there is a single definition.
+//!
+//! Pull Request URL extraction is here for the mirror-image reason. Its rule is doc-6 §4's and
+//! stays defined once, in [`crate::history`]; what this layer fixes is *when* it is applied —
+//! alongside every task read, because its only input is that task's References. Deriving it here
+//! rather than inside the Git・PR history command is what lets doc-8 §4's PR ↔ References
+//! separation hold for a task the commit search cannot even key on: a 解析不能 file has no
+//! TASK-ID (doc-4 §5), but its References are still read, and doc-4 §5 keeps every field it could
+//! discern.
 
 pub mod status;
 pub mod type_value;
 
 use crate::domain::{Config, Task};
+use crate::history::{extract_pull_requests, PullRequestRef};
 use serde::Serialize;
 use status::{map_status, StatusMapping};
 use std::collections::BTreeMap;
@@ -31,6 +40,10 @@ pub struct TaskInterpretation {
     pub status: Option<StatusMapping>,
     /// Zero or more Type values (decision-5).
     pub types: TypeValues,
+    /// The task's References that are Pull Request URLs (doc-6 §4). A view of `task.references`,
+    /// never a rewrite of it (doc-8 §4): the screen shows these in their own 区画 and the
+    /// remaining references in theirs, while the 正本 keeps one list.
+    pub pull_requests: Vec<PullRequestRef>,
 }
 
 /// Interpret one task against its project's `config.yml` and ledger 別名表.
@@ -47,6 +60,7 @@ pub fn interpret_task(
         // The task's `type` slot already holds the text after `kind:` (split at the read
         // boundary); this only classifies it against 既知 Type 集合.
         types: derive_types(&task.type_labels),
+        pull_requests: extract_pull_requests(&task.references),
     }
 }
 
@@ -127,6 +141,22 @@ mod tests {
         let interpreted = interpret_task(&t, &config(), &BTreeMap::new());
         assert!(interpreted.status.is_none());
         assert!(interpreted.types.is_unset());
+    }
+
+    // doc-8 §4 separates Pull Request URLs from References for *every* task, and doc-4 §5 keeps
+    // whatever a degraded file could still be read for. A task with no TASK-ID cannot be keyed for
+    // コミット検索 (doc-6 §3), but its References are read — so the separation still has to hold.
+    #[test]
+    fn a_task_without_an_id_still_has_its_pull_requests_separated() {
+        let mut t = task(None, &[], &[]);
+        t.id = None;
+        t.references = vec![
+            "https://github.com/serendipitynz/backlog-atlas/pull/11".into(),
+            "https://example.com/spec".into(),
+        ];
+        let interpreted = interpret_task(&t, &config(), &BTreeMap::new());
+        assert_eq!(interpreted.pull_requests.len(), 1);
+        assert_eq!(interpreted.pull_requests[0].number, Some(11));
     }
 
     // AC #2: a draft keeps `Draft` as a known status through the whole interpretation.
