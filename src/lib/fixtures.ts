@@ -49,6 +49,8 @@ export interface TaskViewOptions {
   assignee?: string[];
   health?: TaskHealth;
   sourcePath?: string;
+  /** Extracted PR URLs — the interpretation's view of `references` (doc-6 §4, doc-8 §4). */
+  pullRequests?: PullRequestRef[];
   milestone?: string | null;
   dependencies?: string[];
   references?: string[];
@@ -99,7 +101,14 @@ export function taskView(options: TaskViewOptions = {}): TaskView {
           declaration: "declared",
         };
 
-  return { task, interpretation: { status: mapping, types: options.types ?? [] } };
+  return {
+    task,
+    interpretation: {
+      status: mapping,
+      types: options.types ?? [],
+      pullRequests: options.pullRequests ?? [],
+    },
+  };
 }
 
 export function type(value: string, known = true): TypeValue {
@@ -137,12 +146,10 @@ export function pullRequest(url: string, number: number | null = null): PullRequ
 
 export function history(options: {
   commits?: CommitSearch;
-  pullRequests?: PullRequestRef[];
   remote?: TaskHistory["remote"];
 } = {}): TaskHistory {
   return {
     commits: options.commits ?? { state: "searched", commits: [] },
-    pullRequests: options.pullRequests ?? [],
     // `null` is a meaningful value here (remote 不在 / 判別不能), so only an absent key defaults.
     remote:
       options.remote === undefined

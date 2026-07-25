@@ -15,6 +15,7 @@
  * | doc-8 §3 milestone 参照 | [`MilestoneRef`] | the id plus the title it resolves to in this root, or 未解決 |
  * | doc-8 §3 dependencies（未解決印） | [`DependencyLink`] | one dependency id and the task it resolves to, or `null` for 参照欠損 |
  * | doc-8 §4 Pull Request ↔ References 分離 | [`ReferenceSplit`] | the task's references cut into PR URLs and ordinary references |
+ * | doc-6 §3 コミット検索の実行状態 | [`HistoryState`] | the panel's own state for the Git read: loading / read / failed / not keyable |
  * | doc-8 §5 Git 履歴欄 | [`CommitListView`] + [`RelationAvailability`] | what the commit list is showing, and whether 関連解決 could run at all |
  * | decision-6 コミット該当なし / Git 対象不在 | [`CommitListView`] states `noCommits` / `noRepository` | searched-and-empty (neutral) vs. the root not being a Git repository |
  * | decision-6 Git remote 不在 | [`RelationAvailability`] state `remoteAbsent` | the ledger's Git remote 有無属性 is false — a setting, not a failure |
@@ -24,8 +25,8 @@
  * Two rules the whole module follows:
  *
  * - **Separation is post-processing, never a rewrite** (doc-8 §4). The PR/References split reads
- *   the extraction the Rust side already did (doc-6 §4's rule, defined once, in `history.rs`)
- *   and subtracts it; no URL is parsed or rewritten here.
+ *   the extraction the interpretation already carries (doc-6 §4's rule, defined once, in
+ *   `history.rs`) and subtracts it; no URL is parsed or rewritten here.
  * - **An absent thing says which absence it is** (decision-6). Nothing here folds 該当なし,
  *   対象不在, 読取不能 and 未取得 into one empty value, because the user's next action differs.
  */
@@ -95,46 +96,33 @@ export interface PlainReference {
   dangling: boolean;
 }
 
-/**
- * The task's references cut into the two 区画 doc-8 §4 requires. `pending`/`unavailable` keep the
- * References 区画 visible while stating that the separation has not been applied: showing the
- * list as if it were already PR-free would be a claim the screen cannot make yet.
- */
-export type ReferenceSplit =
-  | { state: "split"; pullRequests: PullRequestRef[]; references: PlainReference[] }
-  | { state: "pending"; references: PlainReference[] }
-  | { state: "unavailable"; references: PlainReference[]; detail: string };
+/** The task's references cut into the two 区画 doc-8 §4 requires. */
+export interface ReferenceSplit {
+  pullRequests: PullRequestRef[];
+  references: PlainReference[];
+}
 
-export function referenceSplit(view: TaskView, history: HistoryState): ReferenceSplit {
+/**
+ * Separate Pull Request URLs from ordinary references (doc-8 §4). A pure function of the task and
+ * its interpretation — no Git read is involved — so the two 区画 are populated the moment the
+ * panel opens, for every task the read layer produced (doc-8 §6.5 参照系, doc-4 §5 縮退).
+ */
+export function referenceSplit(view: TaskView): ReferenceSplit {
   const dangling = new Set(
     degradeEvents(view).flatMap((event) =>
       event.event === "danglingReference" && event.kind === "reference" ? [event.target] : [],
     ),
   );
-  const all = view.task.references.map((value) => ({ value, dangling: dangling.has(value) }));
-
-  switch (history.state) {
-    case "loading":
-      return { state: "pending", references: all };
-    case "failed":
-      return { state: "unavailable", references: all, detail: history.detail };
-    case "noTaskId":
-      return {
-        state: "unavailable",
-        references: all,
-        detail: "TASK-ID が読めないため、この画面から PR URL 抽出を実行できません",
-      };
-    case "loaded": {
-      // Matched on the verbatim URL: doc-6 §4 keeps `url` exactly as References wrote it, so the
-      // extracted set is a subset of this list and set difference is the whole separation.
-      const extracted = new Set(history.history.pullRequests.map((pr) => pr.url));
-      return {
-        state: "split",
-        pullRequests: history.history.pullRequests,
-        references: all.filter((reference) => !extracted.has(reference.value)),
-      };
-    }
-  }
+  const pullRequests = view.interpretation.pullRequests;
+  // Matched on the verbatim URL: doc-6 §4 keeps `url` exactly as References wrote it, so the
+  // extracted set is a subset of this list and set difference is the whole separation.
+  const extracted = new Set(pullRequests.map((pr) => pr.url));
+  return {
+    pullRequests,
+    references: view.task.references
+      .filter((value) => !extracted.has(value))
+      .map((value) => ({ value, dangling: dangling.has(value) })),
+  };
 }
 
 /**

@@ -55,7 +55,7 @@
   let types = $derived(view.interpretation.types);
   let milestone = $derived(milestoneRef(view, snapshot.milestones));
   let dependencies = $derived(dependencyLinks(view, snapshot.tasks));
-  let references = $derived(referenceSplit(view, history));
+  let references = $derived(referenceSplit(view));
   let ac = $derived(acProgress(view));
   let degrade = $derived(degradeSummary(view));
 </script>
@@ -241,11 +241,7 @@
        every 保存区分 (doc-8 §6.5) — they are 参照系, which reading never depends on edit rights. -->
   <section>
     <h3>Pull Request</h3>
-    {#if references.state === "pending"}
-      <p class="neutral">PR URL 抽出を読み込み中…</p>
-    {:else if references.state === "unavailable"}
-      <p class="setting">PR URL を抽出できません: {references.detail}</p>
-    {:else if references.pullRequests.length === 0}
+    {#if references.pullRequests.length === 0}
       <p class="neutral">References に Pull Request URL はありません</p>
     {:else}
       <ul class="prs">
@@ -265,13 +261,6 @@
 
   <section>
     <h3>References</h3>
-    {#if references.state === "pending"}
-      <p class="neutral">PR URL の分離を読み込み中…（下は分離前の全参照）</p>
-    {:else if references.state === "unavailable"}
-      <p class="setting">
-        PR URL を分離できないため、参照を分離せず全件表示します（{references.detail}）。
-      </p>
-    {/if}
     {#if references.references.length === 0}
       <p class="neutral">なし</p>
     {:else}
@@ -567,12 +556,6 @@
 
   .neutral {
     opacity: 0.7;
-  }
-
-  .setting {
-    padding: 0.2rem 0.35rem;
-    border-left: 2px solid color-mix(in srgb, currentColor 35%, transparent);
-    background: color-mix(in srgb, canvastext 4%, transparent);
   }
 
   .degrade-panel {

@@ -58,7 +58,7 @@
 //! from 更新前競合 ([`UpdateResult::Conflict`], "we checked and it did diverge").
 
 use crate::domain::{Config, Decision, Document, Milestone, ProjectModel, Task};
-use crate::history::{self, Commit, HistoryError, PullRequestRef, RemoteHost};
+use crate::history::{self, Commit, HistoryError, RemoteHost};
 use crate::interpret::{interpret_task, TaskInterpretation};
 use crate::ledger::{
     Ledger, LedgerError, LoadedLedger, ParsedTaskRef, ProjectEntry, RegisterRequest, UpdateRequest,
@@ -171,8 +171,13 @@ impl From<CliStatus> for CliReadiness {
     }
 }
 
-/// One task's Git・Pull Request 履歴 (doc-6 §2): the commit search's outcome, the Pull Request URLs
-/// its References yielded, and the owning project's determined remote host.
+/// One task's Git 履歴 (doc-6 §2): the commit search's outcome and the owning project's determined
+/// remote host — the two parts of doc-6's output that need Git.
+///
+/// The extracted Pull Request URLs are *not* here: their only input is the task's References
+/// (doc-6 §4), so they are derived with the task itself ([`TaskInterpretation::pull_requests`]) and
+/// arrive with the snapshot. That keeps doc-8 §4's PR ↔ References separation available for a task
+/// this command cannot even be called for — a 解析不能 file has no TASK-ID to key on (doc-4 §5).
 ///
 /// `remote` is the gate doc-6 §5/§6 puts in front of commit⇄PR relation resolution. The relations
 /// themselves are absent on purpose: resolution needs a `PrCommitSource`, and doc-6 §6 fixes only its
@@ -184,7 +189,6 @@ impl From<CliStatus> for CliReadiness {
 #[serde(rename_all = "camelCase")]
 pub struct TaskHistory {
     pub commits: CommitSearch,
-    pub pull_requests: Vec<PullRequestRef>,
     pub remote: Option<RemoteHost>,
 }
 
@@ -410,23 +414,24 @@ impl Workspace {
         entry: &ProjectEntry,
         task_id: &str,
     ) -> Result<TaskHistory, CommandError> {
+        // The id is checked against the open model before Git is touched, so a typo is reported as
+        // 対象不在 for the task rather than as an empty commit list (doc-6 §6 該当なし).
         let session = self.session(&entry.slug)?;
-        let task = session
-            .model
-            .task(task_id)
-            .ok_or_else(|| CommandError::TaskNotFound {
+        if session.model.task(task_id).is_none() {
+            return Err(CommandError::TaskNotFound {
                 slug: entry.slug.clone(),
                 task_id: task_id.to_string(),
-            })?;
-        // A Git failure is a value here, not an error: the PR 区画 below it comes from References and
-        // must survive a root that is not a Git repository (decision-6, doc-8 §5).
+            });
+        }
+        // A Git failure is a value here, not an error: the rest of the detail screen — including the
+        // References-derived PR 区画 — must survive a root that is not a Git repository (decision-6,
+        // doc-8 §5).
         let commits = CommitSearch::of(
             history::search_commits(&entry.project_root, task_id),
             &entry.project_root,
         );
         Ok(TaskHistory {
             commits,
-            pull_requests: history::extract_pull_requests(&task.references),
             remote: history::detect_remote_host(entry),
         })
     }

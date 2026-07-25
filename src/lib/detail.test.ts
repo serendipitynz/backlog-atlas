@@ -38,30 +38,29 @@ describe("AC #1 heading: 横断タスクID・status の正準対応・milestone"
 
 describe("AC #2 Pull Request URL を References と分離する", () => {
   it("puts extracted PR URLs in one 区画 and leaves the rest as ordinary references", () => {
-    const view = taskView({ references: [DOC_URL, PR_URL] });
-    const split = referenceSplit(
-      view,
-      loaded(history({ pullRequests: [pullRequest(PR_URL, 10)] })),
-    );
+    const view = taskView({
+      references: [DOC_URL, PR_URL],
+      pullRequests: [pullRequest(PR_URL, 10)],
+    });
+    const split = referenceSplit(view);
 
-    if (split.state !== "split") throw new Error("expected the split to be applied");
     expect(split.pullRequests.map((pr) => pr.url)).toEqual([PR_URL]);
     expect(split.references.map((reference) => reference.value)).toEqual([DOC_URL]);
   });
 
-  it("keeps References visible but states that the separation has not been applied", () => {
-    const view = taskView({ references: [DOC_URL, PR_URL] });
+  it("separates a task with no readable TASK-ID too, since References is the only input", () => {
+    // doc-6 §4 keys PR extraction on References alone, so a 解析不能 task — which コミット検索
+    // cannot even be keyed for — still gets its 区画 split (doc-4 §5 keeps every readable field).
+    const view = taskView({
+      id: null,
+      status: null,
+      references: [PR_URL, DOC_URL],
+      pullRequests: [pullRequest(PR_URL, 10)],
+    });
+    const split = referenceSplit(view);
 
-    const pending = referenceSplit(view, { state: "loading" });
-    expect(pending.state).toBe("pending");
-    expect(pending.references).toHaveLength(2);
-
-    // A task with no readable TASK-ID cannot be sent through the boundary's extraction, so the
-    // 区画 says so rather than implying the list is already PR-free (AC #5 不足の明示).
-    const unavailable = referenceSplit(view, { state: "noTaskId" });
-    if (unavailable.state !== "unavailable") throw new Error("expected an unavailable split");
-    expect(unavailable.references).toHaveLength(2);
-    expect(unavailable.detail).toContain("TASK-ID");
+    expect(split.pullRequests.map((pr) => pr.url)).toEqual([PR_URL]);
+    expect(split.references.map((reference) => reference.value)).toEqual([DOC_URL]);
   });
 
   it("marks a reference the read layer reported as 参照欠損", () => {
@@ -72,10 +71,8 @@ describe("AC #2 Pull Request URL を References と分離する", () => {
         events: [{ event: "danglingReference", kind: "reference", target: "doc-404" }],
       },
     });
-    const split = referenceSplit(view, loaded(history()));
 
-    if (split.state !== "split") throw new Error("expected the split to be applied");
-    expect(split.references).toEqual([
+    expect(referenceSplit(view).references).toEqual([
       { value: "doc-404", dangling: true },
       { value: DOC_URL, dangling: false },
     ]);
@@ -191,12 +188,13 @@ describe("AC #5 縮退時は判別できた項目だけを出し、不足を明�
   it("still separates 参照系 for a completed or archived task", () => {
     // doc-8 §6.5: 編集可否 is per 保存区分, but reading Type・References・PR is not.
     for (const storageState of ["completed", "archive", "draft", null] as const) {
-      const view = taskView({ storageState, references: [PR_URL, DOC_URL] });
       const split = referenceSplit(
-        view,
-        loaded(history({ pullRequests: [pullRequest(PR_URL, 10)] })),
+        taskView({
+          storageState,
+          references: [PR_URL, DOC_URL],
+          pullRequests: [pullRequest(PR_URL, 10)],
+        }),
       );
-      if (split.state !== "split") throw new Error("expected the split to be applied");
       expect(split.pullRequests).toHaveLength(1);
       expect(split.references.map((reference) => reference.value)).toEqual([DOC_URL]);
     }

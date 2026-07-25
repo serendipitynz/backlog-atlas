@@ -131,6 +131,12 @@ export interface TaskInterpretation {
   /** `null` when the task carries no status at all — a 解析不能 file (doc-4 §5). */
   status: StatusMapping | null;
   types: TypeValue[];
+  /**
+   * The task's References that are Pull Request URLs (doc-6 §4), derived with the task rather
+   * than by the Git・PR history command: their only input is References, so the doc-8 §4
+   * separation holds even for a task that has no TASK-ID to search commits with.
+   */
+  pullRequests: PullRequestRef[];
 }
 
 /** One task with Atlas's reading of it beside it, never merged into it. */
@@ -194,13 +200,14 @@ export type CommitSearch =
   | { state: "unreadable"; detail: string };
 
 /**
- * One task's Git・PR 履歴 (doc-6 §2). `remote` is the 関連解決 gate; relations themselves are
- * absent until a host's reference means exists (doc-6 §6 leaves that to a per-kind addition),
- * which is why the screen states that relations were not resolved instead of showing none.
+ * One task's Git 履歴 (doc-6 §2) — the parts that need Git. The extracted Pull Request URLs are on
+ * `TaskInterpretation` instead, since References is their only input. `remote` is the 関連解決
+ * gate; relations themselves are absent until a host's reference means exists (doc-6 §6 leaves
+ * that to a per-kind addition), which is why the screen states that relations were not resolved
+ * instead of showing none.
  */
 export interface TaskHistory {
   commits: CommitSearch;
-  pullRequests: PullRequestRef[];
   remote: RemoteHost | null;
 }
 
