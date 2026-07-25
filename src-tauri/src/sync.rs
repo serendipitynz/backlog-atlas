@@ -237,6 +237,12 @@ pub enum ReloadReason {
     PartialUpdateFailed,
     /// The file watch reported an external change to the root (doc-9 §3 継続検出).
     ExternalChange,
+    /// The user asked for the root to be re-read. This is the fallback for when 継続検出 is not
+    /// running: doc-9 §3 does not treat the watch as guaranteed (it is why a post-update reload
+    /// exists at all, and why a batch can arrive as a whole-root rescan), and a watch that fails to
+    /// start leaves a user-initiated re-read as the only way to pick external change up. Added as a
+    /// variant reusing this one path rather than as a second read path — the structure AC #6 fixes.
+    ManualRefresh,
 }
 
 /// The result of a guarded update (doc-9 §4). The pre-update check, the CLI run, and the reload are
@@ -1068,12 +1074,15 @@ task_prefix: \"TASK\"\n";
 
     #[test]
     fn every_reload_reason_uses_the_same_path() {
-        // AC #6: update-success, partial-failure, and external-change all reload through the one
-        // method — proven by all three producing the same refreshed model.
+        // AC #6: update-success, partial-failure, external-change, and a user-initiated refresh all
+        // reload through the one method — proven by all of them producing the same refreshed model.
+        // A new trigger belongs in this list, not in a second read path; that is what makes adding
+        // one a variant rather than a code path.
         for reason in [
             ReloadReason::UpdateApplied,
             ReloadReason::PartialUpdateFailed,
             ReloadReason::ExternalChange,
+            ReloadReason::ManualRefresh,
         ] {
             let temp = minimal_root();
             let source = WorkingTree::new(&temp.path);
