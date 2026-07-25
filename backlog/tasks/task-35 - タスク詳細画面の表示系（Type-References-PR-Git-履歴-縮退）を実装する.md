@@ -1,10 +1,10 @@
 ---
 id: TASK-35
 title: タスク詳細画面の表示系（Type/References/PR/Git 履歴/縮退）を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:07'
-updated_date: '2026-07-25 10:37'
+updated_date: '2026-07-25 10:59'
 labels:
   - 'kind:feature'
 milestone: m-1
