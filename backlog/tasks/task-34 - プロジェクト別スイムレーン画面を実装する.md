@@ -1,10 +1,10 @@
 ---
 id: TASK-34
 title: プロジェクト別スイムレーン画面を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:07'
-updated_date: '2026-07-25 04:24'
+updated_date: '2026-07-25 05:49'
 labels:
   - 'kind:feature'
 milestone: m-1
