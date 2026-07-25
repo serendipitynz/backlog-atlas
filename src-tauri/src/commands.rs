@@ -508,8 +508,10 @@ pub struct ReloadEvent {
     pub load: ProjectLoad,
 }
 
-/// A running watch. Dropping the handle does not stop the thread; [`stop_watch`] does, which is why
-/// the registry hands the handle out rather than dropping it in place.
+/// A running watch. Dropping the handle does not stop the thread, which is why the registry hands it
+/// out rather than dropping it in place. Stopping takes two steps at two different times:
+/// [`detach_watch`] signals the thread and unregisters it while the lifecycle lock is held, and
+/// [`join_watch`] waits for it to end once that lock is released.
 struct WatchHandle {
     stop: Arc<AtomicBool>,
     thread: std::thread::JoinHandle<()>,
