@@ -22,7 +22,7 @@
 //!   Operations v1.47.1 cannot perform (milestone description update, single-option AC replace,
 //!   emptying references) are unrepresentable or refused *before* any process starts.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
 
@@ -150,65 +150,95 @@ pub fn probe(cli: &dyn BacklogCli) -> CliStatus {
 // runtime benefit — the ergonomic construction of this public API is worth more than the size
 // symmetry.
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+// `Deserialize` makes this the type the command layer (TASK-33) deserializes the frontend's request
+// straight into, rather than a parallel wire enum copied field-for-field into this one. That is what
+// keeps AC #4 of TASK-33 structural: user input lands in the fixed interface below and reaches the
+// CLI only as an argument-array element, with no boundary code in between that could concatenate it.
+// Tagged `op` and camelCase because doc-4 §3.1's wire contract is camelCase throughout.
+#[serde(tag = "op", rename_all = "camelCase")]
 pub enum UpdateOperation {
     /// `task create` (doc-5 §3). Only the create-time fields doc-5's create row lists.
     TaskCreate(TaskCreate),
     /// `task edit` (doc-5 §3): all combinable content/metadata edits in one call.
+    #[serde(rename_all = "camelCase")]
     TaskEdit { task_id: String, edit: TaskEdit },
     /// `draft promote <DRAFT-N>` — draft → active, re-numbered (doc-5 §3.3).
+    #[serde(rename_all = "camelCase")]
     DraftPromote { draft_id: String },
     /// `draft archive <DRAFT-N>` — draft → archive, id/status kept (doc-5 §3.3).
+    #[serde(rename_all = "camelCase")]
     DraftArchive { draft_id: String },
     /// `task demote <TASK-N>` — active → draft, status kept (doc-5 §3.3).
+    #[serde(rename_all = "camelCase")]
     TaskDemote { task_id: String },
     /// `task archive <TASK-N>` — active → archive, succeeds regardless of status (doc-5 §3).
+    #[serde(rename_all = "camelCase")]
     TaskArchive { task_id: String },
     /// `task complete <TASK-N>` — active → completed. The CLI succeeds only when the task's status
     /// is `Done`; a non-Done task fails with "is not Done" and is reported as a CLI failure
     /// (doc-5 §3/§5) — the adapter does not pre-judge status, the CLI owns that rule.
+    #[serde(rename_all = "camelCase")]
     TaskComplete { task_id: String },
     /// `doc create` (doc-5 §3).
     DocCreate(DocCreate),
     /// `doc update` (doc-5 §3): title / whole-body / type / path / tags.
+    #[serde(rename_all = "camelCase")]
     DocUpdate { doc_id: String, update: DocUpdate },
     /// `milestone add` (doc-5 §3). Description is set only here — v1.47.1 has no update path (§3.1).
+    #[serde(rename_all = "camelCase")]
     MilestoneAdd {
         name: String,
+        #[serde(default)]
         description: Option<String>,
     },
     /// `milestone rename` (doc-5 §3). `update_tasks` false adds `--no-update-tasks`.
+    #[serde(rename_all = "camelCase")]
     MilestoneRename {
         from: String,
         to: String,
         update_tasks: bool,
     },
     /// `milestone remove` (doc-5 §3), with how referencing tasks are handled.
+    #[serde(rename_all = "camelCase")]
     MilestoneRemove {
         name: String,
         task_handling: MilestoneTaskHandling,
     },
     /// `milestone archive` (doc-5 §3).
+    #[serde(rename_all = "camelCase")]
     MilestoneArchive { name: String },
 }
 
 /// `task create` fields (doc-5 §3 create row). Deliberately narrower than [`TaskEdit`]: doc-5's
 /// create map does not include plan/notes/dependencies/references, which are edit-time operations.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+// Only `title` is required — `task create` needs a title and nothing else (doc-5 §3). The rest
+// default so the frontend sends just what the user filled in, rather than a full null-padded record.
+#[serde(rename_all = "camelCase")]
 pub struct TaskCreate {
     pub title: String,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
     pub status: Option<String>,
+    #[serde(default)]
     pub labels: Vec<String>,
+    #[serde(default)]
     pub priority: Option<String>,
+    #[serde(default)]
     pub milestone: Option<String>,
+    #[serde(default)]
     pub acceptance_criteria: Vec<String>,
 }
 
 /// The combinable `task edit` fields (doc-5 §3 edit rows). A single `task edit` call carries every
 /// field set here (doc-5 §3 bullet "1 呼び出しにまとめられる範囲でまとめる"); an edit that sets
 /// nothing is refused before launch ([`RejectReason::NothingToEdit`]).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+// Every field is optional by construction (an unset field leaves that facet untouched), so the whole
+// struct defaults: the frontend sends only the facets the user actually changed.
+#[serde(rename_all = "camelCase", default)]
 pub struct TaskEdit {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -232,7 +262,11 @@ pub struct TaskEdit {
 
 /// Implementation-notes edit (doc-5 §3 "実装計画・ノート"). `--notes` replaces, `--append-notes`
 /// appends; the two are distinct CLI options, so they are distinct here rather than a bool flag.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+// Adjacently tagged rather than internally tagged: `Set`/`Append` carry a bare string, which an
+// internal tag cannot represent (it needs the payload to be a map). `{"mode":"set","text":"…"}` /
+// `{"mode":"keep"}` is the resulting wire shape.
+#[serde(tag = "mode", content = "text", rename_all = "camelCase")]
 pub enum NoteEdit {
     #[default]
     Keep,
@@ -245,41 +279,53 @@ pub enum NoteEdit {
 /// single-option "set all AC" (`--acceptance-criteria` is additive, not a replace), so a replace is
 /// the composite of removing every existing index, adding the new items, and checking the completed
 /// ones by their new index — all in one `task edit` call.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(tag = "mode", rename_all = "camelCase")]
 pub enum AcEdit {
     #[default]
     Keep,
     /// Per-item add/remove/check/uncheck. Indices are 1-based, matching the CLI and the read model.
+    #[serde(rename_all = "camelCase")]
     Delta {
+        #[serde(default)]
         add: Vec<String>,
+        #[serde(default)]
         remove: Vec<u32>,
+        #[serde(default)]
         check: Vec<u32>,
+        #[serde(default)]
         uncheck: Vec<u32>,
     },
     /// Whole-set replacement (doc-5 §3 composite). `existing` is the current AC count (from the read
     /// layer): indices `1..=existing` are removed, `items` are added, and each checked item is
     /// checked at its new 1-based position.
+    #[serde(rename_all = "camelCase")]
     Replace { existing: u32, items: Vec<AcItem> },
 }
 
 /// One acceptance criterion for [`AcEdit::Replace`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AcItem {
     pub text: String,
     pub checked: bool,
 }
 
 /// `doc create` fields (doc-5 §3).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DocCreate {
     pub title: String,
+    #[serde(default)]
     pub doc_type: Option<String>,
+    #[serde(default)]
     pub path: Option<String>,
 }
 
 /// `doc update` fields (doc-5 §3). `content` replaces the whole body (doc-5 §3.1 — no partial
 /// update). Every field is optional; an update that sets nothing is refused before launch.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct DocUpdate {
     pub title: Option<String>,
     pub content: Option<String>,
@@ -290,11 +336,15 @@ pub struct DocUpdate {
 
 /// `milestone remove --task-handling` (doc-5 §3). `Reassign` carries the required target so a
 /// reassign without `--reassign-to` is unrepresentable.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "mode", rename_all = "camelCase")]
 pub enum MilestoneTaskHandling {
     Clear,
     Keep,
-    Reassign { to: String },
+    #[serde(rename_all = "camelCase")]
+    Reassign {
+        to: String,
+    },
 }
 
 // --- planning: operation → invocations (doc-5 §3, AC #1/#5) --------------------------------------
