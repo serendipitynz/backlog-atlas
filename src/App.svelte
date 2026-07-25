@@ -59,9 +59,16 @@
 
   onMount(async () => {
     // Subscribed before the first read so a change landing during startup is not missed.
-    unlisten = await onProjectReloaded((event) => {
-      loadBySlug[event.slug] = event.load;
-    });
+    // Failing to subscribe is the same kind of failure as a watch that will not start — the
+    // screen is one read behind, not unusable — so it must not take the first read down with
+    // it, which would leave 読み込み中 on screen over a workspace that reads perfectly well.
+    try {
+      unlisten = await onProjectReloaded((event) => {
+        loadBySlug[event.slug] = event.load;
+      });
+    } catch (error) {
+      notice = `変更の通知を購読できません（${unreadableDetail(asCommandError(error))}）`;
+    }
     await load();
   });
 
