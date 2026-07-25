@@ -16,7 +16,8 @@
 //! | doc-9 §3 継続検出の提示 | [`PROJECT_RELOADED_EVENT`] | the event carrying a watch-triggered re-read to the frontend |
 //! | doc-9 §4/§5 更新の結末 | [`UpdateResult`] | 更新前競合 (CLI never launched) vs. the CLI ran and returned a verdict |
 //! | doc-5 §5 / decision-7 縮退 | [`CliReadiness`] | whether a supported `backlog` exists, i.e. whether the UI may offer edits at all |
-//! | every layer's failure type | [`CommandError`] | one error type that keeps the core's distinctions (root unreadable / 対象不在 / 縮退 / 拒否 / 照合不能) intact |
+//! | doc-6 §3/§6 コミット検索の結果・Git 対象不在 | [`CommitSearch`] | one task's commit search outcome: searched (possibly 該当なし) / 対象不在 / 読取不能 |
+//! | every layer's failure type | [`CommandError`] | one error type that keeps the core's distinctions (root unreadable / 縮退 / 拒否 / 照合不能) intact |
 //!
 //! ## Read and update stay separate paths (AC #2)
 //!
@@ -170,21 +171,59 @@ impl From<CliStatus> for CliReadiness {
     }
 }
 
-/// One task's Git・Pull Request 履歴 (doc-6). `commits` empty means 該当なし — the repo was searched
-/// and nothing matched — which [`CommandError::NotAGitRepo`] keeps distinct from 対象不在 (doc-6 §6).
+/// One task's Git・Pull Request 履歴 (doc-6 §2): the commit search's outcome, the Pull Request URLs
+/// its References yielded, and the owning project's determined remote host.
 ///
-/// `remote` is the owning project's determined remote host, i.e. the gate doc-6 §5/§6 puts in front
-/// of commit⇄PR relation resolution. The relations themselves are absent on purpose: resolution needs
-/// a `PrCommitSource`, and doc-6 §6 fixes only its *structure*, leaving each host's concrete
-/// reference means (its API, auth, offline behaviour) to a later per-kind addition with its own
-/// dependency decision. Exposing a relation list that is always empty would report "no shared commit"
-/// (a resolved state) for a lookup that never happened, so the field arrives with the source.
+/// `remote` is the gate doc-6 §5/§6 puts in front of commit⇄PR relation resolution. The relations
+/// themselves are absent on purpose: resolution needs a `PrCommitSource`, and doc-6 §6 fixes only its
+/// *structure*, leaving each host's concrete reference means (its API, auth, offline behaviour) to a
+/// later per-kind addition with its own dependency decision. Exposing a relation list that is always
+/// empty would report "no shared commit" (a resolved state) for a lookup that never happened, so the
+/// field arrives with the source.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskHistory {
-    pub commits: Vec<Commit>,
+    pub commits: CommitSearch,
     pub pull_requests: Vec<PullRequestRef>,
     pub remote: Option<RemoteHost>,
+}
+
+/// What became of コミット検索 for one task (doc-6 §3/§6). A `state`-tagged value rather than a
+/// [`CommandError`], because a Git failure must not take the rest of the read with it: decision-6
+/// degrades the Git 履歴欄 *alone* on Git 対象不在, while the Pull Request 区画 — derived from
+/// References, not from Git — stays displayed beside it (doc-8 §4/§5). Failing the whole command
+/// would strip a project whose root is not a Git repository of its PR/References separation too.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum CommitSearch {
+    /// The repository was searched. An empty list is コミット該当なし (decision-6): a neutral state
+    /// — nothing is committed yet — not a failure.
+    Searched { commits: Vec<Commit> },
+    /// Git 対象不在 (doc-6 §6): `project_root` is not a Git repository, so no local history exists.
+    /// Independent of remote 不在, which leaves local history intact (decision-6).
+    // Renamed per variant: the container's `rename_all` renames variants, not their fields.
+    #[serde(rename_all = "camelCase")]
+    NoRepository { project_root: PathBuf },
+    /// The search could not run (`git` not on PATH, or a Git read failed). Distinct from both of the
+    /// above: the target may well exist and simply could not be read.
+    Unreadable { detail: String },
+}
+
+impl CommitSearch {
+    /// Classify one [`history::search_commits`] result. `project_root` is the searched root, carried
+    /// into 対象不在 so the screen can name the path the user has to fix (decision-6 asks for the
+    /// hand-hold, not just the state).
+    fn of(result: Result<Vec<Commit>, HistoryError>, project_root: &Path) -> Self {
+        match result {
+            Ok(commits) => CommitSearch::Searched { commits },
+            Err(HistoryError::NotAGitRepo) => CommitSearch::NoRepository {
+                project_root: project_root.to_path_buf(),
+            },
+            Err(other) => CommitSearch::Unreadable {
+                detail: other.to_string(),
+            },
+        }
+    }
 }
 
 /// What became of one update request (doc-9 §4). Mirrors [`GuardedUpdate`]: the two states are kept
@@ -227,11 +266,8 @@ pub enum CommandError {
     ProjectNotOpen { slug: String },
     /// The id is absent from the open model — including a 解析不能 file, which has no id to match.
     TaskNotFound { slug: String, task_id: String },
-    /// Git 対象不在 (doc-6 §6): the project root is not a Git repository. Distinct from an empty
-    /// commit list, which means the repo was searched and nothing matched (該当なし).
-    NotAGitRepo { project_root: PathBuf },
-    /// `git` could not be run, or a Git read failed for another reason.
-    GitFailed { detail: String },
+    // Git 対象不在 and a failed Git read are *not* here: they are states of one section of one
+    // screen, not of the command, so they travel as [`CommitSearch`] values (decision-6, doc-8 §5).
     /// 縮退 (doc-5 §5, decision-7): no supported `backlog`, so updates are not offered. Carries the
     /// probe result so the UI can say which of "not installed" and "too old" it is.
     UpdatesUnavailable { readiness: CliReadiness },
@@ -271,17 +307,6 @@ impl CommandError {
         CommandError::RootUnreadable {
             slug: slug.to_string(),
             detail: error.to_string(),
-        }
-    }
-
-    fn history(error: HistoryError, project_root: &Path) -> Self {
-        match error {
-            HistoryError::NotAGitRepo => CommandError::NotAGitRepo {
-                project_root: project_root.to_path_buf(),
-            },
-            other => CommandError::GitFailed {
-                detail: other.to_string(),
-            },
         }
     }
 
@@ -393,8 +418,12 @@ impl Workspace {
                 slug: entry.slug.clone(),
                 task_id: task_id.to_string(),
             })?;
-        let commits = history::search_commits(&entry.project_root, task_id)
-            .map_err(|e| CommandError::history(e, &entry.project_root))?;
+        // A Git failure is a value here, not an error: the PR 区画 below it comes from References and
+        // must survive a root that is not a Git repository (decision-6, doc-8 §5).
+        let commits = CommitSearch::of(
+            history::search_commits(&entry.project_root, task_id),
+            &entry.project_root,
+        );
         Ok(TaskHistory {
             commits,
             pull_requests: history::extract_pull_requests(&task.references),
@@ -1494,6 +1523,33 @@ ordinal: 1000\n\
 
     // --- 縮退 and error wire shapes -------------------------------------------------------------
 
+    // decision-6: コミット該当なし (searched, nothing matched) and Git 対象不在 must reach the screen
+    // as different values, and neither may fail the read that carries the PR 区画 beside them.
+    #[test]
+    fn a_commit_search_keeps_該当なし_and_対象不在_apart() {
+        let searched = CommitSearch::of(Ok(vec![]), Path::new("/tmp/x"));
+        let json = serde_json::to_value(&searched).unwrap();
+        assert_eq!(json["state"], "searched");
+        assert_eq!(json["commits"].as_array().unwrap().len(), 0);
+
+        let absent = CommitSearch::of(Err(HistoryError::NotAGitRepo), Path::new("/tmp/x"));
+        let json = serde_json::to_value(&absent).unwrap();
+        assert_eq!(json["state"], "noRepository");
+        assert_eq!(json["projectRoot"], "/tmp/x");
+
+        let unreadable = CommitSearch::of(
+            Err(HistoryError::CommandFailed {
+                args: vec!["log".to_string()],
+                stderr: "fatal: bad revision".to_string(),
+            }),
+            Path::new("/tmp/x"),
+        );
+        assert_eq!(
+            serde_json::to_value(&unreadable).unwrap()["state"],
+            "unreadable"
+        );
+    }
+
     #[test]
     fn an_unsupported_cli_degrades_to_read_only() {
         let readiness: CliReadiness = CliStatus::Unsupported {
@@ -1511,11 +1567,15 @@ ordinal: 1000\n\
 
     #[test]
     fn errors_carry_a_kind_the_frontend_can_branch_on() {
-        let json = serde_json::to_value(CommandError::NotAGitRepo {
-            project_root: PathBuf::from("/tmp/x"),
+        let json = serde_json::to_value(CommandError::TaskNotFound {
+            slug: "atlas".to_string(),
+            task_id: "TASK-404".to_string(),
         })
         .unwrap();
-        assert_eq!(json["kind"], "notAGitRepo");
+        assert_eq!(json["kind"], "taskNotFound");
+        // The variant's fields stay snake_case: serde's container `rename_all` renames variants,
+        // not their fields, and the frontend mirrors what is actually emitted.
+        assert_eq!(json["task_id"], "TASK-404");
 
         // doc-5 §6: a reload failure must say whether the update already landed.
         let json = serde_json::to_value(CommandError::ReloadFailed {
