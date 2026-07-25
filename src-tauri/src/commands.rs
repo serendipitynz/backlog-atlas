@@ -40,9 +40,13 @@
 //!
 //! `(async)` moves the body to the async runtime instead. It is applied uniformly rather than to a
 //! chosen few, because the split would have to be re-justified every time a command gains a call —
-//! and none of these is cheap enough to be worth an exception. The bodies stay synchronous and hold
-//! no lock across an `await` (there is none), so [`Workspace`]'s serialization is unchanged: the
-//! mutex still admits one command at a time. The thread joins are bounded by [`WATCH_POLL`].
+//! and none of these is cheap enough to be worth an exception.
+//!
+//! Getting off the main thread also gives up the serialization the main thread was silently
+//! providing: two invokes can now overlap. That is not a trade this boundary wants — the point was a
+//! responsive UI, not concurrent commands — so [`AtlasState`]'s lifecycle lock puts it back
+//! explicitly, and every command that touches the ledger or the workspace holds it for its whole
+//! body. Read [`AtlasState`] for what breaks without it and for the lock order.
 //!
 //! ## Typed results, including the failures (AC #3)
 //!
@@ -511,13 +515,40 @@ struct WatchHandle {
     thread: std::thread::JoinHandle<()>,
 }
 
-/// Everything the boundary keeps between commands. Two independent locks: a watch thread needs the
-/// workspace while it reloads, so holding the watch lock across a workspace lock (or the reverse)
-/// would deadlock. Every call site takes one at a time — see [`project_close`].
+/// Everything the boundary keeps between commands.
+///
+/// `lifecycle` is the outermost lock and the reason the other two can stay simple. Making the
+/// commands `(async)` took them off the main thread, and with that went the main thread's incidental
+/// serialization: two invokes can now overlap. Two things break under that. The ledger's
+/// load → mutate → save is a read-modify-write on one file, so concurrent mutations would each start
+/// from the same bytes and the last save would discard the other's change. And publishing a moved
+/// entry has to be indivisible from invalidating what the move stales: `ledger_update` writes the new
+/// roots and then closes the session, and in between, an `update_apply` reading the fresh entry would
+/// find the *old* model and read-version index still in the workspace — version-checking the old
+/// root's file and then running the CLI in the new `project_root`, which is exactly the hazard
+/// closing the session exists to prevent.
+///
+/// So every command that mutates the ledger, or reads an entry and then acts on the workspace, holds
+/// `lifecycle` for its whole body. That restores the serialization the main thread used to give,
+/// without putting the work back on the UI thread — which was the only thing `(async)` was for.
+///
+/// Lock order is `lifecycle` → `watches` → `workspace`, never the reverse. A watch thread takes
+/// `lifecycle` then `workspace`, which is the same order, so no cycle exists. The one rule that keeps
+/// it that way: a watch thread is never *joined* while `lifecycle` is held — see [`detach_project`].
 #[derive(Default)]
 pub struct AtlasState {
+    lifecycle: Mutex<()>,
     workspace: Mutex<Workspace>,
     watches: Mutex<BTreeMap<String, WatchHandle>>,
+}
+
+/// Proof that the holder has the lifecycle lock. The ledger accessors take one, so reaching the
+/// ledger without serializing against a concurrent mutation is not something a caller can forget —
+/// it is a missing argument rather than a missing habit.
+struct Lifecycle<'a>(#[allow(dead_code)] MutexGuard<'a, ()>);
+
+fn lifecycle(state: &AtlasState) -> Lifecycle<'_> {
+    Lifecycle(lock(&state.lifecycle))
 }
 
 /// Lock a state mutex, recovering a poisoned one. A panic in one command must not turn every later
@@ -557,10 +588,16 @@ fn watch_loop(app: AppHandle, slug: String, session: WatchSession, stop: Arc<Ato
 /// Re-read a root for the watch, as a [`ProjectLoad`] so a root that just became unreadable is
 /// reported on its row instead of silently ending the watch (doc-7 §6).
 fn reload_for_watch(app: &AppHandle, slug: &str) -> ProjectLoad {
+    let state = app.state::<AtlasState>();
+    // Under the lifecycle lock like any other ledger reader, so a batch landing mid-move cannot read
+    // a half-written ledger or pair a fresh entry with a session about to be closed. Safe from
+    // deadlock only because nothing joins a watch thread while holding this lock (see
+    // [`detach_project`]) — that is the invariant this line depends on.
+    let lifecycle = lifecycle(&state);
     // The ledger is re-read per batch rather than captured when the watch started: 別名表 is a ledger
     // attribute the user may change while the watch runs (doc-3 §3.3), and the interpretation this
     // event carries has to use the current table.
-    let entry = match entry_for(app, slug) {
+    let entry = match entry_for(app, &lifecycle, slug) {
         Ok(entry) => entry,
         Err(error) => {
             return ProjectLoad::Unreadable {
@@ -570,7 +607,6 @@ fn reload_for_watch(app: &AppHandle, slug: &str) -> ProjectLoad {
         }
     };
     let source = WorkingTree::new(&entry.backlog_root);
-    let state = app.state::<AtlasState>();
     let mut workspace = lock(&state.workspace);
     match workspace.reload(&entry, ReloadReason::ExternalChange, &source, &FsVersions) {
         Ok(project) => ProjectLoad::Loaded { project },
@@ -581,11 +617,40 @@ fn reload_for_watch(app: &AppHandle, slug: &str) -> ProjectLoad {
     }
 }
 
-/// Stop a watch and wait for its thread. Callers must not hold the workspace lock here: the thread
-/// may be inside a reload that needs it, and joining while holding it would deadlock.
-fn stop_watch(handle: WatchHandle) {
-    handle.stop.store(true, Ordering::Relaxed);
-    let _ = handle.thread.join();
+/// Deregister a root's watch and signal it to stop, returning its thread for the caller to join.
+///
+/// The join deliberately does not happen here. A watch thread takes the lifecycle lock to re-read the
+/// ledger, and every caller of this function holds that lock — joining under it would wait forever
+/// for a thread that is itself waiting for the lock. So the thread is signalled and unregistered
+/// while the lock is held (which is what makes it indivisible from the ledger write that staled it),
+/// and [`join_watch`] finishes the job once the lock is released.
+#[must_use = "the detached watch thread must be joined by the caller once the lifecycle lock is released"]
+fn detach_watch(state: &AtlasState, _lifecycle: &Lifecycle<'_>, slug: &str) -> Option<WatchHandle> {
+    let handle = lock(&state.watches).remove(slug);
+    if let Some(handle) = &handle {
+        handle.stop.store(true, Ordering::Relaxed);
+    }
+    handle
+}
+
+/// [`detach_watch`] plus dropping the open session, for when the root itself is going away.
+#[must_use = "the detached watch thread must be joined by the caller once the lifecycle lock is released"]
+fn detach_project(
+    state: &AtlasState,
+    lifecycle: &Lifecycle<'_>,
+    slug: &str,
+) -> Option<WatchHandle> {
+    let handle = detach_watch(state, lifecycle, slug);
+    lock(&state.workspace).close(slug);
+    handle
+}
+
+/// Wait for a detached watch thread. Must be called with the lifecycle lock released; the command
+/// still waits before it returns, so by the time the frontend has its answer the thread is gone.
+fn join_watch(handle: Option<WatchHandle>) {
+    if let Some(handle) = handle {
+        let _ = handle.thread.join();
+    }
 }
 
 // --- ledger plumbing ----------------------------------------------------------------------------
@@ -602,14 +667,18 @@ fn ledger_path(app: &AppHandle) -> Result<PathBuf, CommandError> {
     Ok(dir.join("projects.toml"))
 }
 
-fn load_ledger(app: &AppHandle) -> Result<LoadedLedger, CommandError> {
+fn load_ledger(app: &AppHandle, _lifecycle: &Lifecycle<'_>) -> Result<LoadedLedger, CommandError> {
     let path = ledger_path(app)?;
     Ok(LoadedLedger::load(&path)?)
 }
 
 /// The ledger entry for `slug`, cloned so no ledger borrow outlives the lookup.
-fn entry_for(app: &AppHandle, slug: &str) -> Result<ProjectEntry, CommandError> {
-    load_ledger(app)?
+fn entry_for(
+    app: &AppHandle,
+    lifecycle: &Lifecycle<'_>,
+    slug: &str,
+) -> Result<ProjectEntry, CommandError> {
+    load_ledger(app, lifecycle)?
         .ledger
         .projects
         .iter()
@@ -646,7 +715,11 @@ impl From<LoadedLedger> for LedgerResponse {
 /// `op` returns whatever the caller needs to observe about the mutation — the value comes back
 /// alongside the saved state, so a command can compare the entry before and after without re-reading
 /// the file it just wrote.
-fn mutate_ledger<F, T>(app: &AppHandle, op: F) -> Result<(T, LedgerResponse), CommandError>
+fn mutate_ledger<F, T>(
+    app: &AppHandle,
+    _lifecycle: &Lifecycle<'_>,
+    op: F,
+) -> Result<(T, LedgerResponse), CommandError>
 where
     F: FnOnce(&mut Ledger) -> Result<T, LedgerError>,
 {
@@ -660,16 +733,25 @@ where
 // --- commands: ledger (doc-3) -------------------------------------------------------------------
 
 #[tauri::command(async)]
-pub fn ledger_list(app: AppHandle) -> Result<LedgerResponse, CommandError> {
-    Ok(load_ledger(&app)?.into())
+pub fn ledger_list(
+    app: AppHandle,
+    state: State<'_, AtlasState>,
+) -> Result<LedgerResponse, CommandError> {
+    let lifecycle = lifecycle(&state);
+    Ok(load_ledger(&app, &lifecycle)?.into())
 }
 
 #[tauri::command(async)]
 pub fn ledger_register(
     app: AppHandle,
+    state: State<'_, AtlasState>,
     request: RegisterRequest,
 ) -> Result<LedgerResponse, CommandError> {
-    Ok(mutate_ledger(&app, |ledger| ledger.register(&request).map(|_| ()))?.1)
+    let lifecycle = lifecycle(&state);
+    Ok(mutate_ledger(&app, &lifecycle, |ledger| {
+        ledger.register(&request).map(|_| ())
+    })?
+    .1)
 }
 
 /// Remove a project from the ledger and let go of it: an unregistered project must not keep a watch
@@ -680,8 +762,15 @@ pub fn ledger_remove(
     state: State<'_, AtlasState>,
     slug: String,
 ) -> Result<LedgerResponse, CommandError> {
-    let (_, response) = mutate_ledger(&app, |ledger| ledger.remove(&slug).map(|_| ()))?;
-    close_project(&state, &slug);
+    // The removal and the detach share one lifecycle lock, so no command can observe an entry that
+    // is gone from the ledger while its session is still open.
+    let (response, detached) = {
+        let lifecycle = lifecycle(&state);
+        let (_, response) =
+            mutate_ledger(&app, &lifecycle, |ledger| ledger.remove(&slug).map(|_| ()))?;
+        (response, detach_project(&state, &lifecycle, &slug))
+    };
+    join_watch(detached);
     Ok(response)
 }
 
@@ -708,20 +797,32 @@ fn entry_roots(ledger: &Ledger, slug: &str) -> Option<(PathBuf, PathBuf)> {
 /// set of files, so there is no model to refresh — the frontend reopens the project and gets a read
 /// that never mixes the two. Only a move triggers it; an alias-only edit leaves the session alone,
 /// because the interpretation is computed per call and picks the new table up without a re-read.
+///
+/// Writing the entry and detaching the session happen under one lifecycle lock. Splitting them would
+/// leave a window in which the new roots are already published while the stale session is still open
+/// — and an `update_apply` landing in that window is precisely the hazard above, now reachable
+/// concurrently rather than only across calls.
 #[tauri::command(async)]
 pub fn ledger_update(
     app: AppHandle,
     state: State<'_, AtlasState>,
     request: UpdateRequest,
 ) -> Result<LedgerResponse, CommandError> {
-    let (moved, response) = mutate_ledger(&app, |ledger| {
-        let before = entry_roots(ledger, &request.slug);
-        let after = ledger.update(&request)?;
-        Ok(before != Some((after.project_root, after.backlog_root)))
-    })?;
-    if moved {
-        close_project(&state, &request.slug);
-    }
+    let (response, detached) = {
+        let lifecycle = lifecycle(&state);
+        let (moved, response) = mutate_ledger(&app, &lifecycle, |ledger| {
+            let before = entry_roots(ledger, &request.slug);
+            let after = ledger.update(&request)?;
+            Ok(before != Some((after.project_root, after.backlog_root)))
+        })?;
+        let detached = if moved {
+            detach_project(&state, &lifecycle, &request.slug)
+        } else {
+            None
+        };
+        (response, detached)
+    };
+    join_watch(detached);
     Ok(response)
 }
 
@@ -731,11 +832,13 @@ pub fn ledger_update(
 #[tauri::command(async)]
 pub fn cross_task_id_generate(
     app: AppHandle,
+    state: State<'_, AtlasState>,
     slug: String,
     task_id: String,
     task_prefix: String,
 ) -> Result<String, CommandError> {
-    Ok(load_ledger(&app)?
+    let lifecycle = lifecycle(&state);
+    Ok(load_ledger(&app, &lifecycle)?
         .ledger
         .generate_cross_task_id(&slug, &task_id, &task_prefix)?)
 }
@@ -745,11 +848,13 @@ pub fn cross_task_id_generate(
 #[tauri::command(async)]
 pub fn cross_task_id_parse(
     app: AppHandle,
+    state: State<'_, AtlasState>,
     input: String,
     task_prefix: String,
     context_slug: Option<String>,
 ) -> Result<ParsedTaskRef, CommandError> {
-    Ok(load_ledger(&app)?.ledger.parse_cross_task_id(
+    let lifecycle = lifecycle(&state);
+    Ok(load_ledger(&app, &lifecycle)?.ledger.parse_cross_task_id(
         &input,
         &task_prefix,
         context_slug.as_deref(),
@@ -766,7 +871,8 @@ pub fn workspace_open(
     app: AppHandle,
     state: State<'_, AtlasState>,
 ) -> Result<Vec<ProjectLoad>, CommandError> {
-    let ledger = load_ledger(&app)?.ledger;
+    let lifecycle = lifecycle(&state);
+    let ledger = load_ledger(&app, &lifecycle)?.ledger;
     let mut workspace = lock(&state.workspace);
     Ok(ledger
         .projects
@@ -792,7 +898,10 @@ pub fn project_open(
     state: State<'_, AtlasState>,
     slug: String,
 ) -> Result<ProjectSnapshot, CommandError> {
-    let entry = entry_for(&app, &slug)?;
+    // The lifecycle lock spans reading the entry and opening it, so the model and read-version index
+    // this builds cannot come from an entry another command has already replaced.
+    let lifecycle = lifecycle(&state);
+    let entry = entry_for(&app, &lifecycle, &slug)?;
     let source = WorkingTree::new(&entry.backlog_root);
     lock(&state.workspace).open(&entry, &source, &FsVersions)
 }
@@ -800,17 +909,11 @@ pub fn project_open(
 /// Close one root: stop its watch and drop its session and read-version index.
 #[tauri::command(async)]
 pub fn project_close(state: State<'_, AtlasState>, slug: String) {
-    close_project(&state, &slug);
-}
-
-/// Stop the watch first, then drop the session — and never hold both locks at once, because the
-/// watch thread takes the workspace lock while reloading (see [`AtlasState`]).
-fn close_project(state: &AtlasState, slug: &str) {
-    let handle = lock(&state.watches).remove(slug);
-    if let Some(handle) = handle {
-        stop_watch(handle);
-    }
-    lock(&state.workspace).close(slug);
+    let detached = {
+        let lifecycle = lifecycle(&state);
+        detach_project(&state, &lifecycle, &slug)
+    };
+    join_watch(detached);
 }
 
 /// Start 継続検出 for one root (doc-9 §3): subscribe to its OS change notifications and push each
@@ -823,7 +926,8 @@ pub fn project_watch_start(
     state: State<'_, AtlasState>,
     slug: String,
 ) -> Result<(), CommandError> {
-    let entry = entry_for(&app, &slug)?;
+    let lifecycle = lifecycle(&state);
+    let entry = entry_for(&app, &lifecycle, &slug)?;
     let mut watches = lock(&state.watches);
     if watches.contains_key(&slug) {
         return Ok(());
@@ -845,14 +949,15 @@ pub fn project_watch_start(
     Ok(())
 }
 
-/// Stop 継続検出 for one root, leaving its session open. The workspace lock is deliberately not held
-/// while the thread is joined (see [`AtlasState`]).
+/// Stop 継続検出 for one root, leaving its session open. The thread is joined after the lifecycle lock
+/// is released (see [`detach_watch`]).
 #[tauri::command(async)]
 pub fn project_watch_stop(state: State<'_, AtlasState>, slug: String) {
-    let handle = lock(&state.watches).remove(&slug);
-    if let Some(handle) = handle {
-        stop_watch(handle);
-    }
+    let detached = {
+        let lifecycle = lifecycle(&state);
+        detach_watch(&state, &lifecycle, &slug)
+    };
+    join_watch(detached);
 }
 
 /// One task's commits and Pull Request URLs (doc-6). Read-only: `git log` and `git remote` with fixed
@@ -864,7 +969,8 @@ pub fn task_history_read(
     slug: String,
     task_id: String,
 ) -> Result<TaskHistory, CommandError> {
-    let entry = entry_for(&app, &slug)?;
+    let lifecycle = lifecycle(&state);
+    let entry = entry_for(&app, &lifecycle, &slug)?;
     lock(&state.workspace).history(&entry, &task_id)
 }
 
@@ -890,7 +996,11 @@ pub fn update_apply(
     slug: String,
     action: Vec<UpdateOperation>,
 ) -> Result<UpdateResult, CommandError> {
-    let entry = entry_for(&app, &slug)?;
+    // Held across the whole update, not just the entry read: the pairing of "this entry's roots" with
+    // "this session's model and read-version index" is what doc-9 §4 checks against, and a ledger move
+    // landing between the two would break exactly that pairing.
+    let lifecycle = lifecycle(&state);
+    let entry = entry_for(&app, &lifecycle, &slug)?;
     let cli = SystemBacklog;
     // 縮退 (doc-5 §5): without a supported CLI there is no capability to hand `apply`, so the update
     // is refused here — the type below cannot be constructed any other way.
@@ -1428,6 +1538,59 @@ ordinal: 1000\n\
         assert_eq!(json["state"], "unreadable");
         assert_eq!(json["slug"], "atlas");
         assert_eq!(json["error"]["kind"], "rootUnreadable");
+    }
+
+    /// A watch thread takes the lifecycle lock to re-read the ledger, so a detach that joined while
+    /// holding that lock would wait for a thread that is waiting for the lock — the deadlock the
+    /// detach/join split exists to avoid. Here the thread stands in for that: it cannot finish until
+    /// the lock is free, so the detach can only return promptly if it did not join.
+    #[test]
+    fn detaching_a_watch_does_not_join_it_under_the_lifecycle_lock() {
+        let state = Arc::new(AtlasState::default());
+        // Taken before the thread exists, so the thread is certain to find the lock held.
+        let held = lifecycle(&state);
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread = std::thread::spawn({
+            let state = Arc::clone(&state);
+            move || {
+                // Gives up after a bounded wait so a regression fails the assertion below instead of
+                // hanging the suite.
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                while std::time::Instant::now() < deadline {
+                    if state.lifecycle.try_lock().is_ok() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        });
+        lock(&state.watches).insert(
+            "atlas".to_string(),
+            WatchHandle {
+                stop: Arc::clone(&stop),
+                thread,
+            },
+        );
+
+        let started = std::time::Instant::now();
+        let detached = detach_watch(&state, &held, "atlas");
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "detach must not block on the watch thread while holding the lifecycle lock"
+        );
+        assert!(detached.is_some(), "the handle must come back to be joined");
+        assert!(
+            stop.load(Ordering::Relaxed),
+            "the thread must be signalled while the lock is held, so the stale watch cannot outlive \
+             the ledger write that staled it"
+        );
+        assert!(
+            lock(&state.watches).is_empty(),
+            "a detached watch must be out of the registry before the lock is released"
+        );
+
+        drop(held);
+        join_watch(detached);
     }
 
     /// A move must be detected, because an open session keeps a model and a read-version index built
