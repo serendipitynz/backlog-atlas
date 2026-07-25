@@ -4,7 +4,7 @@ title: タスク詳細画面の表示系（Type/References/PR/Git 履歴/縮退�
 status: In Progress
 assignee: []
 created_date: '2026-07-22 12:07'
-updated_date: '2026-07-25 08:29'
+updated_date: '2026-07-25 10:27'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -26,7 +26,7 @@ doc-8 §3-5 の設計に従い、1タスクの全項目を1画面で見せる詳
 - [x] #1 見出しに横断タスクID+title・status（正準対応併記）・priority・assignee・milestone を出す
 - [x] #2 Type と通常ラベルを別区画に分離し、Pull Request URL を References と分離して独立表示する
 - [x] #3 Description・AC（checked 可視化）・実装計画/ノート・dependencies（未解決印）を表示する
-- [x] #4 Git 履歴欄にコミット一覧（新しい順）と関連 PR を出し、0件時は対応コミット無しを示す
+- [ ] #4 Git 履歴欄にコミット一覧（新しい順）と関連 PR を出し、0件時は対応コミット無しを示す
 - [x] #5 縮退時は判別できた項目のみ出して不足を明示し、参照系はどの保存区分でも読み取り表示する
 <!-- AC:END -->
 
@@ -71,4 +71,26 @@ doc-8 §3–§5 の表示系（見出し・Type/通常ラベル分離・Descript
 - `npm run check`（svelte-check）: 0 errors / 0 warnings。`npm run build`: ok。
 - `cargo fmt --check` / `cargo clippy --all-targets -D warnings` / `cargo test`: clean（207 passed, 1 ignored。`CommitSearch` の wire 形と 該当なし／対象不在／読取不能 の区別のテストを追加）。
 - 目視確認: fixture データの一時ページを vite dev 上で headless Chrome にレンダリングし、(a) 正常タスク（PR/References 分離・AC 2/3・未解決 dependency・コミット 2 件＋関連解決の状態）、(b) 解析不能タスク（TASK-ID 不明・status を読めません・PR 抽出不可の明示・縮退区画と保持された未知セクション）、(c) 未対応 status ＋ completed ＋ コミット該当なし ＋ remote 不在、(d) Git 対象不在、(e) スイムレーンと詳細パネルの二枚組（グリッドが幅を譲って横スクロールし、パネルが独立スクロールする）を確認した。一時ページは確認後に削除済み。
+
+## レビュー第1ラウンド対応（PR #11）
+
+### AC #4 の再スコープ（[P1]）
+
+AC #4 の「関連 PR を出し」は**未完了に戻した**。関連解決には remote ホスト種別ごとの参照手段（ホストの API 等）が必要で、doc-6 §6 はそれを「種別ごとの後追加・別途依存判断」としており、TASK-30 は `PrCommitSource` trait の構造だけを固定して実装を送りにしている。したがって本タスクの Git 履歴欄は、コミット一覧と関連解決の**状態**（remote ホスト判別済み／Git remote 不在／ホスト種別判別不能／未照会）までしか出せない。これは doc-8 §5 の縮退経路（「コミット一覧と Pull Request 区画を各々独立に出し、関連が解決できないことを対象不在と区別して示す」）としては満たしているが、解決済み経路である「各コミットに関連 Pull Request を紐づけて示す」は未達である。実装を TASK-43 に切り出し、AC #4 は未チェックのまま残す。
+
+### PR URL 抽出を interpretation 層へ移した（[P2]）
+
+doc-6 §4 の PR 抽出の入力は References だけで、コミット検索（doc-6 §3）だけが TASK-ID を鍵に取る。当初は両方を `task_history_read`（TASK-ID 鍵）に載せていたため、TASK-ID を読めない解析不能タスクでは PR 抽出まで止まり、References を未分離で出すことになっていた。これは doc-4 §5 の「判別できたフィールドは活かす」に反する。抽出を `TaskInterpretation.pull_requests`（doc-6 §4 の規則自体は `history.rs` に 1 か所のまま）へ移し、スナップショットと一緒に届くようにした。結果として:
+
+- 解析不能タスクでも PR 区画と References 区画が分離される（doc-8 §4 がどのタスクでも成立）。
+- `TaskHistory` は Git を要する部分（`commits`・`remote`）だけになり、境界上の PR 一覧の二重化も消えた。
+- 詳細画面の参照分離は同期関数になり、履歴読み取りの状態に依存しなくなった。
+
+### 履歴 state を選択タスクに結び付けた（[P2]）
+
+`historyRead` に `historyKey`（slug と TASK-ID の JSON 直列化）を持たせ、パネルは現在の選択と一致する読み取りだけを表示する。選択を変えた瞬間に key が変わるので前タスクのコミットが残らず、選択が動いた後に届いた応答は破棄する。
+
+### App.svelte の NUL バイトを除去（[P2]）
+
+`historyKey` の区切りに実 NUL バイトを使っていたため Git が Svelte ソース全体を binary と判定し、行差分が出なくなっていた。`JSON.stringify` による直列化に置き換えた（衝突しない・ASCII のみ）。`git diff main -- src/App.svelte` は行差分に戻っている。
 <!-- SECTION:NOTES:END -->
