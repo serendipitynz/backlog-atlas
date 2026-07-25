@@ -4,16 +4,24 @@
  */
 
 import type {
+  AcceptanceCriterion,
+  Commit,
+  CommitSearch,
   Config,
+  Milestone,
+  ProjectEntry,
   ProjectLoad,
   ProjectSnapshot,
+  PullRequestRef,
   StatusColumn,
   StatusMapping,
   StorageState,
   Task,
   TaskHealth,
+  TaskHistory,
   TaskView,
   TypeValue,
+  UnknownSection,
 } from "./wire";
 
 export const CONFIG: Config = {
@@ -41,6 +49,16 @@ export interface TaskViewOptions {
   assignee?: string[];
   health?: TaskHealth;
   sourcePath?: string;
+  milestone?: string | null;
+  dependencies?: string[];
+  references?: string[];
+  documentation?: string[];
+  description?: string | null;
+  acceptanceCriteria?: AcceptanceCriterion[];
+  implementationPlan?: string | null;
+  implementationNotes?: string | null;
+  unknownSections?: UnknownSection[];
+  createdDate?: string | null;
 }
 
 export function taskView(options: TaskViewOptions = {}): TaskView {
@@ -58,17 +76,17 @@ export function taskView(options: TaskViewOptions = {}): TaskView {
     assignee: options.assignee ?? [],
     priority: options.priority ?? null,
     ordinal: options.ordinal ?? null,
-    milestone: null,
-    createdDate: null,
+    milestone: options.milestone ?? null,
+    createdDate: options.createdDate ?? null,
     updatedDate: options.updatedDate ?? null,
-    dependencies: [],
-    documentation: [],
-    references: [],
-    description: null,
-    acceptanceCriteria: [],
-    implementationPlan: null,
-    implementationNotes: null,
-    unknownSections: [],
+    dependencies: options.dependencies ?? [],
+    documentation: options.documentation ?? [],
+    references: options.references ?? [],
+    description: options.description ?? null,
+    acceptanceCriteria: options.acceptanceCriteria ?? [],
+    implementationPlan: options.implementationPlan ?? null,
+    implementationNotes: options.implementationNotes ?? null,
+    unknownSections: options.unknownSections ?? [],
     health: options.health ?? { state: "ok" },
   };
 
@@ -88,16 +106,49 @@ export function type(value: string, known = true): TypeValue {
   return { value, known };
 }
 
+export function snapshot(
+  slug: string,
+  tasks: TaskView[],
+  milestones: Milestone[] = [],
+): ProjectSnapshot {
+  return { slug, config: CONFIG, tasks, milestones, documents: [], decisions: [] };
+}
+
 export function loaded(slug: string, tasks: TaskView[]): ProjectLoad {
-  const project: ProjectSnapshot = {
+  return { state: "loaded", project: snapshot(slug, tasks) };
+}
+
+export function entry(slug: string, gitRemotePresent = true): ProjectEntry {
+  return {
     slug,
-    config: CONFIG,
-    tasks,
-    milestones: [],
-    documents: [],
-    decisions: [],
+    project_root: `/repos/${slug}`,
+    backlog_root: `/repos/${slug}/backlog`,
+    git_remote_present: gitRemotePresent,
   };
-  return { state: "loaded", project };
+}
+
+export function commit(id: string, summary: string, date = "2026-07-20T10:00:00+09:00"): Commit {
+  return { id, shortId: id.slice(0, 7), summary, date, author: "Someone" };
+}
+
+export function pullRequest(url: string, number: number | null = null): PullRequestRef {
+  return { url, host: "gitHub", owner: "serendipitynz", repo: "backlog-atlas", number };
+}
+
+export function history(options: {
+  commits?: CommitSearch;
+  pullRequests?: PullRequestRef[];
+  remote?: TaskHistory["remote"];
+} = {}): TaskHistory {
+  return {
+    commits: options.commits ?? { state: "searched", commits: [] },
+    pullRequests: options.pullRequests ?? [],
+    // `null` is a meaningful value here (remote 不在 / 判別不能), so only an absent key defaults.
+    remote:
+      options.remote === undefined
+        ? { kind: "gitHub", owner: "serendipitynz", repo: "backlog-atlas" }
+        : options.remote,
+  };
 }
 
 export function unreadable(slug: string, detail = "config.yml not found"): ProjectLoad {
