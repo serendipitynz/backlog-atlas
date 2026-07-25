@@ -148,6 +148,62 @@ export interface ProjectSnapshot {
   decisions: Decision[];
 }
 
+// --- Git・Pull Request 履歴 (doc-6, TASK-30) ------------------------------------------------
+
+/** A remote host kind Atlas can act on (doc-6 §5). An unrecognized host is `null`, not a value. */
+export type RemoteHostKind = "gitHub";
+
+/** One commit found by コミット検索 (doc-6 §3). `date` is strict ISO 8601 (git's `%aI`). */
+export interface Commit {
+  /** Full SHA — the key relation resolution matches on. */
+  id: string;
+  /** git's abbreviation, for display. */
+  shortId: string;
+  summary: string;
+  date: string;
+  author: string;
+}
+
+/**
+ * A Pull Request URL selected from a task's References by the PR URL 抽出規則 (doc-6 §4). The
+ * coordinates are filled only where the URL's shape decides them; `url` is always verbatim.
+ */
+export interface PullRequestRef {
+  url: string;
+  host: RemoteHostKind | null;
+  owner: string | null;
+  repo: string | null;
+  number: number | null;
+}
+
+/** The owning project's determined remote host (doc-6 §5) — the gate on 関連解決. */
+export interface RemoteHost {
+  kind: RemoteHostKind;
+  owner: string;
+  repo: string;
+}
+
+/**
+ * What became of コミット検索 (doc-6 §3/§6, decision-6). Three distinct facts, never one empty
+ * display: `searched` with no commits is コミット該当なし (neutral — nothing committed yet),
+ * `noRepository` is Git 対象不在, `unreadable` is a Git read that failed.
+ */
+export type CommitSearch =
+  | { state: "searched"; commits: Commit[] }
+  | { state: "noRepository"; projectRoot: string }
+  | { state: "unreadable"; detail: string };
+
+/**
+ * One task's Git・PR 履歴 (doc-6 §2). `remote` is the 関連解決 gate; relations themselves are
+ * absent until a host's reference means exists (doc-6 §6 leaves that to a per-kind addition),
+ * which is why the screen states that relations were not resolved instead of showing none.
+ */
+export interface TaskHistory {
+  commits: CommitSearch;
+  pullRequests: PullRequestRef[];
+  remote: RemoteHost | null;
+}
+
 // --- ledger (doc-3) ------------------------------------------------------------------------
 
 /**
@@ -210,8 +266,8 @@ export type CommandError =
   | { kind: "unknownProject"; slug: string }
   | { kind: "projectNotOpen"; slug: string }
   | { kind: "taskNotFound"; slug: string; task_id: string }
-  | { kind: "notAGitRepo"; project_root: string }
-  | { kind: "gitFailed"; detail: string }
+  // Git 対象不在 / a failed Git read are not errors here: they are `CommitSearch` states, so a
+  // root that is no Git repository still returns its Pull Request 区画 (decision-6, doc-8 §5).
   | { kind: "updatesUnavailable"; readiness: CliReadiness }
   | { kind: "updateRejected"; detail: string }
   | { kind: "uncheckableTarget"; what: string; detail: string }

@@ -18,6 +18,7 @@ import type {
   ProjectLoad,
   ProjectSnapshot,
   ReloadEvent,
+  TaskHistory,
   UpdateRequest,
 } from "./wire";
 
@@ -63,6 +64,15 @@ export function projectWatchStart(slug: string): Promise<void> {
 
 export function projectWatchStop(slug: string): Promise<void> {
   return invoke<void>("project_watch_stop", { slug });
+}
+
+/**
+ * One task's コミット一覧・Pull Request URL・remote ホスト (doc-6). Read-only, and it does not fail
+ * for Git reasons — Git 対象不在 arrives inside `commits` so the PR 区画 survives it (decision-6).
+ * The project must be open: the References it extracts PR URLs from come from the read model.
+ */
+export function taskHistoryRead(slug: string, taskId: string): Promise<TaskHistory> {
+  return invoke<TaskHistory>("task_history_read", { slug, taskId });
 }
 
 /** Subscribe to watch-triggered re-reads. Resolves to the unsubscribe function. */

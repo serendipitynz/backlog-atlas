@@ -167,7 +167,6 @@ export function unreadableDetail(error: CommandError): string {
     case "rootUnreadable":
     case "ledger":
     case "watchFailed":
-    case "gitFailed":
     case "updateRejected":
     case "versionProbeFailed":
     case "reloadFailed":
