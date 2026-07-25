@@ -30,6 +30,20 @@
 //!   only [`update::probe`] can produce. A missing or too-old CLI therefore cannot reach an update:
 //!   it is refused with [`CommandError::UpdatesUnavailable`] before anything runs (doc-5 §5 縮退).
 //!
+//! ## Every command is `(async)`
+//!
+//! Tauri runs a plain `#[tauri::command]` on the main thread, which is also the thread driving the
+//! WebView's event loop. Every command here blocks: the ledger ones read and write a file, the read
+//! ones scan whole Backlog roots, [`task_history_read`] and [`update_apply`] wait on subprocesses,
+//! and [`project_close`] / [`project_watch_stop`] join a watch thread. On a real repository with a
+//! slow CLI that would freeze the UI for the duration of an `invoke`.
+//!
+//! `(async)` moves the body to the async runtime instead. It is applied uniformly rather than to a
+//! chosen few, because the split would have to be re-justified every time a command gains a call —
+//! and none of these is cheap enough to be worth an exception. The bodies stay synchronous and hold
+//! no lock across an `await` (there is none), so [`Workspace`]'s serialization is unchanged: the
+//! mutex still admits one command at a time. The thread joins are bounded by [`WATCH_POLL`].
+//!
 //! ## Typed results, including the failures (AC #3)
 //!
 //! Nothing here collapses into a bare string. [`CommandError`] carries one variant per failure the
@@ -629,57 +643,92 @@ impl From<LoadedLedger> for LedgerResponse {
 /// Load the ledger, apply `op`, save, and return the resulting state. The read-only guard in
 /// `LoadedLedger::save` keeps an unknown newer file from being clobbered, so a mutating command
 /// against a read-only ledger fails at save rather than here.
-fn mutate_ledger<F>(app: &AppHandle, op: F) -> Result<LedgerResponse, CommandError>
+/// `op` returns whatever the caller needs to observe about the mutation — the value comes back
+/// alongside the saved state, so a command can compare the entry before and after without re-reading
+/// the file it just wrote.
+fn mutate_ledger<F, T>(app: &AppHandle, op: F) -> Result<(T, LedgerResponse), CommandError>
 where
-    F: FnOnce(&mut Ledger) -> Result<(), LedgerError>,
+    F: FnOnce(&mut Ledger) -> Result<T, LedgerError>,
 {
     let path = ledger_path(app)?;
     let mut loaded = LoadedLedger::load(&path)?;
-    op(&mut loaded.ledger)?;
+    let observed = op(&mut loaded.ledger)?;
     loaded.save(&path)?;
-    Ok(loaded.into())
+    Ok((observed, loaded.into()))
 }
 
 // --- commands: ledger (doc-3) -------------------------------------------------------------------
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ledger_list(app: AppHandle) -> Result<LedgerResponse, CommandError> {
     Ok(load_ledger(&app)?.into())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ledger_register(
     app: AppHandle,
     request: RegisterRequest,
 ) -> Result<LedgerResponse, CommandError> {
-    mutate_ledger(&app, |ledger| ledger.register(&request).map(|_| ()))
+    Ok(mutate_ledger(&app, |ledger| ledger.register(&request).map(|_| ()))?.1)
 }
 
 /// Remove a project from the ledger and let go of it: an unregistered project must not keep a watch
 /// running or a session open against a root Atlas no longer manages.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ledger_remove(
     app: AppHandle,
     state: State<'_, AtlasState>,
     slug: String,
 ) -> Result<LedgerResponse, CommandError> {
-    let response = mutate_ledger(&app, |ledger| ledger.remove(&slug).map(|_| ()))?;
+    let (_, response) = mutate_ledger(&app, |ledger| ledger.remove(&slug).map(|_| ()))?;
     close_project(&state, &slug);
     Ok(response)
 }
 
-#[tauri::command]
+/// The roots an open session and its watch are bound to. `None` when the ledger has no such entry —
+/// which, compared against a post-update entry, reads as "moved" and is the safe answer either way.
+fn entry_roots(ledger: &Ledger, slug: &str) -> Option<(PathBuf, PathBuf)> {
+    ledger
+        .projects
+        .iter()
+        .find(|entry| entry.slug == slug)
+        .map(|entry| (entry.project_root.clone(), entry.backlog_root.clone()))
+}
+
+/// Update a ledger entry, and let go of the open root when the update moved it. A session pairs a
+/// model with the read-version index it was built from (doc-9 §4), and both are bound to the roots
+/// the entry had when it was opened — while a watch is bound to that `backlog_root`. `Ledger::update`
+/// can change both roots at once (doc-3 §4.3), and the slug that keys the session stays the same, so
+/// nothing else would notice: the next `update_apply` would version-check the *old* root's file and
+/// then run the CLI in the *new* `project_root`, letting an edit pass the doc-9 §4 check against
+/// unrelated bytes and overwrite a task that changed underneath it. The watch would likewise keep
+/// reporting the root the project no longer lives in.
+///
+/// Closing is the honest response rather than re-initializing in place: a moved root is a different
+/// set of files, so there is no model to refresh — the frontend reopens the project and gets a read
+/// that never mixes the two. Only a move triggers it; an alias-only edit leaves the session alone,
+/// because the interpretation is computed per call and picks the new table up without a re-read.
+#[tauri::command(async)]
 pub fn ledger_update(
     app: AppHandle,
+    state: State<'_, AtlasState>,
     request: UpdateRequest,
 ) -> Result<LedgerResponse, CommandError> {
-    mutate_ledger(&app, |ledger| ledger.update(&request).map(|_| ()))
+    let (moved, response) = mutate_ledger(&app, |ledger| {
+        let before = entry_roots(ledger, &request.slug);
+        let after = ledger.update(&request)?;
+        Ok(before != Some((after.project_root, after.backlog_root)))
+    })?;
+    if moved {
+        close_project(&state, &request.slug);
+    }
+    Ok(response)
 }
 
 /// Build a cross-task-id `<slug>:<TASK-ID>` for display (doc-3 §5.1). Validates the slug against the
 /// live ledger and the id against `task_prefix`, so it can only produce ids the parser accepts;
 /// `task_prefix` is resolved by the caller from the referenced project's config.yml.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cross_task_id_generate(
     app: AppHandle,
     slug: String,
@@ -693,7 +742,7 @@ pub fn cross_task_id_generate(
 
 /// Parse a cross-task-id (doc-3 §5.2). Validates the left slug against the live ledger and the right
 /// side against `task_prefix`; `context_slug` permits a bare id in a single-project context.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cross_task_id_parse(
     app: AppHandle,
     input: String,
@@ -712,7 +761,7 @@ pub fn cross_task_id_parse(
 /// Open every registered project (doc-7 §2: rows are projects). A root that cannot be read yields
 /// [`ProjectLoad::Unreadable`] for its own row and leaves the others untouched — doc-7 §6 keeps the
 /// row, and doc-4 §5 confines ルート読取不能 to the root it happened in.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn workspace_open(
     app: AppHandle,
     state: State<'_, AtlasState>,
@@ -737,7 +786,7 @@ pub fn workspace_open(
 
 /// Read one root and keep it open. Also the retry path for a root that failed to read (doc-7 §6) and
 /// the manual refresh for one already open.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn project_open(
     app: AppHandle,
     state: State<'_, AtlasState>,
@@ -749,7 +798,7 @@ pub fn project_open(
 }
 
 /// Close one root: stop its watch and drop its session and read-version index.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn project_close(state: State<'_, AtlasState>, slug: String) {
     close_project(&state, &slug);
 }
@@ -768,7 +817,7 @@ fn close_project(state: &AtlasState, slug: &str) {
 /// debounced re-read to the frontend on [`PROJECT_RELOADED_EVENT`]. Read-only — the watch never
 /// writes. Starting a watch that is already running is a no-op, so the frontend can call it
 /// idempotently after an open.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn project_watch_start(
     app: AppHandle,
     state: State<'_, AtlasState>,
@@ -798,7 +847,7 @@ pub fn project_watch_start(
 
 /// Stop 継続検出 for one root, leaving its session open. The workspace lock is deliberately not held
 /// while the thread is joined (see [`AtlasState`]).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn project_watch_stop(state: State<'_, AtlasState>, slug: String) {
     let handle = lock(&state.watches).remove(&slug);
     if let Some(handle) = handle {
@@ -808,7 +857,7 @@ pub fn project_watch_stop(state: State<'_, AtlasState>, slug: String) {
 
 /// One task's commits and Pull Request URLs (doc-6). Read-only: `git log` and `git remote` with fixed
 /// argument arrays, never a shell string (AGENTS).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn task_history_read(
     app: AppHandle,
     state: State<'_, AtlasState>,
@@ -824,7 +873,7 @@ pub fn task_history_read(
 /// Probe the write-side CLI (doc-5 §3.2, decision-7). Probed on demand rather than cached at startup:
 /// a `backlog` installed or upgraded while Atlas is running must take effect without a restart, and
 /// the cost is one `--version` process.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cli_probe() -> CliReadiness {
     update::probe(&SystemBacklog).into()
 }
@@ -834,7 +883,7 @@ pub fn cli_probe() -> CliReadiness {
 /// interface, and every user-supplied value reaches the CLI as one element of an argument array
 /// (AC #4). No string is built here — there is no code path between the deserialized value and
 /// `Command::args` that could concatenate one.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_apply(
     app: AppHandle,
     state: State<'_, AtlasState>,
@@ -1379,5 +1428,68 @@ ordinal: 1000\n\
         assert_eq!(json["state"], "unreadable");
         assert_eq!(json["slug"], "atlas");
         assert_eq!(json["error"]["kind"], "rootUnreadable");
+    }
+
+    /// A move must be detected, because an open session keeps a model and a read-version index built
+    /// from the *old* roots while `update_apply` would resolve the *new* `project_root` for the CLI —
+    /// so the doc-9 §4 check would pass against unrelated bytes. An alias-only edit must not be
+    /// detected: the interpretation is computed per call, so the session is still correct.
+    #[test]
+    fn only_a_root_move_invalidates_the_open_session() {
+        let (from, entry) = root();
+        // The destination has to be a valid Backlog root (config.yml + tasks/) for the ledger to
+        // accept the move at all.
+        let to = TempDir::new();
+        to.write("backlog/config.yml", CONFIG);
+        to.write(
+            "backlog/tasks/task-1 - a.md",
+            &task_file("TASK-1", "Doing", "[\"kind:feature\"]"),
+        );
+        let mut ledger = Ledger {
+            schema_version: crate::ledger::KNOWN_SCHEMA_VERSION,
+            projects: vec![entry],
+        };
+
+        // An alias-only update leaves both roots where they were.
+        let before = entry_roots(&ledger, "atlas");
+        let updated = ledger
+            .update(&UpdateRequest {
+                slug: "atlas".to_string(),
+                project_root: None,
+                backlog_root: None,
+                redetect_git_remote: false,
+                status_aliases: Some(BTreeMap::from([(
+                    "Doing".to_string(),
+                    "In Progress".to_string(),
+                )])),
+                new_index: None,
+            })
+            .unwrap();
+        assert_eq!(
+            before,
+            Some((updated.project_root, updated.backlog_root)),
+            "an alias edit must not be read as a move"
+        );
+
+        // A move changes both roots — project_root explicitly, backlog_root by defaulting under it.
+        let before = entry_roots(&ledger, "atlas");
+        let updated = ledger
+            .update(&UpdateRequest {
+                slug: "atlas".to_string(),
+                project_root: Some(to.path.clone()),
+                backlog_root: None,
+                redetect_git_remote: false,
+                status_aliases: None,
+                new_index: None,
+            })
+            .unwrap();
+        assert_ne!(
+            before,
+            Some((updated.project_root.clone(), updated.backlog_root.clone())),
+            "a move must be detected so the stale session is closed"
+        );
+        assert_eq!(updated.project_root, to.path);
+        assert_eq!(updated.backlog_root, to.path.join("backlog"));
+        drop(from);
     }
 }
