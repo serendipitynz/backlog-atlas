@@ -23,6 +23,7 @@
     workspaceOpen,
   } from "./lib/commands";
   import type { HistoryState } from "./lib/detail";
+  import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
   import type { ProjectEntry, ProjectLoad, TaskView } from "./lib/wire";
@@ -46,12 +47,12 @@
    */
   let selectedRef = $state<{ slug: string; sourcePath: string } | null>(null);
   /**
-   * The Git 履歴 read, tagged with the `historyKey` it was made for. Tagging is what keeps one
-   * task's commits off another task's panel: a selection change makes the key differ immediately,
-   * so the panel falls back to 読み込み中 rather than showing the previous task's read, and a
-   * response that arrives after the selection moved on is dropped instead of being displayed.
+   * The Git 履歴 read the screen holds, tagged with the task and the call it came from. The panel
+   * shows it only while its key matches the open task, so a selection change reads as 読み込み中
+   * rather than as the previous task's commits; `history-read.ts` owns the other half — which of
+   * several in-flight calls may store its answer.
    */
-  let historyRead = $state<{ key: string; value: HistoryState } | null>(null);
+  let historyRead = $state<HistoryRead | null>(null);
 
   let unlisten: UnlistenFn | null = null;
 
@@ -97,7 +98,7 @@
   let historyKey = $derived(
     selectedView === null || selectedView.task.id === null
       ? null
-      : JSON.stringify([selectedView.task.project, selectedView.task.id]),
+      : historyKeyOf(selectedView.task.project, selectedView.task.id),
   );
   /** The read belonging to the *current* selection; anything else counts as not yet read. */
   let history = $derived.by((): HistoryState => {
@@ -202,24 +203,13 @@
     selectedRef = { slug: view.task.project, sourcePath: view.task.sourcePath };
   }
 
-  /**
-   * Read one task's Git 履歴 (doc-6), recording the result under the key it was requested for.
-   * Every assignment carries that key, so a response is only ever shown for the task it was asked
-   * about — the selection can move (or move back) while the read is in flight.
-   */
-  async function loadHistory(slug: string, taskId: string): Promise<void> {
-    const key = JSON.stringify([slug, taskId]);
-    historyRead = { key, value: { state: "loading" } };
-    let value: HistoryState;
-    try {
-      value = { state: "loaded", history: await taskHistoryRead(slug, taskId) };
-    } catch (error) {
-      value = { state: "failed", detail: unreadableDetail(asCommandError(error)) };
-    }
-    // Untracked: this runs after the awaited call, and the point is to compare against the current
-    // selection, not to depend on it.
-    if (untrack(() => historyKey) === key) historyRead = { key, value };
-  }
+  /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
+  const loadHistory = createHistoryLoader({
+    read: taskHistoryRead,
+    peek: () => untrack(() => historyRead),
+    store: (read) => (historyRead = read),
+    describeError: (error) => unreadableDetail(asCommandError(error)),
+  });
 
   // Read on a new selection, keyed by task alone: the PR/References separation comes with the
   // snapshot (doc-8 §4), so References changes need no re-read, and commits are not file state —

@@ -4,7 +4,7 @@ title: タスク詳細画面の表示系（Type/References/PR/Git 履歴/縮退�
 status: In Progress
 assignee: []
 created_date: '2026-07-22 12:07'
-updated_date: '2026-07-25 10:27'
+updated_date: '2026-07-25 10:37'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -93,4 +93,14 @@ doc-6 §4 の PR 抽出の入力は References だけで、コミット検索（
 ### App.svelte の NUL バイトを除去（[P2]）
 
 `historyKey` の区切りに実 NUL バイトを使っていたため Git が Svelte ソース全体を binary と判定し、行差分が出なくなっていた。`JSON.stringify` による直列化に置き換えた（衝突しない・ASCII のみ）。`git diff main -- src/App.svelte` は行差分に戻っている。
+
+## レビュー第2ラウンド対応（PR #11）
+
+### 履歴読み取りに呼び出し単位の token を持たせた（[P2]）
+
+第1ラウンドで入れた task key（slug と TASK-ID）だけでは、同一タスクへの複数の実行中読み取りを区別できなかった。A → B → A と選択すると A1 と A2 は同じ key を持つため、A1 の応答が A2 の loading 設定後に届くと現行リクエストの state を置き換え、完了順が入れ替われば古い結果が最終表示になり得た。
+
+読み取りの順序規則を `src/lib/history-read.ts` へ切り出し、各呼び出しに単調増加の token を付けた。応答を格納するのは「格納済み record の token が自分のもの＝以後に新しい呼び出しが始まっていない」ときだけで、同一タスクの後続読み取りも先行読み取りを無効化する。画面側（`App.svelte`）は「今開いているタスクの読み取りか」の判定（key 一致）だけを持ち、「どの実行中呼び出しが勝つか」は loader が持つ。
+
+コンポーネントから切り出したのは、順序そのものをテストできるようにするためである。`history-read.test.ts` で deferred promise を使い、(a) 別タスクの応答が破棄される、(b) A1 → B → A2 で A1 が最後に完了しても A2 の結果が残る、(c) 無効化済み呼び出しの失敗が現行 state を壊さない、(d) 現行呼び出し自身の失敗は失敗として出る、を回帰テストにした。
 <!-- SECTION:NOTES:END -->
