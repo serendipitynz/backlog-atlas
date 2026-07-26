@@ -5,6 +5,22 @@
   color-scheme: light dark;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.5;
+
+  // 印の族ごとの色 (decision-6, `lib/mark.ts` の MarkKind). Global on purpose, against the
+  // component-scoped default: decision-6's rule is 三者を同じ印へ混ぜない, and a hue chosen inside
+  // each component is exactly how two families quietly converge on one colour. One definition per
+  // family means a component names the family, never the colour — so 縮退 and 版ずれ cannot become
+  // the same amber by accident, on either screen.
+  //
+  // neutral (正常な不在) and setting (未設定) get no hue at all: decision-6 asks for them to read as
+  // 中立 and as 未設定, which a colour would contradict. They are opacity and a border.
+  --mark-degraded: #b8860b; // 解析縮退 (doc-4 §5)
+  --mark-version-conflict: #7d5ba6; // 版ずれ (doc-9) — divergence actually observed
+  --mark-undetectable: #5f6b7a; // 照合不能・継続検出停止 (doc-9 §4.2/§3) — no way to look
+  --mark-unreadable: #c0392b; // ルート読取不能・破損 (decision-6 エラー提示)
+  // Not a member of the set above: ordinary notices and confirmations, which must not borrow any
+  // family's hue (a blue 確認 is not a 版ずれ).
+  --info: #2f6f9f;
 }
 
 body {

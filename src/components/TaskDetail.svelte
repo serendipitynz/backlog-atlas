@@ -66,6 +66,12 @@
     type EditorOffer,
     type OpenOutcome,
   } from "../lib/external-editor";
+  import {
+    taskMarks,
+    versionConflictMark,
+    type ConflictTarget,
+    type VersionConflict,
+  } from "../lib/mark";
   import { CANONICAL_COLUMN_LABEL } from "../lib/swimlane";
   import type {
     CliReadiness,
@@ -96,6 +102,19 @@
     readiness: CliReadiness | null;
     /** 外部エディタ経路 (doc-8 §7): which launch methods exist. `null` while the probe is running. */
     editorReadiness: EditorReadiness | null;
+    /**
+     * 版ずれ (doc-9) recorded for this task, or `null`. Held by the shell so the mark outlives the
+     * panel and reaches the swimlane card (AC #4); the panel reads it back so the two surfaces say
+     * the same thing about the same task.
+     */
+    conflict: VersionConflict | null;
+    /**
+     * Record or clear a 版ずれ for one task. `target` is passed explicitly rather than resolved from
+     * the shell's current selection: an operation is awaited, and the selection can move while it is
+     * in flight, which would file this task's divergence against whatever is open when the answer
+     * arrives.
+     */
+    onconflict: (conflict: VersionConflict | null, target: ConflictTarget) => void;
     /** Issue one 更新操作 through the boundary. The shell owns the call and the re-read. */
     onapply: (action: UpdateOperation[]) => Promise<ApplyOutcome>;
     /**
@@ -119,6 +138,8 @@
     history,
     readiness,
     editorReadiness,
+    conflict,
+    onconflict,
     onapply,
     onopenExternally,
     onselect,
@@ -148,6 +169,12 @@
   let references = $derived(referenceSplit(view));
   let ac = $derived(acProgress(view));
   let degrade = $derived(degradeSummary(view));
+  /**
+   * 縮退印 and 版ずれ印 for the heading, from the derivation the swimlane card shares (`lib/mark.ts`).
+   * One source so the two screens cannot disagree about a task's marks or their wording, which is
+   * what decision-6's 三者を同じ印へ混ぜない asks of a cross-cutting display (AC #4).
+   */
+  let marks = $derived(taskMarks(view, conflict));
 
   // --- 編集セッション (doc-8 §6.3) ---------------------------------------------------------
 
@@ -230,33 +257,62 @@
     clearAddBoxes();
   }
 
+  /** The task a 版ずれ report is about, as of now. Captured before any await (see `save`). */
+  function conflictTarget(): ConflictTarget {
+    return { slug: task.project, sourcePath: task.sourcePath };
+  }
+
   async function save(): Promise<void> {
     if (missing || session === null || plan === null || plan.state !== "ready" || busy) return;
     const submitted = plan.submitted;
+    // Captured before the await, like the 外部エディタ経路 does with its path: the answer is about
+    // *this* task, and the panel may be pointed at another one by the time it arrives (a dirty
+    // session asks first, but 破棄して開く during the in-flight save is an answer).
+    const target = conflictTarget();
     busy = true;
     try {
       const outcome = await onapply(plan.action);
+      // Whether the panel still holds the operated task's read. `saveState` and the session are about
+      // what is on screen, so they are only touched while that is still true; the 版ずれ record is
+      // about the task and is always filed against `target`.
+      const stillOpen = task.sourcePath === target.sourcePath;
       switch (outcome.state) {
         case "applied": {
-          // 事後通知 (doc-9 §5): the re-read is already on `view`, so the comparison is against
-          // what the file says now, not against what the CLI reported.
-          const diverged = divergence(submitted, view);
-          session = null;
-          confirming = null;
-          clearAddBoxes();
-          saveState =
-            diverged.length === 0 ? { state: "applied" } : { state: "diverged", fields: diverged };
+          // 事後通知 (doc-9 §5): compared against the operated task's own re-read, which the outcome
+          // carries — not against `view`, which is whatever the panel is showing by now. Skipping the
+          // comparison when the selection moved would be worse than wrong: a clean result clears the
+          // task's 版ずれ record, so an unchecked save would erase a mark it never checked.
+          const diverged = divergence(submitted, outcome.view);
+          if (stillOpen) {
+            session = null;
+            confirming = null;
+            clearAddBoxes();
+            saveState =
+              diverged.length === 0 ? { state: "applied" } : { state: "diverged", fields: diverged };
+          }
+          // The 版ずれ record follows the same split: a clean save clears it, and the 事後通知 is
+          // recorded so it survives leaving this task (doc-9 §5, AC #4).
+          onconflict(
+            diverged.length === 0 ? null : { kind: "postWindow", fields: diverged },
+            target,
+          );
           break;
         }
         case "conflict":
           // 未保存入力を保持したまま (doc-8 §6.4): the session stays open and the two paths of
           // doc-9 §5 are offered below.
-          saveState = { state: "conflict", path: outcome.path };
+          if (stillOpen) saveState = { state: "conflict", path: outcome.path };
+          onconflict({ kind: "preUpdate", path: outcome.path }, target);
+          break;
+        case "uncheckable":
+          // 照合不能 (doc-9 §4.2): no CLI ran and no divergence was observed, so this deliberately
+          // does *not* record a 版ずれ — doc-9 §5 requires the user not to read it as a conflict.
+          if (stillOpen) saveState = { state: "uncheckable", detail: outcome.detail };
           break;
         case "failed":
           // CLI 失敗 (doc-5 §5): nothing changed, the display is untouched, and the input stays
           // so the same save can be retried (doc-8 §6.3).
-          saveState = { state: "failed", detail: outcome.detail };
+          if (stillOpen) saveState = { state: "failed", detail: outcome.detail };
           break;
       }
     } finally {
@@ -268,6 +324,9 @@
   function restartFromLatest(): void {
     session = startSession(view);
     saveState = { state: "idle" };
+    // Both doc-9 §5 paths 帰着させる the situation to 最新の版に対する新しい更新操作, so the recorded
+    // divergence is resolved: what remains is unsaved input against the current read, not a 版ずれ.
+    onconflict(null, conflictTarget());
   }
 
   /** doc-9 §5 (ii): keep the input and move the session's baseline onto the latest read. */
@@ -278,6 +337,7 @@
     acDeltaDropped = acDeltaDroppedByRebase(session, view);
     session = rebaseOnto(session, view);
     saveState = { state: "idle" };
+    onconflict(null, conflictTarget());
   }
 
   /** Whether the last rebase had to drop index-bound AC operations (see `acDeltaForCli`). */
@@ -304,15 +364,29 @@
       return;
     }
     confirming = null;
+    // A transition needs no 未保存入力, so nothing asks before the selection changes — the swimlane's
+    // cards stay clickable while the CLI runs, and `busy` only disables this panel's own controls.
+    // The target is therefore captured here rather than read back afterwards.
+    const target = conflictTarget();
     busy = true;
     try {
       const outcome = await onapply([offer.operation]);
-      saveState =
-        outcome.state === "applied"
-          ? { state: "applied" }
-          : outcome.state === "conflict"
-            ? { state: "conflict", path: outcome.path }
-            : { state: "failed", detail: outcome.detail };
+      const stillOpen = task.sourcePath === target.sourcePath;
+      switch (outcome.state) {
+        case "applied":
+          if (stillOpen) saveState = { state: "applied" };
+          break;
+        case "conflict":
+          if (stillOpen) saveState = { state: "conflict", path: outcome.path };
+          onconflict({ kind: "preUpdate", path: outcome.path }, target);
+          break;
+        case "uncheckable":
+          if (stillOpen) saveState = { state: "uncheckable", detail: outcome.detail };
+          break;
+        case "failed":
+          if (stillOpen) saveState = { state: "failed", detail: outcome.detail };
+          break;
+      }
     } finally {
       busy = false;
     }
@@ -438,13 +512,17 @@
            its file — the only stable handle it has (doc-4 §5). -->
       <span class="identity">{cardIdentity(view)}</span>
       {#if crossTaskId(view) === null}
-        <span class="mark missing">TASK-ID 不明</span>
+        <!-- 解析不能 (doc-4 §5): a required field the read layer could not get — the 縮退 family,
+             not the 版ずれ one, since the divergence has nothing to do with it. -->
+        <span class="mark" data-kind="degraded">TASK-ID 不明</span>
       {/if}
-      {#if degrade.degraded}
-        <span class="mark degraded">縮退</span>
-      {/if}
+      <!-- 縮退（解析起因）と版ずれ（doc-9 の競合）は別の印 (decision-6, AC #4): the same chips, in
+           the same words and colours, as the card in the swimlane. -->
+      {#each marks as mark (mark.kind)}
+        <span class="mark" data-kind={mark.kind} title={mark.detail}>{mark.label}</span>
+      {/each}
       {#if missing}
-        <span class="mark degraded">ファイル不明</span>
+        <span class="mark" data-kind="unreadable">ファイル不明</span>
       {/if}
       <button type="button" class="close" onclick={requestClose}>
         {confirming === "close" ? "破棄して閉じる" : "閉じる"}
@@ -488,7 +566,7 @@
             {/each}
           </select>
         {:else if status === null}
-          <span class="mark missing">status を読めません</span>
+          <span class="mark" data-kind="degraded">status を読めません</span>
         {:else}
           <span class="raw">{status.raw}</span>
           <!-- 正準対応を併記 (AC #1): 未対応 status is stated as such rather than shown blank. -->
@@ -610,9 +688,13 @@
         <p class="hint">{NOTHING_TO_SAVE_REASON}。</p>
       {/if}
       {#if externalChange}
-        <p class="warn">
-          このタスクのファイルが編集中に外部で変わりました。入力はそのまま保持しています。保存時に
-          更新前競合検出を通します（doc-8 §6.4）。
+        <!-- 編集中の継続検出 (doc-8 §6.4). The 版ずれ family, not a generic notice: the version has
+             *been observed* to move against this session's baseline. It is not recorded on the card,
+             though — no save has been attempted, and doc-8 §6.4 keeps this stated rather than acted
+             on, so it belongs to the live session and ends with it. -->
+        <p class="conflict">
+          このタスクのファイルが編集中に外部で変わりました（版ずれ）。入力はそのまま保持しています。
+          保存時に更新前競合検出を通します（doc-8 §6.4）。
         </p>
       {/if}
     {/if}
@@ -622,6 +704,11 @@
     {:else if saveState.state === "failed"}
       <!-- CLI 失敗 (doc-5 §5): the display above is unchanged and the input is still here. -->
       <p class="warn">保存できませんでした: {saveState.detail}</p>
+    {:else if saveState.state === "uncheckable"}
+      <!-- 照合不能 (doc-9 §4.2/§5): its own family (`undetectable`), because 版がずれているとは
+           限らず、確かめる方法が無い — doc-9 §5 requires this not to read as a conflict, and forbids
+           offering an unchecked run as the way around it. -->
+      <p class="undetectable">{saveState.detail}</p>
     {:else if saveState.state === "conflict"}
       <!-- 防げる競合の未然提示 (doc-9 §5): the check stopped this before the CLI ran. -->
       <div class="conflict">
@@ -655,6 +742,20 @@
           更新前競合検出は best-effort であり、この窓に入った外部更新は防げません。窓内に入った更新が
           上書きで失われた場合、その内容は表示も復元もできません（doc-9 §4.1）。
         </p>
+      </div>
+    {:else if conflict !== null}
+      <!-- A 版ずれ recorded on an earlier visit to this task: the banners above belong to the save
+           that just happened, and this one is what the swimlane card is still marking. Kept
+           dismissible so the mark can be retired without a save — the input it belonged to is gone,
+           so neither doc-9 §5 path applies any more. -->
+      <div class="conflict">
+        <p>{versionConflictMark(conflict).detail}</p>
+        <p class="hint">表示は再読込後の最新内容です。未保存入力は残っていません。</p>
+        <div class="buttons">
+          <button type="button" onclick={() => onconflict(null, conflictTarget())}>
+            確認した（版ずれ印を消す）
+          </button>
+        </div>
       </div>
     {/if}
 
@@ -1368,12 +1469,27 @@
     font-size: 0.66rem;
   }
 
-  // 解析縮退・未対応・中立の印を混ぜない (decision-6): a parse degrade is marked, an unmapped or
-  // dangling reference is outlined, and a merely-informative state stays plain.
-  .mark.degraded,
-  .mark.missing {
-    background: #b8860b;
+  // 解析縮退・版ずれ・未対応・中立の印を混ぜない (decision-6): each family takes its own colour from
+  // the one definition in `app.scss` (`lib/mark.ts` の MarkKind), an unmapped or dangling reference
+  // is outlined, and a merely-informative state stays plain.
+  .mark[data-kind] {
     color: #fff;
+  }
+
+  .mark[data-kind="degraded"] {
+    background: var(--mark-degraded);
+  }
+
+  .mark[data-kind="versionConflict"] {
+    background: var(--mark-version-conflict);
+  }
+
+  .mark[data-kind="undetectable"] {
+    background: var(--mark-undetectable);
+  }
+
+  .mark[data-kind="unreadable"] {
+    background: var(--mark-unreadable);
   }
 
   .mark.unmapped {
@@ -1395,8 +1511,8 @@
 
   .degrade-panel {
     padding: 0.35rem 0.45rem;
-    border-left: 3px solid #b8860b;
-    background: color-mix(in srgb, #b8860b 10%, transparent);
+    border-left: 3px solid var(--mark-degraded);
+    background: color-mix(in srgb, var(--mark-degraded) 10%, transparent);
 
     details {
       font-size: 0.72rem;
@@ -1536,18 +1652,33 @@
     opacity: 0.8;
   }
 
-  // 競合・失敗は縮退印と別の表現 (doc-9 §5): the file reads fine, its version moved.
+  // 競合は縮退印と別の表現 (doc-9 §5, decision-6): the file reads fine, its version moved — so 版ずれ
+  // takes its own colour rather than 縮退's amber *or* the generic notice blue it used to share with
+  // every other warning here.
   .warn,
-  .conflict {
+  .conflict,
+  .undetectable {
     padding: 0.3rem 0.4rem;
-    border-left: 3px solid #2f6f9f;
-    background: color-mix(in srgb, #2f6f9f 12%, transparent);
+    border-left: 3px solid;
     font-size: 0.72rem;
+  }
+
+  .warn {
+    border-left-color: var(--info);
+    background: color-mix(in srgb, var(--info) 12%, transparent);
   }
 
   .conflict {
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
+    border-left-color: var(--mark-version-conflict);
+    background: color-mix(in srgb, var(--mark-version-conflict) 14%, transparent);
+  }
+
+  // 照合不能 is neither: 版がずれているとは限らず、確かめる方法が無い (doc-9 §4.2/§5).
+  .undetectable {
+    border-left-color: var(--mark-undetectable);
+    background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);
   }
 </style>

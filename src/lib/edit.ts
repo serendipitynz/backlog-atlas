@@ -541,9 +541,24 @@ export function saveAvailability(
  * shell keeps one owner for the snapshot the whole screen draws from.
  */
 export type ApplyOutcome =
-  | { state: "applied" }
+  /**
+   * `view` is the operated task as the post-update re-read has it — `null` when that read no longer
+   * yields the file (a 状態遷移 moves it, and an external delete would too). Carried here so the
+   * 事後通知 comparison (doc-9 §5) is against the task the update was issued for, independently of
+   * what the panel happens to be showing when the answer arrives: the selection can move during the
+   * await, and comparing against another task — or skipping the comparison — would either invent a
+   * divergence or silently drop one.
+   */
+  | { state: "applied"; view: TaskView | null }
   /** 更新前競合 (doc-9 §4): no CLI ran, and the screen already holds the re-read. */
   | { state: "conflict"; path: string }
+  /**
+   * 照合不能 (doc-9 §4.2): no CLI ran either, but for the opposite reason — no divergence was
+   * observed, there is no defined way to look for one. Split from `failed` so the panel can put it
+   * in its own family (`undetectable`, `lib/mark.ts`) instead of borrowing 版ずれ's, which doc-9 §5
+   * forbids: the user must not read this as "a conflict happened".
+   */
+  | { state: "uncheckable"; detail: string }
   /** A CLI failure, an adapter refusal, or a boundary error — nothing was applied. */
   | { state: "failed"; detail: string };
 
@@ -557,7 +572,9 @@ export type SaveState =
   | { state: "applied" }
   | { state: "failed"; detail: string }
   | { state: "conflict"; path: string }
-  | { state: "diverged"; fields: string[] };
+  | { state: "diverged"; fields: string[] }
+  /** 照合不能 (doc-9 §4.2) — kept apart from the two conflict states, as doc-9 §5 requires. */
+  | { state: "uncheckable"; detail: string };
 
 /**
  * A CLI failure as the panel states it (doc-5 §5). The sub-command and stderr are the reason the

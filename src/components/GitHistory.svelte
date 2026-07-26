@@ -177,7 +177,9 @@
     font-size: 0.72rem;
   }
 
-  // 正常な不在は中立、設定・未設定は中間、失敗はエラー (decision-6 エラー提示方針).
+  // 正常な不在は中立、設定・未設定は中間、失敗はエラー (decision-6 エラー提示方針). The families are
+  // `lib/mark.ts` の MarkKind: `neutral` and `setting` deliberately carry no hue — a colour would
+  // contradict "これは正常" and "設定で解消できる" — and only the failure takes one.
   .neutral {
     opacity: 0.7;
   }
@@ -189,6 +191,6 @@
   }
 
   .failure {
-    color: #c0392b;
+    color: var(--mark-unreadable);
   }
 </style>
