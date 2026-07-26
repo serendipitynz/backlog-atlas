@@ -282,6 +282,123 @@ export type CommandError =
   | { kind: "versionProbeFailed"; detail: string }
   | { kind: "watchFailed"; slug: string; detail: string };
 
+// --- 更新操作 (doc-5 §3, TASK-31) ------------------------------------------------------------
+
+/**
+ * The operation map's input side. Unlike everything above, these travel *to* the boundary: they
+ * are `Deserialize` on the Rust side (`update.rs`), and the shapes below are what serde accepts.
+ * The whole enum is declared, not only the operations the task detail screen issues, because it
+ * is one contract — doc/milestone editing (TASK-40) sends the same values through the same
+ * command rather than a second, parallel wire type.
+ */
+
+/** `--notes` (replace) vs `--append-notes` (append) — distinct CLI options, so distinct here. */
+export type NoteEdit =
+  | { mode: "keep" }
+  | { mode: "set"; text: string }
+  | { mode: "append"; text: string };
+
+export interface AcItem {
+  text: string;
+  checked: boolean;
+}
+
+/**
+ * AC の項目単位操作 と AC 全体差し替え を分けたまま送る (doc-5 §3/§3.1). `replace` is the composite
+ * the adapter expands into `--remove-ac`×existing ＋ `--ac`×items ＋ `--check-ac`; `existing` is
+ * the current AC count, since the removals reference the *original* 1-based indices.
+ */
+export type AcEdit =
+  | { mode: "keep" }
+  | { mode: "delta"; add: string[]; remove: number[]; check: number[]; uncheck: number[] }
+  | { mode: "replace"; existing: number; items: AcItem[] };
+
+/**
+ * The combinable `task edit` facets (doc-5 §3). An absent key leaves that facet untouched; the
+ * adapter refuses an edit that sets nothing. `references` / `dependencies` are 非空全置換 — the
+ * value is the whole new set, and an empty array is refused rather than silently ignored, which
+ * is what `--ref ""` / `--depends-on ""` do in v1.47.1 (doc-5 §3.1).
+ */
+export interface TaskEdit {
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: string;
+  milestone?: string;
+  plan?: string;
+  notes?: NoteEdit;
+  addLabels?: string[];
+  removeLabels?: string[];
+  dependencies?: string[];
+  references?: string[];
+  ac?: AcEdit;
+}
+
+export interface DocUpdate {
+  title?: string;
+  content?: string;
+  docType?: string;
+  path?: string;
+  tags?: string[];
+}
+
+export type MilestoneTaskHandling =
+  | { mode: "clear" }
+  | { mode: "keep" }
+  | { mode: "reassign"; to: string };
+
+/** One 更新操作 (doc-5 §3). Tagged `op`; the create variants carry their fields inline. */
+export type UpdateOperation =
+  | {
+      op: "taskCreate";
+      title: string;
+      description?: string;
+      status?: string;
+      labels?: string[];
+      priority?: string;
+      milestone?: string;
+      acceptanceCriteria?: string[];
+    }
+  | { op: "taskEdit"; taskId: string; edit: TaskEdit }
+  | { op: "draftPromote"; draftId: string }
+  | { op: "draftArchive"; draftId: string }
+  | { op: "taskDemote"; taskId: string }
+  | { op: "taskArchive"; taskId: string }
+  | { op: "taskComplete"; taskId: string }
+  | { op: "docCreate"; title: string; docType?: string; path?: string }
+  | { op: "docUpdate"; docId: string; update: DocUpdate }
+  | { op: "milestoneAdd"; name: string; description?: string }
+  | { op: "milestoneRename"; from: string; to: string; updateTasks: boolean }
+  | { op: "milestoneRemove"; name: string; taskHandling: MilestoneTaskHandling }
+  | { op: "milestoneArchive"; name: string };
+
+/** How a CLI invocation failed (doc-5 §5). */
+export type FailureKind = { kind: "spawn" } | { kind: "nonZero"; code: number | null };
+
+export interface UpdateFailure {
+  /** The sub-command that failed, e.g. `"task edit"`. */
+  command: string;
+  kind: FailureKind;
+  /** The CLI's stderr — the failure reason doc-5 §5 requires showing. */
+  stderr: string;
+  completedBefore: number;
+  /** Earlier invocations already changed disk, so the re-read is mandatory (doc-5 §6). */
+  partial: boolean;
+}
+
+/** What became of a screen action (doc-5 §5). `failed` carries the failure's fields inline. */
+export type UpdateOutcome = { state: "succeeded" } | ({ state: "failed" } & UpdateFailure);
+
+/**
+ * What became of one `update_apply` (doc-9 §4). `conflict` is 更新前競合: a target diverged from
+ * the version Atlas read, so **no CLI ran** — `project` is the ordinary re-read that surfaces the
+ * external change (doc-9 §5). `ran` means the CLI answered; `project` is present exactly when
+ * on-disk state moved and was re-read.
+ */
+export type UpdateResult =
+  | { state: "conflict"; path: string; project: ProjectSnapshot }
+  | { state: "ran"; outcome: UpdateOutcome; project: ProjectSnapshot | null };
+
 /**
  * What became of one ledger entry when the workspace read it (doc-7 §6): a row that shows
  * cards, or a row that stays in place and shows why it has none.

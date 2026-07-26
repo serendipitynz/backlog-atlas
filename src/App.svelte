@@ -13,6 +13,7 @@
   import TaskDetail from "./components/TaskDetail.svelte";
   import {
     asCommandError,
+    cliProbe,
     ledgerList,
     ledgerReorder,
     onProjectReloaded,
@@ -20,13 +21,22 @@
     projectWatchStart,
     projectWatchStop,
     taskHistoryRead,
+    updateApply,
     workspaceOpen,
   } from "./lib/commands";
   import type { HistoryState } from "./lib/detail";
+  import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
-  import type { ProjectEntry, ProjectLoad, TaskView } from "./lib/wire";
+  import type {
+    CliReadiness,
+    ProjectEntry,
+    ProjectLoad,
+    ProjectSnapshot,
+    TaskView,
+    UpdateOperation,
+  } from "./lib/wire";
   import type { UnlistenFn } from "@tauri-apps/api/event";
 
   let entries = $state<ProjectEntry[]>([]);
@@ -53,8 +63,26 @@
    * several in-flight calls may store its answer.
    */
   let historyRead = $state<HistoryRead | null>(null);
+  /**
+   * Whether a supported `backlog` exists (doc-5 §5 縮退). `null` until the probe answers, which the
+   * panel shows as "確認中" rather than as "no CLI" — the two lead to different user actions.
+   */
+  let readiness = $state<CliReadiness | null>(null);
+  /** True while the detail panel holds 未保存入力 — what makes a selection change ask first. */
+  let detailDirty = $state(false);
+  /** A selection requested while the panel was dirty, held until the user answers (doc-8 §6.3). */
+  let pendingSelection = $state<{ slug: string; sourcePath: string } | null>(null);
 
   let unlisten: UnlistenFn | null = null;
+
+  /** The operations that move a task between 保存区分 (doc-5 §3.3) — they invalidate a selection. */
+  const TRANSITIONS: string[] = [
+    "taskDemote",
+    "taskArchive",
+    "taskComplete",
+    "draftPromote",
+    "draftArchive",
+  ];
 
   let order = $derived(entries.map((entry) => entry.slug));
   let loads = $derived(new Map(Object.entries(loadBySlug)));
@@ -90,6 +118,34 @@
     entries.find((entry) => entry.slug === selectedRef?.slug) ?? null,
   );
   /**
+   * The last read that resolved the open selection. Kept because an external move — `task demote`
+   * run in another window, an editor saving the file elsewhere — makes the current read stop
+   * yielding the task, and doc-8 §6.4 does not let that take the panel's 未保存入力 with it.
+   */
+  let retained = $state<{ view: TaskView; snapshot: ProjectSnapshot } | null>(null);
+  $effect(() => {
+    if (selectedRef === null) retained = null;
+    else if (selectedView !== null && selectedSnapshot !== null) {
+      retained = { view: selectedView, snapshot: selectedSnapshot };
+    }
+  });
+  /**
+   * What the panel draws, and whether it is the current read. Deliberately one value rather than
+   * two branches in the markup: moving between branches would destroy and recreate `TaskDetail`,
+   * and with it the 編集セッション this exists to keep.
+   */
+  let shown = $derived.by(() => {
+    if (selectedRef === null) return null;
+    if (selectedView !== null && selectedSnapshot !== null) {
+      return { view: selectedView, snapshot: selectedSnapshot, missing: false };
+    }
+    // Only while there is input to protect: with nothing unsaved, a task that left the read result
+    // is better reported than shown from a stale read.
+    return detailDirty && retained?.view.task.sourcePath === selectedRef.sourcePath
+      ? { view: retained.view, snapshot: retained.snapshot, missing: true }
+      : null;
+  });
+  /**
    * Which task a Git 履歴 read belongs to. `null` when there is nothing to read: no selection, or
    * a task with no TASK-ID — コミット検索 keys on the id (doc-6 §3), while the References-derived
    * PR 区画 needs no Git read at all. Serialized rather than concatenated, so no two (slug, id)
@@ -119,6 +175,14 @@
       });
     } catch (error) {
       notice = `変更の通知を購読できません（${unreadableDetail(asCommandError(error))}）`;
+    }
+    // Probed once and not per edit: it decides whether edit controls are offered at all (doc-5 §5),
+    // and a probe per keystroke-worth of UI would spawn a process for a question that does not
+    // change while the app runs.
+    try {
+      readiness = await cliProbe();
+    } catch (error) {
+      readiness = { state: "unavailable", detail: unreadableDetail(asCommandError(error)) };
     }
     await load();
   });
@@ -198,9 +262,59 @@
     }
   }
 
-  /** Open one task's detail panel (doc-7 §3 カードを選ぶとタスク詳細画面を開く). */
+  /**
+   * Open one task's detail panel (doc-7 §3 カードを選ぶとタスク詳細画面を開く). A pending 編集
+   * セッション is not discarded on the way: doc-8 §6.3 asks before 未保存入力 is thrown away, and
+   * leaving the task is the other way to lose it.
+   */
   function open(view: TaskView): void {
-    selectedRef = { slug: view.task.project, sourcePath: view.task.sourcePath };
+    const next = { slug: view.task.project, sourcePath: view.task.sourcePath };
+    if (detailDirty && selectedRef !== null && selectedRef.sourcePath !== next.sourcePath) {
+      pendingSelection = next;
+      return;
+    }
+    selectedRef = next;
+  }
+
+  /**
+   * Issue one screen action for the open task (doc-5 §3, doc-9 §4). The shell owns this rather than
+   * the panel because the result carries the re-read root: the grid and the panel draw from one
+   * snapshot, and letting the panel keep a second copy is how the two would drift apart.
+   */
+  async function apply(action: UpdateOperation[]): Promise<ApplyOutcome> {
+    const slug = selectedRef?.slug;
+    if (slug === undefined) {
+      return { state: "failed", detail: "対象プロジェクトを特定できません" };
+    }
+    try {
+      const result = await updateApply(slug, action);
+      if (result.state === "conflict") {
+        // 更新前競合 (doc-9 §5): an ordinary re-read, not 縮退 — the row and the panel both move to
+        // the current file, while the panel keeps the 未保存入力 it was holding.
+        loadBySlug[slug] = { state: "loaded", project: result.project };
+        return { state: "conflict", path: result.path };
+      }
+      // Present exactly when disk moved (doc-5 §6). A failure that changed nothing leaves the
+      // display as it was, which is what lets the panel offer a retry of the same input.
+      if (result.project !== null) {
+        loadBySlug[slug] = { state: "loaded", project: result.project };
+      }
+      if (result.outcome.state !== "succeeded") {
+        return { state: "failed", detail: failureDetail(result.outcome) };
+      }
+      // A 状態遷移 moves the file and re-numbers the id (doc-5 §3.3), so the open selection — held
+      // as (slug, path) — no longer names anything. Closing it here rather than letting the panel
+      // fall through to "現在の読み取り結果にありません" keeps a deliberate move from reading like
+      // a task that went missing.
+      if (action.some((operation) => TRANSITIONS.includes(operation.op))) {
+        selectedRef = null;
+        detailDirty = false;
+        notice = "状態遷移を適用しました。保存区分と ID が変わるため、詳細を閉じました。";
+      }
+      return { state: "applied" };
+    } catch (error) {
+      return { state: "failed", detail: commandErrorDetail(asCommandError(error)) };
+    }
   }
 
   /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
@@ -260,6 +374,23 @@
     <p class="notice">{notice}</p>
   {/if}
 
+  {#if pendingSelection !== null}
+    <!-- 破棄前確認 (doc-8 §6.3): the panel confirms its own cancel, and this is the other exit. -->
+    <div class="confirm">
+      <span>編集中の未保存入力があります。別のタスクを開くと破棄されます。</span>
+      <button
+        type="button"
+        onclick={() => {
+          selectedRef = pendingSelection;
+          pendingSelection = null;
+        }}
+      >
+        破棄して開く
+      </button>
+      <button type="button" onclick={() => (pendingSelection = null)}>編集に戻る</button>
+    </div>
+  {/if}
+
   {#if fatal}
     <p class="fatal">読み込みに失敗しました: {fatal}</p>
     <button type="button" onclick={load}>再読み込み</button>
@@ -284,19 +415,28 @@
 
       <!-- カードを選ぶとタスク詳細画面を開く (doc-7 §3, doc-8 §2). -->
       {#if selectedRef !== null}
-        {#if selectedView !== null && selectedSnapshot !== null}
-          {@const view = selectedView}
+        {#if shown !== null}
+          {@const view = shown.view}
           <TaskDetail
             {view}
-            snapshot={selectedSnapshot}
+            snapshot={shown.snapshot}
+            missing={shown.missing}
             entry={selectedEntry}
             {history}
+            {readiness}
+            onapply={apply}
             onselect={open}
             onreloadHistory={() =>
               view.task.id === null
                 ? undefined
                 : void loadHistory(view.task.project, view.task.id)}
-            onclose={() => (selectedRef = null)}
+            ondirty={(dirty) => (detailDirty = dirty)}
+            onclose={() => {
+              // Cleared with the selection: the panel is unmounted from here on, so its own
+              // `ondirty` will not run again to retract a flag left standing.
+              selectedRef = null;
+              detailDirty = false;
+            }}
           />
         {:else}
           <!-- The task was open when its root stopped yielding it — deleted, moved, or the root
@@ -359,6 +499,27 @@
       color: inherit;
       font: inherit;
       font-size: 0.7rem;
+      cursor: pointer;
+    }
+  }
+
+  .confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    background: color-mix(in srgb, #2f6f9f 12%, transparent);
+    font-size: 0.75rem;
+
+    button {
+      padding: 0 0.4rem;
+      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 0.72rem;
       cursor: pointer;
     }
   }

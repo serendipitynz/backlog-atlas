@@ -13,13 +13,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  CliReadiness,
   CommandError,
   LedgerResponse,
   ProjectLoad,
   ProjectSnapshot,
   ReloadEvent,
   TaskHistory,
+  UpdateOperation,
   UpdateRequest,
+  UpdateResult,
 } from "./wire";
 
 /** The event a watch-triggered re-read arrives on (`commands::PROJECT_RELOADED_EVENT`). */
@@ -73,6 +76,23 @@ export function projectWatchStop(slug: string): Promise<void> {
  */
 export function taskHistoryRead(slug: string, taskId: string): Promise<TaskHistory> {
   return invoke<TaskHistory>("task_history_read", { slug, taskId });
+}
+
+/**
+ * Whether a supported `backlog` is on PATH (doc-5 §5 縮退). Read once at startup so the screen can
+ * withhold edit controls with a reason instead of offering an action that cannot be issued.
+ */
+export function cliProbe(): Promise<CliReadiness> {
+  return invoke<CliReadiness>("cli_probe");
+}
+
+/**
+ * Issue one screen action (doc-5 §3, doc-9 §4). The boundary derives each operation's target from
+ * its own read model and runs the 更新前競合検出 before launching anything, so a `conflict` result
+ * means the CLI never ran — the caller keeps its 未保存入力 and chooses a path (doc-9 §5).
+ */
+export function updateApply(slug: string, action: UpdateOperation[]): Promise<UpdateResult> {
+  return invoke<UpdateResult>("update_apply", { slug, action });
 }
 
 /** Subscribe to watch-triggered re-reads. Resolves to the unsubscribe function. */
