@@ -1056,7 +1056,7 @@ pub fn update_apply(
 mod tests {
     use super::*;
     use crate::interpret::status::StatusColumn;
-    use crate::update::{CliRun, TaskCreate, TaskEdit};
+    use crate::update::{AcEdit, CliRun, NoteEdit, TaskCreate, TaskEdit};
     use std::cell::RefCell;
     use std::sync::atomic::AtomicU64;
     use std::time::SystemTime;
@@ -1319,6 +1319,185 @@ ordinal: 1000\n\
         // Untouched facets stay untouched rather than becoming empty values.
         assert!(edit.title.is_none());
         assert!(edit.references.is_none());
+    }
+
+    #[test]
+    fn the_detail_screen_edit_shapes_deserialize() {
+        // The remaining shapes タスク詳細の GUI 編集 (TASK-36) emits. The frontend's wire types are
+        // hand-written (`src/lib/wire.ts`), so a rename on either side would otherwise only show up
+        // as a runtime deserialization error inside the running app.
+        let json = serde_json::json!({
+            "op": "taskEdit",
+            "taskId": "TASK-1",
+            "edit": {
+                "notes": { "mode": "set", "text": "replaced" },
+                "removeLabels": ["ui"],
+                "references": ["https://example.test/1", "https://example.test/pull/2"],
+                "dependencies": ["TASK-2"],
+                "ac": {
+                    "mode": "replace",
+                    "existing": 2,
+                    "items": [{ "text": "first", "checked": true }]
+                }
+            }
+        });
+        let UpdateOperation::TaskEdit { edit, .. } = serde_json::from_value(json).unwrap() else {
+            panic!("expected a task edit");
+        };
+        assert!(matches!(&edit.notes, NoteEdit::Set(text) if text == "replaced"));
+        assert_eq!(edit.remove_labels, vec!["ui".to_string()]);
+        assert_eq!(edit.references.as_ref().map(Vec::len), Some(2));
+        assert_eq!(
+            edit.dependencies.as_deref(),
+            Some(["TASK-2".to_string()].as_slice())
+        );
+        let AcEdit::Replace { existing, items } = &edit.ac else {
+            panic!("expected an AC replacement");
+        };
+        assert_eq!(*existing, 2);
+        assert_eq!(items.len(), 1);
+        assert!(items[0].checked);
+    }
+
+    /// End-to-end against the *real* `backlog` on PATH: the JSON タスク詳細 sends, through the
+    /// operation map, into a file the read layer then re-reads. It is the only test that proves the
+    /// composite AC replacement and the References 全置換 behave on v1.47.1 the way doc-5 §3 says
+    /// they do — every other test stops at the argument array.
+    ///
+    /// `#[ignore]` by default for the same reason as the watch test in `sync.rs`: it asserts on an
+    /// environment property (a supported `backlog` being installed), and a machine without one
+    /// would go red for something that is not a code defect. Run it where the CLI is available:
+    /// `cargo test --lib -- --ignored the_frontend_edit_reaches_the_real_cli`
+    #[test]
+    #[ignore = "requires a supported backlog CLI on PATH"]
+    fn the_frontend_edit_reaches_the_real_cli() {
+        let temp = TempDir::new();
+        temp.write(
+            "backlog/config.yml",
+            "project_name: Atlas E2E\n\
+statuses: [\"To Do\", \"In Progress\", \"Done\"]\n\
+default_status: To Do\n\
+task_prefix: \"TASK\"\n",
+        );
+        temp.write(
+            "backlog/tasks/task-1 - sample.md",
+            "---\n\
+id: TASK-1\n\
+title: sample\n\
+status: To Do\n\
+labels: []\n\
+references:\n  - https://example.test/one\n\
+---\n\n\
+## Description\n\n\
+<!-- SECTION:DESCRIPTION:BEGIN -->\nbefore\n<!-- SECTION:DESCRIPTION:END -->\n\n\
+## Acceptance Criteria\n\
+<!-- AC:BEGIN -->\n- [ ] #1 first\n- [ ] #2 second\n<!-- AC:END -->\n",
+        );
+        let entry = ProjectEntry {
+            slug: "atlas".to_string(),
+            project_root: temp.path.clone(),
+            backlog_root: temp.path.join("backlog"),
+            git_remote_present: false,
+            status_aliases: BTreeMap::new(),
+        };
+
+        let cli = SystemBacklog;
+        let CliStatus::Supported(capability) = update::probe(&cli) else {
+            panic!("this test needs a supported backlog CLI on PATH");
+        };
+        let mut workspace = Workspace::default();
+        workspace
+            .open(&entry, &source(&entry), &FsVersions)
+            .unwrap();
+
+        // Exactly what `buildSave` emits for: a multi-line description, References 非空全置換 with
+        // the existing URL kept, and AC 全体差し替え as the composite (doc-5 §3).
+        let action: Vec<UpdateOperation> = serde_json::from_value(serde_json::json!([{
+            "op": "taskEdit",
+            "taskId": "TASK-1",
+            "edit": {
+                "description": "after\n二行目",
+                "references": ["https://example.test/one", "https://example.test/pull/2"],
+                "ac": {
+                    "mode": "replace",
+                    "existing": 2,
+                    "items": [
+                        { "text": "new one", "checked": false },
+                        { "text": "new two", "checked": true }
+                    ]
+                }
+            }
+        }]))
+        .unwrap();
+
+        let result = workspace
+            .apply(
+                &entry,
+                &action,
+                &capability,
+                &cli,
+                &source(&entry),
+                &FsVersions,
+            )
+            .unwrap();
+        let UpdateResult::Ran { outcome, project } = result else {
+            panic!("expected the CLI to run");
+        };
+        assert_eq!(
+            outcome,
+            UpdateOutcome::Succeeded,
+            "the CLI accepted the edit"
+        );
+
+        // The re-read (doc-5 §6) is what the panel then compares its submitted values against.
+        let project = project.expect("a success re-reads the root");
+        let task = &project
+            .tasks
+            .iter()
+            .find(|view| view.task.id.as_deref() == Some("TASK-1"))
+            .expect("the task is still there")
+            .task;
+        assert_eq!(task.description.as_deref(), Some("after\n二行目"));
+        assert_eq!(
+            task.references,
+            vec![
+                "https://example.test/one".to_string(),
+                "https://example.test/pull/2".to_string()
+            ]
+        );
+        let ac: Vec<(&str, bool)> = task
+            .acceptance_criteria
+            .iter()
+            .map(|item| (item.text.as_str(), item.checked))
+            .collect();
+        assert_eq!(ac, vec![("new one", false), ("new two", true)]);
+    }
+
+    #[test]
+    fn the_detail_screen_transition_shapes_deserialize() {
+        // 状態遷移の入口 (doc-8 §6.5): each carries the id under the name its 保存区分 uses —
+        // `taskId` for the active-side transitions, `draftId` for the draft-side ones (doc-5 §3.3).
+        let of = |json: serde_json::Value| serde_json::from_value::<UpdateOperation>(json).unwrap();
+        assert!(matches!(
+            of(serde_json::json!({ "op": "taskComplete", "taskId": "TASK-1" })),
+            UpdateOperation::TaskComplete { task_id } if task_id == "TASK-1"
+        ));
+        assert!(matches!(
+            of(serde_json::json!({ "op": "taskDemote", "taskId": "TASK-1" })),
+            UpdateOperation::TaskDemote { task_id } if task_id == "TASK-1"
+        ));
+        assert!(matches!(
+            of(serde_json::json!({ "op": "taskArchive", "taskId": "TASK-1" })),
+            UpdateOperation::TaskArchive { task_id } if task_id == "TASK-1"
+        ));
+        assert!(matches!(
+            of(serde_json::json!({ "op": "draftPromote", "draftId": "DRAFT-1" })),
+            UpdateOperation::DraftPromote { draft_id } if draft_id == "DRAFT-1"
+        ));
+        assert!(matches!(
+            of(serde_json::json!({ "op": "draftArchive", "draftId": "DRAFT-1" })),
+            UpdateOperation::DraftArchive { draft_id } if draft_id == "DRAFT-1"
+        ));
     }
 
     // --- AC #3: conflict, refusal and 照合不能 are distinct typed results ------------------------
