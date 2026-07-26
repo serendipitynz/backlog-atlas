@@ -290,7 +290,7 @@ export function acDeltaDroppedByRebase(session: EditSession, latest: TaskView): 
 
 function sameCriteria(a: TaskView, b: TaskView): boolean {
   const of = (view: TaskView) =>
-    view.task.acceptanceCriteria.map((item) => `${item.number} ${item.text}`);
+    view.task.acceptanceCriteria.map((item) => `${item.number}\0${item.text}`);
   return sameList(of(a), of(b));
 }
 
