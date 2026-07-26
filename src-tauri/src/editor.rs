@@ -9,7 +9,7 @@
 //! |---|---|---|
 //! | doc-8 §7 外部エディタ経路 | this module + [`open`] | handing one management file to the user's editor; the write is the editor's, never Atlas's |
 //! | doc-8 §7 `$EDITOR` 起動 | [`LaunchMethod::Configured`] / [`ConfiguredEditor`] | the program `VISUAL`/`EDITOR` names, with its leading arguments |
-//! | doc-8 §7 OS の関連付け起動 | [`LaunchMethod::Association`] | the platform's association launcher (`open` / `xdg-open` / `cmd /c start`) |
+//! | doc-8 §7 OS の関連付け起動 | [`LaunchMethod::Association`] | the platform's association launcher (`open` / `xdg-open`), where one exists that is not a shell |
 //! | 起動できる方式 | [`EditorReadiness`] | which of the two methods this environment has, so the UI offers only those |
 //! | 起動した事実 | [`EditorLaunch`] | what was actually spawned — the program and argument array, for the UI to state |
 //! | 起動できない・起動に失敗した | [`EditorError`] | no launcher for the chosen method, or the spawn itself failed |
@@ -72,10 +72,11 @@ pub struct ConfiguredEditor {
 #[serde(rename_all = "camelCase")]
 pub struct EditorReadiness {
     pub configured: Option<ConfiguredEditor>,
-    /// The association launcher's program name (`open`, `xdg-open`, `cmd`), for the UI to state what
-    /// it would run. Always present — every target this builds for has one — but whether that program
-    /// is installed is only learned by running it, and a missing one surfaces as a spawn failure.
-    pub association: String,
+    /// The association launcher's program name (`open`, `xdg-open`), for the UI to state what it would
+    /// run. `None` on a platform with no launcher this module is willing to spawn (see
+    /// [`association_launcher`]); whether a named program is actually installed is only learned by
+    /// running it, and a missing one surfaces as a spawn failure.
+    pub association: Option<String>,
 }
 
 /// What one launch spawned (doc-8 §7). Returned rather than discarded because a launch that "did
@@ -167,7 +168,7 @@ impl Launcher for SystemLauncher {
 pub fn probe(env: &dyn Environment) -> EditorReadiness {
     EditorReadiness {
         configured: configured_editor(env),
-        association: association_launcher().program.to_string(),
+        association: association_launcher().map(|launcher| launcher.program.to_string()),
     }
 }
 
@@ -199,33 +200,46 @@ struct AssociationLauncher {
 }
 
 #[cfg(target_os = "macos")]
-const fn association_launcher() -> AssociationLauncher {
-    AssociationLauncher {
+const fn association_launcher() -> Option<AssociationLauncher> {
+    Some(AssociationLauncher {
         program: "open",
         leading: &[],
-    }
+    })
 }
 
-/// `start` is a `cmd` builtin, so `cmd` is the program. The empty argument is the window title:
-/// without it `start` takes the first quoted argument as a title and opens nothing.
+/// **No association launch on Windows.** The obvious candidate is `cmd /c start`, and it cannot be
+/// used here: `cmd.exe` re-parses the command tail, so `Command::args`' argv boundaries stop meaning
+/// anything once the child is a command interpreter. A managed file whose name contains `&`, `^` or
+/// `%…%` — the scanner accepts any `.md` under the managed directories, whatever wrote it — would then
+/// have the text after the metacharacter run as another command. That is the module's "no shell, ever"
+/// rule broken in the one place it matters most, for a value that came off disk.
+///
+/// The correct launcher is `ShellExecuteW`, which needs a Win32 binding or Tauri's opener plugin — a
+/// new production dependency, gated on confirmation (AGENTS) and not verifiable from this machine. So
+/// the method is withheld here rather than shipped through a shell: `VISUAL`/`EDITOR` still works on
+/// Windows, and the UI states why the other control is absent. Closing this gap is its own task.
 #[cfg(target_os = "windows")]
-const fn association_launcher() -> AssociationLauncher {
-    AssociationLauncher {
-        program: "cmd",
-        leading: &["/c", "start", ""],
-    }
+const fn association_launcher() -> Option<AssociationLauncher> {
+    None
 }
 
 /// `xdg-open` is the freedesktop.org entry point. `--` keeps a path that begins with `-` from being
 /// read as an option; a system without `xdg-open` fails at spawn with the program named, which is the
 /// honest report rather than a silent no-op.
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const fn association_launcher() -> AssociationLauncher {
-    AssociationLauncher {
+const fn association_launcher() -> Option<AssociationLauncher> {
+    Some(AssociationLauncher {
         program: "xdg-open",
         leading: &["--"],
-    }
+    })
 }
+
+/// Why the association method is not offered on this platform (doc-8 §7). Stated in full because the
+/// UI shows it: an absent control with no reason is what doc-5 §5 rules out.
+pub const NO_ASSOCIATION_LAUNCHER: &str =
+    "このプラットフォームでは OS 関連付け起動を提供しません（cmd /c start はコマンド行を \
+     cmd.exe に再解釈させ、ファイル名の & や %…% が別コマンドとして実行され得るため。\
+     シェルを介さない関連付け API を使うまで無効にしています）。VISUAL・EDITOR は使えます";
 
 /// What a launch would run, without running it (doc-8 §7). Separate from [`open`] so the decision —
 /// which program, and the file path as its own argument array element — is asserted in tests without
@@ -250,7 +264,9 @@ pub fn plan(
             })
         }
         LaunchMethod::Association => {
-            let launcher = association_launcher();
+            let launcher = association_launcher().ok_or_else(|| EditorError::Unavailable {
+                detail: NO_ASSOCIATION_LAUNCHER.to_string(),
+            })?;
             let mut args: Vec<String> = launcher.leading.iter().map(|a| a.to_string()).collect();
             args.push(path);
             Ok(EditorLaunch {
@@ -376,6 +392,7 @@ mod tests {
         assert!(matches!(error, EditorError::Unavailable { .. }));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn association_launch_needs_no_editor_variable() {
         // The whole point of the second method: a machine with no EDITOR can still open the file.
@@ -388,7 +405,62 @@ mod tests {
             Some("/roots/a.md"),
             "the file is the last argument, after the launcher's own"
         );
-        assert_eq!(probe(&env).association, launch.program);
+        assert_eq!(probe(&env).association, Some(launch.program));
+    }
+
+    /// The launcher is never a command interpreter, on any platform. Spawning one would hand the path
+    /// — a value read off disk — to something that re-parses the command tail, so a file named
+    /// `a&calc.md` could run `calc`: `Command::args` guarantees argv boundaries to the child, not
+    /// through it. Asserted as an invariant rather than per-platform so reintroducing `cmd /c start`,
+    /// `sh -c` or `powershell -Command` fails here instead of in the field.
+    #[test]
+    fn the_association_launcher_is_never_a_command_interpreter() {
+        const INTERPRETERS: [&str; 7] = [
+            "cmd",
+            "cmd.exe",
+            "powershell",
+            "powershell.exe",
+            "pwsh",
+            "sh",
+            "bash",
+        ];
+        if let Some(launcher) = association_launcher() {
+            assert!(
+                !INTERPRETERS.contains(&launcher.program),
+                "{} re-parses its command tail; a managed path must not be handed to one",
+                launcher.program
+            );
+        }
+    }
+
+    /// The gap the invariant above leaves on Windows: rather than launching through `cmd`, the method
+    /// is withheld with a stated reason (doc-5 §5), and `VISUAL`/`EDITOR` still works there.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_withholds_the_association_method_instead_of_using_a_shell() {
+        let env = FakeEnv::default();
+        assert_eq!(probe(&env).association, None);
+        let error = plan(
+            &env,
+            LaunchMethod::Association,
+            Path::new("C:/roots/a&calc.md"),
+        )
+        .expect_err("no association launcher on Windows");
+        assert!(matches!(error, EditorError::Unavailable { .. }));
+
+        let env = FakeEnv::with(&[("EDITOR", "notepad")]);
+        let launch = plan(
+            &env,
+            LaunchMethod::Configured,
+            Path::new("C:/roots/a&calc.md"),
+        )
+        .expect("the configured editor still works");
+        assert_eq!(launch.program, "notepad");
+        assert_eq!(
+            launch.args,
+            vec!["C:/roots/a&calc.md".to_string()],
+            "the path stays one argv element: no interpreter is involved"
+        );
     }
 
     #[test]

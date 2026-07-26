@@ -82,6 +82,15 @@ export const CONFIGURED_TERMINAL_CAVEAT =
   "端末専用エディタ（vim・nano など）を指している場合、GUI から起動しても画面は出ません。" +
   "その場合は OS の関連付けで開いてください。";
 
+/**
+ * Why the association control can be absent. The platform has no launcher this build will spawn:
+ * `cmd /c start` would hand the path to a command interpreter, so on Windows the method is withheld
+ * rather than shipped through a shell (see `editor::association_launcher`). `$EDITOR` still works.
+ */
+export const NO_ASSOCIATION_LAUNCHER_REASON =
+  "このプラットフォームでは OS 関連付け起動を提供しません（シェルを介さない関連付け API を" +
+  "使うまで無効にしています）。$EDITOR / $VISUAL での起動は使えます";
+
 export const NO_CONFIGURED_EDITOR_REASON =
   "VISUAL・EDITOR のいずれも設定されていないため、この方式は提供しません" +
   "（環境変数を設定して Atlas を起動し直すか、OS の関連付けで開いてください）";
@@ -138,9 +147,13 @@ export function editorOffers(
       method: "association",
       label: "OS の関連付けで開く",
       command:
-        readiness === null ? "—" : `${readiness.association} … ${FILE_PLACEHOLDER}`,
-      enabled: blocked === null,
-      reason: blocked,
+        readiness?.association == null ? "—" : `${readiness.association} … ${FILE_PLACEHOLDER}`,
+      enabled: blocked === null && readiness?.association != null,
+      reason:
+        blocked ??
+        (readiness !== null && readiness.association === null
+          ? NO_ASSOCIATION_LAUNCHER_REASON
+          : null),
     },
   ];
 }

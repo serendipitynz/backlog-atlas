@@ -302,12 +302,14 @@ export interface ConfiguredEditor {
 }
 
 /**
- * Which launch methods the environment has. `association` is always present — every platform this
- * builds for has a launcher — but whether that program is installed is only learned by running it.
+ * Which launch methods the environment has. `association` is the launcher's program name, or `null`
+ * where the platform has none this build is willing to spawn (Windows: `cmd /c start` would re-parse
+ * the path — see `editor::association_launcher`). Whether a named program is installed is only
+ * learned by running it.
  */
 export interface EditorReadiness {
   configured: ConfiguredEditor | null;
-  association: string;
+  association: string | null;
 }
 
 /** What one launch spawned. Shown, because a terminal-only editor started from a GUI process is the

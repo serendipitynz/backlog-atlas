@@ -1507,7 +1507,9 @@ ordinal: 1000\n\
         assert_eq!(json["configured"]["variable"], "EDITOR");
         assert_eq!(json["configured"]["program"], "code");
         assert_eq!(json["configured"]["args"][0], "-w");
-        assert!(json["association"].is_string());
+        // A string where a launcher exists, `null` where the platform has none (Windows — see
+        // `editor::association_launcher`): the frontend's `string | null` must match either way.
+        assert!(json["association"].is_string() || json["association"].is_null());
 
         let launch = editor::plan(
             &FixedEnv("code"),

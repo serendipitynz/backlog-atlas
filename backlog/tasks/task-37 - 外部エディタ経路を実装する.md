@@ -4,7 +4,7 @@ title: 外部エディタ経路を実装する
 status: In Progress
 assignee: []
 created_date: '2026-07-22 12:07'
-updated_date: '2026-07-26 07:04'
+updated_date: '2026-07-26 08:36'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -50,4 +50,6 @@ AC #3 は起動前に常時表示する FRONTMATTER_NOTICE（frontmatter 露出�
 検証: cargo test --lib 227 passed / 3 ignored、clippy -D warnings clean、cargo fmt clean、vitest 120→126 passed、svelte-check 0 errors、vite build 成功。実エディタが画面に出るところまでの手動確認は行っていない（sync.rs の実監視 e2e と同じ理由でサンドボックス依存）。
 
 付随修正: src/lib/edit.ts の sameCriteria が区切りに生の NUL バイトをソースへ直書きしていたため、ファイルが binary 扱いになり grep/diff が中身を見なくなっていた。挙動同一の `\0` エスケープへ置き換えた。
+
+レビュー1巡目の対応（PR #13）: [P1] Windows の cmd /c start はコマンド行を cmd.exe に再解釈させ、ファイル名の & 等が別コマンドとして実行され得るため、シェル経由で出荷せず Windows では association を None として理由付きで無効化した（$VISUAL/$EDITOR は使える）。ShellExecuteW 相当は新規本番依存の確認ゲート対象なので TASK-44 に切り出した。起動子がコマンドインタプリタでないことをプラットフォーム非依存の不変条件として試験に固定した（cmd/sh/powershell の再導入で落ちる）。[P2] 監視を開始できなかった場合、従来は notice を出して起動を続け、案内文の「タスクを開き直す」も loadBySlug から解決するだけで再読込にならなかった。監視未起動のルートを unwatched として記録し、projectOpen を叩く明示的な「再読込」操作を画面上部に出してそこへ案内する（外部エディタ経路自体は残す: CLI で不能な編集の逃がし先を、監視が壊れた機械でこそ奪わないため）。
 <!-- SECTION:NOTES:END -->

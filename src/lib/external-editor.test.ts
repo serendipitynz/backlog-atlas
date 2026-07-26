@@ -11,6 +11,7 @@ import {
   EDITOR_PROBE_PENDING_REASON,
   FILE_MISSING_EDITOR_REASON,
   FRONTMATTER_NOTICE,
+  NO_ASSOCIATION_LAUNCHER_REASON,
   NO_CONFIGURED_EDITOR_REASON,
   UNSAVED_INPUT_WARNING,
   WRITE_BACK_NOTE,
@@ -28,6 +29,12 @@ const WITH_EDITOR: EditorReadiness = {
 };
 
 const WITHOUT_EDITOR: EditorReadiness = { configured: null, association: "open" };
+
+/** A platform with no association launcher this build will spawn (Windows — `cmd` is a shell). */
+const WITHOUT_ASSOCIATION: EditorReadiness = {
+  configured: { variable: "EDITOR", program: "notepad", args: [] },
+  association: null,
+};
 
 function offer(readiness: EditorReadiness | null, method: "configured" | "association") {
   const found = editorOffers(readiness, { fileMissing: false }).find(
@@ -54,6 +61,16 @@ describe("editorOffers", () => {
     const configured = offer(WITHOUT_EDITOR, "configured");
     expect(configured.enabled).toBe(false);
     expect(configured.reason).toBe(NO_CONFIGURED_EDITOR_REASON);
+  });
+
+  it("withholds the association method where the platform has no non-shell launcher", () => {
+    // The alternative would be `cmd /c start`, which re-parses the path (a file named `a&calc.md`
+    // would run `calc`). The control is therefore absent *with its reason*, and $EDITOR still works.
+    const association = offer(WITHOUT_ASSOCIATION, "association");
+    expect(association.enabled).toBe(false);
+    expect(association.reason).toBe(NO_ASSOCIATION_LAUNCHER_REASON);
+    expect(association.command).toBe("—");
+    expect(offer(WITHOUT_ASSOCIATION, "configured").enabled).toBe(true);
   });
 
   it("states the terminal-editor caveat on an offered $EDITOR", () => {
