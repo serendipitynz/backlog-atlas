@@ -541,7 +541,15 @@ export function saveAvailability(
  * shell keeps one owner for the snapshot the whole screen draws from.
  */
 export type ApplyOutcome =
-  | { state: "applied" }
+  /**
+   * `view` is the operated task as the post-update re-read has it — `null` when that read no longer
+   * yields the file (a 状態遷移 moves it, and an external delete would too). Carried here so the
+   * 事後通知 comparison (doc-9 §5) is against the task the update was issued for, independently of
+   * what the panel happens to be showing when the answer arrives: the selection can move during the
+   * await, and comparing against another task — or skipping the comparison — would either invent a
+   * divergence or silently drop one.
+   */
+  | { state: "applied"; view: TaskView | null }
   /** 更新前競合 (doc-9 §4): no CLI ran, and the screen already holds the re-read. */
   | { state: "conflict"; path: string }
   /**

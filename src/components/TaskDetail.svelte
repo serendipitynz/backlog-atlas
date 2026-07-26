@@ -278,11 +278,11 @@
       const stillOpen = task.sourcePath === target.sourcePath;
       switch (outcome.state) {
         case "applied": {
-          // 事後通知 (doc-9 §5): the re-read is already on `view`, so the comparison is against
-          // what the file says now, not against what the CLI reported. Only comparable while the
-          // panel still holds that read — with another task open there is nothing to compare the
-          // submitted values against, and doc-9 §5 frames this notice as detectable-range only.
-          const diverged = stillOpen ? divergence(submitted, view) : [];
+          // 事後通知 (doc-9 §5): compared against the operated task's own re-read, which the outcome
+          // carries — not against `view`, which is whatever the panel is showing by now. Skipping the
+          // comparison when the selection moved would be worse than wrong: a clean result clears the
+          // task's 版ずれ record, so an unchecked save would erase a mark it never checked.
+          const diverged = divergence(submitted, outcome.view);
           if (stillOpen) {
             session = null;
             confirming = null;

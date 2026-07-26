@@ -361,6 +361,16 @@
    * nothing stops the selection from moving in the meantime — a transition needs no 未保存入力, so
    * the cards stay clickable — which would file one task's divergence against another's card.
    */
+  /**
+   * One task as the current read of its root has it, or `null` when that read does not yield the
+   * file. Keyed by path for the same reason the selection is (doc-4 §5: a 解析不能 task has no id).
+   */
+  function viewAt(target: ConflictTarget): TaskView | null {
+    const load = loadBySlug[target.slug];
+    if (load?.state !== "loaded") return null;
+    return load.project.tasks.find((view) => view.task.sourcePath === target.sourcePath) ?? null;
+  }
+
   function noteConflict(conflict: VersionConflict | null, target: ConflictTarget): void {
     const key = conflictKeyOf(target.slug, target.sourcePath);
     if (conflict === null) {
@@ -430,7 +440,11 @@
         }
         notice = "状態遷移を適用しました。保存区分と ID が変わるため、詳細を閉じました。";
       }
-      return { state: "applied" };
+      // The operated task as of the re-read, resolved here because the shell is what holds it. The
+      // panel needs it to make doc-9 §5's 事後通知 comparison against the right task even when the
+      // selection moved during the await — reading it off the panel's own `view` would compare the
+      // submitted values against whatever is open instead.
+      return { state: "applied", view: viewAt(target) };
     } catch (error) {
       const commandError = asCommandError(error);
       // 照合不能 (doc-9 §4.2) is separated here rather than in the panel, so the panel never has to
