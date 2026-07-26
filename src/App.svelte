@@ -86,6 +86,14 @@
    * (`rereadRow`), which is the only thing that will show an external save for such a root.
    */
   let unwatched = $state<string[]>([]);
+  /**
+   * Whether a watch-triggered re-read can reach the screen at all. The event subscription is the
+   * frontend half of 継続検出 (doc-9 §3): without it every root's watch can run perfectly and still
+   * change nothing here, because no one copies the emitted `ProjectLoad` into `loadBySlug`. Held
+   * beside `unwatched` because it has the same consequence for the user (only an explicit re-read
+   * refreshes anything) but no per-root cause — it makes *every* row stale.
+   */
+  let reloadFeed = $state<"live" | "unavailable">("live");
   /** True while the detail panel holds 未保存入力 — what makes a selection change ask first. */
   let detailDirty = $state(false);
   /** A selection requested while the panel was dirty, held until the user answers (doc-8 §6.3). */
@@ -119,8 +127,15 @@
   // 保存区分印 goes on cards only once a division beyond active is in play (doc-7 §3).
   let showStorageMark = $derived(filter.storage.some((state) => state !== "active"));
   let hiddenRows = $derived(hidden.filter((slug) => order.includes(slug)));
-  // Only registered rows: a slug removed from the ledger has no row to re-read.
-  let unwatchedRows = $derived(unwatched.filter((slug) => order.includes(slug)));
+  /**
+   * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
+   * A dead subscription means *every* registered row (nothing can arrive at all); otherwise it is the
+   * roots whose own watch would not start. Only registered rows either way — a slug that left the
+   * ledger has no row to re-read.
+   */
+  let unwatchedRows = $derived(
+    reloadFeed === "unavailable" ? order : unwatched.filter((slug) => order.includes(slug)),
+  );
 
   // The open task, resolved against the *current* read of its root, so a reload refreshes the
   // panel instead of leaving it on the version the card was clicked from.
@@ -189,11 +204,15 @@
     // Failing to subscribe is the same kind of failure as a watch that will not start — the
     // screen is one read behind, not unusable — so it must not take the first read down with
     // it, which would leave 読み込み中 on screen over a workspace that reads perfectly well.
+    // It is *recorded* for the same reason a failed watch is: with no listener, every root's watch
+    // can run and still change nothing here, so the only thing that refreshes any row is the manual
+    // re-read — which the screen then has to offer for all of them (`unwatchedRows`).
     try {
       unlisten = await onProjectReloaded((event) => {
         loadBySlug[event.slug] = event.load;
       });
     } catch (error) {
+      reloadFeed = "unavailable";
       notice = `変更の通知を購読できません（${unreadableDetail(asCommandError(error))}）`;
     }
     // Probed once and not per edit: it decides whether edit controls are offered at all (doc-5 §5),
@@ -386,11 +405,15 @@
     // `startWatch` lists the root in `unwatched`, which draws the 再読込 button below. The launch still
     // happens: this route is the way through for edits the CLI cannot make, so removing it here would
     // take away the escape hatch precisely on a machine whose watch is broken.
-    if (!(await startWatch(ref.slug))) {
+    // Both halves of 継続検出 have to be live for the save to arrive: the root's watch, and the event
+    // subscription that brings its re-read to the screen. Either one missing leads to the same place —
+    // the manual re-read — so they are reported together rather than only where the cause differs.
+    const watching = await startWatch(ref.slug);
+    if (!watching || reloadFeed === "unavailable") {
       notice =
-        `${ref.slug}: 変更監視が動いていないため、外部エディタの保存は自動では反映されません。` +
-        `編集を終えたら画面上部の「${ref.slug} を再読込」を押してください` +
-        "（タスクを開き直すだけでは読み直しません）。";
+        `${ref.slug}: ${watching ? "変更の通知を購読できていない" : "変更監視が動いていない"}ため、` +
+        "外部エディタの保存は自動では反映されません。編集を終えたら画面上部の" +
+        `「${ref.slug} を再読込」を押してください（タスクを開き直すだけでは読み直しません）。`;
     }
     try {
       return { state: "launched", launch: await taskFileOpen(ref.slug, ref.sourcePath, method) };
@@ -461,7 +484,11 @@
          再読込契機 is offered here. Without it the screen would report staleness it gives the user no
          way to resolve — and an external editor's save would stay invisible. -->
     <div class="unwatched">
-      <span>変更監視が動いていない行があります（外部エディタ・別プロセスの保存は自動反映されません）:</span>
+      <span>
+        {reloadFeed === "unavailable"
+          ? "変更の通知を購読できていないため、どの行も自動では更新されません"
+          : "変更監視が動いていない行があります"}（外部エディタ・別プロセスの保存は自動反映されません）:
+      </span>
       {#each unwatchedRows as slug (slug)}
         <button type="button" onclick={() => rereadRow(slug)}>{slug} を再読込</button>
       {/each}
