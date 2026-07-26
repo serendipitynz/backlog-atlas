@@ -7,6 +7,10 @@ pub mod commands;
 // command layer build on. Exposing it as crate API is also what keeps the types from
 // tripping dead_code before their consumers land.
 pub mod domain;
+// Public: the 外部エディタ経路 (TASK-37 / doc-8 §7). Neither a read nor a CLI update — it starts the
+// user's editor on a management file and writes nothing itself, so it sits beside `update` as its own
+// layer rather than inside it: the write that follows is the user's, and it arrives through `sync`.
+pub mod editor;
 // Public: the Git・Pull Request 履歴参照系 (TASK-30 / doc-6). A read-only, ledger-aware sibling
 // of the read layer: given a task id and its owning ledger entry it finds commits, extracts PR
 // URLs, and (remote permitting) relates them. Exposed as crate API for the command layer to call.
