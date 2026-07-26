@@ -1,10 +1,10 @@
 ---
 id: TASK-37
 title: 外部エディタ経路を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:07'
-updated_date: '2026-07-26 08:45'
+updated_date: '2026-07-26 10:35'
 labels:
   - 'kind:feature'
 milestone: m-1
