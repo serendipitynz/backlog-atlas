@@ -61,6 +61,16 @@ export interface TaskMark {
 }
 
 /**
+ * Which task a 版ずれ belongs to. Carried as a value so it can be captured *before* an update is
+ * awaited: the screen's selection can move while the CLI runs, and a record filed against "whatever
+ * is open when the answer arrives" would mark the wrong card.
+ */
+export interface ConflictTarget {
+  slug: string;
+  sourcePath: string;
+}
+
+/**
  * The identity of a task for the shell's 版ずれ record. `sourcePath` rather than the TASK-ID: a
  * 解析不能 task has no id (doc-4 §5) and can still be edited into a conflict. Serialized rather
  * than concatenated, so no two (slug, path) pairs can collide into one key.

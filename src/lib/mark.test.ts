@@ -5,6 +5,7 @@ import {
   degradeMark,
   taskMarks,
   versionConflictMark,
+  type ConflictTarget,
   type MarkKind,
   type VersionConflict,
 } from "./mark";
@@ -97,6 +98,52 @@ describe("継続検出停止", () => {
     const kind: MarkKind = UNWATCHED_MARK.kind;
     expect(kind).toBe("undetectable");
     expect(UNWATCHED_MARK.detail).toContain("版がずれているとは限りません");
+  });
+});
+
+describe("記録の宛先", () => {
+  /**
+   * The shell keys the record by the target it is handed, never by whatever is selected when the
+   * answer arrives: an update is awaited, and a 状態遷移 needs no 未保存入力, so nothing stops the
+   * user selecting another card while the CLI runs. This models that store.
+   */
+  function store(): {
+    note: (conflict: VersionConflict | null, target: ConflictTarget) => void;
+    at: (target: ConflictTarget) => VersionConflict | null;
+  } {
+    let records: Record<string, VersionConflict> = {};
+    return {
+      note: (conflict, target) => {
+        const key = conflictKeyOf(target.slug, target.sourcePath);
+        if (conflict === null) {
+          const { [key]: _removed, ...rest } = records;
+          records = rest;
+        } else {
+          records[key] = conflict;
+        }
+      },
+      at: (target) => records[conflictKeyOf(target.slug, target.sourcePath)] ?? null,
+    };
+  }
+
+  const A: ConflictTarget = { slug: "atlas", sourcePath: "backlog/tasks/task-a.md" };
+  const B: ConflictTarget = { slug: "atlas", sourcePath: "backlog/tasks/task-b.md" };
+
+  it("files a divergence against the operated task, not the one selected later", () => {
+    const records = store();
+    // A's save is in flight; the user selects B; A comes back as a conflict.
+    records.note(PRE_UPDATE, A);
+    expect(records.at(A)).toEqual(PRE_UPDATE);
+    expect(records.at(B)).toBeNull();
+  });
+
+  it("clears only the operated task's record", () => {
+    const records = store();
+    records.note(PRE_UPDATE, A);
+    records.note(POST_WINDOW, B);
+    records.note(null, A);
+    expect(records.at(A)).toBeNull();
+    expect(records.at(B)).toEqual(POST_WINDOW);
   });
 });
 

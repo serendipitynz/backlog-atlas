@@ -66,7 +66,12 @@
     type EditorOffer,
     type OpenOutcome,
   } from "../lib/external-editor";
-  import { taskMarks, versionConflictMark, type VersionConflict } from "../lib/mark";
+  import {
+    taskMarks,
+    versionConflictMark,
+    type ConflictTarget,
+    type VersionConflict,
+  } from "../lib/mark";
   import { CANONICAL_COLUMN_LABEL } from "../lib/swimlane";
   import type {
     CliReadiness,
@@ -103,8 +108,13 @@
      * the same thing about the same task.
      */
     conflict: VersionConflict | null;
-    /** Record or clear this task's 版ずれ. Called where the panel observes or resolves one. */
-    onconflict: (conflict: VersionConflict | null) => void;
+    /**
+     * Record or clear a 版ずれ for one task. `target` is passed explicitly rather than resolved from
+     * the shell's current selection: an operation is awaited, and the selection can move while it is
+     * in flight, which would file this task's divergence against whatever is open when the answer
+     * arrives.
+     */
+    onconflict: (conflict: VersionConflict | null, target: ConflictTarget) => void;
     /** Issue one 更新操作 through the boundary. The shell owns the call and the re-read. */
     onapply: (action: UpdateOperation[]) => Promise<ApplyOutcome>;
     /**
@@ -247,44 +257,62 @@
     clearAddBoxes();
   }
 
+  /** The task a 版ずれ report is about, as of now. Captured before any await (see `save`). */
+  function conflictTarget(): ConflictTarget {
+    return { slug: task.project, sourcePath: task.sourcePath };
+  }
+
   async function save(): Promise<void> {
     if (missing || session === null || plan === null || plan.state !== "ready" || busy) return;
     const submitted = plan.submitted;
+    // Captured before the await, like the 外部エディタ経路 does with its path: the answer is about
+    // *this* task, and the panel may be pointed at another one by the time it arrives (a dirty
+    // session asks first, but 破棄して開く during the in-flight save is an answer).
+    const target = conflictTarget();
     busy = true;
     try {
       const outcome = await onapply(plan.action);
+      // Whether the panel still holds the operated task's read. `saveState` and the session are about
+      // what is on screen, so they are only touched while that is still true; the 版ずれ record is
+      // about the task and is always filed against `target`.
+      const stillOpen = task.sourcePath === target.sourcePath;
       switch (outcome.state) {
         case "applied": {
           // 事後通知 (doc-9 §5): the re-read is already on `view`, so the comparison is against
-          // what the file says now, not against what the CLI reported.
-          const diverged = divergence(submitted, view);
-          session = null;
-          confirming = null;
-          clearAddBoxes();
-          saveState =
-            diverged.length === 0 ? { state: "applied" } : { state: "diverged", fields: diverged };
+          // what the file says now, not against what the CLI reported. Only comparable while the
+          // panel still holds that read — with another task open there is nothing to compare the
+          // submitted values against, and doc-9 §5 frames this notice as detectable-range only.
+          const diverged = stillOpen ? divergence(submitted, view) : [];
+          if (stillOpen) {
+            session = null;
+            confirming = null;
+            clearAddBoxes();
+            saveState =
+              diverged.length === 0 ? { state: "applied" } : { state: "diverged", fields: diverged };
+          }
           // The 版ずれ record follows the same split: a clean save clears it, and the 事後通知 is
           // recorded so it survives leaving this task (doc-9 §5, AC #4).
           onconflict(
             diverged.length === 0 ? null : { kind: "postWindow", fields: diverged },
+            target,
           );
           break;
         }
         case "conflict":
           // 未保存入力を保持したまま (doc-8 §6.4): the session stays open and the two paths of
           // doc-9 §5 are offered below.
-          saveState = { state: "conflict", path: outcome.path };
-          onconflict({ kind: "preUpdate", path: outcome.path });
+          if (stillOpen) saveState = { state: "conflict", path: outcome.path };
+          onconflict({ kind: "preUpdate", path: outcome.path }, target);
           break;
         case "uncheckable":
           // 照合不能 (doc-9 §4.2): no CLI ran and no divergence was observed, so this deliberately
           // does *not* record a 版ずれ — doc-9 §5 requires the user not to read it as a conflict.
-          saveState = { state: "uncheckable", detail: outcome.detail };
+          if (stillOpen) saveState = { state: "uncheckable", detail: outcome.detail };
           break;
         case "failed":
           // CLI 失敗 (doc-5 §5): nothing changed, the display is untouched, and the input stays
           // so the same save can be retried (doc-8 §6.3).
-          saveState = { state: "failed", detail: outcome.detail };
+          if (stillOpen) saveState = { state: "failed", detail: outcome.detail };
           break;
       }
     } finally {
@@ -298,7 +326,7 @@
     saveState = { state: "idle" };
     // Both doc-9 §5 paths 帰着させる the situation to 最新の版に対する新しい更新操作, so the recorded
     // divergence is resolved: what remains is unsaved input against the current read, not a 版ずれ.
-    onconflict(null);
+    onconflict(null, conflictTarget());
   }
 
   /** doc-9 §5 (ii): keep the input and move the session's baseline onto the latest read. */
@@ -309,7 +337,7 @@
     acDeltaDropped = acDeltaDroppedByRebase(session, view);
     session = rebaseOnto(session, view);
     saveState = { state: "idle" };
-    onconflict(null);
+    onconflict(null, conflictTarget());
   }
 
   /** Whether the last rebase had to drop index-bound AC operations (see `acDeltaForCli`). */
@@ -336,22 +364,27 @@
       return;
     }
     confirming = null;
+    // A transition needs no 未保存入力, so nothing asks before the selection changes — the swimlane's
+    // cards stay clickable while the CLI runs, and `busy` only disables this panel's own controls.
+    // The target is therefore captured here rather than read back afterwards.
+    const target = conflictTarget();
     busy = true;
     try {
       const outcome = await onapply([offer.operation]);
+      const stillOpen = task.sourcePath === target.sourcePath;
       switch (outcome.state) {
         case "applied":
-          saveState = { state: "applied" };
+          if (stillOpen) saveState = { state: "applied" };
           break;
         case "conflict":
-          saveState = { state: "conflict", path: outcome.path };
-          onconflict({ kind: "preUpdate", path: outcome.path });
+          if (stillOpen) saveState = { state: "conflict", path: outcome.path };
+          onconflict({ kind: "preUpdate", path: outcome.path }, target);
           break;
         case "uncheckable":
-          saveState = { state: "uncheckable", detail: outcome.detail };
+          if (stillOpen) saveState = { state: "uncheckable", detail: outcome.detail };
           break;
         case "failed":
-          saveState = { state: "failed", detail: outcome.detail };
+          if (stillOpen) saveState = { state: "failed", detail: outcome.detail };
           break;
       }
     } finally {
@@ -719,7 +752,9 @@
         <p>{versionConflictMark(conflict).detail}</p>
         <p class="hint">表示は再読込後の最新内容です。未保存入力は残っていません。</p>
         <div class="buttons">
-          <button type="button" onclick={() => onconflict(null)}>確認した（版ずれ印を消す）</button>
+          <button type="button" onclick={() => onconflict(null, conflictTarget())}>
+            確認した（版ずれ印を消す）
+          </button>
         </div>
       </div>
     {/if}

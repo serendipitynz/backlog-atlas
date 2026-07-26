@@ -29,7 +29,12 @@
   import type { HistoryState } from "./lib/detail";
   import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
   import { launchFailureDetail, type OpenOutcome } from "./lib/external-editor";
-  import { conflictKeyOf, UNWATCHED_MARK, type VersionConflict } from "./lib/mark";
+  import {
+    conflictKeyOf,
+    UNWATCHED_MARK,
+    type ConflictTarget,
+    type VersionConflict,
+  } from "./lib/mark";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
@@ -348,14 +353,16 @@
   }
 
   /**
-   * Record or clear the open task's 版ずれ (doc-9). Reported by the panel rather than derived here:
+   * Record or clear one task's 版ずれ (doc-9). Reported by the panel rather than derived here:
    * 更新前競合 is visible to `apply` below, but the 事後通知 is not — it is the comparison between
    * what was submitted and what the re-read says, and only the panel holds the former.
+   *
+   * The task is named by the caller, never read back off `selectedRef`. An update is awaited, and
+   * nothing stops the selection from moving in the meantime — a transition needs no 未保存入力, so
+   * the cards stay clickable — which would file one task's divergence against another's card.
    */
-  function noteConflict(conflict: VersionConflict | null): void {
-    const ref = selectedRef;
-    if (ref === null) return;
-    const key = conflictKeyOf(ref.slug, ref.sourcePath);
+  function noteConflict(conflict: VersionConflict | null, target: ConflictTarget): void {
+    const key = conflictKeyOf(target.slug, target.sourcePath);
     if (conflict === null) {
       const { [key]: _removed, ...rest } = conflicts;
       conflicts = rest;
@@ -384,10 +391,13 @@
    * snapshot, and letting the panel keep a second copy is how the two would drift apart.
    */
   async function apply(action: UpdateOperation[]): Promise<ApplyOutcome> {
-    const slug = selectedRef?.slug;
-    if (slug === undefined) {
+    // The whole reference, captured before the await: everything below is about the task the action
+    // was issued for, and the selection can move while the CLI runs.
+    const target = selectedRef;
+    if (target === null) {
       return { state: "failed", detail: "対象プロジェクトを特定できません" };
     }
+    const slug = target.slug;
     try {
       const result = await updateApply(slug, action);
       if (result.state === "conflict") {
@@ -411,9 +421,13 @@
       if (action.some((operation) => TRANSITIONS.includes(operation.op))) {
         // The 版ずれ record is keyed by the file path, and the transition moved the file — the old
         // key would mark a card that no longer exists while the moved task carried none.
-        noteConflict(null);
-        selectedRef = null;
-        detailDirty = false;
+        noteConflict(null, target);
+        // Closed only if it is still the transitioned task on screen: the panel may have been
+        // pointed at another task while the CLI ran, and that one did not move.
+        if (selectedRef?.sourcePath === target.sourcePath) {
+          selectedRef = null;
+          detailDirty = false;
+        }
         notice = "状態遷移を適用しました。保存区分と ID が変わるため、詳細を閉じました。";
       }
       return { state: "applied" };
