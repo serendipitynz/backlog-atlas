@@ -1,10 +1,10 @@
 ---
 id: TASK-37
 title: 外部エディタ経路を実装する
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-22 12:07'
-updated_date: '2026-07-22 12:25'
+updated_date: '2026-07-26 07:04'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -23,9 +23,31 @@ doc-8 §7 の設計に従い、タスクの管理ファイルを利用者の外�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 対象タスクの管理ファイルそのものを $EDITOR / OS 関連付けで開き、Atlas 自身は書き込まない
-- [ ] #2 外部エディタの保存を doc-9 のファイル監視が拾い、再読込でドメインモデルへ反映する（終了検知に依存しない）
-- [ ] #3 開く前に frontmatter を壊すと縮退表示になる旨を示し、壊れた場合は doc-4 の縮退表示で受ける
-- [ ] #4 GUI 内編集セッションと外部エディタ編集の二重取り込みを 6.4 の扱いで避ける
-- [ ] #5 最後の参照削除など CLI で不能な操作の案内先として機能する
+- [x] #1 対象タスクの管理ファイルそのものを $EDITOR / OS 関連付けで開き、Atlas 自身は書き込まない
+- [x] #2 外部エディタの保存を doc-9 のファイル監視が拾い、再読込でドメインモデルへ反映する（終了検知に依存しない）
+- [x] #3 開く前に frontmatter を壊すと縮退表示になる旨を示し、壊れた場合は doc-4 の縮退表示で受ける
+- [x] #4 GUI 内編集セッションと外部エディタ編集の二重取り込みを 6.4 の扱いで避ける
+- [x] #5 最後の参照削除など CLI で不能な操作の案内先として機能する
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+doc-8 §7 の外部エディタ経路を実装した。層は src-tauri/src/editor.rs（read/update/history/sync/ledger と並ぶ新層。読み取りでも CLI 更新でもなく「起動だけ」を持つ）、境界は commands::editor_probe / commands::task_file_open、画面側の規則は src/lib/external-editor.ts（純関数）、面は TaskDetail の「外部エディタで開く」区画。
+
+新規の本番依存は入れていない。関連付け起動は tauri-plugin-opener / shell を使わず std::process::Command で macOS `open` / Windows `cmd /c start ""` / それ以外 `xdg-open --` を直接起動する（history.rs の git 起動と同方針。AGENTS の依存導入ゲートを踏まない範囲で足りる）。シェルは介さないため、$EDITOR 値の解析は ASCII 空白での分割（先頭=プログラム、残り=先行引数）に限定し、クォート・`~` 展開・変数展開は提供しない（実行ファイルのパスに空白を含む値は表現できず spawn 失敗として報告される）。
+
+起動方式は $VISUAL/$EDITOR（Configured）と OS 関連付け（Association）を fallback chain にせず 2 つの独立した操作として並べた。GUI プロセスから端末専用エディタ（vim 等）を起動すると端末が無く即終了して「何も起きない」ように見えるため、どちらを意図したかは利用者しか知らない。$VISUAL を $EDITOR より優先するのは POSIX 慣行（EDITOR は行エディタでもよく、VISUAL が画面指向）に合わせ、長文編集というこの経路の用途に一致するため。Configured は能動化していても端末専用エディタの注意（CONFIGURED_TERMINAL_CAVEAT）を併記する。
+
+対象ファイルはフロントの値を信用せず、開いているモデルが持つ task の source_path と一致するものだけを起動する（Workspace::open_in_editor。一致しなければ CommandError::UnknownTaskFile で起動しない）。これは doc-9 §4 で guarded_update が対象を呼出側任せにせずモデルから導出するのと同じ規則。CLI 能力検査（cli_probe）と保存区分では門を作らない: doc-8 §6.5・doc-5 §3.1 が draft・completed・archive の内容編集や References/dependencies の最後の 1 件削除の案内先としてこの経路を指しているため、そこで無効化すると必要な場所で消える。TASK-ID を読めない解析不能ファイルもパスで識別するので開ける。
+
+Atlas は書かない（AC #1）: この経路にファイルを開く・作る・書くコードは無く、効果は「パスを引数に持つプロセスを 1 つ起動する」だけ。実ファイルを置いて起動後に内容が変わらないことを試験で固定した（将来この経路が書き込みを始めたら試験が落ちる）。書き戻しは doc-9 の監視に委ね、終了検知は実装していない（AC #2）。SystemLauncher は spawn 後に wait せず（待つと編集中ずっとコマンドが返らない）、代わりに回収用スレッドで wait して Unix の zombie 蓄積を避ける。`sleep 30` を起動して即座に返ることを試験で固定した。監視が動いていなければ外部エディタの保存は届かないため、起動直前に project_watch_start（冪等）を通し、失敗時は「自動反映されない」旨を notice で出す。
+
+二重取り込み（AC #4）は 6.4 の扱いに乗せた: 起動は編集セッションに一切触らず（未保存入力を保存も破棄もしない）、未保存入力があるときだけ警告と 2 度押し確認を出す。以降は既存の継続検出（externallyChanged の告知）と保存時の更新前競合検出が受ける。確認と起動結果の表示は履歴読取（TASK-35）と同じくパスで鍵付けした: 再読込ごとに view オブジェクトは作り直されるため、同一性で持つと別タスクに「起動しました」が残る。
+
+AC #3 は起動前に常時表示する FRONTMATTER_NOTICE（frontmatter 露出・壊すと次の読み取りで縮退表示・CLI のスキーマ検査を通らない）で満たし、壊れた場合は doc-4 §5 の既存縮退表示が受ける（TASK-35 実装、破棄しない）。AC #5 は EXTERNAL_EDITOR_ROUTE を一箇所で定義し、References/dependencies の最後の 1 件削除と draft・completed・archive の読み取り専用理由が同じ「この画面下部の『外部エディタで開く』」を指すようにした（従来は抽象的な「外部エディタ経路」で行き先が無かった）。TaskDetail 側に重複していた最後の 1 件削除の文言も定数へ寄せた。
+
+検証: cargo test --lib 227 passed / 3 ignored、clippy -D warnings clean、cargo fmt clean、vitest 120→126 passed、svelte-check 0 errors、vite build 成功。実エディタが画面に出るところまでの手動確認は行っていない（sync.rs の実監視 e2e と同じ理由でサンドボックス依存）。
+
+付随修正: src/lib/edit.ts の sameCriteria が区切りに生の NUL バイトをソースへ直書きしていたため、ファイルが binary 扱いになり grep/diff が中身を見なくなっていた。挙動同一の `\0` エスケープへ置き換えた。
+<!-- SECTION:NOTES:END -->
