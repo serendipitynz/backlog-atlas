@@ -14,23 +14,28 @@
   import {
     asCommandError,
     cliProbe,
+    editorProbe,
     ledgerList,
     ledgerReorder,
     onProjectReloaded,
     projectOpen,
     projectWatchStart,
     projectWatchStop,
+    taskFileOpen,
     taskHistoryRead,
     updateApply,
     workspaceOpen,
   } from "./lib/commands";
   import type { HistoryState } from "./lib/detail";
   import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
+  import { launchFailureDetail, type OpenOutcome } from "./lib/external-editor";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
   import type {
     CliReadiness,
+    EditorReadiness,
+    LaunchMethod,
     ProjectEntry,
     ProjectLoad,
     ProjectSnapshot,
@@ -68,6 +73,12 @@
    * panel shows as "確認中" rather than as "no CLI" — the two lead to different user actions.
    */
   let readiness = $state<CliReadiness | null>(null);
+  /**
+   * Which 外部エディタ経路 launch methods this environment has (doc-8 §7). `null` until the probe
+   * answers, which the panel shows as 確認中 rather than as "no editor" — the two differ in what the
+   * user would do next.
+   */
+  let editorReadiness = $state<EditorReadiness | null>(null);
   /** True while the detail panel holds 未保存入力 — what makes a selection change ask first. */
   let detailDirty = $state(false);
   /** A selection requested while the panel was dirty, held until the user answers (doc-8 §6.3). */
@@ -183,6 +194,14 @@
       readiness = await cliProbe();
     } catch (error) {
       readiness = { state: "unavailable", detail: unreadableDetail(asCommandError(error)) };
+    }
+    // 外部エディタ経路 (doc-8 §7): one environment read, so it is probed once beside the CLI probe.
+    // Left `null` on failure — the panel then withholds both launch controls as 確認中, which is what
+    // the state actually is; the notice says why it will stay that way.
+    try {
+      editorReadiness = await editorProbe();
+    } catch (error) {
+      notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
     await load();
   });
@@ -317,6 +336,33 @@
     }
   }
 
+  /**
+   * Open the selected task's management file in the user's editor (doc-8 §7). The shell owns this for
+   * the same reason as `apply`: the boundary resolves the file from the (slug, path) the selection is
+   * held as, and nothing else knows both.
+   *
+   * The watch is (re)started before the launch. It is the whole of the 書き戻し path — the editor's
+   * save reaches Atlas only because doc-9's 継続検出 picks it up (AC #2) — so a root whose watch never
+   * started, or whose start failed earlier, would take the edit and show nothing. `projectWatchStart`
+   * is idempotent, so this costs nothing when the watch is already running.
+   */
+  async function openExternally(method: LaunchMethod): Promise<OpenOutcome> {
+    const ref = selectedRef;
+    if (ref === null) return { state: "failed", detail: "対象タスクを特定できません" };
+    try {
+      await projectWatchStart(ref.slug);
+    } catch (error) {
+      notice =
+        `${ref.slug}: 変更監視を開始できません（${unreadableDetail(asCommandError(error))}）。` +
+        "外部エディタで保存しても自動では反映されないため、タスクを開き直して確認してください。";
+    }
+    try {
+      return { state: "launched", launch: await taskFileOpen(ref.slug, ref.sourcePath, method) };
+    } catch (error) {
+      return { state: "failed", detail: launchFailureDetail(asCommandError(error)) };
+    }
+  }
+
   /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
   const loadHistory = createHistoryLoader({
     read: taskHistoryRead,
@@ -424,7 +470,9 @@
             entry={selectedEntry}
             {history}
             {readiness}
+            {editorReadiness}
             onapply={apply}
+            onopenExternally={openExternally}
             onselect={open}
             onreloadHistory={() =>
               view.task.id === null

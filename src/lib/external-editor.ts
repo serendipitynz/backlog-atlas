@@ -1,0 +1,187 @@
+/**
+ * 外部エディタ経路 (doc-8 §7), as pure functions. The panel is markup over these values: which launch
+ * methods are offered, what each would run, what is stated before opening, and what a launch or its
+ * failure reads as. Nothing here calls the boundary — `TaskDetail.svelte` issues the launch this
+ * module describes — so every rule below is testable without an editor appearing on screen.
+ *
+ * ## Referent table (doc term → identifier here)
+ *
+ * Fixed before naming, following `edit.ts` and the Rust modules' convention.
+ *
+ * | term | here | is |
+ * |---|---|---|
+ * | doc-8 §7 外部エディタ経路 | this module | opening the management file itself in the user's editor; Atlas writes nothing |
+ * | doc-8 §7 `$EDITOR` 起動 / OS の関連付け起動 | [`EditorOffer`] per `LaunchMethod` | one control each, because the two are not interchangeable |
+ * | doc-8 §7 開く前の注意表示 | [`FRONTMATTER_NOTICE`] | breaking frontmatter degrades the read (doc-4 §5), stated before the launch |
+ * | doc-8 §6.4 二重取り込みの回避 | [`UNSAVED_INPUT_WARNING`] + [`needsConfirmation`] | an open 編集セッション makes the launch ask first |
+ * | doc-8 §7 書き戻し | [`WRITE_BACK_NOTE`] | the editor's save arrives through doc-9's watch; no exit detection |
+ * | doc-5 §3.1 / doc-8 §6.5 の案内先 | [`CLI_LIMIT_GUIDANCE`] | what this route exists for: the operations the CLI cannot do |
+ *
+ * Two rules the module follows, the same two `edit.ts` follows:
+ *
+ * - **A withheld control says why** (doc-5 §5). A method with no launcher is disabled with its reason,
+ *   never silently absent.
+ * - **The 未保存入力 is never taken.** Opening an editor does not end an 編集セッション or discard a
+ *   draft (doc-8 §6.4); it only warns, and the save's 更新前競合検出 is what acts on the divergence.
+ */
+
+import type { CommandError, EditorLaunch, EditorReadiness, LaunchMethod } from "./wire";
+import { commandErrorDetail } from "./edit";
+
+/**
+ * What became of one launch, as the shell reports it back to the panel. Mirrors `ApplyOutcome`: the
+ * shell owns the call, the panel owns what is said about it.
+ */
+export type OpenOutcome =
+  | { state: "launched"; launch: EditorLaunch }
+  | { state: "failed"; detail: string };
+
+/** One launch method as a control: what it would run, whether it may be pressed, and why not. */
+export interface EditorOffer {
+  method: LaunchMethod;
+  label: string;
+  /** The program and arguments this would start, with the file shown as a placeholder. */
+  command: string;
+  enabled: boolean;
+  /** Why it is not active, or the extra caveat when it is. `null` when there is neither. */
+  reason: string | null;
+}
+
+/**
+ * 開く前の注意表示 (doc-8 §7 難点と受け方). The whole file is opened, frontmatter included, and what
+ * the editor writes does not pass the CLI's option checking — the two facts that make this the
+ * exception route rather than another edit control.
+ */
+export const FRONTMATTER_NOTICE =
+  "外部エディタでは管理ファイル全体が開きます（frontmatter を含む）。id・status・labels などの" +
+  "構造化フィールドを壊すと、次の読み取りで縮退表示になります（doc-4 §5。壊れても破棄はしません）。" +
+  "この経路の編集は Backlog CLI のスキーマ検査を通りません（doc-8 §7）。";
+
+/** 書き戻し (doc-8 §7): the watch is the return path, so nothing waits for the editor to close. */
+export const WRITE_BACK_NOTE =
+  "外部エディタで保存すると、ファイル監視が変更を拾って再読込します（エディタを閉じる必要は" +
+  "ありません。doc-9 §3）。";
+
+/** 案内先 (doc-5 §3.1・doc-8 §6.5): the operations that exist nowhere else in Atlas. */
+export const CLI_LIMIT_GUIDANCE =
+  "CLI で行えない編集はこの経路で行います: References・dependencies の最後の 1 件の削除、" +
+  "draft・completed・archive のタスクの内容編集、kind ラベル（Type）の変更。";
+
+/** doc-8 §6.4: an open 編集セッション plus an external edit is the double intake to avoid. */
+export const UNSAVED_INPUT_WARNING =
+  "GUI 側に未保存入力があります。このまま外部エディタでも編集すると、同じタスクを二重に編集する" +
+  "ことになります。入力は破棄しませんが、外部エディタの保存は外部変更として検出し、GUI の保存時は" +
+  "更新前競合検出で止めます（doc-8 §6.4）。先に保存またはキャンセルすることを推奨します。";
+
+/**
+ * The caveat on the `$EDITOR` control. A terminal editor started from a GUI process has no terminal
+ * to draw in, so it exits immediately and the launch looks like it did nothing — which is why the two
+ * methods are separate controls rather than a fallback chain that would pick one silently.
+ */
+export const CONFIGURED_TERMINAL_CAVEAT =
+  "端末専用エディタ（vim・nano など）を指している場合、GUI から起動しても画面は出ません。" +
+  "その場合は OS の関連付けで開いてください。";
+
+export const NO_CONFIGURED_EDITOR_REASON =
+  "VISUAL・EDITOR のいずれも設定されていないため、この方式は提供しません" +
+  "（環境変数を設定して Atlas を起動し直すか、OS の関連付けで開いてください）";
+
+export const EDITOR_PROBE_PENDING_REASON = "外部エディタの確認中です";
+
+export const FILE_MISSING_EDITOR_REASON =
+  "このタスクのファイルが現在の読み取り結果にありません（外部での移動・削除の可能性）。" +
+  "開く対象を特定できないため、外部エディタでも開けません";
+
+/** Placeholder for the file in a command shown to the user; the real argument is the full path. */
+const FILE_PLACEHOLDER = "<このタスクのファイル>";
+
+export interface EditorContext {
+  /** The task's file has left the read result — there is nothing to name as the launch target. */
+  fileMissing: boolean;
+}
+
+/**
+ * The launch controls for this environment (doc-8 §7). Both methods always appear: a missing
+ * `$EDITOR` is a reason on a disabled control, not an absent one, so "Atlas cannot open this" and
+ * "this machine has no `$EDITOR`" never look the same.
+ */
+export function editorOffers(
+  readiness: EditorReadiness | null,
+  context: EditorContext,
+): EditorOffer[] {
+  // Ordered as the obstacles are, matching `saveAvailability`: a file that is gone cannot be opened
+  // whatever the environment has, and an unfinished probe is not the same as a missing editor.
+  const blocked = context.fileMissing
+    ? FILE_MISSING_EDITOR_REASON
+    : readiness === null
+      ? EDITOR_PROBE_PENDING_REASON
+      : null;
+  const configured = readiness?.configured ?? null;
+  const configuredCommand =
+    configured === null
+      ? "—"
+      : [configured.program, ...configured.args, FILE_PLACEHOLDER].join(" ");
+  return [
+    {
+      method: "configured",
+      label:
+        configured === null
+          ? "$EDITOR で開く"
+          : `${configured.variable} で開く（${configured.program}）`,
+      command: configuredCommand,
+      enabled: blocked === null && configured !== null,
+      reason:
+        blocked ??
+        (configured === null ? NO_CONFIGURED_EDITOR_REASON : CONFIGURED_TERMINAL_CAVEAT),
+    },
+    {
+      method: "association",
+      label: "OS の関連付けで開く",
+      command:
+        readiness === null ? "—" : `${readiness.association} … ${FILE_PLACEHOLDER}`,
+      enabled: blocked === null,
+      reason: blocked,
+    },
+  ];
+}
+
+/**
+ * Whether the launch asks before it starts. Only with 未保存入力: the notice above is on screen
+ * whether or not this is true, and a confirmation on every launch would train the second press into a
+ * reflex — which is the one thing that would make the warning that matters (doc-8 §6.4) invisible.
+ */
+export function needsConfirmation(hasUnsavedInput: boolean): boolean {
+  return hasUnsavedInput;
+}
+
+/** What was started, as the panel states it. The argument array is shown, not a reconstructed
+ * command line: that is what was actually spawned (no shell, no quoting), and a terminal editor that
+ * exited without drawing anything is diagnosable from it. */
+export function launchSummary(launch: EditorLaunch): string {
+  const how = launch.method === "configured" ? "$EDITOR" : "OS の関連付け";
+  return `${how} で起動しました: ${[launch.program, ...launch.args].join(" ")}`;
+}
+
+/**
+ * A failed launch as the panel states it. `unknownTaskFile` gets its own wording: it means the path
+ * the panel held is not in the current read — the screen is behind the root, not that the editor
+ * failed — so it reads as a re-read, not as an editor problem.
+ */
+export function launchFailureDetail(error: CommandError): string {
+  switch (error.kind) {
+    case "unknownTaskFile":
+      return (
+        `${error.path} は現在の読み取り結果のタスクファイルではないため、起動しませんでした` +
+        "（外部での移動・削除の可能性）。タスクを開き直してください。"
+      );
+    case "editorUnavailable":
+      return `外部エディタを起動できません: ${error.detail}`;
+    case "editorLaunchFailed":
+      return (
+        `${error.program} を起動できませんでした: ${error.detail}。` +
+        "VISUAL・EDITOR の値（プログラム名とオプション）を確認してください。"
+      );
+    default:
+      return commandErrorDetail(error);
+  }
+}

@@ -280,7 +280,43 @@ export type CommandError =
   | { kind: "uncheckableTarget"; what: string; detail: string }
   | { kind: "reloadFailed"; detail: string; applied: unknown }
   | { kind: "versionProbeFailed"; detail: string }
-  | { kind: "watchFailed"; slug: string; detail: string };
+  | { kind: "watchFailed"; slug: string; detail: string }
+  // 外部エディタ経路 (doc-8 §7). `unknownTaskFile` is a path that is not one of the open model's task
+  // files: nothing was started. The other two separate "this environment has no launcher for the
+  // method you chose" from "the launcher existed and the OS refused it".
+  | { kind: "unknownTaskFile"; slug: string; path: string }
+  | { kind: "editorUnavailable"; detail: string }
+  | { kind: "editorLaunchFailed"; program: string; detail: string };
+
+// --- 外部エディタ経路 (doc-8 §7, TASK-37) ----------------------------------------------------
+
+/** Which of doc-8 §7's two launch methods to use: `$VISUAL`/`$EDITOR`, or the OS association. */
+export type LaunchMethod = "configured" | "association";
+
+/** The editor `VISUAL`/`EDITOR` names. `variable` is which of the two is in effect. */
+export interface ConfiguredEditor {
+  variable: string;
+  program: string;
+  /** Arguments preceding the file path (`code -w` → `["-w"]`). */
+  args: string[];
+}
+
+/**
+ * Which launch methods the environment has. `association` is always present — every platform this
+ * builds for has a launcher — but whether that program is installed is only learned by running it.
+ */
+export interface EditorReadiness {
+  configured: ConfiguredEditor | null;
+  association: string;
+}
+
+/** What one launch spawned. Shown, because a terminal-only editor started from a GUI process is the
+ * expected way for a launch to appear to have done nothing. */
+export interface EditorLaunch {
+  method: LaunchMethod;
+  program: string;
+  args: string[];
+}
 
 // --- 更新操作 (doc-5 §3, TASK-31) ------------------------------------------------------------
 
