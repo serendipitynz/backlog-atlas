@@ -57,6 +57,9 @@ pub fn run() {
             commands::project_watch_start,
             commands::project_watch_stop,
             commands::task_history_read,
+            // 外部エディタ経路 (doc-8 §7): neither path — Atlas starts an editor and writes nothing.
+            commands::editor_probe,
+            commands::task_file_open,
             // Update path: guarded by the pre-update version check and a probed CLI capability.
             commands::cli_probe,
             commands::update_apply
