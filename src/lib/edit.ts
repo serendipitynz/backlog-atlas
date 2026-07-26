@@ -272,9 +272,32 @@ export function externallyChanged(session: EditSession, current: TaskView | null
  * the user's values; untouched ones adopt the newer file, so a save after this re-applies only what
  * the user actually changed and leaves the external change standing.
  */
+/**
+ * Whether a rebase has to drop the pending per-item AC edit. A delta points at criteria by number,
+ * and an external change renumbers them: old `#2` may now be a different criterion with the same
+ * number, so re-applying by number would check something the user never pointed at. A 全体差し替え
+ * is not affected — it carries the texts themselves, and its `existing` count is taken from
+ * whatever baseline it is finally built against.
+ */
+export function acDeltaDroppedByRebase(session: EditSession, latest: TaskView): boolean {
+  if (session.draft.ac.mode !== "delta") return false;
+  const { add, remove, check, uncheck } = session.draft.ac.delta;
+  if (remove.length + check.length + uncheck.length === 0) return false;
+  // `add` alone survives: it names no criterion. The rest are index-bound.
+  void add;
+  return !sameCriteria(session.baseline, latest);
+}
+
+function sameCriteria(a: TaskView, b: TaskView): boolean {
+  const of = (view: TaskView) =>
+    view.task.acceptanceCriteria.map((item) => `${item.number} ${item.text}`);
+  return sameList(of(a), of(b));
+}
+
 export function rebaseOnto(session: EditSession, latest: TaskView): EditSession {
   const fresh = draftFrom(latest);
   const draft = { ...fresh };
+  const dropAcDelta = acDeltaDroppedByRebase(session, latest);
   for (const field of session.touched) {
     switch (field) {
       case "notes":
@@ -282,7 +305,12 @@ export function rebaseOnto(session: EditSession, latest: TaskView): EditSession 
         draft.notesMode = session.draft.notesMode;
         break;
       case "ac":
-        draft.ac = session.draft.ac;
+        // Index-bound operations do not survive a renumbering; the additions do, since they name
+        // no criterion. Keeping the rest would silently retarget them (see `acDeltaForCli`).
+        draft.ac =
+          dropAcDelta && session.draft.ac.mode === "delta"
+            ? { mode: "delta", delta: { ...EMPTY_DELTA, add: [...session.draft.ac.delta.add] } }
+            : session.draft.ac;
         break;
       case "labels":
       case "dependencies":
@@ -331,6 +359,42 @@ export const EMPTY_REFERENCES_REASON =
 export const EMPTY_DEPENDENCIES_REASON =
   "dependencies は最後の 1 件を削除できません（v1.47.1 の CLI に空集合化の手段がないため）。" +
   "空にする場合は外部エディタ経路を使います（doc-5 §3.1・doc-8 §6）";
+
+/**
+ * Renumber a per-item AC edit for the CLI (doc-5 §3). One `task edit` resolves its AC options in
+ * two different frames, measured on v1.47.1:
+ *
+ * - `--remove-ac` indexes the criteria **as read** — `--remove-ac 1 --remove-ac 3` removes the
+ *   first and third, not the first and then the third of what is left.
+ * - `--check-ac` / `--uncheck-ac` index the list **after** the removals: on `#1 one / #2 two /
+ *   #3 three`, `--remove-ac 1 --check-ac 2` checks `three`, and on a two-item list the same pair
+ *   exits 1 with "Acceptance criterion #2 not found".
+ * - `--ac` appends, so an addition never shifts the indices a check resolves against.
+ *
+ * The draft holds baseline numbers throughout, because that is what the user pointed at. Passing
+ * them through unchanged would check the wrong criterion whenever a removal sits before it — the
+ * silent half of this, and worse than the failure, since nothing tells the user it happened.
+ * So a check/uncheck of a removed criterion is dropped, and every surviving one is remapped to its
+ * position among the survivors.
+ */
+export function acDeltaForCli(delta: AcDelta, baseline: TaskView): AcDelta {
+  const removed = new Set(delta.remove);
+  const survivors = baseline.task.acceptanceCriteria
+    .map((item) => item.number)
+    .filter((number) => !removed.has(number));
+  const renumber = (numbers: number[]): number[] =>
+    numbers.flatMap((number) => {
+      const at = survivors.indexOf(number);
+      // A criterion being removed cannot also be checked: the operation has no target left.
+      return at === -1 ? [] : [at + 1];
+    });
+  return {
+    add: [...delta.add],
+    remove: [...delta.remove],
+    check: renumber(delta.check),
+    uncheck: renumber(delta.uncheck),
+  };
+}
 
 export const EMPTY_TITLE_REASON =
   "title は空にできません（doc-4 §3.1 の必須項目で、空にすると解析不能として縮退表示になります）";
@@ -420,7 +484,7 @@ export function buildSave(session: EditSession): SavePlan {
         break;
       case "ac":
         if (draft.ac.mode === "delta") {
-          edit.ac = { mode: "delta", ...draft.ac.delta };
+          edit.ac = { mode: "delta", ...acDeltaForCli(draft.ac.delta, session.baseline) };
         } else {
           edit.ac = {
             mode: "replace",
@@ -587,11 +651,23 @@ const CLOSED_READ_ONLY =
   "completed・archive のタスクは task edit が not found になるため読み取り専用です（doc-8 §6.5）。" +
   "内容を変えるには外部エディタ経路を使います";
 
+/**
+ * The task's file left the read result while the panel was open — moved or deleted by something
+ * outside Atlas. No CLI operation can be issued against it (there is no file to name), but the
+ * 未保存入力 is not the file's to take: doc-8 §6.4 keeps the input, and this is the reason shown
+ * beside it.
+ */
+export const FILE_MISSING_REASON =
+  "このタスクのファイルが現在の読み取り結果にありません（外部での移動・削除の可能性）。" +
+  "CLI 経由の更新はできません。未保存入力は保持しているので、必要な内容を控えてから破棄してください";
+
 /** Whether the panel offers content editing for this task at all (doc-8 §6.5, doc-5 §5). */
 export function editAvailability(
   view: TaskView,
   readiness: CliReadiness | null,
+  fileMissing = false,
 ): EditAvailability {
+  if (fileMissing) return { state: "unavailable", reason: FILE_MISSING_REASON };
   if (view.task.id === null) {
     return {
       state: "unavailable",
@@ -653,6 +729,8 @@ export interface TransitionContext {
   readiness: CliReadiness | null;
   /** True while the session holds 未保存入力 — a transition would race the save (doc-8 §6.3). */
   hasUnsavedInput: boolean;
+  /** True once the task's file has left the read result — there is nothing left to transition. */
+  fileMissing?: boolean;
 }
 
 export function transitionOffers(
@@ -675,7 +753,10 @@ export function transitionOffers(
     };
   }
 
+  // Ordered by how fundamental the obstacle is: a file that is gone cannot be transitioned at all,
+  // no CLI means no operation, and unsaved input is the one the user can clear themselves.
   const blocked =
+    (context.fileMissing === true ? FILE_MISSING_REASON : null) ??
     readinessReason(context.readiness) ??
     (context.hasUnsavedInput
       ? "未保存の入力があります。保存またはキャンセルしてから実行します"

@@ -25,8 +25,10 @@
     type HistoryState,
   } from "../lib/detail";
   import {
+    FILE_MISSING_REASON,
     PRIORITIES,
     TYPE_NOT_EDITABLE,
+    acDeltaDroppedByRebase,
     acRows,
     buildSave,
     canRemoveLast,
@@ -64,6 +66,13 @@
     view: TaskView;
     /** The snapshot the task was read from — milestone and dependency ids resolve inside it. */
     snapshot: ProjectSnapshot;
+    /**
+     * The file left the read result while this panel was open (an external move or delete), so
+     * `view` is the last read that resolved it rather than the current one. The panel stays up
+     * with its 未保存入力 instead of vanishing (doc-8 §6.4); nothing can be issued against a file
+     * that is no longer there, so every operation is withheld with that as the reason.
+     */
+    missing: boolean;
     entry: ProjectEntry | null;
     history: HistoryState;
     /** 縮退 (doc-5 §5): `null` while the probe is still running. */
@@ -81,6 +90,7 @@
   let {
     view,
     snapshot,
+    missing,
     entry,
     history,
     readiness,
@@ -127,13 +137,15 @@
   let newReference = $state("");
   let newCriterion = $state("");
 
-  let availability = $derived(editAvailability(view, readiness));
+  let availability = $derived(editAvailability(view, readiness, missing));
   let dirty = $derived(session !== null && isDirty(session));
   let transitions = $derived(
-    transitionOffers(view, { readiness, hasUnsavedInput: dirty }),
+    transitionOffers(view, { readiness, hasUnsavedInput: dirty, fileMissing: missing }),
   );
   /** 編集中の継続検出 (doc-8 §6.4): stated, never acted on — the input stays as the user left it. */
-  let externalChange = $derived(session !== null && externallyChanged(session, view));
+  let externalChange = $derived(
+    !missing && session !== null && externallyChanged(session, view),
+  );
   let plan = $derived(session === null ? null : buildSave(session));
   let acView = $derived(session === null ? [] : acRows(session));
 
@@ -171,6 +183,7 @@
     session = startSession(view);
     saveState = { state: "idle" };
     confirming = null;
+    acDeltaDropped = false;
     clearAddBoxes();
   }
 
@@ -187,7 +200,7 @@
   }
 
   async function save(): Promise<void> {
-    if (session === null || plan === null || plan.state !== "ready" || busy) return;
+    if (missing || session === null || plan === null || plan.state !== "ready" || busy) return;
     const submitted = plan.submitted;
     busy = true;
     try {
@@ -229,8 +242,24 @@
   /** doc-9 §5 (ii): keep the input and move the session's baseline onto the latest read. */
   function reapplyOntoLatest(): void {
     if (session === null) return;
+    // Stated before the rebase, since afterwards the two baselines are the same and the drop is
+    // no longer visible — and a silently dropped AC operation is exactly what doc-8 §6.4 forbids.
+    acDeltaDropped = acDeltaDroppedByRebase(session, view);
     session = rebaseOnto(session, view);
     saveState = { state: "idle" };
+  }
+
+  /** Whether the last rebase had to drop index-bound AC operations (see `acDeltaForCli`). */
+  let acDeltaDropped = $state(false);
+
+  function requestClose(): void {
+    // 破棄前確認 (doc-8 §6.3): closing the panel loses 未保存入力 exactly as キャンセル does, so
+    // it asks with the same words rather than being the one exit that does not.
+    if (dirty && confirming !== "close") {
+      confirming = "close";
+      return;
+    }
+    onclose();
   }
 
   /**
@@ -337,8 +366,23 @@
       {#if degrade.degraded}
         <span class="mark degraded">縮退</span>
       {/if}
-      <button type="button" class="close" onclick={onclose}>閉じる</button>
+      {#if missing}
+        <span class="mark degraded">ファイル不明</span>
+      {/if}
+      <button type="button" class="close" onclick={requestClose}>
+        {confirming === "close" ? "破棄して閉じる" : "閉じる"}
+      </button>
+      {#if confirming === "close"}
+        <button type="button" class="close" onclick={() => (confirming = null)}>やめる</button>
+      {/if}
     </div>
+
+    {#if missing}
+      <!-- doc-8 §6.4: an external move does not get to take the 未保存入力 with it. The panel
+           stays up showing the last read that resolved, so the input can be copied out before it
+           is discarded on purpose. -->
+      <p class="warn">{FILE_MISSING_REASON}</p>
+    {/if}
 
     {#if session === null}
       <h2>{task.title ?? "（title 不明）"}</h2>
@@ -531,6 +575,15 @@
           上書きで失われた場合、その内容は表示も復元もできません（doc-9 §4.1）。
         </p>
       </div>
+    {/if}
+
+    {#if acDeltaDropped}
+      <!-- Stated rather than done quietly: the rebase kept every other field's input, and a
+           silently dropped AC operation would look like the save simply ignored it. -->
+      <p class="warn">
+        最新版では Acceptance Criteria の並びが変わっていたため、番号で指していた削除・チェックの
+        指定は取り消しました（同じ番号が別の項目を指すため）。必要なら指定し直してください。
+      </p>
     {/if}
   </section>
 

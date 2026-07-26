@@ -33,6 +33,7 @@
     CliReadiness,
     ProjectEntry,
     ProjectLoad,
+    ProjectSnapshot,
     TaskView,
     UpdateOperation,
   } from "./lib/wire";
@@ -116,6 +117,34 @@
   let selectedEntry = $derived(
     entries.find((entry) => entry.slug === selectedRef?.slug) ?? null,
   );
+  /**
+   * The last read that resolved the open selection. Kept because an external move — `task demote`
+   * run in another window, an editor saving the file elsewhere — makes the current read stop
+   * yielding the task, and doc-8 §6.4 does not let that take the panel's 未保存入力 with it.
+   */
+  let retained = $state<{ view: TaskView; snapshot: ProjectSnapshot } | null>(null);
+  $effect(() => {
+    if (selectedRef === null) retained = null;
+    else if (selectedView !== null && selectedSnapshot !== null) {
+      retained = { view: selectedView, snapshot: selectedSnapshot };
+    }
+  });
+  /**
+   * What the panel draws, and whether it is the current read. Deliberately one value rather than
+   * two branches in the markup: moving between branches would destroy and recreate `TaskDetail`,
+   * and with it the 編集セッション this exists to keep.
+   */
+  let shown = $derived.by(() => {
+    if (selectedRef === null) return null;
+    if (selectedView !== null && selectedSnapshot !== null) {
+      return { view: selectedView, snapshot: selectedSnapshot, missing: false };
+    }
+    // Only while there is input to protect: with nothing unsaved, a task that left the read result
+    // is better reported than shown from a stale read.
+    return detailDirty && retained?.view.task.sourcePath === selectedRef.sourcePath
+      ? { view: retained.view, snapshot: retained.snapshot, missing: true }
+      : null;
+  });
   /**
    * Which task a Git 履歴 read belongs to. `null` when there is nothing to read: no selection, or
    * a task with no TASK-ID — コミット検索 keys on the id (doc-6 §3), while the References-derived
@@ -386,11 +415,12 @@
 
       <!-- カードを選ぶとタスク詳細画面を開く (doc-7 §3, doc-8 §2). -->
       {#if selectedRef !== null}
-        {#if selectedView !== null && selectedSnapshot !== null}
-          {@const view = selectedView}
+        {#if shown !== null}
+          {@const view = shown.view}
           <TaskDetail
             {view}
-            snapshot={selectedSnapshot}
+            snapshot={shown.snapshot}
+            missing={shown.missing}
             entry={selectedEntry}
             {history}
             {readiness}
@@ -401,7 +431,12 @@
                 ? undefined
                 : void loadHistory(view.task.project, view.task.id)}
             ondirty={(dirty) => (detailDirty = dirty)}
-            onclose={() => (selectedRef = null)}
+            onclose={() => {
+              // Cleared with the selection: the panel is unmounted from here on, so its own
+              // `ondirty` will not run again to retract a flag left standing.
+              selectedRef = null;
+              detailDirty = false;
+            }}
           />
         {:else}
           <!-- The task was open when its root stopped yielding it — deleted, moved, or the root

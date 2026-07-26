@@ -3,6 +3,8 @@ import {
   EMPTY_DEPENDENCIES_REASON,
   EMPTY_REFERENCES_REASON,
   EMPTY_TITLE_REASON,
+  FILE_MISSING_REASON,
+  acDeltaDroppedByRebase,
   acRows,
   buildSave,
   canRemoveLast,
@@ -163,6 +165,132 @@ describe("AC の項目単位操作と全体差し替えの区別 (doc-5 §3)", (
 
   it("差し替えモードへ入っただけでは変更にならない", () => {
     expect(isDirty(setAcMode(startSession(view), "replace"))).toBe(false);
+  });
+});
+
+// v1.47.1 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
+// --check-ac / --uncheck-ac は削除後の番号を指す。--ac の追加は末尾に付き番号をずらさない。
+describe("AC 項目単位操作の番号を削除後の並びへ写す", () => {
+  const three = taskView({
+    acceptanceCriteria: criteria(["one", false], ["two", false], ["three", false]),
+  });
+
+  it("削除より後ろの項目は削除後の番号で指す", () => {
+    // #1 を削除しつつ #2 をチェック。素の番号のまま送ると CLI は削除後の #2（元 #3）を
+    // チェックしてしまう（実測・終了コード 0 で別項目が変わる）。
+    let session = toggleAcRemoval(startSession(three), 1);
+    session = toggleAcCheck(session, 2);
+    expect(editOf(ready(session).action).ac).toEqual({
+      mode: "delta",
+      add: [],
+      remove: [1],
+      check: [1],
+      uncheck: [],
+    });
+  });
+
+  it("項目が 2 件のときも範囲外にならない", () => {
+    // 素の番号だと --remove-ac 1 --check-ac 2 になり、CLI は
+    // "Acceptance criterion #2 not found" で終了コード 1（実測）。
+    const two = taskView({ acceptanceCriteria: criteria(["one", false], ["two", false]) });
+    let session = toggleAcRemoval(startSession(two), 1);
+    session = toggleAcCheck(session, 2);
+    expect(editOf(ready(session).action).ac).toMatchObject({ remove: [1], check: [1] });
+  });
+
+  it("uncheck も同じ写像を通す", () => {
+    const checked = taskView({
+      acceptanceCriteria: criteria(["one", false], ["two", true], ["three", true]),
+    });
+    let session = toggleAcRemoval(startSession(checked), 1);
+    session = toggleAcCheck(session, 3);
+    expect(editOf(ready(session).action).ac).toMatchObject({ remove: [1], uncheck: [2] });
+  });
+
+  it("削除する項目のチェック操作は落とす", () => {
+    let session = toggleAcCheck(startSession(three), 2);
+    session = toggleAcRemoval(session, 2);
+    expect(editOf(ready(session).action).ac).toMatchObject({ remove: [2], check: [] });
+  });
+
+  it("削除が無ければ番号はそのまま", () => {
+    const session = toggleAcCheck(startSession(three), 3);
+    expect(editOf(ready(session).action).ac).toMatchObject({ remove: [], check: [3] });
+  });
+
+  it("削除より前の項目は番号が変わらない", () => {
+    let session = toggleAcRemoval(startSession(three), 3);
+    session = toggleAcCheck(session, 1);
+    expect(editOf(ready(session).action).ac).toMatchObject({ remove: [3], check: [1] });
+  });
+});
+
+describe("競合後の再適用と AC 項目単位操作", () => {
+  const before = taskView({
+    acceptanceCriteria: criteria(["one", false], ["two", false]),
+  });
+
+  it("外部で AC が変わっていたら番号指定の操作は落とす", () => {
+    let session = toggleAcRemoval(startSession(before), 1);
+    session = toggleAcCheck(session, 2);
+    // 外部編集で 1 件消えた: 同じ番号が別の項目を指すようになる。
+    const latest = taskView({ acceptanceCriteria: criteria(["two", false]) });
+    expect(acDeltaDroppedByRebase(session, latest)).toBe(true);
+    const rebased = rebaseOnto(session, latest);
+    expect(rebased.draft.ac).toEqual({
+      mode: "delta",
+      delta: { add: [], remove: [], check: [], uncheck: [] },
+    });
+  });
+
+  it("AC が変わっていなければ操作を保つ", () => {
+    const session = toggleAcRemoval(startSession(before), 1);
+    const latest = taskView({
+      title: "外部が変えた",
+      acceptanceCriteria: criteria(["one", false], ["two", false]),
+    });
+    expect(acDeltaDroppedByRebase(session, latest)).toBe(false);
+    expect(rebaseOnto(session, latest).draft.ac).toMatchObject({ delta: { remove: [1] } });
+  });
+
+  it("追加予定の本文は番号に依らないので残す", () => {
+    let session = setField(startSession(before), "ac", {
+      mode: "delta",
+      delta: { add: ["追加"], remove: [1], check: [], uncheck: [] },
+    });
+    const latest = taskView({ acceptanceCriteria: criteria(["two", false]) });
+    session = rebaseOnto(session, latest);
+    expect(session.draft.ac).toMatchObject({ delta: { add: ["追加"], remove: [] } });
+  });
+
+  it("全体差し替えは本文を持つので再適用で落とさない", () => {
+    let session = setAcMode(startSession(before), "replace");
+    session = setField(session, "ac", { mode: "replace", items: [{ text: "自分の案", checked: false }] });
+    const latest = taskView({ acceptanceCriteria: criteria(["外部が足した", false]) });
+    expect(acDeltaDroppedByRebase(session, latest)).toBe(false);
+    // existing は再適用後の baseline から数え直す。
+    expect(editOf(ready(rebaseOnto(session, latest)).action).ac).toEqual({
+      mode: "replace",
+      existing: 1,
+      items: [{ text: "自分の案", checked: false }],
+    });
+  });
+});
+
+describe("ファイルが読み取り結果から消えたとき (doc-8 §6.4)", () => {
+  it("内容編集を理由つきで止める", () => {
+    const availability = editAvailability(taskView({}), READY, true);
+    expect(availability).toEqual({ state: "unavailable", reason: FILE_MISSING_REASON });
+  });
+
+  it("状態遷移も止める", () => {
+    const offers = transitionOffers(taskView({ status: "Done" }), {
+      readiness: READY,
+      hasUnsavedInput: false,
+      fileMissing: true,
+    });
+    if (offers.state !== "offered") throw new Error("expected offers");
+    expect(offers.offers.every((offer) => offer.reason === FILE_MISSING_REASON)).toBe(true);
   });
 });
 

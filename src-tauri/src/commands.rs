@@ -1473,6 +1473,93 @@ references:\n  - https://example.test/one\n\
         assert_eq!(ac, vec![("new one", false), ("new two", true)]);
     }
 
+    /// The per-item AC edit's index frames, end to end against the real CLI. One `task edit`
+    /// resolves `--remove-ac` against the criteria as read but `--check-ac` against what is left
+    /// after the removals (measured on v1.47.1), so a delta carrying the numbers the user pointed
+    /// at would check a different criterion — silently, whenever the shifted index is still in
+    /// range. The frontend renumbers before sending; this pins what the renumbered form does.
+    ///
+    /// `#[ignore]` for the same reason as the test above: it needs a supported `backlog` on PATH.
+    /// `cargo test --lib -- --ignored the_renumbered_ac_delta_hits_the_intended_criterion`
+    #[test]
+    #[ignore = "requires a supported backlog CLI on PATH"]
+    fn the_renumbered_ac_delta_hits_the_intended_criterion() {
+        let temp = TempDir::new();
+        temp.write(
+            "backlog/config.yml",
+            "project_name: Atlas E2E\n\
+statuses: [\"To Do\", \"Done\"]\n\
+default_status: To Do\n\
+task_prefix: \"TASK\"\n",
+        );
+        temp.write(
+            "backlog/tasks/task-1 - sample.md",
+            "---\n\
+id: TASK-1\n\
+title: sample\n\
+status: To Do\n\
+labels: []\n\
+---\n\n\
+## Acceptance Criteria\n\
+<!-- AC:BEGIN -->\n- [ ] #1 one\n- [ ] #2 two\n- [ ] #3 three\n<!-- AC:END -->\n",
+        );
+        let entry = ProjectEntry {
+            slug: "atlas".to_string(),
+            project_root: temp.path.clone(),
+            backlog_root: temp.path.join("backlog"),
+            git_remote_present: false,
+            status_aliases: BTreeMap::new(),
+        };
+
+        let cli = SystemBacklog;
+        let CliStatus::Supported(capability) = update::probe(&cli) else {
+            panic!("this test needs a supported backlog CLI on PATH");
+        };
+        let mut workspace = Workspace::default();
+        workspace
+            .open(&entry, &source(&entry), &FsVersions)
+            .unwrap();
+
+        // The user marked #1 for removal and checked #2. `check: [1]` — not `[2]` — is what the
+        // frontend sends, because #2 becomes the first criterion once #1 is gone.
+        let action: Vec<UpdateOperation> = serde_json::from_value(serde_json::json!([{
+            "op": "taskEdit",
+            "taskId": "TASK-1",
+            "edit": { "ac": { "mode": "delta", "remove": [1], "check": [1] } }
+        }]))
+        .unwrap();
+
+        let UpdateResult::Ran { outcome, project } = workspace
+            .apply(
+                &entry,
+                &action,
+                &capability,
+                &cli,
+                &source(&entry),
+                &FsVersions,
+            )
+            .unwrap()
+        else {
+            panic!("expected the CLI to run");
+        };
+        assert_eq!(outcome, UpdateOutcome::Succeeded);
+        let project = project.expect("a success re-reads the root");
+        let task = &project
+            .tasks
+            .iter()
+            .find(|view| view.task.id.as_deref() == Some("TASK-1"))
+            .expect("the task is still there")
+            .task;
+        let ac: Vec<(&str, bool)> = task
+            .acceptance_criteria
+            .iter()
+            .map(|item| (item.text.as_str(), item.checked))
+            .collect();
+        // `two` is checked and `three` is not: the check landed on the criterion the user pointed
+        // at, not on whatever ended up at index 2 after the removal.
+        assert_eq!(ac, vec![("two", true), ("three", false)]);
+    }
+
     #[test]
     fn the_detail_screen_transition_shapes_deserialize() {
         // 状態遷移の入口 (doc-8 §6.5): each carries the id under the name its 保存区分 uses —
