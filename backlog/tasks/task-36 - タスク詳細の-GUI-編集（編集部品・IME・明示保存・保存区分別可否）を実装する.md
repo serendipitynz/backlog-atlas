@@ -1,10 +1,10 @@
 ---
 id: TASK-36
 title: タスク詳細の GUI 編集（編集部品・IME・明示保存・保存区分別可否）を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:07'
-updated_date: '2026-07-26 02:16'
+updated_date: '2026-07-26 06:08'
 labels:
   - 'kind:feature'
 milestone: m-1
