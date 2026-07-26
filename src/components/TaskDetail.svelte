@@ -25,6 +25,8 @@
     type HistoryState,
   } from "../lib/detail";
   import {
+    EMPTY_DEPENDENCIES_REASON,
+    EMPTY_REFERENCES_REASON,
     FILE_MISSING_REASON,
     NOTHING_TO_SAVE_REASON,
     PRIORITIES,
@@ -53,9 +55,22 @@
     type SaveState,
     type TransitionOffer,
   } from "../lib/edit";
+  import {
+    CLI_LIMIT_GUIDANCE,
+    FRONTMATTER_NOTICE,
+    UNSAVED_INPUT_WARNING,
+    WRITE_BACK_NOTE,
+    editorOffers,
+    launchSummary,
+    needsConfirmation,
+    type EditorOffer,
+    type OpenOutcome,
+  } from "../lib/external-editor";
   import { CANONICAL_COLUMN_LABEL } from "../lib/swimlane";
   import type {
     CliReadiness,
+    EditorReadiness,
+    LaunchMethod,
     ProjectEntry,
     ProjectSnapshot,
     ReferenceKind,
@@ -79,8 +94,15 @@
     history: HistoryState;
     /** 縮退 (doc-5 §5): `null` while the probe is still running. */
     readiness: CliReadiness | null;
+    /** 外部エディタ経路 (doc-8 §7): which launch methods exist. `null` while the probe is running. */
+    editorReadiness: EditorReadiness | null;
     /** Issue one 更新操作 through the boundary. The shell owns the call and the re-read. */
     onapply: (action: UpdateOperation[]) => Promise<ApplyOutcome>;
+    /**
+     * Start the user's editor on this task's management file (doc-8 §7). The shell owns the call for
+     * the same reason as `onapply` — it holds the (slug, path) the boundary resolves against.
+     */
+    onopenExternally: (method: LaunchMethod) => Promise<OpenOutcome>;
     /** Follow a dependency to its task (doc-8 §3 解決先タスクへ辿れる). */
     onselect: (view: TaskView) => void;
     onreloadHistory: () => void;
@@ -96,7 +118,9 @@
     entry,
     history,
     readiness,
+    editorReadiness,
     onapply,
+    onopenExternally,
     onselect,
     onreloadHistory,
     ondirty,
@@ -148,6 +172,9 @@
   let externalChange = $derived(
     !missing && session !== null && externallyChanged(session, view),
   );
+  /** The 外部エディタ経路 controls (doc-8 §7). Offered for every 保存区分 — this is the route doc-8
+   * §6.5 sends draft・completed・archive to — so it depends on neither `availability` nor the CLI. */
+  let editorOfferList = $derived(editorOffers(editorReadiness, { fileMissing: missing }));
   let plan = $derived(session === null ? null : buildSave(session));
   /** One decision for the save control's enabled state and its reason (doc-5 §5). */
   let saveGate = $derived(saveAvailability(plan, { fileMissing: missing, busy }));
@@ -289,6 +316,52 @@
     } finally {
       busy = false;
     }
+  }
+
+  /**
+   * The last launch, or the reason there was none — and which file it was for. Kept apart from
+   * `saveState` because an editor launch is not a CLI update, and *keyed by path* for the reason the
+   * Git 履歴 read is (TASK-35): a notice held by identity would state "起動しました" over the next task
+   * the panel is pointed at, and every reload replaces the view objects.
+   */
+  let openState = $state<
+    | { state: "idle" }
+    | { state: "launched"; path: string; summary: string }
+    | { state: "failed"; path: string; detail: string }
+  >({ state: "idle" });
+  /** A launch awaiting its second press — asked for only while there is 未保存入力 (doc-8 §6.4). */
+  let confirmingOpen = $state<{ method: LaunchMethod; path: string } | null>(null);
+  /** The notice belonging to the *open* task; anything else counts as no launch on this task. */
+  let openNotice = $derived(
+    openState.state !== "idle" && openState.path === task.sourcePath ? openState : null,
+  );
+  let pendingOpen = $derived(
+    confirmingOpen !== null && confirmingOpen.path === task.sourcePath
+      ? confirmingOpen.method
+      : null,
+  );
+
+  /**
+   * 外部エディタ経路 (doc-8 §7). Deliberately leaves the 編集セッション alone: doc-8 §6.4 does not let
+   * an external edit take the 未保存入力, so opening the file neither saves nor discards the draft. The
+   * two are reconciled where they already are — the 継続検出 notice above, and the save's 更新前競合検出.
+   */
+  async function openExternally(offer: EditorOffer): Promise<void> {
+    if (!offer.enabled) return;
+    // The path is captured before the await: the launch is for the task that was on screen when it was
+    // asked for, and the answer is filed under that file rather than under whatever is shown when it
+    // arrives (the shell resolves the same (slug, path) pair).
+    const path = task.sourcePath;
+    if (needsConfirmation(dirty) && pendingOpen !== offer.method) {
+      confirmingOpen = { method: offer.method, path };
+      return;
+    }
+    confirmingOpen = null;
+    const outcome = await onopenExternally(offer.method);
+    openState =
+      outcome.state === "launched"
+        ? { state: "launched", path, summary: launchSummary(outcome.launch) }
+        : { state: "failed", path, detail: outcome.detail };
   }
 
   function addTo(values: string[], value: string): string[] {
@@ -885,7 +958,7 @@
         newDependency,
         (value) => (newDependency = value),
         "TASK-ID",
-        "dependencies は最後の 1 件を削除できません（CLI に空集合化の手段がないため。doc-5 §3.1）",
+        EMPTY_DEPENDENCIES_REASON,
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます（doc-5 §3 の非空全置換）。</p>
     {/if}
@@ -945,7 +1018,7 @@
         newReference,
         (value) => (newReference = value),
         "URL",
-        "References は最後の 1 件を削除できません（CLI に空集合化の手段がないため。doc-5 §3.1）",
+        EMPTY_REFERENCES_REASON,
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます（doc-5 §3 の非空全置換）。</p>
     {/if}
@@ -980,6 +1053,52 @@
     {/if}
   </section>
 
+  <!-- 外部エディタ経路 (doc-8 §7). Atlas starts the editor and writes nothing; the editor's save comes
+       back through the file watch (doc-9 §3), so nothing here waits for it to close. Offered for every
+       保存区分 and independently of the CLI probe: this is where doc-8 §6.5 and doc-5 §3.1 send the
+       edits Atlas itself cannot issue. -->
+  <section class="external-editor">
+    <h3>外部エディタで開く</h3>
+    <p class="hint">{CLI_LIMIT_GUIDANCE}</p>
+    <!-- 開く前に示す (doc-8 §7 難点と受け方): the frontmatter is exposed and the CLI's schema checking
+         is bypassed, so this is stated before a launch rather than after a degraded read. -->
+    <p class="warn">{FRONTMATTER_NOTICE}</p>
+    <p class="hint">{WRITE_BACK_NOTE}</p>
+    {#if dirty}
+      <!-- 二重取り込みの回避 (doc-8 §6.4): stated, and the launch asks for a second press. The input
+           is not discarded either way. -->
+      <p class="warn">{UNSAVED_INPUT_WARNING}</p>
+    {/if}
+    <ul class="editor-list">
+      {#each editorOfferList as offer (offer.method)}
+        <li>
+          <button
+            type="button"
+            disabled={!offer.enabled}
+            title={offer.reason ?? offer.command}
+            onclick={() => openExternally(offer)}
+          >
+            {pendingOpen === offer.method
+              ? `${offer.label}：開いてよいですか？（もう一度押す）`
+              : offer.label}
+          </button>
+          {#if pendingOpen === offer.method}
+            <button type="button" class="mini" onclick={() => (confirmingOpen = null)}>やめる</button>
+          {/if}
+          <span class="effect">{offer.enabled ? offer.command : ""}</span>
+          {#if offer.reason !== null}
+            <span class="effect">{offer.reason}</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+    {#if openNotice !== null && openNotice.state === "launched"}
+      <p class="ok">{openNotice.summary}</p>
+    {:else if openNotice !== null && openNotice.state === "failed"}
+      <p class="warn">{openNotice.detail}</p>
+    {/if}
+  </section>
+
   <GitHistory {history} {entry} onreload={onreloadHistory} />
 
   {#if degrade.degraded || task.unknownSections.length > 0}
@@ -1006,7 +1125,8 @@
   {/if}
 
   <footer class="note">
-    管理ファイルは Backlog CLI 経由でのみ更新します。外部エディタ経路は TASK-37 で実装します。
+    Atlas 自身は管理ファイルを書き込みません。この画面の編集は Backlog CLI 経由で、外部エディタ経路は
+    利用者のエディタが書き込みます（doc-2・doc-8 §7）。
   </footer>
 </aside>
 
@@ -1162,7 +1282,8 @@
   .prs,
   .list-edit,
   .ac-replace,
-  .transition-list {
+  .transition-list,
+  .editor-list {
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
@@ -1391,7 +1512,8 @@
     font-size: 0.7rem;
   }
 
-  .transition-list li {
+  .transition-list li,
+  .editor-list li {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;

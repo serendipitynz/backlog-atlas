@@ -15,6 +15,9 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   CliReadiness,
   CommandError,
+  EditorLaunch,
+  EditorReadiness,
+  LaunchMethod,
   LedgerResponse,
   ProjectLoad,
   ProjectSnapshot,
@@ -84,6 +87,28 @@ export function taskHistoryRead(slug: string, taskId: string): Promise<TaskHisto
  */
 export function cliProbe(): Promise<CliReadiness> {
   return invoke<CliReadiness>("cli_probe");
+}
+
+/**
+ * Which 外部エディタ経路 launch methods this environment has (doc-8 §7). Read at startup so the panel
+ * can name the editor it would start and withhold the method it cannot offer.
+ */
+export function editorProbe(): Promise<EditorReadiness> {
+  return invoke<EditorReadiness>("editor_probe");
+}
+
+/**
+ * Open one task's management file in the user's editor (doc-8 §7). Atlas starts a process and writes
+ * nothing; the editor's save arrives through the ordinary file watch, so there is nothing to await
+ * beyond the launch. `sourcePath` must be one the boundary's own read produced — it is checked against
+ * the open model, and anything else is refused with `unknownTaskFile`.
+ */
+export function taskFileOpen(
+  slug: string,
+  sourcePath: string,
+  method: LaunchMethod,
+): Promise<EditorLaunch> {
+  return invoke<EditorLaunch>("task_file_open", { slug, sourcePath, method });
 }
 
 /**

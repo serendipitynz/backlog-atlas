@@ -14,23 +14,28 @@
   import {
     asCommandError,
     cliProbe,
+    editorProbe,
     ledgerList,
     ledgerReorder,
     onProjectReloaded,
     projectOpen,
     projectWatchStart,
     projectWatchStop,
+    taskFileOpen,
     taskHistoryRead,
     updateApply,
     workspaceOpen,
   } from "./lib/commands";
   import type { HistoryState } from "./lib/detail";
   import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
+  import { launchFailureDetail, type OpenOutcome } from "./lib/external-editor";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
   import type {
     CliReadiness,
+    EditorReadiness,
+    LaunchMethod,
     ProjectEntry,
     ProjectLoad,
     ProjectSnapshot,
@@ -68,6 +73,27 @@
    * panel shows as "確認中" rather than as "no CLI" — the two lead to different user actions.
    */
   let readiness = $state<CliReadiness | null>(null);
+  /**
+   * Which 外部エディタ経路 launch methods this environment has (doc-8 §7). `null` until the probe
+   * answers, which the panel shows as 確認中 rather than as "no editor" — the two differ in what the
+   * user would do next.
+   */
+  let editorReadiness = $state<EditorReadiness | null>(null);
+  /**
+   * Roots whose 継続検出 is not running (doc-9 §3): the watch refused to start, so nothing pushes a
+   * re-read for them and their cards are only as fresh as the last read. Recorded rather than merely
+   * reported, because it changes what the screen owes the user — an explicit re-read they can press
+   * (`rereadRow`), which is the only thing that will show an external save for such a root.
+   */
+  let unwatched = $state<string[]>([]);
+  /**
+   * Whether a watch-triggered re-read can reach the screen at all. The event subscription is the
+   * frontend half of 継続検出 (doc-9 §3): without it every root's watch can run perfectly and still
+   * change nothing here, because no one copies the emitted `ProjectLoad` into `loadBySlug`. Held
+   * beside `unwatched` because it has the same consequence for the user (only an explicit re-read
+   * refreshes anything) but no per-root cause — it makes *every* row stale.
+   */
+  let reloadFeed = $state<"live" | "unavailable">("live");
   /** True while the detail panel holds 未保存入力 — what makes a selection change ask first. */
   let detailDirty = $state(false);
   /** A selection requested while the panel was dirty, held until the user answers (doc-8 §6.3). */
@@ -101,6 +127,15 @@
   // 保存区分印 goes on cards only once a division beyond active is in play (doc-7 §3).
   let showStorageMark = $derived(filter.storage.some((state) => state !== "active"));
   let hiddenRows = $derived(hidden.filter((slug) => order.includes(slug)));
+  /**
+   * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
+   * A dead subscription means *every* registered row (nothing can arrive at all); otherwise it is the
+   * roots whose own watch would not start. Only registered rows either way — a slug that left the
+   * ledger has no row to re-read.
+   */
+  let unwatchedRows = $derived(
+    reloadFeed === "unavailable" ? order : unwatched.filter((slug) => order.includes(slug)),
+  );
 
   // The open task, resolved against the *current* read of its root, so a reload refreshes the
   // panel instead of leaving it on the version the card was clicked from.
@@ -169,11 +204,15 @@
     // Failing to subscribe is the same kind of failure as a watch that will not start — the
     // screen is one read behind, not unusable — so it must not take the first read down with
     // it, which would leave 読み込み中 on screen over a workspace that reads perfectly well.
+    // It is *recorded* for the same reason a failed watch is: with no listener, every root's watch
+    // can run and still change nothing here, so the only thing that refreshes any row is the manual
+    // re-read — which the screen then has to offer for all of them (`unwatchedRows`).
     try {
       unlisten = await onProjectReloaded((event) => {
         loadBySlug[event.slug] = event.load;
       });
     } catch (error) {
+      reloadFeed = "unavailable";
       notice = `変更の通知を購読できません（${unreadableDetail(asCommandError(error))}）`;
     }
     // Probed once and not per edit: it decides whether edit controls are offered at all (doc-5 §5),
@@ -183,6 +222,14 @@
       readiness = await cliProbe();
     } catch (error) {
       readiness = { state: "unavailable", detail: unreadableDetail(asCommandError(error)) };
+    }
+    // 外部エディタ経路 (doc-8 §7): one environment read, so it is probed once beside the CLI probe.
+    // Left `null` on failure — the panel then withholds both launch controls as 確認中, which is what
+    // the state actually is; the notice says why it will stay that way.
+    try {
+      editorReadiness = await editorProbe();
+    } catch (error) {
+      notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
     await load();
   });
@@ -213,7 +260,7 @@
       // 継続検出 (doc-9 §3) for every root that opened: the boundary pushes each re-read on
       // `project-reloaded`, which is what keeps the cards' 安定並び in step with the files
       // (doc-7 §7). Idempotent, so a retry can call it again.
-      for (const slug of Object.keys(next)) startWatch(slug);
+      for (const slug of Object.keys(next)) void startWatch(slug);
     } catch (error) {
       fatal = unreadableDetail(asCommandError(error));
     } finally {
@@ -221,12 +268,22 @@
     }
   }
 
-  function startWatch(slug: string): void {
-    // A failed watch is not a failed read: the row's cards are already on screen and only
-    // stay as fresh as the last read, so it is reported, not escalated.
-    void projectWatchStart(slug).catch((error) => {
+  /**
+   * Start 継続検出 for one root, reporting whether it is running (doc-9 §3). A failed watch is not a
+   * failed read: the row's cards are already on screen and only stay as fresh as the last read, so it
+   * is reported, not escalated — but it is *recorded*, because from then on the only thing that
+   * refreshes that root is an explicit re-read, and the screen has to offer one (`unwatched` below).
+   */
+  async function startWatch(slug: string): Promise<boolean> {
+    try {
+      await projectWatchStart(slug);
+      unwatched = unwatched.filter((candidate) => candidate !== slug);
+      return true;
+    } catch (error) {
       notice = `${slug}: 変更監視を開始できません（${unreadableDetail(asCommandError(error))}）`;
-    });
+      if (!unwatched.includes(slug)) unwatched = [...unwatched, slug];
+      return false;
+    }
   }
 
   /** Retry one ルート読取不能 row (doc-7 §6). Other rows are untouched either way. */
@@ -234,12 +291,25 @@
     try {
       const project = await projectOpen(slug);
       loadBySlug[slug] = { state: "loaded", project };
-      startWatch(slug);
       notice = null;
+      // Awaited, so a root re-read whose watch still refuses to start stays listed as 監視なし
+      // instead of looking recovered (the notice `startWatch` sets is the report).
+      await startWatch(slug);
     } catch (error) {
       const commandError = asCommandError(error);
       loadBySlug[slug] = { state: "unreadable", slug, error: commandError };
     }
+  }
+
+  /**
+   * Re-read one root on demand — the manual counterpart of 継続検出 (doc-9 §3 の再読込契機). Needed
+   * because a root whose watch will not start has nothing else that refreshes it: re-selecting a task
+   * only resolves it out of the snapshot already in hand, so without this the screen could tell the
+   * user to "look again" at a model that never changes. Shares `retry`'s path: `projectOpen` *is* the
+   * re-read (doc-9 §3 funnels every trigger through one reload), and it retries the watch as well.
+   */
+  async function rereadRow(slug: string): Promise<void> {
+    await retry(slug);
   }
 
   /**
@@ -317,6 +387,41 @@
     }
   }
 
+  /**
+   * Open the selected task's management file in the user's editor (doc-8 §7). The shell owns this for
+   * the same reason as `apply`: the boundary resolves the file from the (slug, path) the selection is
+   * held as, and nothing else knows both.
+   *
+   * The watch is (re)started before the launch. It is the whole of the 書き戻し path — the editor's
+   * save reaches Atlas only because doc-9's 継続検出 picks it up (AC #2) — so a root whose watch never
+   * started, or whose start failed earlier, would take the edit and show nothing. The underlying
+   * command is idempotent, so this costs nothing when the watch is already running.
+   */
+  async function openExternally(method: LaunchMethod): Promise<OpenOutcome> {
+    const ref = selectedRef;
+    if (ref === null) return { state: "failed", detail: "対象タスクを特定できません" };
+    // Awaited before the launch: if it cannot start, the editor's save has nothing to bring it back
+    // (AC #2's mechanism is absent), and the user is told so with the re-read control that does work —
+    // `startWatch` lists the root in `unwatched`, which draws the 再読込 button below. The launch still
+    // happens: this route is the way through for edits the CLI cannot make, so removing it here would
+    // take away the escape hatch precisely on a machine whose watch is broken.
+    // Both halves of 継続検出 have to be live for the save to arrive: the root's watch, and the event
+    // subscription that brings its re-read to the screen. Either one missing leads to the same place —
+    // the manual re-read — so they are reported together rather than only where the cause differs.
+    const watching = await startWatch(ref.slug);
+    if (!watching || reloadFeed === "unavailable") {
+      notice =
+        `${ref.slug}: ${watching ? "変更の通知を購読できていない" : "変更監視が動いていない"}ため、` +
+        "外部エディタの保存は自動では反映されません。編集を終えたら画面上部の" +
+        `「${ref.slug} を再読込」を押してください（タスクを開き直すだけでは読み直しません）。`;
+    }
+    try {
+      return { state: "launched", launch: await taskFileOpen(ref.slug, ref.sourcePath, method) };
+    } catch (error) {
+      return { state: "failed", detail: launchFailureDetail(asCommandError(error)) };
+    }
+  }
+
   /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
   const loadHistory = createHistoryLoader({
     read: taskHistoryRead,
@@ -374,6 +479,22 @@
     <p class="notice">{notice}</p>
   {/if}
 
+  {#if unwatchedRows.length > 0}
+    <!-- 継続検出 が動いていない行 (doc-9 §3): nothing pushes a re-read for these, so the manual
+         再読込契機 is offered here. Without it the screen would report staleness it gives the user no
+         way to resolve — and an external editor's save would stay invisible. -->
+    <div class="unwatched">
+      <span>
+        {reloadFeed === "unavailable"
+          ? "変更の通知を購読できていないため、どの行も自動では更新されません"
+          : "変更監視が動いていない行があります"}（外部エディタ・別プロセスの保存は自動反映されません）:
+      </span>
+      {#each unwatchedRows as slug (slug)}
+        <button type="button" onclick={() => rereadRow(slug)}>{slug} を再読込</button>
+      {/each}
+    </div>
+  {/if}
+
   {#if pendingSelection !== null}
     <!-- 破棄前確認 (doc-8 §6.3): the panel confirms its own cancel, and this is the other exit. -->
     <div class="confirm">
@@ -424,7 +545,9 @@
             entry={selectedEntry}
             {history}
             {readiness}
+            {editorReadiness}
             onapply={apply}
+            onopenExternally={openExternally}
             onselect={open}
             onreloadHistory={() =>
               view.task.id === null
@@ -499,6 +622,27 @@
       color: inherit;
       font: inherit;
       font-size: 0.7rem;
+      cursor: pointer;
+    }
+  }
+
+  .unwatched {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    background: color-mix(in srgb, #b8860b 12%, transparent);
+    font-size: 0.75rem;
+
+    button {
+      padding: 0 0.4rem;
+      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 0.72rem;
       cursor: pointer;
     }
   }

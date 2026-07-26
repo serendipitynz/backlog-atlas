@@ -290,7 +290,7 @@ export function acDeltaDroppedByRebase(session: EditSession, latest: TaskView): 
 
 function sameCriteria(a: TaskView, b: TaskView): boolean {
   const of = (view: TaskView) =>
-    view.task.acceptanceCriteria.map((item) => `${item.number} ${item.text}`);
+    view.task.acceptanceCriteria.map((item) => `${item.number}\0${item.text}`);
   return sameList(of(a), of(b));
 }
 
@@ -352,13 +352,20 @@ export type SavePlan =
   | { state: "nothingToSave" }
   | { state: "refused"; reason: string };
 
+/**
+ * The route these reasons send the user to (doc-5 §3.1・doc-8 §7). Named once so every withheld
+ * operation points at the same control instead of at "外部エディタ経路" as an abstraction — TASK-37
+ * put the launch in this panel, so the guidance can name where it is.
+ */
+export const EXTERNAL_EDITOR_ROUTE = "この画面下部の「外部エディタで開く」";
+
 export const EMPTY_REFERENCES_REASON =
   "References は最後の 1 件を削除できません（v1.47.1 の CLI に空集合化の手段がないため）。" +
-  "空にする場合は外部エディタ経路を使います（doc-5 §3.1・doc-8 §6）";
+  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します（doc-5 §3.1・doc-8 §7）`;
 
 export const EMPTY_DEPENDENCIES_REASON =
   "dependencies は最後の 1 件を削除できません（v1.47.1 の CLI に空集合化の手段がないため）。" +
-  "空にする場合は外部エディタ経路を使います（doc-5 §3.1・doc-8 §6）";
+  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します（doc-5 §3.1・doc-8 §7）`;
 
 /**
  * Renumber a per-item AC edit for the CLI (doc-5 §3). One `task edit` resolves its AC options in
@@ -598,6 +605,15 @@ export function commandErrorDetail(error: CommandError): string {
       return `プロジェクト ${error.slug} は台帳にありません`;
     case "rootUnreadable":
       return `ルートを読めません: ${error.detail}`;
+    // 外部エディタ経路 (doc-8 §7). Stated here because this is the one place a `CommandError` becomes
+    // the panel's Japanese text; `external-editor.ts` re-words these three for the launch controls,
+    // where "the path is not in the read result" has a specific next step (open the task again).
+    case "unknownTaskFile":
+      return `${error.path} は現在の読み取り結果のタスクファイルではありません（移動・削除の可能性）`;
+    case "editorUnavailable":
+      return `外部エディタを起動できません: ${error.detail}`;
+    case "editorLaunchFailed":
+      return `${error.program} を起動できません: ${error.detail}`;
     case "ledger":
     case "watchFailed":
       return error.detail;
@@ -673,11 +689,11 @@ export function readinessReason(readiness: CliReadiness | null): string | null {
 
 const DRAFT_READ_ONLY =
   "draft の内容編集は提供しません（v1.47.1 に draft 向けの task edit 相当が無いため。doc-5 §3.3）。" +
-  "編集するには draft promote でタスクへ昇格するか、外部エディタ経路を使います";
+  `編集するには draft promote でタスクへ昇格するか、${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 const CLOSED_READ_ONLY =
   "completed・archive のタスクは task edit が not found になるため読み取り専用です（doc-8 §6.5）。" +
-  "内容を変えるには外部エディタ経路を使います";
+  `内容を変えるには${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
  * The task's file left the read result while the panel was open — moved or deleted by something

@@ -7,6 +7,10 @@ pub mod commands;
 // command layer build on. Exposing it as crate API is also what keeps the types from
 // tripping dead_code before their consumers land.
 pub mod domain;
+// Public: the 外部エディタ経路 (TASK-37 / doc-8 §7). Neither a read nor a CLI update — it starts the
+// user's editor on a management file and writes nothing itself, so it sits beside `update` as its own
+// layer rather than inside it: the write that follows is the user's, and it arrives through `sync`.
+pub mod editor;
 // Public: the Git・Pull Request 履歴参照系 (TASK-30 / doc-6). A read-only, ledger-aware sibling
 // of the read layer: given a task id and its owning ledger entry it finds commits, extracts PR
 // URLs, and (remote permitting) relates them. Exposed as crate API for the command layer to call.
@@ -53,6 +57,9 @@ pub fn run() {
             commands::project_watch_start,
             commands::project_watch_stop,
             commands::task_history_read,
+            // 外部エディタ経路 (doc-8 §7): neither path — Atlas starts an editor and writes nothing.
+            commands::editor_probe,
+            commands::task_file_open,
             // Update path: guarded by the pre-update version check and a probed CLI capability.
             commands::cli_probe,
             commands::update_apply

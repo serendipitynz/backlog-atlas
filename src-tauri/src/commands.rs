@@ -17,6 +17,7 @@
 //! | doc-9 §4/§5 更新の結末 | [`UpdateResult`] | 更新前競合 (CLI never launched) vs. the CLI ran and returned a verdict |
 //! | doc-5 §5 / decision-7 縮退 | [`CliReadiness`] | whether a supported `backlog` exists, i.e. whether the UI may offer edits at all |
 //! | doc-6 §3/§6 コミット検索の結果・Git 対象不在 | [`CommitSearch`] | one task's commit search outcome: searched (possibly 該当なし) / 対象不在 / 読取不能 |
+//! | doc-8 §7 外部エディタ経路 | [`task_file_open`] / [`Workspace::open_in_editor`] | starting the user's editor on one task's management file, with the file resolved from this boundary's own model |
 //! | every layer's failure type | [`CommandError`] | one error type that keeps the core's distinctions (root unreadable / 縮退 / 拒否 / 照合不能) intact |
 //!
 //! ## Read and update stay separate paths (AC #2)
@@ -58,6 +59,10 @@
 //! from 更新前競合 ([`UpdateResult::Conflict`], "we checked and it did diverge").
 
 use crate::domain::{Config, Decision, Document, Milestone, ProjectModel, Task};
+use crate::editor::{
+    self, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod, Launcher,
+    SystemEnv, SystemLauncher,
+};
 use crate::history::{self, Commit, HistoryError, RemoteHost};
 use crate::interpret::{interpret_task, TaskInterpretation};
 use crate::ledger::{
@@ -296,12 +301,34 @@ pub enum CommandError {
     /// The file watch could not be started or is unavailable for this root; 継続検出 (doc-9 §3) is
     /// off for it until it is started again.
     WatchFailed { slug: String, detail: String },
+    /// 外部エディタ経路 (doc-8 §7): the path named is not one of the open model's task files, so no
+    /// program is started. The frontend echoes back a `sourcePath` it received from a read, so this is
+    /// a stale screen (the file moved or the root was re-read) — or a path that never came from one,
+    /// which is exactly what must not reach a process.
+    UnknownTaskFile { slug: String, path: PathBuf },
+    /// The chosen launch method has no launcher here (doc-8 §7): `VISUAL`/`EDITOR` are unset. Not a
+    /// failure of the file or the project — the other method may still work.
+    EditorUnavailable { detail: String },
+    /// The launcher was resolved and the OS refused to start it (a missing program, a permission
+    /// fault). Names the program so the user can see what was tried.
+    EditorLaunchFailed { program: String, detail: String },
 }
 
 impl From<LedgerError> for CommandError {
     fn from(error: LedgerError) -> Self {
         CommandError::Ledger {
             detail: error.to_string(),
+        }
+    }
+}
+
+impl From<EditorError> for CommandError {
+    fn from(error: EditorError) -> Self {
+        match error {
+            EditorError::Unavailable { detail } => CommandError::EditorUnavailable { detail },
+            EditorError::LaunchFailed { program, detail } => {
+                CommandError::EditorLaunchFailed { program, detail }
+            }
         }
     }
 }
@@ -434,6 +461,48 @@ impl Workspace {
             commits,
             remote: history::detect_remote_host(entry),
         })
+    }
+
+    /// 外部エディタ経路 (doc-8 §7): start the user's editor on one task's management file.
+    ///
+    /// Three properties this method is shaped by:
+    ///
+    /// - **Atlas writes nothing** (AC #1). The file is passed as an argument to a spawned program;
+    ///   nothing here opens it. doc-2's invariant therefore holds, while the *route* is the exception
+    ///   doc-8 §7 names — the bytes the editor writes never pass the CLI's schema checking, and a
+    ///   broken frontmatter is received by doc-4's 縮退表示 on the next read.
+    /// - **The path is resolved, not accepted.** Only a `source_path` the open model already holds can
+    ///   be launched; anything else is [`CommandError::UnknownTaskFile`]. The frontend gets these
+    ///   paths from its own read, so this is the same rule [`SyncState::guarded_update`] applies to
+    ///   update targets: the boundary names the file from its model rather than trusting a caller.
+    /// - **No CLI capability, no 保存区分 gate.** This is the route doc-8 §6.5 and doc-5 §3.1 point at
+    ///   for what the CLI *cannot* do — a draft's or an archived task's content, emptying References —
+    ///   so gating it on the CLI probe or the 保存区分 would remove it exactly where it is needed.
+    ///   A 解析不能 file (no TASK-ID) is openable for the same reason: it is identified by its path.
+    pub fn open_in_editor(
+        &self,
+        entry: &ProjectEntry,
+        source_path: &Path,
+        method: LaunchMethod,
+        env: &dyn Environment,
+        launcher: &dyn Launcher,
+    ) -> Result<EditorLaunch, CommandError> {
+        let session = self.session(&entry.slug)?;
+        // Compared as read, not canonicalized: these paths come from the model the frontend was drawn
+        // from, so equality is the whole check — and a canonicalize here would resolve a path that has
+        // not been shown to be a managed file yet, which is the wrong order.
+        if !session
+            .model
+            .tasks
+            .iter()
+            .any(|task| task.source_path == source_path)
+        {
+            return Err(CommandError::UnknownTaskFile {
+                slug: entry.slug.clone(),
+                path: source_path.to_path_buf(),
+            });
+        }
+        Ok(editor::open(env, launcher, method, source_path)?)
     }
 
     /// Run one screen action against an open root (doc-5 §5, doc-9 §4). The only method here that
@@ -1010,6 +1079,36 @@ pub fn task_history_read(
     lock(&state.workspace).history(&entry, &task_id)
 }
 
+// --- commands: 外部エディタ経路 (doc-8 §7) --------------------------------------------------------
+
+/// Which launch methods this environment offers (doc-8 §7). Probed on demand for the same reason as
+/// [`cli_probe`]: the UI offers a control per available method and states why the other is missing, and
+/// the answer is one environment read.
+#[tauri::command(async)]
+pub fn editor_probe() -> EditorReadiness {
+    editor::probe(&SystemEnv)
+}
+
+/// Open one task's management file in the user's editor (doc-8 §7). The write is the editor's; Atlas
+/// starts a process and touches no file. The editor's save arrives like any other external change —
+/// doc-9's watch picks it up and the root is re-read — so nothing here waits for or detects an exit.
+///
+/// `source_path` must be a task file of the open project: it is checked against the model rather than
+/// used as given (see [`Workspace::open_in_editor`]), and it reaches the process as one element of an
+/// argument array, never as part of a string (AGENTS).
+#[tauri::command(async)]
+pub fn task_file_open(
+    app: AppHandle,
+    state: State<'_, AtlasState>,
+    slug: String,
+    source_path: PathBuf,
+    method: LaunchMethod,
+) -> Result<EditorLaunch, CommandError> {
+    let lifecycle = lifecycle(&state);
+    let entry = entry_for(&app, &lifecycle, &slug)?;
+    lock(&state.workspace).open_in_editor(&entry, &source_path, method, &SystemEnv, &SystemLauncher)
+}
+
 // --- commands: update path (decision-2, doc-5, AC #2/#4) ----------------------------------------
 
 /// Probe the write-side CLI (doc-5 §3.2, decision-7). Probed on demand rather than cached at startup:
@@ -1253,6 +1352,175 @@ ordinal: 1000\n\
             workspace.history(&entry, "TASK-1").unwrap_err(),
             CommandError::ProjectNotOpen { .. }
         ));
+    }
+
+    // --- 外部エディタ経路 (doc-8 §7, TASK-37) ---------------------------------------------------
+
+    struct FixedEnv(&'static str);
+
+    impl Environment for FixedEnv {
+        fn var(&self, name: &str) -> Option<String> {
+            (name == "EDITOR").then(|| self.0.to_string())
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingLauncher {
+        spawns: RefCell<Vec<(String, Vec<String>)>>,
+    }
+
+    impl Launcher for RecordingLauncher {
+        fn spawn(&self, program: &str, args: &[String]) -> std::io::Result<()> {
+            self.spawns
+                .borrow_mut()
+                .push((program.to_string(), args.to_vec()));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_editor_receives_the_task_file_and_atlas_writes_nothing() {
+        let (temp, entry) = root();
+        let mut workspace = Workspace::default();
+        let snapshot = workspace
+            .open(&entry, &source(&entry), &FsVersions)
+            .unwrap();
+        let path = snapshot.tasks[0].task.source_path.clone();
+        let before = std::fs::read_to_string(&path).unwrap();
+
+        let launcher = RecordingLauncher::default();
+        let launch = workspace
+            .open_in_editor(
+                &entry,
+                &path,
+                LaunchMethod::Configured,
+                &FixedEnv("my-editor"),
+                &launcher,
+            )
+            .unwrap();
+
+        assert_eq!(launch.program, "my-editor");
+        assert_eq!(
+            launcher.spawns.borrow().as_slice(),
+            &[(
+                "my-editor".to_string(),
+                vec![path.to_string_lossy().into_owned()]
+            )],
+            "the management file itself is opened (doc-8 §7 直接開く方式)"
+        );
+        // AC #1: the only effect is a spawned process. Nothing in this path writes managed Markdown.
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+        drop(temp);
+    }
+
+    #[test]
+    fn a_path_the_model_does_not_hold_starts_nothing() {
+        // The frontend echoes back a path it received from a read; anything else is a stale screen or
+        // a value that never came from one, and either way it must not reach a process.
+        let (temp, entry) = root();
+        let mut workspace = Workspace::default();
+        workspace
+            .open(&entry, &source(&entry), &FsVersions)
+            .unwrap();
+
+        let launcher = RecordingLauncher::default();
+        let outside = temp.path.join("backlog/../../etc/passwd");
+        let error = workspace
+            .open_in_editor(
+                &entry,
+                &outside,
+                LaunchMethod::Configured,
+                &FixedEnv("my-editor"),
+                &launcher,
+            )
+            .unwrap_err();
+
+        assert!(matches!(error, CommandError::UnknownTaskFile { .. }));
+        assert!(launcher.spawns.borrow().is_empty(), "nothing was launched");
+    }
+
+    #[test]
+    fn a_task_the_cli_cannot_edit_is_still_openable() {
+        // doc-8 §6.5 / doc-5 §3.1 point at this route for exactly these tasks (`task edit` answers
+        // "not found" for a completed one), so it must not be gated on 保存区分 or on the CLI probe.
+        let (temp, entry) = root();
+        temp.write(
+            "backlog/completed/task-2 - done.md",
+            &task_file("TASK-2", "Done", "[]"),
+        );
+        let mut workspace = Workspace::default();
+        let snapshot = workspace
+            .open(&entry, &source(&entry), &FsVersions)
+            .unwrap();
+        let completed = snapshot
+            .tasks
+            .iter()
+            .find(|view| view.task.id.as_deref() == Some("TASK-2"))
+            .expect("the completed task is in the model");
+        assert_eq!(
+            completed.task.storage_state,
+            Some(crate::domain::StorageState::Completed)
+        );
+
+        let launcher = RecordingLauncher::default();
+        workspace
+            .open_in_editor(
+                &entry,
+                &completed.task.source_path,
+                LaunchMethod::Configured,
+                &FixedEnv("my-editor"),
+                &launcher,
+            )
+            .unwrap();
+        assert_eq!(launcher.spawns.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_closed_project_cannot_open_an_editor() {
+        let (_temp, entry) = root();
+        let error = Workspace::default()
+            .open_in_editor(
+                &entry,
+                Path::new("/anywhere/task-1 - a.md"),
+                LaunchMethod::Association,
+                &FixedEnv("my-editor"),
+                &RecordingLauncher::default(),
+            )
+            .unwrap_err();
+        // Checked before anything is launched: without an open model there is no set of task files to
+        // resolve the path against.
+        assert!(matches!(error, CommandError::ProjectNotOpen { .. }));
+    }
+
+    #[test]
+    fn the_editor_launch_wire_shape_matches_the_frontend() {
+        // `src/lib/wire.ts` is hand-written, so a rename on either side would otherwise only surface
+        // as a runtime failure inside the running app.
+        let method: LaunchMethod = serde_json::from_value(serde_json::json!("configured")).unwrap();
+        assert_eq!(method, LaunchMethod::Configured);
+        let method: LaunchMethod =
+            serde_json::from_value(serde_json::json!("association")).unwrap();
+        assert_eq!(method, LaunchMethod::Association);
+
+        let readiness = editor::probe(&FixedEnv("code -w"));
+        let json = serde_json::to_value(&readiness).unwrap();
+        assert_eq!(json["configured"]["variable"], "EDITOR");
+        assert_eq!(json["configured"]["program"], "code");
+        assert_eq!(json["configured"]["args"][0], "-w");
+        // A string where a launcher exists, `null` where the platform has none (Windows — see
+        // `editor::association_launcher`): the frontend's `string | null` must match either way.
+        assert!(json["association"].is_string() || json["association"].is_null());
+
+        let launch = editor::plan(
+            &FixedEnv("code"),
+            LaunchMethod::Configured,
+            Path::new("/roots/p/tasks/task-1 - a.md"),
+        )
+        .unwrap();
+        let json = serde_json::to_value(&launch).unwrap();
+        assert_eq!(json["method"], "configured");
+        assert_eq!(json["program"], "code");
+        assert_eq!(json["args"][0], "/roots/p/tasks/task-1 - a.md");
     }
 
     // --- AC #4: user input travels as argument-array elements, never a shell string --------------
