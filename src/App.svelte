@@ -29,6 +29,7 @@
   import type { HistoryState } from "./lib/detail";
   import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
   import { launchFailureDetail, type OpenOutcome } from "./lib/external-editor";
+  import { conflictKeyOf, UNWATCHED_MARK, type VersionConflict } from "./lib/mark";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
@@ -94,6 +95,14 @@
    * refreshes anything) but no per-root cause — it makes *every* row stale.
    */
   let reloadFeed = $state<"live" | "unavailable">("live");
+  /**
+   * 版ずれ (doc-9) per task, keyed by (slug, source path). Owned by the shell rather than the panel
+   * because the mark has to outlive the panel: a divergence observed while editing one task is
+   * still true after the user goes to look at another, and the swimlane is where they would find it
+   * again (AC #4 横断的に適用する). Cleared by the panel when the divergence is resolved — a clean
+   * save, a restart from the latest read, a rebase onto it, or an acknowledgement.
+   */
+  let conflicts = $state<Record<string, VersionConflict>>({});
   /** True while the detail panel holds 未保存入力 — what makes a selection change ask first. */
   let detailDirty = $state(false);
   /** A selection requested while the panel was dirty, held until the user answers (doc-8 §6.3). */
@@ -151,6 +160,12 @@
   });
   let selectedEntry = $derived(
     entries.find((entry) => entry.slug === selectedRef?.slug) ?? null,
+  );
+  /** The 版ずれ record for the open task, so the panel shows what its card shows. */
+  let selectedConflict = $derived(
+    selectedRef === null
+      ? null
+      : (conflicts[conflictKeyOf(selectedRef.slug, selectedRef.sourcePath)] ?? null),
   );
   /**
    * The last read that resolved the open selection. Kept because an external move — `task demote`
@@ -333,6 +348,23 @@
   }
 
   /**
+   * Record or clear the open task's 版ずれ (doc-9). Reported by the panel rather than derived here:
+   * 更新前競合 is visible to `apply` below, but the 事後通知 is not — it is the comparison between
+   * what was submitted and what the re-read says, and only the panel holds the former.
+   */
+  function noteConflict(conflict: VersionConflict | null): void {
+    const ref = selectedRef;
+    if (ref === null) return;
+    const key = conflictKeyOf(ref.slug, ref.sourcePath);
+    if (conflict === null) {
+      const { [key]: _removed, ...rest } = conflicts;
+      conflicts = rest;
+    } else {
+      conflicts[key] = conflict;
+    }
+  }
+
+  /**
    * Open one task's detail panel (doc-7 §3 カードを選ぶとタスク詳細画面を開く). A pending 編集
    * セッション is not discarded on the way: doc-8 §6.3 asks before 未保存入力 is thrown away, and
    * leaving the task is the other way to lose it.
@@ -377,13 +409,21 @@
       // fall through to "現在の読み取り結果にありません" keeps a deliberate move from reading like
       // a task that went missing.
       if (action.some((operation) => TRANSITIONS.includes(operation.op))) {
+        // The 版ずれ record is keyed by the file path, and the transition moved the file — the old
+        // key would mark a card that no longer exists while the moved task carried none.
+        noteConflict(null);
         selectedRef = null;
         detailDirty = false;
         notice = "状態遷移を適用しました。保存区分と ID が変わるため、詳細を閉じました。";
       }
       return { state: "applied" };
     } catch (error) {
-      return { state: "failed", detail: commandErrorDetail(asCommandError(error)) };
+      const commandError = asCommandError(error);
+      // 照合不能 (doc-9 §4.2) is separated here rather than in the panel, so the panel never has to
+      // recognise it from its own message text. doc-9 §5 requires it not to read as a conflict.
+      return commandError.kind === "uncheckableTarget"
+        ? { state: "uncheckable", detail: commandErrorDetail(commandError) }
+        : { state: "failed", detail: commandErrorDetail(commandError) };
     }
   }
 
@@ -412,8 +452,8 @@
     if (!watching || reloadFeed === "unavailable") {
       notice =
         `${ref.slug}: ${watching ? "変更の通知を購読できていない" : "変更監視が動いていない"}ため、` +
-        "外部エディタの保存は自動では反映されません。編集を終えたら画面上部の" +
-        `「${ref.slug} を再読込」を押してください（タスクを開き直すだけでは読み直しません）。`;
+        `外部エディタの保存は自動では反映されません。編集を終えたら ${ref.slug} 行の「再読込」を` +
+        "押してください（タスクを開き直すだけでは読み直しません）。";
     }
     try {
       return { state: "launched", launch: await taskFileOpen(ref.slug, ref.sourcePath, method) };
@@ -480,18 +520,17 @@
   {/if}
 
   {#if unwatchedRows.length > 0}
-    <!-- 継続検出 が動いていない行 (doc-9 §3): nothing pushes a re-read for these, so the manual
-         再読込契機 is offered here. Without it the screen would report staleness it gives the user no
-         way to resolve — and an external editor's save would stay invisible. -->
+    <!-- 継続検出停止 (doc-9 §3): the *explanation* is here, once for the screen; the mark and the
+         manual 再読込契機 sit on each affected row, where the possibly-stale cards are. Deliberately
+         not 版ずれ's expression: nothing has been observed to diverge, Atlas simply cannot look
+         (doc-9 §5 照合不能の提示 makes the same distinction). -->
     <div class="unwatched">
       <span>
         {reloadFeed === "unavailable"
           ? "変更の通知を購読できていないため、どの行も自動では更新されません"
-          : "変更監視が動いていない行があります"}（外部エディタ・別プロセスの保存は自動反映されません）:
+          : "変更監視が動いていない行があります"}（外部エディタ・別プロセスの保存は自動反映されません）。
+        該当行の「{UNWATCHED_MARK.label}」印と「再読込」を参照してください。
       </span>
-      {#each unwatchedRows as slug (slug)}
-        <button type="button" onclick={() => rereadRow(slug)}>{slug} を再読込</button>
-      {/each}
     </div>
   {/if}
 
@@ -528,10 +567,14 @@
         {showStorageMark}
         selectedPath={selectedRef?.sourcePath ?? null}
         canReorder={!ledgerReadOnly}
+        unwatched={unwatchedRows}
+        conflictOf={(view) =>
+          conflicts[conflictKeyOf(view.task.project, view.task.sourcePath)] ?? null}
         onselect={open}
         onmove={move}
         onhide={hide}
         onretry={retry}
+        onreread={rereadRow}
       />
 
       <!-- カードを選ぶとタスク詳細画面を開く (doc-7 §3, doc-8 §2). -->
@@ -546,6 +589,8 @@
             {history}
             {readiness}
             {editorReadiness}
+            conflict={selectedConflict}
+            onconflict={noteConflict}
             onapply={apply}
             onopenExternally={openExternally}
             onselect={open}
@@ -626,25 +671,16 @@
     }
   }
 
+  // 継続検出停止 は縮退でも版ずれでもない (doc-9 §3/§5): its own family, so it cannot be read as
+  // either. It used to share 縮退's amber, which is what decision-6 forbids.
   .unwatched {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
     padding: 0.4rem 0.75rem;
-    background: color-mix(in srgb, #b8860b 12%, transparent);
+    background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);
     font-size: 0.75rem;
-
-    button {
-      padding: 0 0.4rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-      border-radius: 4px;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      font-size: 0.72rem;
-      cursor: pointer;
-    }
   }
 
   .confirm {
@@ -653,7 +689,7 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.4rem 0.75rem;
-    background: color-mix(in srgb, #2f6f9f 12%, transparent);
+    background: color-mix(in srgb, var(--info) 12%, transparent);
     font-size: 0.75rem;
 
     button {
@@ -676,12 +712,15 @@
     font-size: 0.78rem;
   }
 
+  // An action's own report (failed reorder, applied transition, probe trouble). Not one of the
+  // 印の族 — so it takes the neutral info hue rather than borrowing 縮退's amber, which would make
+  // every notice look like a parse degrade (decision-6).
   .notice {
-    background: color-mix(in srgb, #b8860b 12%, transparent);
+    background: color-mix(in srgb, var(--info) 12%, transparent);
   }
 
   .fatal {
-    color: #c0392b;
+    color: var(--mark-unreadable);
   }
 
   .status {

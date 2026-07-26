@@ -4,6 +4,7 @@
   // — so a column can be read top-to-bottom across projects, which is the point of the screen
   // (doc-7 §2 プロジェクト横断の縦読み).
   import LaneCell from "./LaneCell.svelte";
+  import { UNWATCHED_MARK, type VersionConflict } from "../lib/mark";
   import {
     CANONICAL_COLUMNS,
     CANONICAL_COLUMN_LABEL,
@@ -17,10 +18,19 @@
     selectedPath: string | null;
     /** False on a read-only ledger: row order lives there, so it cannot be written (doc-3 §2.2). */
     canReorder: boolean;
+    /**
+     * Rows whose 継続検出 is not running (doc-9 §3). Marked on the row rather than only in a banner:
+     * the staleness is a property of *these* cards, and `undetectable` — not 版ずれ — because Atlas
+     * cannot say whether the version moved (doc-9 §5 forbids the two reading alike).
+     */
+    unwatched: readonly string[];
+    /** 版ずれ (doc-9) per task, from the shell's record. */
+    conflictOf: (view: TaskView) => VersionConflict | null;
     onselect: (view: TaskView) => void;
     onmove: (slug: string, direction: -1 | 1) => void;
     onhide: (slug: string) => void;
     onretry: (slug: string) => void;
+    onreread: (slug: string) => void;
   }
 
   let {
@@ -28,10 +38,13 @@
     showStorageMark,
     selectedPath,
     canReorder,
+    unwatched,
+    conflictOf,
     onselect,
     onmove,
     onhide,
     onretry,
+    onreread,
   }: Props = $props();
 
   // 未対応区画は常設ではない (doc-7 §5): the column appears only while some row has a task in
@@ -69,6 +82,13 @@
       {#if row.state === "loaded"}
         <span class="count">{visibleCount(row)} / {row.totalBeforeFilter} 件</span>
       {/if}
+      {#if unwatched.includes(row.slug)}
+        <!-- 継続検出停止: the cards below are only as fresh as the last read, and 版ずれ の有無は
+             確かめられない — a distinct family from both 縮退 and 版ずれ (doc-9 §3/§5). -->
+        <span class="mark" data-kind={UNWATCHED_MARK.kind} title={UNWATCHED_MARK.detail}>
+          {UNWATCHED_MARK.label}
+        </span>
+      {/if}
       <div class="controls">
         <button
           type="button"
@@ -83,6 +103,15 @@
           onclick={() => onmove(row.slug, 1)}>↓</button
         >
         <button type="button" title="この行を隠す" onclick={() => onhide(row.slug)}>隠す</button>
+        {#if unwatched.includes(row.slug)}
+          <!-- The manual 再読込契機 (doc-9 §3) sits on the row it refreshes: a row that says its
+               cards may be stale has to carry the one control that resolves that. -->
+          <button
+            type="button"
+            title="このルートを読み直す（継続検出が動いていないため自動では更新されません）"
+            onclick={() => onreread(row.slug)}>再読込</button
+          >
+        {/if}
       </div>
     </div>
 
@@ -92,6 +121,7 @@
           tasks={cell.tasks}
           {showStorageMark}
           {selectedPath}
+          {conflictOf}
           {onselect}
         />
       {/each}
@@ -101,6 +131,7 @@
           unmapped
           {showStorageMark}
           {selectedPath}
+          {conflictOf}
           {onselect}
         />
       {/if}
@@ -172,7 +203,20 @@
     background: color-mix(in srgb, canvastext 3%, transparent);
 
     &.unreadable {
-      background: color-mix(in srgb, #c0392b 8%, transparent);
+      background: color-mix(in srgb, var(--mark-unreadable) 8%, transparent);
+    }
+  }
+
+  // 印の族ごとの色は app.scss の一箇所定義から取る (decision-6).
+  .mark {
+    align-self: flex-start;
+    padding: 0 0.3rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    color: #fff;
+
+    &[data-kind="undetectable"] {
+      background: var(--mark-undetectable);
     }
   }
 
@@ -242,7 +286,7 @@
   }
 
   .reason {
-    color: #c0392b;
+    color: var(--mark-unreadable);
   }
 
   .pending {

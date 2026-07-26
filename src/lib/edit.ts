@@ -544,6 +544,13 @@ export type ApplyOutcome =
   | { state: "applied" }
   /** 更新前競合 (doc-9 §4): no CLI ran, and the screen already holds the re-read. */
   | { state: "conflict"; path: string }
+  /**
+   * 照合不能 (doc-9 §4.2): no CLI ran either, but for the opposite reason — no divergence was
+   * observed, there is no defined way to look for one. Split from `failed` so the panel can put it
+   * in its own family (`undetectable`, `lib/mark.ts`) instead of borrowing 版ずれ's, which doc-9 §5
+   * forbids: the user must not read this as "a conflict happened".
+   */
+  | { state: "uncheckable"; detail: string }
   /** A CLI failure, an adapter refusal, or a boundary error — nothing was applied. */
   | { state: "failed"; detail: string };
 
@@ -557,7 +564,9 @@ export type SaveState =
   | { state: "applied" }
   | { state: "failed"; detail: string }
   | { state: "conflict"; path: string }
-  | { state: "diverged"; fields: string[] };
+  | { state: "diverged"; fields: string[] }
+  /** 照合不能 (doc-9 §4.2) — kept apart from the two conflict states, as doc-9 §5 requires. */
+  | { state: "uncheckable"; detail: string };
 
 /**
  * A CLI failure as the panel states it (doc-5 §5). The sub-command and stderr are the reason the
