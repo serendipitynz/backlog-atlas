@@ -500,6 +500,34 @@ export function buildSave(session: EditSession): SavePlan {
   return { state: "ready", action: [{ op: "taskEdit", taskId, edit }], submitted };
 }
 
+export const NOTHING_TO_SAVE_REASON = "変更はまだありません";
+
+/**
+ * Whether the save control may be pressed, and the reason when it may not. A single decision for
+ * both the disabled state and the tooltip: with the two derived separately, a state that stops
+ * `save()` from doing anything can still leave the button looking pressable, which is the one
+ * outcome doc-5 §5 rules out — an operation is either offered or carries the reason it is not.
+ */
+export type SaveAvailability = { state: "ready" } | { state: "blocked"; reason: string };
+
+export function saveAvailability(
+  plan: SavePlan | null,
+  context: { fileMissing: boolean; busy: boolean },
+): SaveAvailability {
+  // Ordered as the obstacles are: a file that is gone cannot be written whatever the plan says.
+  if (context.fileMissing) return { state: "blocked", reason: FILE_MISSING_REASON };
+  if (context.busy) return { state: "blocked", reason: "保存中です" };
+  if (plan === null) return { state: "blocked", reason: "編集セッションを開いていません" };
+  switch (plan.state) {
+    case "ready":
+      return { state: "ready" };
+    case "nothingToSave":
+      return { state: "blocked", reason: NOTHING_TO_SAVE_REASON };
+    case "refused":
+      return { state: "blocked", reason: plan.reason };
+  }
+}
+
 /**
  * What the shell reports back after issuing an action. Narrower than the boundary's `UpdateResult`
  * on purpose: the panel's next move depends only on these three, and folding the re-read into the

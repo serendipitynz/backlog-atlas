@@ -26,6 +26,7 @@
   } from "../lib/detail";
   import {
     FILE_MISSING_REASON,
+    NOTHING_TO_SAVE_REASON,
     PRIORITIES,
     TYPE_NOT_EDITABLE,
     acDeltaDroppedByRebase,
@@ -39,6 +40,7 @@
     milestoneOptions,
     optionsFor,
     rebaseOnto,
+    saveAvailability,
     setAcMode,
     setField,
     setNotesMode,
@@ -147,6 +149,8 @@
     !missing && session !== null && externallyChanged(session, view),
   );
   let plan = $derived(session === null ? null : buildSave(session));
+  /** One decision for the save control's enabled state and its reason (doc-5 §5). */
+  let saveGate = $derived(saveAvailability(plan, { fileMissing: missing, busy }));
   let acView = $derived(session === null ? [] : acRows(session));
 
   // The session belongs to one file. A different task in the same panel starts from that task's
@@ -506,8 +510,8 @@
         <button
           type="button"
           class="primary"
-          disabled={busy || plan === null || plan.state !== "ready"}
-          title={plan !== null && plan.state === "refused" ? plan.reason : "保存 (Cmd/Ctrl+Enter)"}
+          disabled={saveGate.state !== "ready"}
+          title={saveGate.state === "ready" ? "保存 (Cmd/Ctrl+Enter)" : saveGate.reason}
           onclick={save}
         >
           {busy ? "保存中…" : "保存"}
@@ -519,14 +523,18 @@
           <button type="button" onclick={() => (confirming = null)}>編集に戻る</button>
         {/if}
       </div>
-      <p class="hint">
-        保存は保存ボタンか Cmd/Ctrl+Enter です。Enter は改行（IME 変換中は変換確定）で、保存には
-        割り当てません（doc-8 §6.2）。
-      </p>
+      {#if !missing}
+        <!-- Withheld while the file is gone: naming the save shortcut there would advertise an
+             operation that cannot be issued (doc-5 §5). The banner above carries the reason. -->
+        <p class="hint">
+          保存は保存ボタンか Cmd/Ctrl+Enter です。Enter は改行（IME 変換中は変換確定）で、保存には
+          割り当てません（doc-8 §6.2）。
+        </p>
+      {/if}
       {#if plan !== null && plan.state === "refused"}
         <p class="warn">{plan.reason}</p>
-      {:else if plan !== null && plan.state === "nothingToSave"}
-        <p class="hint">変更はまだありません。</p>
+      {:else if plan !== null && plan.state === "nothingToSave" && !missing}
+        <p class="hint">{NOTHING_TO_SAVE_REASON}。</p>
       {/if}
       {#if externalChange}
         <p class="warn">

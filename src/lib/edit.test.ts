@@ -4,6 +4,7 @@ import {
   EMPTY_REFERENCES_REASON,
   EMPTY_TITLE_REASON,
   FILE_MISSING_REASON,
+  NOTHING_TO_SAVE_REASON,
   acDeltaDroppedByRebase,
   acRows,
   buildSave,
@@ -17,6 +18,7 @@ import {
   milestoneOptions,
   optionsFor,
   rebaseOnto,
+  saveAvailability,
   setAcMode,
   setField,
   setNotesMode,
@@ -291,6 +293,58 @@ describe("ファイルが読み取り結果から消えたとき (doc-8 §6.4)",
     });
     if (offers.state !== "offered") throw new Error("expected offers");
     expect(offers.offers.every((offer) => offer.reason === FILE_MISSING_REASON)).toBe(true);
+  });
+
+  it("保存できる入力があっても保存を止め、理由を出す", () => {
+    // 保持された編集セッション: 入力は残っているので plan は ready のまま。それでも
+    // 発行先のファイルが無いので、押せるように見せずに理由を返す。
+    const session = setField(startSession(taskView({})), "description", "書きかけ");
+    const plan = buildSave(session);
+    expect(plan.state).toBe("ready");
+    expect(saveAvailability(plan, { fileMissing: true, busy: false })).toEqual({
+      state: "blocked",
+      reason: FILE_MISSING_REASON,
+    });
+  });
+});
+
+describe("保存操作の可否と理由 (doc-5 §5)", () => {
+  // Shadowing the `ready()` helper above would read as the same thing; this is the plan value.
+  const readyPlan = buildSave(setField(startSession(taskView({})), "description", "x"));
+
+  it("保存できるときだけ ready", () => {
+    expect(saveAvailability(readyPlan, { fileMissing: false, busy: false })).toEqual({
+      state: "ready",
+    });
+  });
+
+  it("保存中は理由つきで止める", () => {
+    expect(saveAvailability(readyPlan, { fileMissing: false, busy: true })).toEqual({
+      state: "blocked",
+      reason: "保存中です",
+    });
+  });
+
+  it("変更が無ければ理由つきで止める", () => {
+    const nothing = buildSave(startSession(taskView({})));
+    expect(saveAvailability(nothing, { fileMissing: false, busy: false })).toEqual({
+      state: "blocked",
+      reason: NOTHING_TO_SAVE_REASON,
+    });
+  });
+
+  it("先取り拒否の理由をそのまま出す", () => {
+    const refused = buildSave(
+      setField(startSession(taskView({ references: ["u"] })), "references", []),
+    );
+    expect(saveAvailability(refused, { fileMissing: false, busy: false })).toEqual({
+      state: "blocked",
+      reason: EMPTY_REFERENCES_REASON,
+    });
+  });
+
+  it("編集セッションが無ければ止める", () => {
+    expect(saveAvailability(null, { fileMissing: false, busy: false }).state).toBe("blocked");
   });
 });
 
