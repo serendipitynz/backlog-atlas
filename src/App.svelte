@@ -9,15 +9,22 @@
   // doc-7 §5 calls it 一時的 — so `hidden` never leaves this component.
   import { onDestroy, onMount, untrack } from "svelte";
   import FilterBar from "./components/FilterBar.svelte";
+  import ProjectLedger from "./components/ProjectLedger.svelte";
   import Swimlane from "./components/Swimlane.svelte";
   import TaskDetail from "./components/TaskDetail.svelte";
   import {
     asCommandError,
     cliProbe,
     editorProbe,
+    ledgerDefaultSlug,
     ledgerList,
+    ledgerLocation,
+    ledgerRegister,
+    ledgerRemove,
     ledgerReorder,
+    ledgerUpdate,
     onProjectReloaded,
+    pickDirectory,
     projectOpen,
     projectWatchStart,
     projectWatchStop,
@@ -26,6 +33,7 @@
     updateApply,
     workspaceOpen,
   } from "./lib/commands";
+  import { refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
   import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
   import { launchFailureDetail, type OpenOutcome } from "./lib/external-editor";
@@ -42,15 +50,27 @@
     CliReadiness,
     EditorReadiness,
     LaunchMethod,
+    LedgerResponse,
     ProjectEntry,
     ProjectLoad,
     ProjectSnapshot,
+    RegisterRequest,
     TaskView,
     UpdateOperation,
+    UpdateRequest,
   } from "./lib/wire";
   import type { UnlistenFn } from "@tauri-apps/api/event";
 
+  /**
+   * Which screen is showing. The swimlane's own state (rows, filter, selection) lives in this shell,
+   * so switching away and back keeps it; what does not survive is the two components' internal state
+   * — including the detail panel's 編集セッション, which is why leaving it while dirty asks first
+   * (doc-8 §6.3).
+   */
+  let screen = $state<"swimlane" | "ledger">("swimlane");
   let entries = $state<ProjectEntry[]>([]);
+  /** The ledger file's path (doc-3 §2.1), for the 台帳管理画面 to show. `null` until it is known. */
+  let ledgerPath = $state<string | null>(null);
   let loadBySlug = $state<Record<string, ProjectLoad>>({});
   let hidden = $state<string[]>([]);
   let filter = $state<CardFilter>(DEFAULT_FILTER);
@@ -108,10 +128,16 @@
    * save, a restart from the latest read, a rebase onto it, or an acknowledgement.
    */
   let conflicts = $state<Record<string, VersionConflict>>({});
-  /** True while the detail panel holds 未保存入力 — what makes a selection change ask first. */
+  /** True while the detail panel holds 未保存入力 — what makes leaving the panel ask first. */
   let detailDirty = $state(false);
-  /** A selection requested while the panel was dirty, held until the user answers (doc-8 §6.3). */
-  let pendingSelection = $state<{ slug: string; sourcePath: string } | null>(null);
+  /**
+   * Where the user asked to go while the panel held 未保存入力, held until they answer (doc-8 §6.3).
+   * Both exits are here rather than only the selection change: switching to the 台帳管理画面 unmounts
+   * the panel, which discards the input just as thoroughly as opening another task does.
+   */
+  let pendingLeave = $state<
+    { to: "task"; slug: string; sourcePath: string } | { to: "ledger" } | null
+  >(null);
 
   let unlisten: UnlistenFn | null = null;
 
@@ -243,6 +269,15 @@
     } catch (error) {
       readiness = { state: "unavailable", detail: unreadableDetail(asCommandError(error)) };
     }
+    // The ledger file's location (doc-3 §2.1). One path resolution, and it cannot change while the
+    // app runs, so it is read once here rather than each time the 台帳管理画面 opens. A failure leaves
+    // it `null`, which that screen shows as 確認中 — it withholds no control, since knowing the path
+    // is not what makes an edit possible.
+    try {
+      ledgerPath = await ledgerLocation();
+    } catch {
+      ledgerPath = null;
+    }
     // 外部エディタ経路 (doc-8 §7): one environment read, so it is probed once beside the CLI probe.
     // Left `null` on failure — the panel then withholds both launch controls as 確認中, which is what
     // the state actually is; the notice says why it will stay that way.
@@ -265,9 +300,7 @@
   async function load(): Promise<void> {
     loading = true;
     try {
-      const response = await ledgerList();
-      entries = response.ledger.project;
-      ledgerReadOnly = response.readOnly;
+      applyLedger(await ledgerList());
 
       const opened = await workspaceOpen();
       const next: Record<string, ProjectLoad> = {};
@@ -343,13 +376,112 @@
     const neighbour = visible[visible.indexOf(slug) + direction];
     if (neighbour === undefined) return;
     try {
-      const response = await ledgerReorder(slug, order.indexOf(neighbour));
-      entries = response.ledger.project;
-      ledgerReadOnly = response.readOnly;
+      applyLedger(await ledgerReorder(slug, order.indexOf(neighbour)));
       notice = null;
     } catch (error) {
       notice = `行の並べ替えに失敗しました: ${unreadableDetail(asCommandError(error))}`;
     }
+  }
+
+  // --- 台帳操作 (doc-3 §4, TASK-39) ----------------------------------------------------------
+  //
+  // The shell issues these rather than the 台帳管理画面 itself, for the same reason it owns `apply`:
+  // the rows, the open sessions and the watches are here, and a ledger change moves all three. The
+  // screen gets back only whether the operation was done or refused, and with which reason.
+
+  /** Adopt a ledger the boundary just returned: the row order and the read-only state come with it. */
+  function applyLedger(response: LedgerResponse): void {
+    entries = response.ledger.project;
+    ledgerReadOnly = response.readOnly;
+  }
+
+  /**
+   * Register a project (doc-3 §4.1) and read it into its row. `retry` is the read: it is the same
+   * "open this one root and start its watch" path a failed row uses, and a newly registered root is
+   * in exactly that position — nothing has been read for it yet.
+   */
+  async function registerProject(request: RegisterRequest): Promise<LedgerActionResult> {
+    try {
+      const response = await ledgerRegister(request);
+      applyLedger(response.ledger);
+      await retry(response.entry.slug);
+      return { state: "done", slug: response.entry.slug };
+    } catch (error) {
+      return { state: "refused", report: refusalReport(asCommandError(error)) };
+    }
+  }
+
+  /**
+   * Remove a project from the ledger (doc-3 §4.2) and let go of its row. The boundary has already
+   * closed its session and stopped its watch; what is left here is the screen state keyed by that
+   * slug, which would otherwise keep a row — and a 版ずれ mark — for a project Atlas no longer reads.
+   */
+  async function removeProject(slug: string): Promise<LedgerActionResult> {
+    try {
+      applyLedger(await ledgerRemove(slug));
+      const { [slug]: _dropped, ...remaining } = loadBySlug;
+      loadBySlug = remaining;
+      hidden = hidden.filter((candidate) => candidate !== slug);
+      unwatched = unwatched.filter((candidate) => candidate !== slug);
+      conflicts = Object.fromEntries(
+        // The key is `JSON.stringify([slug, path])` (`mark.ts`), so the slug is its first element.
+        Object.entries(conflicts).filter(([key]) => JSON.parse(key)[0] !== slug),
+      );
+      if (selectedRef?.slug === slug) {
+        selectedRef = null;
+        detailDirty = false;
+      }
+      return { state: "done", slug };
+    } catch (error) {
+      return { state: "refused", report: refusalReport(asCommandError(error)) };
+    }
+  }
+
+  /**
+   * Update one ledger entry (doc-3 §4.3). Every change but a reorder is followed by a re-read of that
+   * root, because both kinds of change invalidate what the row is showing: a move makes the model a
+   * model of the old files (the boundary closes the session for that reason), and a 別名表 edit changes
+   * the interpretation the snapshot was built with — the column a task sits in (doc-7 §4). A reorder
+   * touches neither, so it only reorders the rows.
+   */
+  async function updateProject(request: UpdateRequest): Promise<LedgerActionResult> {
+    try {
+      applyLedger(await ledgerUpdate(request));
+      const reorderOnly = Object.keys(request).every(
+        (key) => key === "slug" || key === "new_index",
+      );
+      if (!reorderOnly) await retry(request.slug);
+      return { state: "done", slug: request.slug };
+    } catch (error) {
+      return { state: "refused", report: refusalReport(asCommandError(error)) };
+    }
+  }
+
+  /**
+   * Go to the 台帳管理画面. Asks first while the detail panel holds 未保存入力 (doc-8 §6.3): the panel
+   * is unmounted on the way, so the input is gone as surely as if another task had been opened.
+   */
+  function goToLedger(): void {
+    if (detailDirty) {
+      pendingLeave = { to: "ledger" };
+      return;
+    }
+    screen = "ledger";
+  }
+
+  /** Take the exit the user just confirmed, discarding the panel's 未保存入力 (doc-8 §6.3). */
+  function leaveConfirmed(): void {
+    const target = pendingLeave;
+    pendingLeave = null;
+    if (target === null) return;
+    if (target.to === "task") {
+      selectedRef = { slug: target.slug, sourcePath: target.sourcePath };
+      return;
+    }
+    screen = "ledger";
+    // The panel is unmounted from here, so its `ondirty` will not run again to retract the flag.
+    // The selection itself is kept: coming back reopens the task, with a fresh 編集セッション.
+    detailDirty = false;
   }
 
   /**
@@ -389,7 +521,7 @@
   function open(view: TaskView): void {
     const next = { slug: view.task.project, sourcePath: view.task.sourcePath };
     if (detailDirty && selectedRef !== null && selectedRef.sourcePath !== next.sourcePath) {
-      pendingSelection = next;
+      pendingLeave = { to: "task", ...next };
       return;
     }
     selectedRef = next;
@@ -520,21 +652,35 @@
 
 <main class="screen">
   <header class="top">
-    <h1>プロジェクト別スイムレーン</h1>
-    {#if ledgerReadOnly}
+    <h1>{screen === "swimlane" ? "プロジェクト別スイムレーン" : "プロジェクト台帳"}</h1>
+    <!-- The two 利用者向け画面 of the app so far. A switch rather than a route: there is no URL to
+         restore, and the swimlane's state lives in this shell, so coming back finds it as it was. -->
+    <nav class="screens">
+      <button
+        type="button"
+        class:current={screen === "swimlane"}
+        onclick={() => (screen = "swimlane")}>スイムレーン</button
+      >
+      <button type="button" class:current={screen === "ledger"} onclick={goToLedger}>
+        台帳（{entries.length}）
+      </button>
+    </nav>
+    {#if ledgerReadOnly && screen === "swimlane"}
       <span class="badge">台帳は読み取り専用（行の並べ替えは不可）</span>
     {/if}
   </header>
 
-  <FilterBar
-    {filter}
-    {facets}
-    {hasIndeterminateStorage}
-    onchange={(next) => (filter = next)}
-    onreset={() => (filter = DEFAULT_FILTER)}
-  />
+  {#if screen === "swimlane"}
+    <FilterBar
+      {filter}
+      {facets}
+      {hasIndeterminateStorage}
+      onchange={(next) => (filter = next)}
+      onreset={() => (filter = DEFAULT_FILTER)}
+    />
+  {/if}
 
-  {#if hiddenRows.length > 0}
+  {#if hiddenRows.length > 0 && screen === "swimlane"}
     <div class="hidden-rows">
       <span>非表示の行:</span>
       {#each hiddenRows as slug (slug)}
@@ -547,7 +693,7 @@
     <p class="notice">{notice}</p>
   {/if}
 
-  {#if unwatchedRows.length > 0}
+  {#if unwatchedRows.length > 0 && screen === "swimlane"}
     <!-- 継続検出停止 (doc-9 §3): the *explanation* is here, once for the screen; the mark and the
          manual 再読込契機 sit on each affected row, where the possibly-stale cards are. Deliberately
          not 版ずれ's expression: nothing has been observed to diverge, Atlas simply cannot look
@@ -562,30 +708,48 @@
     </div>
   {/if}
 
-  {#if pendingSelection !== null}
-    <!-- 破棄前確認 (doc-8 §6.3): the panel confirms its own cancel, and this is the other exit. -->
+  {#if pendingLeave !== null}
+    <!-- 破棄前確認 (doc-8 §6.3): the panel confirms its own cancel, and these are the other exits. -->
     <div class="confirm">
-      <span>編集中の未保存入力があります。別のタスクを開くと破棄されます。</span>
-      <button
-        type="button"
-        onclick={() => {
-          selectedRef = pendingSelection;
-          pendingSelection = null;
-        }}
-      >
-        破棄して開く
+      <span>
+        編集中の未保存入力があります。{pendingLeave.to === "task"
+          ? "別のタスクを開くと破棄されます。"
+          : "台帳画面へ移ると破棄されます。"}
+      </span>
+      <button type="button" onclick={leaveConfirmed}>
+        {pendingLeave.to === "task" ? "破棄して開く" : "破棄して台帳へ"}
       </button>
-      <button type="button" onclick={() => (pendingSelection = null)}>編集に戻る</button>
+      <button type="button" onclick={() => (pendingLeave = null)}>編集に戻る</button>
     </div>
   {/if}
 
-  {#if fatal}
+  {#if screen === "ledger"}
+    <!-- 台帳・プロジェクト登録・管理 (doc-3 §4, TASK-39). The ledger file is the only thing any action
+         here writes; no project's Backlog root or Git repository is touched (doc-3 §2.1/§4.2). -->
+    <ProjectLedger
+      {entries}
+      readOnly={ledgerReadOnly}
+      loads={loadBySlug}
+      listLoading={loading}
+      listFailure={entries.length === 0 && fatal !== null ? fatal : null}
+      {ledgerPath}
+      onpickDirectory={pickDirectory}
+      ondefaultSlug={ledgerDefaultSlug}
+      onregister={registerProject}
+      onupdate={updateProject}
+      onremove={removeProject}
+    />
+  {:else if fatal}
     <p class="fatal">読み込みに失敗しました: {fatal}</p>
     <button type="button" onclick={load}>再読み込み</button>
   {:else if loading}
     <p class="status">読み込み中…</p>
   {:else if order.length === 0}
-    <p class="status">登録済みプロジェクトがありません。台帳への登録は TASK-39 の画面で行います。</p>
+    <p class="status">
+      登録済みプロジェクトがありません。
+      <button type="button" class="link" onclick={goToLedger}>台帳画面</button>
+      から登録してください。
+    </p>
   {:else}
     <!-- The grid and the detail panel share the remaining height; the panel is beside the grid
          rather than over it, so a task can be read while its row stays visible (doc-8 §2). -->
@@ -668,6 +832,39 @@
       margin: 0;
       font-size: 1rem;
     }
+  }
+
+  .screens {
+    display: flex;
+    gap: 0.25rem;
+
+    button {
+      padding: 0.1rem 0.5rem;
+      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 0.72rem;
+      cursor: pointer;
+
+      &.current {
+        border-color: var(--info);
+        background: color-mix(in srgb, var(--info) 14%, transparent);
+      }
+    }
+  }
+
+  // A button that reads as part of the sentence it sits in, for the one place a message hands the
+  // user a screen to go to rather than an action to take.
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--info);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   .badge {
