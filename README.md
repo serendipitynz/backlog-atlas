@@ -54,9 +54,33 @@ holds; the CLI-mediated path is not the only way managed Markdown changes.
 
 ## Status
 
-The design phase is complete. Decisions 1–7 are recorded in `backlog/decisions/`,
-and the specifications (`backlog/docs/doc-1`–`doc-9`) cover the scope above.
-Implementation has not started yet.
+The design phase (m-0) is complete and the implementation phase (m-1) is under way.
+Decisions 1–11 are recorded in `backlog/decisions/`, and the specifications
+(`backlog/docs/doc-1`–`doc-9`) cover the scope above.
+
+Implemented (TASK-25–39):
+
+- Rust core: reading and writing the project ledger (`projects.toml`) with
+  register/remove/update, the domain model, the read layer (config resolution,
+  scanning, parsing, storage division, degradation), status normalization and Type
+  derivation, commit search and Pull Request URL extraction, the Backlog update
+  adapter, and the file watch with its read-version index and pre-update conflict
+  detection.
+- The Tauri command boundary between the Rust core and the frontend.
+- Screens: per-project swimlanes; task detail (Type, References, Pull Requests, Git
+  history); GUI editing of a task's detail; the external-editor path; ledger and
+  project registration/management; and the distinct display of target-absent,
+  unreadable, and no-match.
+
+Not started (TASK-40–44): the document and milestone management GUI with the entry
+point for creating a task, the reference means for resolving relations between
+commits and Pull Requests (doc-6 §6 fixes only its structure and leaves each host's
+means to a later addition), and three settled fixes (`task_prefix` matching in a
+cross-project task ID, the handling of an invalid status alias, and the
+OS-association launch on Windows).
+
+Distribution — packaging, and bundling the Backlog CLI as a sidecar — has not
+started.
 
 Key decisions:
 
@@ -73,6 +97,10 @@ Key decisions:
   states rather than one blank (decision-6).
 - Backlog CLI: development assumes a `backlog` on the user's PATH; bundling it as a
   sidecar is deferred to a later distribution decision (decision-7).
+- Frontend: Svelte 5 used plainly (no SvelteKit), built with Vite and TypeScript,
+  with component-scoped styles (decision-8).
+- Dependency choices: `toml` for the ledger, `serde_yaml_ng` for frontmatter parsing,
+  and `notify` for the file watch (decision-9–11).
 
 Bundling the Backlog CLI as a sidecar is a distribution choice; it does not mean
 Backlog Atlas owns the source of truth for tasks.
