@@ -18,6 +18,9 @@
 //! | doc-5 §5 / decision-7 縮退 | [`CliReadiness`] | whether a supported `backlog` exists, i.e. whether the UI may offer edits at all |
 //! | doc-6 §3/§6 コミット検索の結果・Git 対象不在 | [`CommitSearch`] | one task's commit search outcome: searched (possibly 該当なし) / 対象不在 / 読取不能 |
 //! | doc-8 §7 外部エディタ経路 | [`task_file_open`] / [`Workspace::open_in_editor`] | starting the user's editor on one task's management file, with the file resolved from this boundary's own model |
+//! | doc-3 §4.1 登録を拒否し理由を示す | [`LedgerRefusal`] | which refusal a 登録・削除・更新 hit, as a value the screen branches on instead of a sentence it parses |
+//! | doc-3 §2.1 台帳ファイル | [`ledger_location`] | the one file Atlas reads and writes, named so the screen can show where the registration lives |
+//! | doc-3 §3.1 slug の既定値 | [`ledger_default_slug`] | the derivation from a project root, exposed so the screen previews the default instead of re-deriving it |
 //! | every layer's failure type | [`CommandError`] | one error type that keeps the core's distinctions (root unreadable / 縮退 / 拒否 / 照合不能) intact |
 //!
 //! ## Read and update stay separate paths (AC #2)
@@ -262,9 +265,20 @@ pub enum UpdateResult {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum CommandError {
-    /// The ledger file could not be located, read, or written, or an operation on it was refused
-    /// (doc-3 §2.2 — includes the read-only guard on an unknown newer `schema_version`).
+    /// The ledger file could not be located, read, parsed, or written, or a cross-task-id was
+    /// rejected (doc-3 §5.2). The plumbing failed or the input was not about editing the ledger —
+    /// as opposed to [`CommandError::LedgerRefused`], which is a ledger *operation* turned down for
+    /// a reason the 台帳管理画面 has to act on.
     Ledger { detail: String },
+    /// A 登録・削除・更新 was refused, with which refusal it was (doc-3 §4.1 「登録を拒否し理由を
+    /// 示す」). Typed rather than folded into [`CommandError::Ledger`]'s message: doc-3 §3.1 asks the
+    /// screen to get the user *past* a 衝突・不正 by naming another slug, so the screen has to know
+    /// which field to send them back to — and reading that out of an English `Display` string is
+    /// exactly the string-matching this boundary exists to avoid. `detail` stays for diagnostics.
+    LedgerRefused {
+        reason: LedgerRefusal,
+        detail: String,
+    },
     /// ルート読取不能 (doc-4 §5): the root as a whole has no model. Per doc-7 §6 the project's row
     /// survives this, which is why it also appears as a [`ProjectLoad`] value.
     RootUnreadable { slug: String, detail: String },
@@ -314,11 +328,71 @@ pub enum CommandError {
     EditorLaunchFailed { program: String, detail: String },
 }
 
+/// Which ledger operation refusal happened (doc-3 §3.1/§3.3/§4). One variant per refusal
+/// [`LedgerError`] already keeps apart, minus the plumbing failures — those stay
+/// [`CommandError::Ledger`], because "the ledger file cannot be read at all" leaves the screen with
+/// nothing to edit, while everything here is a form the user can correct and resubmit.
+///
+/// The payloads are the values the screen has to *show* to make the correction possible: the path
+/// that is not a Backlog root, the slug that collided, the alias entry that is not a canonical
+/// column. Nothing here carries the English sentence — the screen writes its own text (doc-3 §4.1
+/// 理由付き提示 is a requirement on the screen, not on this enum).
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "reason", rename_all = "camelCase")]
+pub enum LedgerRefusal {
+    /// doc-3 §2.2: the on-disk `schema_version` is newer than this build understands, so the write
+    /// was refused to avoid destroying a format we cannot read. Every edit stays refused until the
+    /// file is downgraded or this build is updated — the one refusal no form change gets past.
+    ReadOnly { schema_version: u32 },
+    /// doc-3 §4.1 step 2: the resolved Backlog root has no `config.yml` + `tasks/`, so it cannot be
+    /// read (ルート読取不能 at registration time). Recovered by naming a different root.
+    BacklogRootInvalid { path: String },
+    /// doc-3 §3.1: the slug — given, or derived from the project-root directory name — does not
+    /// match `[a-z0-9][a-z0-9-]*`. Recovered by naming a valid slug explicitly.
+    InvalidSlug { slug: String },
+    /// doc-3 §3.1: the slug is already in the ledger. Recovered by naming another slug.
+    DuplicateSlug { slug: String },
+    /// The slug selecting an entry to remove or update is not in the ledger — a stale screen.
+    SlugNotFound { slug: String },
+    /// doc-3 §3: a project/Backlog root was not an absolute path.
+    NonAbsoluteRoot { path: String },
+    /// doc-3 §3/§6: this project or Backlog root already belongs to another entry, which is the
+    /// invariant that keeps one task source from being read twice under two slugs. `slug` is the
+    /// entry that holds it — the screen names it, since the fix is to edit *that* entry.
+    DuplicateRoot { slug: String },
+    /// doc-3 §3.3: a status 別名表 value is not one of the canonical columns.
+    InvalidStatusAlias { key: String, value: String },
+}
+
 impl From<LedgerError> for CommandError {
     fn from(error: LedgerError) -> Self {
-        CommandError::Ledger {
-            detail: error.to_string(),
-        }
+        let detail = error.to_string();
+        // Classified here, at the one place a ledger failure becomes a boundary value, so a new
+        // `LedgerError` variant cannot quietly reach the frontend as an unclassified string: this
+        // match is exhaustive and the compiler names the omission.
+        let reason = match error {
+            LedgerError::ReadOnly(schema_version) => LedgerRefusal::ReadOnly { schema_version },
+            LedgerError::BacklogRootInvalid(path) => LedgerRefusal::BacklogRootInvalid { path },
+            LedgerError::InvalidSlug(slug) => LedgerRefusal::InvalidSlug { slug },
+            LedgerError::DuplicateSlug(slug) => LedgerRefusal::DuplicateSlug { slug },
+            LedgerError::SlugNotFound(slug) => LedgerRefusal::SlugNotFound { slug },
+            LedgerError::NonAbsoluteRoot(path) => LedgerRefusal::NonAbsoluteRoot { path },
+            LedgerError::DuplicateRoot(slug) => LedgerRefusal::DuplicateRoot { slug },
+            LedgerError::InvalidStatusAlias { key, value } => {
+                LedgerRefusal::InvalidStatusAlias { key, value }
+            }
+            // Plumbing and cross-task-id failures: not a form the user can fix by editing a field,
+            // so they keep the untyped variant rather than gaining a refusal reason that would
+            // suggest one (doc-3 §5.2's id checks are not ledger edits at all).
+            LedgerError::Io(_)
+            | LedgerError::TomlDe(_)
+            | LedgerError::TomlSer(_)
+            | LedgerError::UnsupportedSchemaVersion(_)
+            | LedgerError::UnknownProject(_)
+            | LedgerError::InvalidTaskId(_)
+            | LedgerError::BareIdNeedsContext => return CommandError::Ledger { detail },
+        };
+        CommandError::LedgerRefused { reason, detail }
     }
 }
 
@@ -846,17 +920,48 @@ pub fn ledger_list(
     Ok(load_ledger(&app, &lifecycle)?.into())
 }
 
+/// Where the ledger file is (doc-3 §2.1). Shown by the 台帳管理画面 rather than kept internal: the
+/// registration lives in Atlas's own app-config dir and in no project's Backlog root, and a screen
+/// that names the file is how the user can see that — and hand-edit it, which doc-3 §2.2 keeps as a
+/// supported route. Resolving the path reads nothing, so this takes no lifecycle lock.
+#[tauri::command(async)]
+pub fn ledger_location(app: AppHandle) -> Result<PathBuf, CommandError> {
+    ledger_path(&app)
+}
+
+/// The slug a project root would get by default (doc-3 §3.1). Exposed so the registration form can
+/// show the default *before* submitting, while the derivation rule stays in one place: a second
+/// implementation in the frontend would be free to disagree with the one that actually registers.
+/// `None` when the directory name yields no valid slug — the user then has to name one (AC #6).
+///
+/// Uniqueness is deliberately not checked here. doc-3 §3.1 makes it a property of the ledger at
+/// registration time, and a preview that reported "taken" would go stale the moment another window
+/// registered something; [`Ledger::register`] is the authority.
+#[tauri::command(async)]
+pub fn ledger_default_slug(project_root: PathBuf) -> Option<String> {
+    crate::ledger::derive_slug(&project_root)
+}
+
+/// What one 登録 produced: the entry, and the ledger it now sits in. The entry is returned rather
+/// than left for the caller to spot in the list, because its slug may have been *derived* (doc-3
+/// §3.1) — the screen cannot otherwise name what it just registered, and it needs the name to open
+/// the project and to report the registration.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterResponse {
+    pub entry: ProjectEntry,
+    pub ledger: LedgerResponse,
+}
+
 #[tauri::command(async)]
 pub fn ledger_register(
     app: AppHandle,
     state: State<'_, AtlasState>,
     request: RegisterRequest,
-) -> Result<LedgerResponse, CommandError> {
+) -> Result<RegisterResponse, CommandError> {
     let lifecycle = lifecycle(&state);
-    Ok(mutate_ledger(&app, &lifecycle, |ledger| {
-        ledger.register(&request).map(|_| ())
-    })?
-    .1)
+    let (entry, ledger) = mutate_ledger(&app, &lifecycle, |ledger| ledger.register(&request))?;
+    Ok(RegisterResponse { entry, ledger })
 }
 
 /// Remove a project from the ledger and let go of it: an unregistered project must not keep a watch
@@ -2124,6 +2229,108 @@ labels: []\n\
         .unwrap();
         assert_eq!(json["kind"], "reloadFailed");
         assert_eq!(json["applied"]["state"], "succeeded");
+    }
+
+    // --- 台帳操作の拒否理由 (doc-3 §4, TASK-39) --------------------------------------------------
+
+    /// The 台帳管理画面 has to send the user back to the field that will get them past a refusal
+    /// (doc-3 §3.1 別 slug 指定で回復 / §4.1 理由付き提示), so every refusal has to arrive as a value
+    /// with the offending input in it — not as a sentence the screen would have to parse.
+    #[test]
+    fn a_refused_ledger_operation_names_the_refusal_and_the_offending_value() {
+        let cases: Vec<(LedgerError, &str, &str, &str)> = vec![
+            (
+                LedgerError::DuplicateSlug("geomyth".into()),
+                "duplicateSlug",
+                "slug",
+                "geomyth",
+            ),
+            (
+                LedgerError::InvalidSlug("Bad Slug".into()),
+                "invalidSlug",
+                "slug",
+                "Bad Slug",
+            ),
+            (
+                LedgerError::BacklogRootInvalid("/x/backlog".into()),
+                "backlogRootInvalid",
+                "path",
+                "/x/backlog",
+            ),
+            (
+                LedgerError::NonAbsoluteRoot("relative/path".into()),
+                "nonAbsoluteRoot",
+                "path",
+                "relative/path",
+            ),
+            (
+                // The *holder* of the root, since the fix is to edit that entry.
+                LedgerError::DuplicateRoot("atlas".into()),
+                "duplicateRoot",
+                "slug",
+                "atlas",
+            ),
+            (
+                LedgerError::SlugNotFound("gone".into()),
+                "slugNotFound",
+                "slug",
+                "gone",
+            ),
+        ];
+        for (error, reason, field, value) in cases {
+            let json = serde_json::to_value(CommandError::from(error)).unwrap();
+            assert_eq!(json["kind"], "ledgerRefused", "for {reason}");
+            assert_eq!(json["reason"]["reason"], reason);
+            assert_eq!(json["reason"][field], value, "for {reason}");
+            // `detail` is kept beside the reason for diagnostics, never as its substitute.
+            assert!(json["detail"].as_str().is_some_and(|s| !s.is_empty()));
+        }
+
+        // doc-3 §3.3: an alias value that is not a canonical column names both halves, so the screen
+        // can point at the row the user typed rather than at the table.
+        let json = serde_json::to_value(CommandError::from(LedgerError::InvalidStatusAlias {
+            key: "Weird".into(),
+            value: "Nonsense".into(),
+        }))
+        .unwrap();
+        assert_eq!(json["reason"]["reason"], "invalidStatusAlias");
+        assert_eq!(json["reason"]["key"], "Weird");
+        assert_eq!(json["reason"]["value"], "Nonsense");
+
+        // doc-3 §2.2: the read-only guard carries the version, and it is the one refusal no field
+        // change gets past — the screen withholds every edit rather than offering a correction.
+        let json = serde_json::to_value(CommandError::from(LedgerError::ReadOnly(999))).unwrap();
+        assert_eq!(json["reason"]["reason"], "readOnly");
+        assert_eq!(json["reason"]["schema_version"], 999);
+    }
+
+    /// A ledger *file* failure is not a form the user can fix, and a cross-task-id rejection is not a
+    /// ledger edit at all, so neither gains a refusal reason that would imply a correctable field.
+    #[test]
+    fn ledger_plumbing_and_task_ref_failures_stay_unclassified() {
+        for error in [
+            LedgerError::Io(std::io::Error::other("disk gone")),
+            LedgerError::UnsupportedSchemaVersion(0),
+            LedgerError::UnknownProject("nope".into()),
+            LedgerError::InvalidTaskId("BUG-1".into()),
+            LedgerError::BareIdNeedsContext,
+        ] {
+            let json = serde_json::to_value(CommandError::from(error)).unwrap();
+            assert_eq!(json["kind"], "ledger");
+            assert!(json["detail"].as_str().is_some_and(|s| !s.is_empty()));
+        }
+    }
+
+    /// doc-3 §3.1: the slug default is derived from the project-root directory name, and the screen
+    /// previews it through this command instead of re-implementing the rule.
+    #[test]
+    fn the_default_slug_command_answers_from_the_ledger_rule() {
+        assert_eq!(
+            ledger_default_slug(PathBuf::from("/x/Backlog Atlas")).as_deref(),
+            Some("backlog-atlas")
+        );
+        // No usable characters: there is no default, and the user has to name one (AC #6).
+        assert_eq!(ledger_default_slug(PathBuf::from("/x/___")), None);
     }
 
     #[test]

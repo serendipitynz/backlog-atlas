@@ -240,6 +240,25 @@ export interface LedgerResponse {
   readOnly: boolean;
 }
 
+/**
+ * Input to `ledger_register` (doc-3 §4.1). snake_case, like the ledger types it creates.
+ *
+ * Both optional fields mean "let the ledger decide": an absent `backlog_root` resolves to
+ * `<project_root>/backlog`, and an absent `slug` is derived from the project-root directory name
+ * (doc-3 §3.1). They are omitted rather than sent empty, so the default stays the Rust side's.
+ */
+export interface RegisterRequest {
+  project_root: string;
+  backlog_root?: string;
+  slug?: string;
+}
+
+/** What one 登録 produced. `entry` names the registered project even when its slug was derived. */
+export interface RegisterResponse {
+  entry: ProjectEntry;
+  ledger: LedgerResponse;
+}
+
 /** Input to `ledger_update` (doc-3 §4.3). snake_case, like the ledger types it edits. */
 export interface UpdateRequest {
   slug: string;
@@ -267,8 +286,29 @@ export type CliReadiness =
  * (`taskNotFound`), not their fields (`task_id`). Mirrored as-is rather than "corrected"
  * here, since a mismatch would fail silently at runtime.
  */
+/**
+ * Which 台帳操作 refusal happened (doc-3 §4). One value per refusal the ledger keeps apart, carrying
+ * the input that caused it — this is what lets the 台帳管理画面 name a reason and send the user back
+ * to the field that gets them past it (doc-3 §3.1 別 slug 指定で回復). `schema_version` is snake_case
+ * for the usual reason: serde renames variants, not their fields.
+ */
+export type LedgerRefusal =
+  | { reason: "readOnly"; schema_version: number }
+  | { reason: "backlogRootInvalid"; path: string }
+  | { reason: "invalidSlug"; slug: string }
+  | { reason: "duplicateSlug"; slug: string }
+  | { reason: "slugNotFound"; slug: string }
+  | { reason: "nonAbsoluteRoot"; path: string }
+  /** `slug` is the entry that already holds the root — the one whose form has to change. */
+  | { reason: "duplicateRoot"; slug: string }
+  | { reason: "invalidStatusAlias"; key: string; value: string };
+
 export type CommandError =
   | { kind: "ledger"; detail: string }
+  // A ledger *operation* turned down, as opposed to `ledger` above (the file or the plumbing failed,
+  // or a cross-task-id was rejected). `detail` is the boundary's own sentence, kept for diagnostics;
+  // the screen's text comes from `reason`.
+  | { kind: "ledgerRefused"; reason: LedgerRefusal; detail: string }
   | { kind: "rootUnreadable"; slug: string; detail: string }
   | { kind: "unknownProject"; slug: string }
   | { kind: "projectNotOpen"; slug: string }

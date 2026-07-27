@@ -48,6 +48,7 @@ import type {
   UpdateFailure,
   UpdateOperation,
 } from "./wire";
+import { refusalReport } from "./ledger";
 
 // --- 未保存入力 (doc-8 §1/§6.3) ------------------------------------------------------------
 
@@ -631,6 +632,10 @@ export function commandErrorDetail(error: CommandError): string {
       return `外部エディタを起動できません: ${error.detail}`;
     case "editorLaunchFailed":
       return `${error.program} を起動できません: ${error.detail}`;
+    // A 台帳操作 refusal (doc-3 §4) reaching this screen is second-hand — the 台帳管理画面 is where
+    // these are acted on — so the wording is taken from there rather than written a second time.
+    case "ledgerRefused":
+      return refusalReport(error).message;
     case "ledger":
     case "watchFailed":
       return error.detail;

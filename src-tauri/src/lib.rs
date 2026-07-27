@@ -49,6 +49,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Ledger and cross-task-id (doc-3).
             commands::ledger_list,
+            commands::ledger_location,
+            commands::ledger_default_slug,
             commands::ledger_register,
             commands::ledger_remove,
             commands::ledger_update,
