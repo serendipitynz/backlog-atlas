@@ -37,6 +37,14 @@
     readOnly: boolean;
     /** Each entry's read outcome, so the list can say whether Atlas can actually read the root. */
     loads: Record<string, ProjectLoad>;
+    /**
+     * True while *any* ledger command is in flight. The shell issues them one at a time — two in
+     * flight can answer out of order and the loser's snapshot would roll the list back — so every
+     * control that writes the ledger is withheld while one is running, not just the one that started
+     * it. Distinct from this screen's own `registerBusy` / `busySlug`, which say *which* control is
+     * acting and are only about what is shown.
+     */
+    busy: boolean;
     /** True while the ledger is being read: an empty list is not yet known to be empty. */
     listLoading: boolean;
     /**
@@ -61,6 +69,7 @@
     entries,
     readOnly,
     loads,
+    busy,
     listLoading,
     listFailure,
     ledgerPath,
@@ -89,7 +98,7 @@
   let taken = $derived(entries.map((entry) => entry.slug));
   let registerIssues = $derived(registerProblems(registerInput, taken));
   let previewBacklogRoot = $derived(resolvedBacklogRoot(registerInput));
-  let canRegister = $derived(!readOnly && !registerBusy && registerIssues.length === 0);
+  let canRegister = $derived(!readOnly && !busy && !registerBusy && registerIssues.length === 0);
 
   async function readDefaultSlug(): Promise<void> {
     const projectRoot = registerInput.projectRoot.trim();
@@ -358,25 +367,25 @@
                 <button
                   type="button"
                   title="表示順を上へ"
-                  disabled={readOnly || index === 0 || busySlug !== null}
+                  disabled={readOnly || busy || index === 0 || busySlug !== null}
                   onclick={() => reorder(entry.slug, index - 1)}>↑</button
                 >
                 <button
                   type="button"
                   title="表示順を下へ"
-                  disabled={readOnly || index === entries.length - 1 || busySlug !== null}
+                  disabled={readOnly || busy || index === entries.length - 1 || busySlug !== null}
                   onclick={() => reorder(entry.slug, index + 1)}>↓</button
                 >
                 <button
                   type="button"
-                  disabled={readOnly || busySlug !== null}
+                  disabled={readOnly || busy || busySlug !== null}
                   onclick={() => (editing?.slug === entry.slug ? cancelEdit() : startEdit(entry))}
                 >
                   {editing?.slug === entry.slug ? "編集をやめる" : "編集"}
                 </button>
                 <button
                   type="button"
-                  disabled={readOnly || busySlug !== null}
+                  disabled={readOnly || busy || busySlug !== null}
                   onclick={() => {
                     removing = entry.slug;
                     entryReport = null;
@@ -403,7 +412,7 @@
                 <div class="row">
                   <button
                     type="button"
-                    disabled={busySlug !== null}
+                    disabled={busy || busySlug !== null}
                     onclick={() => confirmRemove(entry.slug)}>台帳から外す</button
                   >
                   <button type="button" onclick={() => (removing = null)}>やめる</button>
@@ -507,7 +516,7 @@
                   <button
                     type="button"
                     class="primary"
-                    disabled={readOnly || busySlug !== null || editIssues.length > 0}
+                    disabled={readOnly || busy || busySlug !== null || editIssues.length > 0}
                     onclick={submitEdit}>保存</button
                   >
                   <button type="button" onclick={cancelEdit}>取消</button>

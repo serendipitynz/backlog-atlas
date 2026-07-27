@@ -375,11 +375,21 @@
     const visible = order.filter((candidate) => !hidden.includes(candidate));
     const neighbour = visible[visible.indexOf(slug) + direction];
     if (neighbour === undefined) return;
+    // A reorder writes the ledger like any other operation, so it queues behind one in flight
+    // (`ledgerBusy`) rather than racing it. Reported rather than dropped: the row visibly did not
+    // move, and the neighbour it would have passed may be different by the time the other finishes.
+    if (ledgerBusy) {
+      notice = "ほかの台帳操作が完了するまで待ってください。";
+      return;
+    }
+    ledgerBusy = true;
     try {
       applyLedger(await ledgerReorder(slug, order.indexOf(neighbour)));
       notice = null;
     } catch (error) {
       notice = `行の並べ替えに失敗しました: ${unreadableDetail(asCommandError(error))}`;
+    } finally {
+      ledgerBusy = false;
     }
   }
 
@@ -388,6 +398,25 @@
   // The shell issues these rather than the 台帳管理画面 itself, for the same reason it owns `apply`:
   // the rows, the open sessions and the watches are here, and a ledger change moves all three. The
   // screen gets back only whether the operation was done or refused, and with which reason.
+
+  /**
+   * True while a ledger command is in flight. Ledger operations are issued one at a time on purpose:
+   * each command returns the ledger *it* wrote, and two in flight can answer out of order — the
+   * boundary releases its lifecycle lock before joining a detached watch thread, so a removal can
+   * reply after a registration that wrote later. `applyLedger` would then adopt the earlier
+   * snapshot and drop an entry the ledger actually holds, until the next read put it back.
+   *
+   * Serializing at the point of issue is what keeps response order equal to write order, and it has
+   * to live here rather than in the 台帳管理画面: the swimlane's row reorder writes the ledger too, so
+   * a per-screen guard would leave that caller racing the others.
+   */
+  let ledgerBusy = $state(false);
+
+  /** The answer to a ledger action asked for while another was still in flight. */
+  const LEDGER_BUSY_RESULT: LedgerActionResult = {
+    state: "refused",
+    report: { message: "ほかの台帳操作が完了するまで待ってください。", field: null },
+  };
 
   /** Adopt a ledger the boundary just returned: the row order and the read-only state come with it. */
   function applyLedger(response: LedgerResponse): void {
@@ -401,6 +430,8 @@
    * in exactly that position — nothing has been read for it yet.
    */
   async function registerProject(request: RegisterRequest): Promise<LedgerActionResult> {
+    if (ledgerBusy) return LEDGER_BUSY_RESULT;
+    ledgerBusy = true;
     try {
       const response = await ledgerRegister(request);
       applyLedger(response.ledger);
@@ -408,6 +439,8 @@
       return { state: "done", slug: response.entry.slug };
     } catch (error) {
       return { state: "refused", report: refusalReport(asCommandError(error)) };
+    } finally {
+      ledgerBusy = false;
     }
   }
 
@@ -417,6 +450,8 @@
    * slug, which would otherwise keep a row — and a 版ずれ mark — for a project Atlas no longer reads.
    */
   async function removeProject(slug: string): Promise<LedgerActionResult> {
+    if (ledgerBusy) return LEDGER_BUSY_RESULT;
+    ledgerBusy = true;
     try {
       applyLedger(await ledgerRemove(slug));
       const { [slug]: _dropped, ...remaining } = loadBySlug;
@@ -434,6 +469,8 @@
       return { state: "done", slug };
     } catch (error) {
       return { state: "refused", report: refusalReport(asCommandError(error)) };
+    } finally {
+      ledgerBusy = false;
     }
   }
 
@@ -445,6 +482,8 @@
    * touches neither, so it only reorders the rows.
    */
   async function updateProject(request: UpdateRequest): Promise<LedgerActionResult> {
+    if (ledgerBusy) return LEDGER_BUSY_RESULT;
+    ledgerBusy = true;
     try {
       applyLedger(await ledgerUpdate(request));
       const reorderOnly = Object.keys(request).every(
@@ -454,6 +493,8 @@
       return { state: "done", slug: request.slug };
     } catch (error) {
       return { state: "refused", report: refusalReport(asCommandError(error)) };
+    } finally {
+      ledgerBusy = false;
     }
   }
 
@@ -730,6 +771,7 @@
       {entries}
       readOnly={ledgerReadOnly}
       loads={loadBySlug}
+      busy={ledgerBusy}
       listLoading={loading}
       listFailure={entries.length === 0 && fatal !== null ? fatal : null}
       {ledgerPath}
