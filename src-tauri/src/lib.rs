@@ -39,12 +39,18 @@ pub mod update;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // The OS folder picker for 台帳への登録 (doc-3 §4.1). Only the dialog is the plugin's: the
+        // chosen path comes back as a string and is registered through the ledger commands, so the
+        // ledger stays the only thing Atlas writes (doc-3 §2.1).
+        .plugin(tauri_plugin_dialog::init())
         // The command boundary's own state: the open roots and their running file watches. Managed
         // here because a Tauri command reaches it through `State`, and it must outlive any one call.
         .manage(commands::AtlasState::default())
         .invoke_handler(tauri::generate_handler![
             // Ledger and cross-task-id (doc-3).
             commands::ledger_list,
+            commands::ledger_location,
+            commands::ledger_default_slug,
             commands::ledger_register,
             commands::ledger_remove,
             commands::ledger_update,

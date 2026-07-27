@@ -50,8 +50,27 @@ Atlas はタスクのファイルを利用者自身の外部エディタで開�
 
 ## 状態
 
-設計フェーズは完了している。decision-1〜7 を `backlog/decisions/` に、上記対象範囲を
-網羅する仕様 (`backlog/docs/doc-1`〜`doc-9`) を記録済みである。実装は未着手である。
+設計フェーズ (m-0) は完了し、実装フェーズ (m-1) が進行中である。decision-1〜11 を
+`backlog/decisions/` に、上記対象範囲を網羅する仕様 (`backlog/docs/doc-1`〜`doc-9`)
+を記録済みである。
+
+実装済み (TASK-25〜39):
+
+- Rust コア: プロジェクト台帳 (`projects.toml`) の読み書きと登録・削除・更新、
+  ドメインモデル、読み取り層 (config 解決・走査・解析・保存区分・縮退)、status
+  正規化と Type 導出、コミット検索と Pull Request URL 抽出、Backlog 更新アダプター、
+  ファイル監視・読取版指標・更新前競合検出。
+- Rust コアとフロントエンドをつなぐ Tauri コマンド境界。
+- 画面: プロジェクト別スイムレーン、タスク詳細 (Type・References・Pull Request・
+  Git 履歴)、タスク詳細の GUI 編集、外部エディタ経路、台帳・プロジェクト登録・管理、
+  および不在・読取不能・該当なしの表示区別。
+
+未着手 (TASK-40〜44): 文書・マイルストーンの管理 GUI と新規タスク作成の入口、
+コミットと Pull Request の関連解決の参照手段 (doc-6 §6 は構造だけを定め、ホスト毎の
+参照手段を後続へ委ねている)、および確定済みの修正 3 件 (横断タスク ID の task_prefix
+照合、不正な status 別名の扱い、Windows の OS 関連付け起動)。
+
+配布 (パッケージングと Backlog CLI の sidecar 同梱) は未着手である。
 
 主要な決定:
 
@@ -66,6 +85,10 @@ Atlas はタスクのファイルを利用者自身の外部エディタで開�
   (decision-6)。
 - Backlog CLI: 開発は利用者の PATH 上の `backlog` を前提とし、sidecar 同梱は後続の
   配布判断まで先送りする (decision-7)。
+- フロントエンド: Svelte 5 を素で使い (SvelteKit は使わない)、ビルドは Vite +
+  TypeScript、スタイルはコンポーネントスコープドとする (decision-8)。
+- 依存の選定: 台帳の読み書きに `toml`、frontmatter 解析に `serde_yaml_ng`、ファイル
+  監視に `notify` を採用 (decision-9〜11)。
 
 sidecar 同梱は配布方法の選択であり、Backlog Atlas がタスク正本を所有することを
 意味しない。

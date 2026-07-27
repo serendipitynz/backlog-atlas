@@ -12,6 +12,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import type {
   CliReadiness,
   CommandError,
@@ -21,6 +22,8 @@ import type {
   LedgerResponse,
   ProjectLoad,
   ProjectSnapshot,
+  RegisterRequest,
+  RegisterResponse,
   ReloadEvent,
   TaskHistory,
   UpdateOperation,
@@ -42,15 +45,78 @@ export function asCommandError(value: unknown): CommandError {
   return { kind: "ledger", detail: String(value) };
 }
 
+/**
+ * The OS folder picker for a project root or a Backlog root (doc-3 §4.1 step 1). Not one of the
+ * boundary's own commands — it is the dialog plugin — but it is IPC all the same, so it sits with
+ * them rather than inside a component. Resolves to `null` when the user cancels.
+ *
+ * Nothing is read or written through it: the answer is a path *string*, which then travels to the
+ * ledger commands. Atlas still writes only the ledger file (doc-3 §2.1).
+ */
+export async function pickDirectory(title: string): Promise<string | null> {
+  const picked = await openFileDialog({ directory: true, multiple: false, title });
+  // Narrowed rather than trusted: the plugin's signature admits a list, and only one directory was
+  // asked for.
+  return typeof picked === "string" ? picked : null;
+}
+
 /** The registered projects, in ledger order — the swimlane's default row order (doc-7 §5). */
 export function ledgerList(): Promise<LedgerResponse> {
   return invoke<LedgerResponse>("ledger_list");
 }
 
+/**
+ * Where the ledger file is (doc-3 §2.1). Shown by the 台帳管理画面 so the user can see that the
+ * registration lives in Atlas's own config dir and in no project's Backlog root — and so they can
+ * hand-edit it, which doc-3 §2.2 keeps supported.
+ */
+export function ledgerLocation(): Promise<string> {
+  return invoke<string>("ledger_location");
+}
+
+/**
+ * The slug a project root would get by default (doc-3 §3.1), or `null` when its directory name
+ * yields none. Asked of the boundary rather than derived here: one implementation of the rule, and
+ * it is the one that actually registers. Uniqueness is not part of the answer — `ledgerRegister` is
+ * the authority on that.
+ */
+export function ledgerDefaultSlug(projectRoot: string): Promise<string | null> {
+  return invoke<string | null>("ledger_default_slug", { projectRoot });
+}
+
+/**
+ * Register a project (doc-3 §4.1). Writes only the ledger file: the target project's Backlog root,
+ * management files and Git repository are untouched (doc-3 §2.1/§4). A refusal — root not readable,
+ * slug collision or invalid slug — arrives as a typed `ledgerRefused` the form recovers from.
+ */
+export function ledgerRegister(request: RegisterRequest): Promise<RegisterResponse> {
+  return invoke<RegisterResponse>("ledger_register", { request });
+}
+
+/**
+ * Remove one entry (doc-3 §4.2). Ledger-only: Atlas stops reading the project, and its tasks stay
+ * where they are. The boundary also closes the open session and its watch, so the caller re-syncs
+ * its rows from the returned ledger.
+ */
+export function ledgerRemove(slug: string): Promise<LedgerResponse> {
+  return invoke<LedgerResponse>("ledger_remove", { slug });
+}
+
+/**
+ * Update one entry (doc-3 §4.3): `backlog_root`, a same-project move (both roots), a `git_remote`
+ * re-detection, the status 別名表, or the display order. `slug` only selects the entry — it is
+ * immutable, and the request has no way to change it.
+ *
+ * A move closes the project's open session on the Rust side, because the model and the read-version
+ * index it was paired with belong to the old roots; the caller reopens the project afterwards.
+ */
+export function ledgerUpdate(request: UpdateRequest): Promise<LedgerResponse> {
+  return invoke<LedgerResponse>("ledger_update", { request });
+}
+
 /** Move a row in the ledger's display order (doc-3 §4.3). Refused on a read-only ledger. */
 export function ledgerReorder(slug: string, newIndex: number): Promise<LedgerResponse> {
-  const request: UpdateRequest = { slug, new_index: newIndex };
-  return invoke<LedgerResponse>("ledger_update", { request });
+  return ledgerUpdate({ slug, new_index: newIndex });
 }
 
 /** Open every registered project. A root that cannot be read yields its own unreadable row. */

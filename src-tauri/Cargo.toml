@@ -43,6 +43,16 @@ serde_yaml_ng = "0.10"
 # watcher. Approved as a new production dependency per the AGENTS.md introduction gate before adding;
 # the selection rationale and rejected alternatives are recorded in decision-11.
 notify = "8"
+# tauri-plugin-dialog opens the OS folder picker for 台帳への登録 (doc-3 §4.1 step 1: the user
+# names a project root / Backlog root). A picker rather than a typed absolute path because the
+# value has to be an existing absolute directory — doc-3 §3 — and a hand-typed one is wrong far
+# more often than it is right, with 登録拒否 as the only feedback. Official Tauri plugin, so it
+# adds no new vendor. Scope is limited to selecting those two paths: the plugin's other dialogs
+# (ask/confirm/message/save) stay unused, and the capability grants `dialog:allow-open` alone.
+# Nothing is read or written through it — the returned path is a *string* that travels to the
+# ledger commands, which keeps 台帳ファイルの読み書きは Atlas が行う (doc-3 §2.1) intact.
+# Approved as a new production dependency per the AGENTS.md introduction gate before adding.
+tauri-plugin-dialog = "2"
 
 [dev-dependencies]
 # Test-only: asserts the domain model's JSON wire contract (doc-4 §3.1 camelCase field
