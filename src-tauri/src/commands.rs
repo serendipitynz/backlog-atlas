@@ -1259,7 +1259,7 @@ pub fn update_apply(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interpret::status::StatusColumn;
+    use crate::interpret::status::{StatusColumn, StatusDeclaration};
     use crate::update::{AcEdit, CliRun, NoteEdit, TaskCreate, TaskEdit};
     use std::cell::RefCell;
     use std::sync::atomic::AtomicU64;
@@ -1389,6 +1389,58 @@ ordinal: 1000\n\
         // Type is derived from the kind label and stays out of the normal label list (decision-5).
         assert_eq!(view.interpretation.types.values()[0].value, "feature");
         assert_eq!(view.task.labels, vec!["ui".to_string()]);
+    }
+
+    // TASK-42 AC #1/#3: the whole load→interpret path, driven from a hand-edited projects.toml
+    // rather than from an entry built in the test. doc-3 §3.3 makes an alias whose value is not a
+    // canonical column invalid *and* leaves the status it names 未対応; the bug this pins was in
+    // what `LoadedLedger::load` handed over (it deleted the pair, so 名称一致 rescued `Done` into
+    // the Done column), which no unit test of `map_status` alone could see.
+    #[test]
+    fn an_invalid_alias_in_the_ledger_file_leaves_that_status_unmapped() {
+        let (temp, _) = root();
+        temp.write(
+            "backlog/tasks/task-2 - b.md",
+            &task_file("TASK-2", "Done", "[]"),
+        );
+        let ledger_path = temp.path.join("projects.toml");
+        std::fs::write(
+            &ledger_path,
+            format!(
+                "schema_version = 1\n\
+                 [[project]]\n\
+                 slug = \"atlas\"\n\
+                 project_root = \"{root}\"\n\
+                 backlog_root = \"{root}/backlog\"\n\
+                 git_remote_present = false\n\
+                 [project.status_aliases]\n\
+                 Done = \"Shipped\"\n",
+                root = temp.path.display()
+            ),
+        )
+        .unwrap();
+
+        let loaded = LoadedLedger::load(&ledger_path).unwrap();
+        let entry = &loaded.ledger.projects[0];
+        let mut workspace = Workspace::default();
+        let snapshot = workspace.open(entry, &source(entry), &FsVersions).unwrap();
+
+        let view = snapshot
+            .tasks
+            .iter()
+            .find(|v| v.task.id.as_deref() == Some("TASK-2"))
+            .expect("the Done task is in the snapshot");
+        let status = view.interpretation.status.as_ref().unwrap();
+        assert_eq!(
+            status.column, None,
+            "an invalid alias must not fall back to 名称一致"
+        );
+        assert_eq!(status.raw, "Done", "未対応区画 shows the original string");
+        // `Done` is declared in config.yml, so this stays the ordinary 未対応 case: decision-4
+        // reserves the stronger 想定外スキーマ mark for a status config.yml does not declare, and
+        // the fault here is in Atlas's own ledger, not in the task file.
+        assert_eq!(status.declaration, StatusDeclaration::Declared);
+        assert!(!status.is_undeclared());
     }
 
     #[test]
