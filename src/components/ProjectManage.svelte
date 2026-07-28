@@ -55,7 +55,10 @@
     readiness: CliReadiness | null;
     /** Issue one screen action against one project (doc-5 §3, doc-9 §4). */
     onissue: (slug: string, action: UpdateOperation[]) => Promise<IssueOutcome>;
-    /** True while the 文書編集セッション holds 未保存入力 — what makes leaving the screen ask first. */
+    /**
+     * True while anything on this screen holds 未保存入力 — the 文書編集セッション and the create
+     * forms alike, since a screen switch unmounts them all. What makes leaving the screen ask first.
+     */
     ondirty: (dirty: boolean) => void;
   }
 
@@ -99,6 +102,13 @@
   );
   let docDirty = $derived(docSession !== null && isDocDirty(docSession));
   /**
+   * What the *document editor* holds, as opposed to what the session's fields hold. The add-row's
+   * text belongs to the editor and dies with it, but it changes no field until 追加 is pressed, so
+   * `docDirty` alone leaves it unprotected — closing or replacing the editor would clear a typed tag
+   * without asking (review [P2], round 2). The create forms stay out: they survive both exits.
+   */
+  let docEditorDirty = $derived(docDirty || newTag.trim() !== "");
+  /**
    * What the user asked for while 未保存入力 was held, kept until they answer — and **not applied in
    * the meantime**. Same shape as the shell's 破棄前確認 (doc-8 §6.3): the input is the user's, so it
    * is never discarded without being asked, and neither is the target it was typed against.
@@ -126,13 +136,12 @@
    * committed with 追加 is the easiest thing to lose and the least visible.
    */
   let dirty = $derived(
-    docDirty ||
+    docEditorDirty ||
       hasTaskCreateInput(taskInput) ||
       hasDocCreateInput(docInput) ||
       hasMilestoneAddInput(milestoneInput) ||
       newLabel.trim() !== "" ||
-      newCriterion.trim() !== "" ||
-      newTag.trim() !== "",
+      newCriterion.trim() !== "",
   );
 
   // The shell asks before this screen is left with 未保存入力, so it has to know while it is held.
@@ -220,9 +229,9 @@
   function edit(document: Document): void {
     // Already open: pressing 編集 again would restart the session and drop the input without asking.
     if (docSession?.baseline.id === document.id) return;
-    // Only the session is at risk here — the create forms stay mounted — so this asks about `docDirty`
-    // rather than the whole screen's `dirty`.
-    if (docDirty) {
+    // Only the editor is at risk here — the create forms stay mounted — so this asks about
+    // `docEditorDirty` rather than the whole screen's `dirty`.
+    if (docEditorDirty) {
       pending = { to: "document", document };
       return;
     }
@@ -236,7 +245,7 @@
   }
 
   function closeEditor(): void {
-    if (docDirty) {
+    if (docEditorDirty) {
       pending = { to: "document", document: null };
       return;
     }
