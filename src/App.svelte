@@ -10,6 +10,7 @@
   import { onDestroy, onMount, untrack } from "svelte";
   import FilterBar from "./components/FilterBar.svelte";
   import ProjectLedger from "./components/ProjectLedger.svelte";
+  import ProjectManage from "./components/ProjectManage.svelte";
   import Swimlane from "./components/Swimlane.svelte";
   import TaskDetail from "./components/TaskDetail.svelte";
   import {
@@ -36,6 +37,7 @@
   import { refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
   import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
+  import type { IssueOutcome } from "./lib/manage";
   import { launchFailureDetail, type OpenOutcome } from "./lib/external-editor";
   import {
     conflictKeyOf,
@@ -61,13 +63,16 @@
   } from "./lib/wire";
   import type { UnlistenFn } from "@tauri-apps/api/event";
 
+  /** 利用者向け画面 (doc-7・doc-3 §4・doc-5 §3.2), one per top-level tab. */
+  type Screen = "swimlane" | "ledger" | "manage";
+
   /**
    * Which screen is showing. The swimlane's own state (rows, filter, selection) lives in this shell,
-   * so switching away and back keeps it; what does not survive is the two components' internal state
-   * — including the detail panel's 編集セッション, which is why leaving it while dirty asks first
-   * (doc-8 §6.3).
+   * so switching away and back keeps it; what does not survive is the other components' internal
+   * state — including the detail panel's 編集セッション and the 管理画面's 文書編集セッション, which
+   * is why leaving either while dirty asks first (doc-8 §6.3).
    */
-  let screen = $state<"swimlane" | "ledger">("swimlane");
+  let screen = $state<Screen>("swimlane");
   let entries = $state<ProjectEntry[]>([]);
   /** The ledger file's path (doc-3 §2.1), for the 台帳管理画面 to show. `null` until it is known. */
   let ledgerPath = $state<string | null>(null);
@@ -131,12 +136,18 @@
   /** True while the detail panel holds 未保存入力 — what makes leaving the panel ask first. */
   let detailDirty = $state(false);
   /**
-   * Where the user asked to go while the panel held 未保存入力, held until they answer (doc-8 §6.3).
-   * Both exits are here rather than only the selection change: switching to the 台帳管理画面 unmounts
-   * the panel, which discards the input just as thoroughly as opening another task does.
+   * True while the 文書・マイルストーン管理画面 holds 未保存入力 (its 文書編集セッション). Separate
+   * from `detailDirty` because they belong to different screens: only the one being left has input to
+   * protect, and one flag for both would ask about a panel that is not even mounted.
+   */
+  let manageDirty = $state(false);
+  /**
+   * Where the user asked to go while a screen held 未保存入力, held until they answer (doc-8 §6.3).
+   * Screen changes are here rather than only the task selection: switching tabs unmounts the panel
+   * holding the input, which discards it just as thoroughly as opening another task does.
    */
   let pendingLeave = $state<
-    { to: "task"; slug: string; sourcePath: string } | { to: "ledger" } | null
+    { to: "task"; slug: string; sourcePath: string } | { to: "screen"; screen: Screen } | null
   >(null);
 
   let unlisten: UnlistenFn | null = null;
@@ -167,6 +178,17 @@
   // 保存区分印 goes on cards only once a division beyond active is in play (doc-7 §3).
   let showStorageMark = $derived(filter.storage.some((state) => state !== "active"));
   let hiddenRows = $derived(hidden.filter((slug) => order.includes(slug)));
+  /**
+   * The projects the 管理画面 can act on: those whose root is currently readable, in ledger order.
+   * A root Atlas cannot read has no document or milestone list to act on, and the boundary would
+   * refuse an update against it (the project is not open) — so it is not offered as a target.
+   */
+  let loadedProjects = $derived(
+    order.flatMap((slug) => {
+      const load = loadBySlug[slug];
+      return load?.state === "loaded" ? [load.project] : [];
+    }),
+  );
   /**
    * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
    * A dead subscription means *every* registered row (nothing can arrive at all); otherwise it is the
@@ -498,16 +520,23 @@
     }
   }
 
+  /** True when leaving `screen` would discard 未保存入力 held by whatever it has mounted. */
+  function dirtyOn(current: Screen): boolean {
+    if (current === "swimlane") return detailDirty;
+    return current === "manage" && manageDirty;
+  }
+
   /**
-   * Go to the 台帳管理画面. Asks first while the detail panel holds 未保存入力 (doc-8 §6.3): the panel
-   * is unmounted on the way, so the input is gone as surely as if another task had been opened.
+   * Go to another screen. Asks first while the one being left holds 未保存入力 (doc-8 §6.3): its
+   * panel is unmounted on the way, so the input is gone as surely as if another task had been opened.
    */
-  function goToLedger(): void {
-    if (detailDirty) {
-      pendingLeave = { to: "ledger" };
+  function goToScreen(next: Screen): void {
+    if (next === screen) return;
+    if (dirtyOn(screen)) {
+      pendingLeave = { to: "screen", screen: next };
       return;
     }
-    screen = "ledger";
+    screen = next;
   }
 
   /** Take the exit the user just confirmed, discarding the panel's 未保存入力 (doc-8 §6.3). */
@@ -519,10 +548,12 @@
       selectedRef = { slug: target.slug, sourcePath: target.sourcePath };
       return;
     }
-    screen = "ledger";
-    // The panel is unmounted from here, so its `ondirty` will not run again to retract the flag.
-    // The selection itself is kept: coming back reopens the task, with a fresh 編集セッション.
-    detailDirty = false;
+    // The panel holding the input is unmounted from here, so its `ondirty` will not run again to
+    // retract the flag. The task selection itself is kept: coming back reopens the task, with a
+    // fresh 編集セッション.
+    if (screen === "swimlane") detailDirty = false;
+    else if (screen === "manage") manageDirty = false;
+    screen = target.screen;
   }
 
   /**
@@ -629,6 +660,39 @@
   }
 
   /**
+   * Issue one screen action against a *named* project (doc-5 §3, doc-9 §4) — the 文書・マイルストーン
+   * 管理画面's counterpart of `apply`, which is bound to the open task instead. The shell owns it for
+   * the same reason: the result carries the re-read root, and letting a screen keep a second copy of
+   * the snapshot is how the two would drift apart.
+   *
+   * The three non-success states are kept apart on the way out, because doc-9 §5 requires the screen
+   * to state them differently: 更新前競合 (checked, and it diverged — no CLI ran), 照合不能 (no
+   * defined way to check — no CLI ran either), and an ordinary CLI failure.
+   */
+  async function issue(slug: string, action: UpdateOperation[]): Promise<IssueOutcome> {
+    try {
+      const result = await updateApply(slug, action);
+      if (result.state === "conflict") {
+        loadBySlug[slug] = { state: "loaded", project: result.project };
+        return { state: "conflict", path: result.path };
+      }
+      // Present exactly when disk moved (doc-5 §6): a failure that changed nothing leaves the
+      // display as it was, which is what lets the screen offer a retry of the same input.
+      if (result.project !== null) {
+        loadBySlug[slug] = { state: "loaded", project: result.project };
+      }
+      return result.outcome.state === "succeeded"
+        ? { state: "applied" }
+        : { state: "failed", detail: failureDetail(result.outcome) };
+    } catch (error) {
+      const commandError = asCommandError(error);
+      return commandError.kind === "uncheckableTarget"
+        ? { state: "uncheckable", detail: commandErrorDetail(commandError) }
+        : { state: "failed", detail: commandErrorDetail(commandError) };
+    }
+  }
+
+  /**
    * Open the selected task's management file in the user's editor (doc-8 §7). The shell owns this for
    * the same reason as `apply`: the boundary resolves the file from the (slug, path) the selection is
    * held as, and nothing else knows both.
@@ -693,17 +757,26 @@
 
 <main class="screen">
   <header class="top">
-    <h1>{screen === "swimlane" ? "プロジェクト別スイムレーン" : "プロジェクト台帳"}</h1>
-    <!-- The two 利用者向け画面 of the app so far. A switch rather than a route: there is no URL to
+    <h1>
+      {screen === "swimlane"
+        ? "プロジェクト別スイムレーン"
+        : screen === "ledger"
+          ? "プロジェクト台帳"
+          : "文書・マイルストーン管理と新規タスク作成"}
+    </h1>
+    <!-- The 利用者向け画面 of the app so far. A switch rather than a route: there is no URL to
          restore, and the swimlane's state lives in this shell, so coming back finds it as it was. -->
     <nav class="screens">
       <button
         type="button"
         class:current={screen === "swimlane"}
-        onclick={() => (screen = "swimlane")}>スイムレーン</button
+        onclick={() => goToScreen("swimlane")}>スイムレーン</button
       >
-      <button type="button" class:current={screen === "ledger"} onclick={goToLedger}>
+      <button type="button" class:current={screen === "ledger"} onclick={() => goToScreen("ledger")}>
         台帳（{entries.length}）
+      </button>
+      <button type="button" class:current={screen === "manage"} onclick={() => goToScreen("manage")}>
+        文書・マイルストーン・新規タスク
       </button>
     </nav>
     {#if ledgerReadOnly && screen === "swimlane"}
@@ -755,10 +828,10 @@
       <span>
         編集中の未保存入力があります。{pendingLeave.to === "task"
           ? "別のタスクを開くと破棄されます。"
-          : "台帳画面へ移ると破棄されます。"}
+          : "他の画面へ移ると破棄されます。"}
       </span>
       <button type="button" onclick={leaveConfirmed}>
-        {pendingLeave.to === "task" ? "破棄して開く" : "破棄して台帳へ"}
+        {pendingLeave.to === "task" ? "破棄して開く" : "破棄して移動"}
       </button>
       <button type="button" onclick={() => (pendingLeave = null)}>編集に戻る</button>
     </div>
@@ -781,6 +854,16 @@
       onupdate={updateProject}
       onremove={removeProject}
     />
+  {:else if screen === "manage"}
+    <!-- 文書・マイルストーン管理と新規タスク作成の入口 (doc-5 §3.2, TASK-40). Every action is a
+         更新操作 issued through the adapter; the screen writes no managed Markdown itself (doc-2). -->
+    <ProjectManage
+      projects={loadedProjects}
+      {loading}
+      {readiness}
+      onissue={issue}
+      ondirty={(dirty) => (manageDirty = dirty)}
+    />
   {:else if fatal}
     <p class="fatal">読み込みに失敗しました: {fatal}</p>
     <button type="button" onclick={load}>再読み込み</button>
@@ -789,7 +872,7 @@
   {:else if order.length === 0}
     <p class="status">
       登録済みプロジェクトがありません。
-      <button type="button" class="link" onclick={goToLedger}>台帳画面</button>
+      <button type="button" class="link" onclick={() => goToScreen("ledger")}>台帳画面</button>
       から登録してください。
     </p>
   {:else}
