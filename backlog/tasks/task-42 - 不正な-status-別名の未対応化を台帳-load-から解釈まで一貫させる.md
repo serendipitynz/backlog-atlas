@@ -1,10 +1,10 @@
 ---
 id: TASK-42
 title: 不正な status 別名の未対応化を台帳 load から解釈まで一貫させる
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-24 04:01'
-updated_date: '2026-07-28 22:11'
+updated_date: '2026-07-28 22:45'
 labels:
   - 'kind:bug'
 milestone: m-1
