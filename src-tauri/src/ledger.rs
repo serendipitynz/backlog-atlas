@@ -60,6 +60,11 @@ pub struct ProjectEntry {
     // scalar key within the same `[[project]]` element, and this map serializes as the
     // `[project.status_aliases]` sub-table. Skipped when empty so aliasless entries stay
     // terse (doc-3 §3.3 "既定は空").
+    //
+    // Values reaching here through [`Ledger::update`] are canonical column names, but a
+    // hand-edited file's are whatever was typed: a non-canonical value is kept as written and
+    // ignored during 列対応規則, which is what makes the status it names 未対応 (doc-3 §3.3;
+    // see [`Ledger::validate`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub status_aliases: BTreeMap<String, String>,
 }
@@ -425,15 +430,19 @@ impl Ledger {
 
     /// Enforce the ledger's semantic contracts after deserialization (doc-3 §3). `toml`
     /// only checks Rust field shapes, so a hand-edited file could carry duplicate/invalid
-    /// slugs, relative or duplicated roots, or non-canonical status aliases. Invalid alias
-    /// values are dropped (the documented §3.3 "ignore" handling — the status then falls to
-    /// the unmatched column); structural violations are hard errors so we never operate on,
-    /// or re-save, an inconsistent ledger.
-    pub fn validate_and_sanitize(&mut self) -> Result<(), LedgerError> {
-        // Sanitize: drop alias values that are not canonical columns (doc-3 §3.3).
-        for p in &mut self.projects {
-            p.status_aliases.retain(|_, v| is_canonical_status(v));
-        }
+    /// slugs or relative/duplicated roots. Those structural violations are hard errors so we
+    /// never operate on, or re-save, an inconsistent ledger.
+    ///
+    /// Non-canonical `status_aliases` values are deliberately *not* touched here. doc-3 §3.3
+    /// says such an alias is ignored **and the status it names becomes 未対応**; dropping the
+    /// key cannot express the second half, because an absent key is indistinguishable from
+    /// "this project set no alias", which sends the status back to 名称一致 (TASK-42). The
+    /// invalid pair is therefore carried through to 列対応規則, which is the layer that owns
+    /// the ignore rule ([`crate::interpret::status::map_status`]). Keeping it also leaves the
+    /// user's hand-edit visible in the file and on the 台帳 screen instead of silently
+    /// deleting it on the next save. TASK-26 AC #5 (values are limited to the canonical four)
+    /// stays enforced where Atlas itself accepts aliases — [`Ledger::update`] rejects them.
+    pub fn validate(&self) -> Result<(), LedgerError> {
         // Structural invariants: slug shape + uniqueness, absolute roots, and each root role
         // unique across *different* entries. project_root and backlog_root are tracked in
         // separate sets — mixing them would reject a project whose Backlog root is the project
@@ -501,7 +510,7 @@ impl LoadedLedger {
             });
         }
         let text = std::fs::read_to_string(path)?;
-        let mut ledger: Ledger = toml::from_str(&text)?;
+        let ledger: Ledger = toml::from_str(&text)?;
         let read_only = match ledger.schema_version {
             v if v == KNOWN_SCHEMA_VERSION => false,
             v if v > KNOWN_SCHEMA_VERSION => true,
@@ -511,7 +520,7 @@ impl LoadedLedger {
         // rules this build cannot judge, so we degrade it to read-only untouched (AC #1)
         // rather than reject it against v1 contracts.
         if !read_only {
-            ledger.validate_and_sanitize()?;
+            ledger.validate()?;
         }
         Ok(LoadedLedger { ledger, read_only })
     }
@@ -1253,11 +1262,14 @@ mod tests {
         assert_eq!(reloaded.ledger.projects[0].backlog_root, root);
     }
 
+    // TASK-42 AC #2: load keeps a non-canonical alias instead of dropping the key. doc-3 §3.3's
+    // "ignore" also says the aliased status becomes 未対応, and only a surviving pair can say
+    // that — a dropped key reads as "no alias here" and hands the status back to 名称一致.
+    // Loading stays non-fatal either way: an invalid alias degrades one status, not the ledger.
     #[test]
-    fn load_sanitizes_invalid_status_alias() {
+    fn load_keeps_invalid_status_alias_for_the_interpretation_layer() {
         let tmp = TempDir::new();
         let path = tmp.path.join("projects.toml");
-        // A non-canonical alias value is dropped on load (doc-3 §3.3 "ignore"), not fatal.
         std::fs::write(
             &path,
             "schema_version = 1\n\
@@ -1274,9 +1286,10 @@ mod tests {
         let loaded = LoadedLedger::load(&path).unwrap();
         let aliases = &loaded.ledger.projects[0].status_aliases;
         assert_eq!(aliases.get("Doing").unwrap(), "In Progress");
-        assert!(
-            !aliases.contains_key("Weird"),
-            "invalid alias should be dropped"
+        assert_eq!(
+            aliases.get("Weird").map(String::as_str),
+            Some("Nonsense"),
+            "an invalid alias must survive load so 列対応規則 can ignore it"
         );
     }
 

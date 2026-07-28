@@ -151,8 +151,10 @@ pub fn map_status(raw: &str, config: &Config, aliases: &BTreeMap<String, String>
             // An alias whose value is not a canonical column is invalid and ignored, and the
             // status it names stays 未対応 (doc-3 §3.3) — it does not fall back to name matching,
             // because a deliberate alias means the writer did not want the default reading of
-            // that value. `LoadedLedger::load` already drops such aliases, so this is the defense
-            // for callers that build the map some other way.
+            // that value. This is the only place that rule is applied: `LoadedLedger::load`
+            // hands the invalid pair through untouched precisely so it can be seen here
+            // (TASK-42), since a table that had dropped the key would be indistinguishable from
+            // one that never had the alias.
             Some(target) => StatusColumn::from_name(target),
             // No alias: a Declared / Draft / unconfigured-root (`NoDeclaredSet`, decision-4's
             // geomyth) status name-matches, since none of them has a declaration to contradict.
