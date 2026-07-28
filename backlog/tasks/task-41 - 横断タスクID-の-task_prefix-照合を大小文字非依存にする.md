@@ -1,10 +1,10 @@
 ---
 id: TASK-41
 title: 横断タスクID の task_prefix 照合を大小文字非依存にする
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-24 00:21'
-updated_date: '2026-07-28 03:33'
+updated_date: '2026-07-28 21:33'
 labels:
   - 'kind:bug'
 milestone: m-1
@@ -46,4 +46,6 @@ AC #3: ledger.rs と read.rs の接頭辞判定ヘルパは共有せず、別々
 文書: doc-3 §5.2 に「接頭辞の一致は大文字小文字を無視する」を v1.47.1 実測の根拠つきで明文化した。実装だけを直すと設計文書に無い独自例外になるため、契約の側を先に直す。
 
 検証: cargo test 232 passed（新規 1 件を含む、失敗 0）、cargo clippy --all-targets 警告 0、cargo fmt 適用済み。
+
+PR #17 は外部レビュー 2 巡で approve・マージ済み。指摘は [P3] 1 件（新規 doc comment 内の 横断タスクID・保存区分 が AGENTS.md の英語コメント規約に反する）で、理由つき won't-fix とした: 本リポジトリは「散文は英語・設計文書の定義語は原表記」の運用で Rust 10 モジュール 237 行が同形であり、この 2 語は doc-3 §5 と doc-4 §3.4 の見出しそのものなので、英訳すると AC #3 の判断を記録する目的（どの節の契約に属するかを示す）が果たせない。規約自体の変更は AGENTS.md 側の別判断とする。コード変更は生じず、レビュー対象 HEAD は 02fe240 のまま。
 <!-- SECTION:NOTES:END -->
