@@ -1,10 +1,10 @@
 ---
 id: TASK-40
 title: 文書・マイルストーン管理 GUI と新規タスク作成の入口を実装する
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 12:29'
-updated_date: '2026-07-27 23:53'
+updated_date: '2026-07-28 03:27'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -45,4 +45,10 @@ AC #4: この画面はファイル API もパスも一切持たず、出力は o
 AC #5: 未完（作成のみ実装）。理由は doc-9 §4.2 との衝突で、着手時に利用者へエスカレーションし「TASK-40 は GUI に閉じ、改称・削除・アーカイブは入口を無効化＋理由表示、doc-9 拡張は別タスク」との判断を得た（TASK-45 を起票）。境界の operation_target は MilestoneRename/Remove/Archive を CLI 起動前に必ず UncheckableTarget で拒否するため、有効な入口を出せば必ず失敗するボタンが 3 つ残る。拒否理由は 2 種類あり、解消経路が違うので画面でも分けて述べた: rename/remove は参照追随書き換えで書き換え対象集合が 1 ファイルに収まらず doc-9 §4 が照合方法を定めていない（doc-9 §7 が後続課題と明記）、archive は読み取り層がマイルストーンのファイルパスを持たない（Document に source_path を足した TASK-32 と同型の実装ギャップ）。提示は doc-9 §5 に従い、(a) 版ずれの検出ではなく照合手段の不在であること、(b) 照合を省いた実行を代替経路として案内しないこと、を全項目で満たす（テストで両文言の存在を検査）。操作写像自体は失わないよう mapping 文字列として残した（削除は --task-handling <clear|keep|reassign>、reassign では --reassign-to <milestone> も必須）。
 
 検証: vitest 208 passed（うち manage.test.ts 35）・svelte-check 0 errors・vite build 成功・cargo test 231 passed（Rust 無変更の確認）。GUI の実機確認は未実施。
+
+実機確認（後追い）: 管理画面から milestone add を発行し、m-2「v0 公開フェーズ」が名称・説明とも意図どおり作成されることを確認した（backlog/milestones/m-2 - v0-公開フェーズ.md の frontmatter と Description に反映）。あわせて、画面が対象プロジェクトの Backlog ルートへ発行していること、CLI probe が通って発行が能動化されること、説明が作成時に設定できること（AC #3 の前提そのもの）も裏が取れた。
+
+クローズ判断: AC #5 は未チェックのまま Done とする。GUI から発行できるのは作成のみで、改称・削除・アーカイブは doc-9 §4.2 の照合不能により入口を無効化＋理由表示にとどめており、押して確かめる対象が無い。AC #5 の最終確認は TASK-45（doc-9 拡張と入口の有効化）へ委ねる。チェックを付けずに閉じるのは、実際には満たしていない範囲を満たしたと記録しないため。
+
+PR #16 は外部レビュー 3 巡で approve・マージ済み。レビュー由来の修正は 2 件とも「未保存入力の扱い」で、設計判断として残す。(1) [P1] selectProject が確認前に requested を代入しており、project がそれから導出されるため、A の文書編集セッションを開いたまま発行先だけ B へ移り、A の文書 ID と本文を B のルートへ送れた。切替先 slug を pending に保持して確定まで requested を動かさない形に変え、select は requested が動くまで uncontrolled なので保留時点で有効なプロジェクトへ戻す。確定時は作成フォームもリセットする（status・milestone が別ルートに無い値を指すため）。(2) [P2] dirty 判定が文書セッションだけで、作成フォームと「追加」未確定の入力欄が画面切替で無確認消失した。画面全体の dirty へ広げ（述語は lib/manage.ts に置いてテスト）、さらにエディタ自身の離脱経路は docEditorDirty（docDirty＋確定前タグ）で判定する。作成フォームはエディタ側 guard から外す（両経路で unmount されないため）。
 <!-- SECTION:NOTES:END -->
