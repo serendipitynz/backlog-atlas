@@ -124,6 +124,23 @@ export const EMPTY_TASK_CREATE: TaskCreateInput = {
 export const TASK_TITLE_REQUIRED_REASON =
   "title は必須です（`task create` の位置引数であり、doc-4 §3.1 の必須項目でもあります）";
 
+/**
+ * Whether the 新規タスク作成 form holds anything the user typed. Part of the screen's 未保存入力
+ * signal: a create form is unmounted by a screen switch just as an edit session is, and input that
+ * was never issued is as much the user's as input that was (doc-8 §6.3 破棄前確認).
+ */
+export function hasTaskCreateInput(input: TaskCreateInput): boolean {
+  return (
+    input.title.trim() !== "" ||
+    input.description.trim() !== "" ||
+    input.status !== "" ||
+    input.priority !== "" ||
+    input.milestone !== "" ||
+    input.labels.length > 0 ||
+    input.acceptanceCriteria.length > 0
+  );
+}
+
 /** Turn the form into the `task create` operation doc-5 §3 maps it to (AC #1). */
 export function buildTaskCreate(input: TaskCreateInput): IssuePlan {
   const title = input.title.trim();
@@ -166,6 +183,11 @@ export const EMPTY_DOC_CREATE: DocCreateInput = { title: "", docType: "", path: 
 
 export const DOC_TITLE_REQUIRED_REASON =
   "title は必須です（`doc create` の位置引数であり、doc-4 §3.2 の必須項目でもあります）";
+
+/** Whether the 文書作成 form holds anything the user typed — see [`hasTaskCreateInput`]. */
+export function hasDocCreateInput(input: DocCreateInput): boolean {
+  return input.title.trim() !== "" || input.docType !== "" || input.path.trim() !== "";
+}
 
 export function buildDocCreate(input: DocCreateInput): IssuePlan {
   const title = input.title.trim();
@@ -387,6 +409,11 @@ export const EMPTY_MILESTONE_ADD: MilestoneAddInput = { name: "", description: "
 
 export const MILESTONE_NAME_REQUIRED_REASON =
   "名称は必須です（`milestone add` の位置引数）";
+
+/** Whether the マイルストーン作成 form holds anything the user typed — see [`hasTaskCreateInput`]. */
+export function hasMilestoneAddInput(input: MilestoneAddInput): boolean {
+  return input.name.trim() !== "" || input.description.trim() !== "";
+}
 
 export function buildMilestoneAdd(input: MilestoneAddInput): IssuePlan {
   const name = input.name.trim();

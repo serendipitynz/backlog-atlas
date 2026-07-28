@@ -18,6 +18,9 @@ import {
   buildTaskCreate,
   docDirtyFields,
   docDivergence,
+  hasDocCreateInput,
+  hasMilestoneAddInput,
+  hasTaskCreateInput,
   isDocDirty,
   issueAvailability,
   outcomeMessage,
@@ -294,6 +297,45 @@ describe("マイルストーンの提供範囲", () => {
     const remove = WITHHELD_MILESTONE_OPERATIONS.find((entry) => entry.kind === "remove");
     expect(remove?.mapping).toContain("--task-handling <clear|keep|reassign>");
     expect(remove?.mapping).toContain("--reassign-to <milestone>");
+  });
+});
+
+// --- 未送信入力の検出 (doc-8 §6.3 破棄前確認) --------------------------------------------------
+
+describe("未送信フォームの検出", () => {
+  // Review [P2]: a create form is unmounted by a screen switch exactly as an edit session is, so its
+  // values have to reach the shell's 破棄前確認 or leaving the tab discards them without a word.
+  it("counts an empty form as holding nothing", () => {
+    expect(hasTaskCreateInput(EMPTY_TASK_CREATE)).toBe(false);
+    expect(hasDocCreateInput(EMPTY_DOC_CREATE)).toBe(false);
+    expect(hasMilestoneAddInput(EMPTY_MILESTONE_ADD)).toBe(false);
+  });
+
+  it("counts every field of the task form, not only the title", () => {
+    expect(hasTaskCreateInput(taskInput({ title: "" }))).toBe(false);
+    for (const filled of [
+      taskInput({ title: "t" }),
+      taskInput({ title: "", description: "d" }),
+      taskInput({ title: "", status: "To Do" }),
+      taskInput({ title: "", priority: "high" }),
+      taskInput({ title: "", milestone: "m-1" }),
+      taskInput({ title: "", labels: ["ui"] }),
+      taskInput({ title: "", acceptanceCriteria: ["works"] }),
+    ]) {
+      expect(hasTaskCreateInput(filled)).toBe(true);
+    }
+  });
+
+  it("does not count whitespace alone as input", () => {
+    expect(hasTaskCreateInput(taskInput({ title: "   " }))).toBe(false);
+    expect(hasDocCreateInput(docInput({ title: " " }))).toBe(false);
+    expect(hasMilestoneAddInput(milestoneInput({ name: " " }))).toBe(false);
+  });
+
+  it("counts the doc and milestone forms' own fields", () => {
+    expect(hasDocCreateInput(docInput({ title: "", docType: "guide" }))).toBe(true);
+    expect(hasDocCreateInput(docInput({ title: "", path: "ops" }))).toBe(true);
+    expect(hasMilestoneAddInput(milestoneInput({ name: "", description: "第 2 期" }))).toBe(true);
   });
 });
 

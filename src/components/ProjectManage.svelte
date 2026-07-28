@@ -24,6 +24,9 @@
     buildMilestoneAdd,
     buildTaskCreate,
     docDivergence,
+    hasDocCreateInput,
+    hasMilestoneAddInput,
+    hasTaskCreateInput,
     isDocDirty,
     issueAvailability,
     outcomeMessage,
@@ -96,11 +99,18 @@
   );
   let docDirty = $derived(docSession !== null && isDocDirty(docSession));
   /**
-   * Where the user asked to go while the session held 未保存入力, held until they answer. `document`
-   * `null` means "close the editor". Same shape as the shell's 破棄前確認 (doc-8 §6.3): the input is
-   * the user's, so it is never discarded without being asked.
+   * What the user asked for while 未保存入力 was held, kept until they answer — and **not applied in
+   * the meantime**. Same shape as the shell's 破棄前確認 (doc-8 §6.3): the input is the user's, so it
+   * is never discarded without being asked, and neither is the target it was typed against.
+   *
+   * `document` `null` means "close the editor"; `project` carries the slug the switch would move to.
+   * The slug lives here rather than in `requested` because `project` derives from `requested`: moving
+   * it before the answer would repoint 発行先 at the new root while the *old* root's document session
+   * is still open, and issuing then would send that document's id and body to the other Backlog root
+   * (review [P1]).
    */
-  let pending = $state<{ document: Document | null } | null>(null);
+  type Pending = { to: "document"; document: Document | null } | { to: "project"; slug: string };
+  let pending = $state<Pending | null>(null);
 
   // --- マイルストーン (doc-5 §3.2, AC #3/#5) ----------------------------------------------------
 
@@ -108,9 +118,26 @@
   let milestonePlan = $derived(buildMilestoneAdd(milestoneInput));
   let milestoneIssue = $derived(issueAvailability(milestonePlan, { readiness, busy }));
 
+  /**
+   * Everything the screen holds that has not been issued (review [P2]). Not just the 文書編集
+   * セッション: a create form is unmounted by a screen switch exactly as the session is, and its
+   * values are the user's input all the same — the shell's 破棄前確認 has to cover them or leaving
+   * the tab discards them without a word. The three add-row boxes count too: text typed but not yet
+   * committed with 追加 is the easiest thing to lose and the least visible.
+   */
+  let dirty = $derived(
+    docDirty ||
+      hasTaskCreateInput(taskInput) ||
+      hasDocCreateInput(docInput) ||
+      hasMilestoneAddInput(milestoneInput) ||
+      newLabel.trim() !== "" ||
+      newCriterion.trim() !== "" ||
+      newTag.trim() !== "",
+  );
+
   // The shell asks before this screen is left with 未保存入力, so it has to know while it is held.
   $effect(() => {
-    ondirty(docDirty);
+    ondirty(dirty);
   });
 
   function tone(outcome: IssueOutcome): "ok" | "warn" | "undetectable" {
@@ -191,10 +218,18 @@
 
   /** Open one document's 編集セッション, asking first when another one's input would be lost. */
   function edit(document: Document): void {
-    if (docDirty && docSession?.baseline.id !== document.id) {
-      pending = { document };
+    // Already open: pressing 編集 again would restart the session and drop the input without asking.
+    if (docSession?.baseline.id === document.id) return;
+    // Only the session is at risk here — the create forms stay mounted — so this asks about `docDirty`
+    // rather than the whole screen's `dirty`.
+    if (docDirty) {
+      pending = { to: "document", document };
       return;
     }
+    openDocument(document);
+  }
+
+  function openDocument(document: Document): void {
     docSession = startDocSession(document);
     newTag = "";
     message = null;
@@ -202,30 +237,57 @@
 
   function closeEditor(): void {
     if (docDirty) {
-      pending = { document: null };
+      pending = { to: "document", document: null };
       return;
     }
     docSession = null;
+    newTag = "";
   }
 
-  /** Take the exit the user just confirmed, discarding the session's 未保存入力. */
+  /** Take the action the user just confirmed, discarding the 未保存入力 it costs. */
   function leaveConfirmed(): void {
     const target = pending;
     pending = null;
     if (target === null) return;
-    docSession = target.document === null ? null : startDocSession(target.document);
-    newTag = "";
-  }
-
-  function selectProject(slug: string): void {
-    requested = slug;
-    // The document being edited belongs to the other root; its session cannot survive the move.
-    // Guarded like every other discard: the input is the user's to keep or drop.
-    if (docDirty) {
-      pending = { document: null };
+    if (target.to === "document") {
+      if (target.document === null) {
+        docSession = null;
+        newTag = "";
+      } else {
+        openDocument(target.document);
+      }
       return;
     }
+    moveTo(target.slug);
+  }
+
+  /**
+   * Switch the target project. Everything on this screen is scoped to one Backlog root — the open
+   * document, but also the status/milestone values the create form offers — so the move resets all of
+   * it rather than carrying values that name things the other root does not have.
+   */
+  function selectProject(slug: string, control: HTMLSelectElement): void {
+    if (slug === project?.slug) return;
+    if (dirty) {
+      pending = { to: "project", slug };
+      // The select is uncontrolled until `requested` moves, and `requested` must not move before the
+      // answer ([P1]). Put the widget back to the project still in effect, so what it shows is the
+      // root an issue would actually go to.
+      control.value = project?.slug ?? "";
+      return;
+    }
+    moveTo(slug);
+  }
+
+  function moveTo(slug: string): void {
+    requested = slug;
     docSession = null;
+    taskInput = { ...EMPTY_TASK_CREATE };
+    docInput = { ...EMPTY_DOC_CREATE };
+    milestoneInput = { ...EMPTY_MILESTONE_ADD };
+    newLabel = "";
+    newCriterion = "";
+    newTag = "";
     message = null;
   }
 
@@ -304,7 +366,10 @@
     <header class="target">
       <label>
         対象プロジェクト
-        <select value={project.slug} onchange={(event) => selectProject(event.currentTarget.value)}>
+        <select
+          value={project.slug}
+          onchange={(event) => selectProject(event.currentTarget.value, event.currentTarget)}
+        >
           {#each projects as entry (entry.slug)}
             <option value={entry.slug}>{entry.slug}</option>
           {/each}
@@ -323,15 +388,22 @@
     {/if}
 
     {#if pending !== null}
-      <!-- 破棄前確認: the 文書編集セッション holds 未保存入力 and the requested move would drop it. -->
+      <!-- 破棄前確認: 未保存入力 is held and the requested action would drop it. The action itself has
+           not been applied — in particular the target project is still the one shown above, so an
+           issue made while this banner is up goes to the root the input was typed against. -->
       <div class="confirm">
         <span>
-          文書の編集に未保存入力があります。{pending.document === null
-            ? "編集を閉じると破棄されます。"
-            : "別の文書を開くと破棄されます。"}
+          {#if pending.to === "project"}
+            未保存の入力があります。対象プロジェクトを {pending.slug} へ切り替えると、開いている文書の
+            編集と作成フォームの入力は破棄されます（発行先はまだ {project.slug} のままです）。
+          {:else if pending.document === null}
+            文書の編集に未保存入力があります。編集を閉じると破棄されます。
+          {:else}
+            文書の編集に未保存入力があります。{pending.document.id} を開くと破棄されます。
+          {/if}
         </span>
         <button type="button" onclick={leaveConfirmed}>破棄して続行</button>
-        <button type="button" onclick={() => (pending = null)}>編集に戻る</button>
+        <button type="button" onclick={() => (pending = null)}>入力に戻る</button>
       </div>
     {/if}
 
