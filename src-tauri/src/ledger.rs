@@ -582,11 +582,24 @@ fn is_task_id(s: &str, task_prefix: &str) -> bool {
     is_prefixed_number(s, task_prefix) || is_prefixed_number(s, DRAFT_PREFIX)
 }
 
+/// Prefix matching is case-insensitive. `backlog init --defaults` writes `task_prefix: "task"`
+/// while the ids it then generates are `TASK-N` (measured on v1.47.1), so a case-sensitive
+/// comparison would make a default-initialized root unable to name its own tasks: every
+/// `<slug>:TASK-N` would be rejected as an invalid id.
+///
+/// Deliberately a second copy of the same predicate `read.rs` keeps, not a shared helper: this one
+/// serves the 横断タスクID parse/generate contract (doc-3 §5.2), `read.rs`'s serves 保存区分 vs id
+/// agreement while scanning and also classifies doc/decision/milestone ids (doc-4 §3.4). The two
+/// contracts happen to need the same syntax today but answer to different documents, so sharing
+/// would let a change driven by one silently move the other.
 fn is_prefixed_number(s: &str, prefix: &str) -> bool {
-    let Some(rest) = s.strip_prefix(prefix) else {
+    let Some(head) = s.get(..prefix.len()) else {
         return false;
     };
-    let Some(num) = rest.strip_prefix('-') else {
+    if !head.eq_ignore_ascii_case(prefix) {
+        return false;
+    }
+    let Some(num) = s[prefix.len()..].strip_prefix('-') else {
         return false;
     };
     !num.is_empty() && num.bytes().all(|b| b.is_ascii_digit())
@@ -1092,6 +1105,41 @@ mod tests {
             .parse_cross_task_id("proj:ISSUE-7", "ISSUE", None)
             .unwrap();
         assert_eq!(parsed.task_id, "ISSUE-7");
+    }
+
+    #[test]
+    fn the_task_prefix_is_matched_case_insensitively() {
+        // `backlog init --defaults` writes task_prefix: "task" while generating TASK-N ids
+        // (v1.47.1), so a default-initialized root must still be able to name its own tasks.
+        let ledger = ledger_with(&["proj"]);
+
+        let parsed = ledger
+            .parse_cross_task_id("proj:TASK-1", "task", None)
+            .unwrap();
+        assert_eq!(parsed.slug, "proj");
+        // The id keeps the case the management file wrote; only the comparison ignores it.
+        assert_eq!(parsed.task_id, "TASK-1");
+
+        assert_eq!(
+            ledger
+                .generate_cross_task_id("proj", "TASK-1", "task")
+                .unwrap(),
+            "proj:TASK-1"
+        );
+
+        // The DRAFT side of the same contract (doc-3 §5.2) matches case-insensitively too.
+        let parsed = ledger
+            .parse_cross_task_id("proj:draft-2", "task", None)
+            .unwrap();
+        assert_eq!(parsed.task_id, "draft-2");
+
+        // Still a prefix check, not a substring one: an unrelated prefix stays rejected.
+        assert!(matches!(
+            ledger
+                .parse_cross_task_id("proj:BUG-1", "task", None)
+                .unwrap_err(),
+            LedgerError::InvalidTaskId(_)
+        ));
     }
 
     // --- persistence + schema_version (AC #1) ----------------------------------------------
