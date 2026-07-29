@@ -42,7 +42,11 @@
   import type { HistoryState } from "./lib/detail";
   import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
   import type { IssueOutcome } from "./lib/manage";
-  import { launchFailureDetail, type OpenOutcome } from "./lib/external-editor";
+  import {
+    WATCH_STOPPED_BEFORE_LAUNCH,
+    launchFailureDetail,
+    type OpenOutcome,
+  } from "./lib/external-editor";
   import {
     conflictKeyOf,
     UNWATCHED_MARK,
@@ -830,7 +834,17 @@
   async function openExternally(method: LaunchMethod): Promise<OpenOutcome> {
     const ref = selectedRef;
     if (ref === null) return { state: "failed", detail: "対象タスクを特定できません" };
-    await startWatch(ref.slug);
+    // Read before the await: whether the panel had already told the user that nothing will bring the
+    // save back. It is the difference between a warning they have read and one that appears with the
+    // editor (doc-8 §7 エディタを開いてから初めて知る形にしない).
+    const warned = selectedWatchStopped;
+    const watching = await startWatch(ref.slug);
+    if (!watching && !warned) {
+      // The press is what discovered the stop — the watch had not failed yet when the panel was drawn,
+      // or the startup watch had not answered. `startWatch` has now put the root in `unwatched`, so the
+      // panel draws the notice and the re-read; the launch waits for the next press.
+      return { state: "deferred", detail: WATCH_STOPPED_BEFORE_LAUNCH };
+    }
     try {
       return { state: "launched", launch: await taskFileOpen(ref.slug, ref.sourcePath, method) };
     } catch (error) {

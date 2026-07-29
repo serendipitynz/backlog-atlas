@@ -41,6 +41,12 @@ import { commandErrorDetail } from "./edit";
  */
 export type OpenOutcome =
   | { state: "launched"; launch: EditorLaunch }
+  /**
+   * Nothing was started: the attempt to (re)start the watch found 継続検出 stopped for this root, and
+   * the panel had not said so before the press. doc-8 §7 requires that to be read *before* the editor
+   * opens, so the launch waits for the next press — by which time the notice is on screen.
+   */
+  | { state: "deferred"; detail: string }
   | { state: "failed"; detail: string };
 
 /** One launch method as a control: what it would run, whether it may be pressed, and why not. */
@@ -85,6 +91,16 @@ export const WATCH_STOPPED_NOTE =
 
 /** The re-read control doc-8 §7 requires beside the launch while 継続検出 is stopped. */
 export const REREAD_ROOT_LABEL = "このルートを再読込";
+
+/**
+ * What a [`OpenOutcome`] `deferred` says. The stop was discovered by the press itself — the watch had
+ * not failed yet when the panel was drawn — so the notice above appears at the same moment. Opening
+ * anyway would satisfy doc-8 §7's wording and not its point: the user would be reading the warning
+ * with the editor already up.
+ */
+export const WATCH_STOPPED_BEFORE_LAUNCH =
+  "このルートの継続検出が止まっていることが分かったため、まだ開いていません。上の注意を読んでから、" +
+  "もう一度押すと開きます。";
 
 /** 案内先 (doc-5 §3.1・doc-8 §6.5): the operations that exist nowhere else in Atlas. */
 export const CLI_LIMIT_GUIDANCE =

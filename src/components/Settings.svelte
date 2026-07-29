@@ -67,8 +67,21 @@
       ? { enabled: false, reason: "設定を読み込んでいます" }
       : saveAvailability(loaded.status),
   );
+  /**
+   * The draft as it would be saved: the form's own fields, plus the 外部エディタ指定 read out of its two
+   * text controls. Derived rather than written back on `change`, so a program typed but not yet blurred
+   * still counts as a change — otherwise 保存 would stay disabled while the cursor is in the field the
+   * user just edited, and they would have to click elsewhere before the button they are aiming for
+   * became pressable. Nothing is persisted from here: 保存 is still the only writer (doc-8 §6.3 の
+   * 明示保存 と同じ理由).
+   */
+  let pending = $derived.by(() =>
+    draft === null
+      ? null
+      : { ...draft, external_editor: editorCommandOf(editorProgram, editorArgs) },
+  );
   let dirty = $derived(
-    draft !== null && loaded !== null && isDirty(draft, loaded.settings),
+    pending !== null && loaded !== null && isDirty(pending, loaded.settings),
   );
   let storageWarning = $derived(
     draft === null ? null : emptyStorageWarning(draft.default_storage_filter),
@@ -95,24 +108,19 @@
     editorArgs = editorArgsText(command);
   });
 
-  function setEditor(): void {
-    if (draft === null) return;
-    draft.external_editor = editorCommandOf(editorProgram, editorArgs);
-  }
-
   function setStorage(value: StorageSelection, on: boolean): void {
     if (draft === null) return;
     draft.default_storage_filter = toggleStorage(draft.default_storage_filter, value, on);
   }
 
   async function save(): Promise<void> {
-    if (draft === null || !availability.enabled || saving) return;
+    if (pending === null || !availability.enabled || saving) return;
     saving = true;
-    // Read out of the fields at 保存 time rather than on every keystroke, so a half-typed program name
-    // is never the 起動指定 in force.
-    setEditor();
     try {
-      failure = await onsave($state.snapshot(draft));
+      // `pending`, not `draft`: the editor fields are part of the value being saved, and they are only
+      // folded in there. A half-typed program is never the 起動指定 in force all the same — this is the
+      // one place anything is written.
+      failure = await onsave($state.snapshot(pending));
     } finally {
       saving = false;
     }
@@ -237,16 +245,11 @@
       </p>
       <label>
         <span>プログラム</span>
-        <input
-          type="text"
-          bind:value={editorProgram}
-          onchange={setEditor}
-          placeholder="/Applications/… または code"
-        />
+        <input type="text" bind:value={editorProgram} placeholder="/Applications/… または code" />
       </label>
       <label>
         <span>引数（1 行 1 つ）</span>
-        <textarea rows="3" bind:value={editorArgs} onchange={setEditor} placeholder="-w"></textarea>
+        <textarea rows="3" bind:value={editorArgs} placeholder="-w"></textarea>
       </label>
     </section>
 

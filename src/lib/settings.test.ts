@@ -10,6 +10,7 @@ import {
   statusNotice,
   toggleStorage,
 } from "./settings";
+import { unreadableDetail } from "./swimlane";
 import type { AppSettings, SettingsStatus } from "./wire";
 
 const DEFAULTS: AppSettings = {
@@ -116,6 +117,16 @@ describe("isDirty", () => {
     expect(isDirty(DEFAULTS, { ...DEFAULTS, default_storage_filter: ["active", "draft"] })).toBe(
       true,
     );
+  });
+});
+
+describe("保存の失敗", () => {
+  it("keeps the reason the write failed, rather than only its kind", () => {
+    // The screen's recovery depends on it: an I/O fault and a refused overwrite call for different
+    // actions, and both would otherwise read as the bare tag.
+    expect(
+      unreadableDetail({ kind: "settings", detail: "Permission denied (os error 13)" }),
+    ).toBe("Permission denied (os error 13)");
   });
 });
 

@@ -414,6 +414,9 @@
   let openState = $state<
     | { state: "idle" }
     | { state: "launched"; path: string; summary: string }
+    // Nothing was started: the press found 継続検出 stopped, and the notice it produced has to be read
+    // before the editor opens (doc-8 §7). Kept apart from `failed` — nothing went wrong.
+    | { state: "deferred"; path: string; detail: string }
     | { state: "failed"; path: string; detail: string }
   >({ state: "idle" });
   /** A launch awaiting its second press — asked for only while there is 未保存入力 (doc-8 §6.4). */
@@ -448,7 +451,7 @@
     openState =
       outcome.state === "launched"
         ? { state: "launched", path, summary: launchSummary(outcome.launch) }
-        : { state: "failed", path, detail: outcome.detail };
+        : { state: outcome.state, path, detail: outcome.detail };
   }
 
   function addTo(values: string[], value: string): string[] {
@@ -1215,7 +1218,9 @@
     </ul>
     {#if openNotice !== null && openNotice.state === "launched"}
       <p class="ok">{openNotice.summary}</p>
-    {:else if openNotice !== null && openNotice.state === "failed"}
+    {:else if openNotice !== null}
+      <!-- `deferred` and `failed` both read as "not opened, and here is why"; the notice above says
+           what to do next in either case. -->
       <p class="warn">{openNotice.detail}</p>
     {/if}
   </section>
