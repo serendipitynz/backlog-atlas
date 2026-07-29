@@ -221,8 +221,8 @@
   /** One decision for the save control's enabled state and its reason (doc-5 §5). */
   let saveGate = $derived(saveAvailability(plan, { fileMissing: missing, busy }));
   let acView = $derived(session === null ? [] : acRows(session));
-  /** Stated while editing, not after saving: `-a` collapses a multi-assignee list to one value. */
-  let assigneeCollapse = $derived(assigneeCollapseWarning(view.task.assignee));
+  /** Stated before the save that would collapse a multi-assignee list, not for every session. */
+  let assigneeCollapse = $derived(assigneeCollapseWarning(plan, view.task.assignee));
 
   // The session belongs to one file. A different task in the same panel starts from that task's
   // own read rather than inheriting a draft written against another one; the shell asks before

@@ -113,8 +113,21 @@ describe("assignee の設定・付け替え (doc-5 §3, TASK-57)", () => {
     const session = setField(startSession(view), "assignee", "@takkyun");
     expect(isDirty(session)).toBe(true);
     expect(editOf(ready(session).action)).toEqual({ assignee: "@takkyun" });
-    expect(assigneeCollapseWarning(view.task.assignee)).toContain("2 件");
-    expect(assigneeCollapseWarning(["@takkyun"])).toBeNull();
+    expect(assigneeCollapseWarning(buildSave(session), view.task.assignee)).toContain("2 件");
+  });
+
+  it("1 件化の警告は、その保存が assignee を送るときだけ出す", () => {
+    // 触れていない項目は送らないため（doc-9 §5 (ii)）、title だけの保存では `--assignee` は
+    // 発行されず一覧は保たれる。起きない 1 件化を警告しない。
+    const view = taskView({ title: "T", assignee: ["@takkyun", "@someone"] });
+    const titleOnly = setField(startSession(view), "title", "T2");
+    expect(editOf(ready(titleOnly).action)).toEqual({ title: "T2" });
+    expect(assigneeCollapseWarning(buildSave(titleOnly), view.task.assignee)).toBeNull();
+
+    // assignee が 1 件のタスクは、送っても 1 件化しない。
+    const single = taskView({ assignee: ["@takkyun"] });
+    const changed = setField(startSession(single), "assignee", "@someone");
+    expect(assigneeCollapseWarning(buildSave(changed), single.task.assignee)).toBeNull();
   });
 
   it("再読込結果の assignee が送った 1 件と違えば事後通知に載る", () => {

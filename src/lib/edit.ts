@@ -397,11 +397,19 @@ export const ASSIGNEE_NOT_CLEARABLE =
   "管理ファイルを直接編集します（doc-5 §3・doc-8 §7）";
 
 /**
- * Why saving an assignee on a multi-assignee task leaves one. `-a` takes a single value and the
- * write replaces the whole frontmatter list (実測), so the collapse is stated before the save
- * rather than discovered in the re-read.
+ * Why the save being planned would leave one assignee. `-a` takes a single value and the write
+ * replaces the whole frontmatter list (実測), so the collapse is stated before the save rather than
+ * discovered in the re-read.
+ *
+ * Gated on the plan carrying an assignee, not on the list alone: this panel sends only touched
+ * fields (doc-9 §5 (ii)), so a title-only save on a multi-assignee task emits no `--assignee` and
+ * keeps every entry. Warning about it there would describe a collapse that is not going to happen.
  */
-export function assigneeCollapseWarning(current: readonly string[]): string | null {
+export function assigneeCollapseWarning(
+  plan: SavePlan | null,
+  current: readonly string[],
+): string | null {
+  if (plan === null || plan.state !== "ready" || plan.submitted.assignee === undefined) return null;
   if (current.length < 2) return null;
   return (
     `このタスクの assignee は ${current.length} 件（${current.join(", ")}）ですが、` +
