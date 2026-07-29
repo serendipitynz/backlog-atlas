@@ -6,6 +6,7 @@ import {
   editorCommandOf,
   emptyStorageWarning,
   isDirty,
+  mergeDraft,
   saveAvailability,
   statusNotice,
   toggleStorage,
@@ -132,8 +133,54 @@ describe("保存の失敗", () => {
 
 describe("画面が持たない項目", () => {
   it("says a stored-but-unused value is stored (rather than hiding the control)", () => {
-    // decision-13 puts all six items in this file while three of the screens that read them are
+    // decision-13 puts all six items in this file while two of the screens that read them are
     // separate work; an absent control would read as "Atlas has no such setting".
     expect(PENDING_CONSUMER_NOTE).toContain("保存");
+  });
+});
+
+describe("第 2 の書き手（既定の詳細配置）と開いているフォーム", () => {
+  it("seeds straight from the new values while there is no draft to protect", () => {
+    expect(mergeDraft(null, null, DEFAULTS)).toEqual(DEFAULTS);
+  });
+
+  it("adopts an outside change to a field the user has not touched", () => {
+    // Choosing a 詳細配置 stores it as the 既定 (doc-8 §2.2) while this form may be open. An untouched
+    // field must follow the file, or 保存 would put the placement back the way it was.
+    const next: AppSettings = { ...DEFAULTS, default_detail_placement: "full" };
+    const merged = mergeDraft(DEFAULTS, { ...DEFAULTS }, next);
+    expect(merged.default_detail_placement).toBe("full");
+  });
+
+  it("keeps every field the user edited, and takes the rest from the new values", () => {
+    const draft: AppSettings = { ...DEFAULTS, card_density: "l", theme: "dusk" };
+    const next: AppSettings = { ...DEFAULTS, default_detail_placement: "modal" };
+    const merged = mergeDraft(DEFAULTS, draft, next);
+
+    expect(merged.card_density).toBe("l");
+    expect(merged.theme).toBe("dusk");
+    expect(merged.default_detail_placement).toBe("modal");
+  });
+
+  it("does not let an outside write take a placement the user is in the middle of changing", () => {
+    const draft: AppSettings = { ...DEFAULTS, default_detail_placement: "modal" };
+    const next: AppSettings = { ...DEFAULTS, default_detail_placement: "full" };
+    expect(mergeDraft(DEFAULTS, draft, next).default_detail_placement).toBe("modal");
+  });
+
+  it("keeps a half-typed 起動指定, and leaves the key absent when it is unset either side", () => {
+    const draft: AppSettings = {
+      ...DEFAULTS,
+      external_editor: { program: "/usr/local/bin/mi", args: [] },
+    };
+    const merged = mergeDraft(DEFAULTS, draft, { ...DEFAULTS });
+    expect(merged.external_editor).toEqual({ program: "/usr/local/bin/mi", args: [] });
+    // Absent rather than present-and-undefined: the key is skipped in the file when there is none.
+    expect("external_editor" in mergeDraft(DEFAULTS, { ...DEFAULTS }, DEFAULTS)).toBe(false);
+  });
+
+  it("takes schema_version from the file, never from the draft", () => {
+    const draft: AppSettings = { ...DEFAULTS, schema_version: 99 };
+    expect(mergeDraft(DEFAULTS, draft, { ...DEFAULTS, schema_version: 2 }).schema_version).toBe(2);
   });
 });

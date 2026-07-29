@@ -1,0 +1,238 @@
+/**
+ * 詳細配置 (doc-8 §2–§3), as pure functions: which of the three ways the task detail is placed, what
+ * that placement does to every 区画 of doc-8 §3's assignment table, and the geometry the 中央モーダル
+ * is built from. `TaskDetail.svelte` is markup over these values, so the table can be checked against
+ * the document without mounting a component.
+ *
+ * ## Referent table (doc term → identifier here)
+ *
+ * Fixed before naming, following `detail.ts` and the Rust modules' convention.
+ *
+ * | term | here | is |
+ * |---|---|---|
+ * | doc-8 §2.1 詳細配置 | [`DetailPlacement`] (`wire.ts`) | 併置サイドバー / 中央モーダル / 全面シングルビュー |
+ * | doc-8 §3 区画 | [`DetailSection`] | one row of the assignment table — one block of the panel |
+ * | doc-8 §3 常設 | [`Disposition`] `"always"` | 既定で開いた状態 |
+ * | doc-8 §3 折畳み | [`Disposition`] `"collapsed"` | 見出しと件数だけを見せて既定で閉じた状態 |
+ * | doc-8 §2.1 主列 / 脇列 | [`SectionColumn`] `"main"` / `"side"` | the 中央モーダル's two columns |
+ * | doc-8 §3 の列指定が無い区画 | [`SectionColumn`] `"wide"` | spans both columns (see `SECTION_COLUMN`) |
+ * | doc-8 §5 配置ごとの粒度 | [`HistoryDetail`] | how much of the Git 履歴欄 this placement shows |
+ * | doc-8 §2.1 1280×800 でも 2 列 | [`modalMainColumnRem`] | what is left for the 主列 once the 脇列 is taken |
+ * | doc-8 §2.2 既定の永続 | [`placementPersistence`] | whether the chosen placement could be stored, and why not |
+ *
+ * Two rules run through the module:
+ *
+ * - **The table is data, not markup** (doc-8 §3). One placement decides every 区画's disposition at
+ *   once, so a placement cannot half-apply — which is what a per-section `{#if placement === …}` in
+ *   the component would eventually become.
+ * - **縮退表示 is never collapsible** (doc-8 §3). It is `"always"` in all three placements, and the
+ *   panel draws it as a plain section rather than a foldable one: doc-8 gives the reason — 折畳みへ
+ *   落とすと問題のあるタスクが正常に見える — and an openable fold would still start closed once the
+ *   user had closed it on the previous task.
+ */
+
+import type { DetailPlacement } from "./wire";
+
+/** The 区画 doc-8 §3's assignment table has rows for, in the table's own order. */
+export type DetailSection =
+  | "heading"
+  | "editConsole"
+  | "type"
+  | "labels"
+  | "description"
+  | "ac"
+  | "plan"
+  | "notes"
+  | "dependencies"
+  | "references"
+  | "pullRequest"
+  | "gitHistory"
+  | "degrade"
+  /** 状態遷移・外部エディタ — one row of doc-8 §3, so one key here. */
+  | "transitions";
+
+export type Disposition = "always" | "collapsed";
+
+/** Where a 区画 sits in the 中央モーダル's two columns (doc-8 §2.1). Ignored by the other two. */
+export type SectionColumn = "main" | "side" | "wide";
+
+/** How much of the Git 履歴欄 a placement shows (doc-8 §5 配置ごとの粒度). */
+export type HistoryDetail =
+  /** 件数と全面表示への導線だけ (併置サイドバー). */
+  | "count"
+  /** 直近 2 件と残り件数 (中央モーダル). */
+  | "recent"
+  /** 全件と関連解決の状態 (全面シングルビュー). */
+  | "full";
+
+/** 直近 n 件 (doc-8 §5): the 中央モーダル's commit budget. */
+export const RECENT_COMMIT_LIMIT = 2;
+
+export interface PlacementLayout {
+  sections: Record<DetailSection, Disposition>;
+  history: HistoryDetail;
+  /** How many columns the panel lays its 区画 out in — 2 only for the 中央モーダル (doc-8 §2.1). */
+  columns: 1 | 2;
+}
+
+/** 切替の並び (doc-8 §2.1's own order: narrowest first). */
+export const PLACEMENTS: readonly DetailPlacement[] = ["sidebar", "modal", "full"] as const;
+
+/**
+ * doc-8 §3 の割当表, transcribed. `full` is not written out: 全面シングルビュー is 全区画を常設で出す
+ * (doc-8 §2.1), so it is every section at `"always"` and stating it row by row would invite the two
+ * to drift apart.
+ */
+const DISPOSITIONS: Record<DetailSection, { sidebar: Disposition; modal: Disposition }> = {
+  heading: { sidebar: "always", modal: "always" },
+  editConsole: { sidebar: "always", modal: "always" },
+  type: { sidebar: "always", modal: "always" },
+  labels: { sidebar: "always", modal: "always" },
+  description: { sidebar: "always", modal: "always" },
+  ac: { sidebar: "always", modal: "always" },
+  plan: { sidebar: "collapsed", modal: "always" },
+  notes: { sidebar: "collapsed", modal: "collapsed" },
+  dependencies: { sidebar: "always", modal: "always" },
+  references: { sidebar: "collapsed", modal: "always" },
+  pullRequest: { sidebar: "always", modal: "always" },
+  // The Git 履歴欄's own row is a granularity rather than a fold (`HistoryDetail`); the section
+  // itself stays open in all three, since even 件数のみ is something to read.
+  gitHistory: { sidebar: "always", modal: "always" },
+  degrade: { sidebar: "always", modal: "always" },
+  transitions: { sidebar: "collapsed", modal: "collapsed" },
+};
+
+/**
+ * Which column each 区画 takes in the 中央モーダル. doc-8 §2.1 names the two columns' contents and
+ * §3 marks them per row; the four it leaves unplaced are decided here and recorded in doc-8 §3:
+ * 見出し・編集卓・縮退表示 span both columns (they are about the whole panel — and the 縮退 must not
+ * be findable only in one column), 実装ノート and Git 履歴欄 join the 主列 as the other long-form
+ * blocks, and 状態遷移・外部エディタ joins the 脇列 with the other short blocks.
+ */
+export const SECTION_COLUMN: Record<DetailSection, SectionColumn> = {
+  heading: "wide",
+  editConsole: "wide",
+  degrade: "wide",
+  description: "main",
+  ac: "main",
+  plan: "main",
+  notes: "main",
+  gitHistory: "main",
+  type: "side",
+  labels: "side",
+  dependencies: "side",
+  references: "side",
+  pullRequest: "side",
+  transitions: "side",
+};
+
+const HISTORY_DETAIL: Record<DetailPlacement, HistoryDetail> = {
+  sidebar: "count",
+  modal: "recent",
+  full: "full",
+};
+
+export function layoutFor(placement: DetailPlacement): PlacementLayout {
+  const sections = {} as Record<DetailSection, Disposition>;
+  for (const [section, byPlacement] of Object.entries(DISPOSITIONS)) {
+    sections[section as DetailSection] =
+      placement === "full" ? "always" : byPlacement[placement];
+  }
+  return { sections, history: HISTORY_DETAIL[placement], columns: placement === "modal" ? 2 : 1 };
+}
+
+// --- 中央モーダルの寸法 (doc-8 §2.1) ---------------------------------------------------------
+//
+// Held here rather than only in the component's SCSS because doc-8 §2.1 makes one of them a
+// requirement with a number in it — 1280×800 でも 2 列を保つ（脇列 18rem は確保できる）— and a
+// requirement stated as a number is one a test can hold. The component reads these out as custom
+// properties, so the CSS and the check below cannot disagree.
+
+/** 脇列 (doc-8 §2.1). The width the requirement names. */
+export const MODAL_SIDE_COLUMN_REM = 18;
+/** Gap between the two columns. */
+export const MODAL_COLUMN_GAP_REM = 0.75;
+/** The modal's own left+right padding, together. */
+export const MODAL_PADDING_REM = 1.5;
+/** Space kept between the modal and the window edge, left+right together. */
+export const MODAL_INSET_REM = 4;
+/** The modal stops growing here: past this, lines get too long to read. */
+export const MODAL_MAX_WIDTH_REM = 68;
+/**
+ * The narrowest 主列 that still holds a body of text beside the 脇列. Not a breakpoint — nothing
+ * stacks the columns (doc-8 §2.1 狭いからといって縦積みへ落とさない) — but the floor the geometry above
+ * has to clear at the size doc-8 names.
+ */
+export const MODAL_MIN_MAIN_COLUMN_REM = 22;
+
+/** The window width doc-8 §2.1's 2 列 requirement is stated at. */
+export const MODAL_REQUIRED_VIEWPORT_PX = 1280;
+
+/** Browser default root font size — what `rem` means when the user has not changed it. */
+const ROOT_FONT_PX = 16;
+
+/** The modal's width at a given viewport width, in rem. */
+export function modalWidthRem(viewportWidthPx: number, rootFontPx: number = ROOT_FONT_PX): number {
+  return Math.min(MODAL_MAX_WIDTH_REM, viewportWidthPx / rootFontPx - MODAL_INSET_REM);
+}
+
+/**
+ * What is left for the 主列 once the 脇列, the gap and the padding are taken (doc-8 §2.1). Can go
+ * negative on an absurdly narrow window; the caller compares it against
+ * [`MODAL_MIN_MAIN_COLUMN_REM`] rather than treating any positive number as a fit.
+ */
+export function modalMainColumnRem(
+  viewportWidthPx: number,
+  rootFontPx: number = ROOT_FONT_PX,
+): number {
+  return (
+    modalWidthRem(viewportWidthPx, rootFontPx) -
+    MODAL_PADDING_REM -
+    MODAL_COLUMN_GAP_REM -
+    MODAL_SIDE_COLUMN_REM
+  );
+}
+
+// --- 既定の永続 (doc-8 §2.2) -----------------------------------------------------------------
+
+/**
+ * How the placement on screen stands to the one アプリ設定 holds as the 既定 (doc-8 §2.2). Three
+ * states rather than a boolean, because they end differently: the usual case is that choosing a
+ * placement stored it, a mere difference resolves itself on the next switch (the 設定画面 can move the
+ * 既定 without moving the screen), and a refused write never resolves at all — decision-13 forbids
+ * overwriting a settings file newer than this build.
+ */
+export type PlacementPersistence =
+  | { state: "default" }
+  | { state: "notDefault"; stored: DetailPlacement }
+  | { state: "refused"; reason: string };
+
+export function placementPersistence(
+  current: DetailPlacement,
+  stored: DetailPlacement,
+  failure: string | null,
+): PlacementPersistence {
+  if (failure !== null) return { state: "refused", reason: failure };
+  return current === stored ? { state: "default" } : { state: "notDefault", stored };
+}
+
+/** The mark the switch carries on the placement stored as the 既定 (doc-8 §2.2 切替の見た目で示す). */
+export const DEFAULT_PLACEMENT_MARK = "既定";
+
+/**
+ * What the switch says about the 既定 beyond the mark, or `null` when the placement on screen *is*
+ * the 既定 and the mark alone says everything.
+ */
+export function placementPersistenceNote(
+  persistence: PlacementPersistence,
+  label: (placement: DetailPlacement) => string,
+): string | null {
+  switch (persistence.state) {
+    case "default":
+      return null;
+    case "notDefault":
+      return `次回起動時は「${label(persistence.stored)}」で開きます（既定はそちらのままです）。`;
+    case "refused":
+      return `この配置を既定として保存できませんでした（${persistence.reason}）。今の表示には効いています。`;
+  }
+}

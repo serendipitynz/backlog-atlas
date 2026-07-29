@@ -17,6 +17,7 @@
  * | doc-8 §4 Pull Request ↔ References 分離 | [`ReferenceSplit`] | the task's references cut into PR URLs and ordinary references |
  * | doc-6 §3 コミット検索の実行状態 | [`HistoryState`] | the panel's own state for the Git read: loading / read / failed / not keyable |
  * | doc-8 §5 Git 履歴欄 | [`CommitListView`] + [`RelationAvailability`] | what the commit list is showing, and whether 関連解決 could run at all |
+ * | doc-8 §5 配置ごとの粒度（件数のみ） | [`commitCountLine`] + [`relationLine`] | the same two facts in one line each, for the narrow placements |
  * | decision-6 コミット該当なし / Git 対象不在 | [`CommitListView`] states `noCommits` / `noRepository` | searched-and-empty (neutral) vs. the root not being a Git repository |
  * | decision-6 Git remote 不在 | [`RelationAvailability`] state `remoteAbsent` | the ledger's Git remote 有無属性 is false — a setting, not a failure |
  * | doc-4 §5 縮退表示（不足内容） | [`DegradeSummary`] | the task's degrade events grouped by what each one costs the display |
@@ -203,6 +204,55 @@ export function relationAvailability(
   return entry?.git_remote_present === false
     ? { state: "remoteAbsent" }
     : { state: "hostUndetermined" };
+}
+
+/**
+ * One line of Git 履歴欄, for the placements that show it in less than full (doc-8 §5 配置ごとの粒度).
+ * `kind` is the same three families the full rendering uses — 正常な不在 は中立、設定で解消できるものは
+ * 中間、失敗だけが族の色 (decision-6) — so narrowing the placement narrows the text and nothing else.
+ */
+export interface HistoryLine {
+  text: string;
+  kind: "neutral" | "setting" | "failure";
+}
+
+/** コミット一覧を件数で言い切る 1 行 (doc-8 §5 併置サイドバーの 件数のみ). */
+export function commitCountLine(view: CommitListView): HistoryLine {
+  switch (view.state) {
+    case "commits":
+      return { text: `コミット ${view.commits.length} 件`, kind: "neutral" };
+    case "noCommits":
+      return { text: "対応コミット無し", kind: "neutral" };
+    case "noRepository":
+      return { text: `Git 対象不在（${view.projectRoot} は Git リポジトリではありません）`, kind: "setting" };
+    case "unreadable":
+      return { text: `Git 履歴を読めません: ${view.detail}`, kind: "failure" };
+    case "noTaskId":
+      return { text: "TASK-ID が読めないため未検索", kind: "setting" };
+    case "loading":
+      return { text: "読み込み中…", kind: "neutral" };
+  }
+}
+
+/**
+ * 関連 PR を 1 行で言う (doc-8 §5). doc-8 asks the narrow placement for 関連 PR m 件, and this build
+ * has no m to give: 関連解決の参照手段は未実装 (doc-6 §6), so every count would be 0 and would read as
+ * 関連が無い — the exact misreading doc-8 §5 forbids by requiring the *state* to be shown. The number
+ * is therefore replaced by the state, in one line, with the full account left to 全面.
+ */
+export function relationLine(availability: RelationAvailability): HistoryLine {
+  switch (availability.state) {
+    case "hostDetermined":
+      return { text: "関連 PR: 参照手段が未実装（remote ホストは判別済み）", kind: "neutral" };
+    case "remoteAbsent":
+      return { text: "関連 PR: 解決なし（Git remote 不在）", kind: "setting" };
+    case "hostUndetermined":
+      return { text: "関連 PR: 対象外（remote ホスト種別を判別できません）", kind: "setting" };
+    case "notRead":
+      return { text: `関連 PR: 未実施（${availability.detail}）`, kind: "setting" };
+    case "loading":
+      return { text: "読み込み中…", kind: "neutral" };
+  }
 }
 
 /** AC の checked 状態 (doc-8 §3), as a count for the section heading. */

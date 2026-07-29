@@ -572,6 +572,23 @@ export function buildSave(session: EditSession): SavePlan {
 
 export const NOTHING_TO_SAVE_REASON = "変更はまだありません";
 
+// --- 破棄前確認 (doc-8 §6.3) ------------------------------------------------------------------
+//
+// One text for all five routes — キャンセル・閉じる・別タスクを開く・前後移動・詳細配置の切替 — because
+// doc-8 §6.3 requires exactly that: 文言は 5 経路で同じものを使う. Held here rather than in the panel
+// because two of the five are the shell's (opening another task, switching the placement), and a
+// per-caller wording is how the five would end up describing the same loss five ways.
+
+/** What the 確認 asks. Shown as the 上部帯 ① (doc-7 §5.3), whichever route raised it. */
+export const DISCARD_CONFIRM_QUESTION =
+  "編集中の未保存入力があります。このまま進むと破棄されます。";
+
+/** The answer that goes ahead and loses the input. */
+export const DISCARD_CONFIRM_PROCEED = "破棄して続ける";
+
+/** The answer that stays where it is. */
+export const DISCARD_CONFIRM_KEEP = "編集に戻る";
+
 /**
  * Whether the save control may be pressed, and the reason when it may not. A single decision for
  * both the disabled state and the tooltip: with the two derived separately, a state that stops
