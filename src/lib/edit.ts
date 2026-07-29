@@ -16,6 +16,7 @@
  * | doc-8 §1 明示保存 | [`buildSave`] | turning the session into the 更新操作 the save button issues |
  * | doc-8 §6.5 保存区分別の編集可否 | [`EditAvailability`] | whether content editing is offered, and why not |
  * | doc-5 §3.2/§3.3 状態遷移の入口 | [`TransitionOffer`] | one transition, its 能動化 and its 無効化理由 |
+ * | doc-5 §3 assignee の設定・付け替え | `EditDraft.assignee` + [`ASSIGNEE_NOT_CLEARABLE`] | the single value `-a` sends, and why blanking it changes nothing |
  * | doc-5 §3 References 非空全置換 | `EditDraft.references` + [`canRemoveLast`] | the whole non-empty set, last removal withheld |
  * | doc-5 §3 AC 全体差し替え（複合） | [`AcDraft`] mode `replace` | remove-all ＋ add ＋ check in one `task edit` |
  * | doc-5 §3 AC 項目単位操作 | [`AcDraft`] mode `delta` | add / remove / check / uncheck on their own |
@@ -75,6 +76,12 @@ export interface EditDraft {
   status: string;
   priority: string;
   milestone: string;
+  /**
+   * 担当 (doc-5 §3 `-a`). One value, not the frontmatter list: the CLI takes a single assignee and
+   * replaces the whole list with it (実測). `""` means "leave it alone" — see
+   * [`ASSIGNEE_NOT_CLEARABLE`], the CLI has no unassign.
+   */
+  assignee: string;
   plan: string;
   notes: string;
   /** `--notes` replaces, `--append-notes` appends: two CLI options, so a mode, not a flag. */
@@ -93,6 +100,7 @@ export type DraftField =
   | "status"
   | "priority"
   | "milestone"
+  | "assignee"
   | "plan"
   | "notes"
   | "labels"
@@ -133,6 +141,10 @@ export function draftFrom(view: TaskView): EditDraft {
     status: task.status ?? "",
     priority: task.priority ?? "",
     milestone: task.milestone ?? "",
+    // The first entry, not the joined list: the box holds the one value `-a` would send, so a task
+    // that already has several assignees starts from one of them rather than from a value the CLI
+    // would store verbatim as a single assignee ("alice,bob" lands as one entry, 実測).
+    assignee: task.assignee[0] ?? "",
     plan: task.implementationPlan ?? "",
     notes: task.implementationNotes ?? "",
     notesMode: "set",
@@ -221,6 +233,14 @@ function changed(session: EditSession, field: DraftField): boolean {
       return draft.priority !== "" && draft.priority !== (task.priority ?? "");
     case "milestone":
       return draft.milestone !== "" && draft.milestone !== (task.milestone ?? "");
+    case "assignee":
+      // Blank is "leave it alone", as with status/priority/milestone: emptying the box cannot mean
+      // unassign, because v1.47.1 has no way to do it (ASSIGNEE_NOT_CLEARABLE). A task with several
+      // assignees is *changed* by any different value, since the write collapses the list to one.
+      return (
+        draft.assignee.trim() !== "" &&
+        (draft.assignee !== (task.assignee[0] ?? "") || task.assignee.length > 1)
+      );
     case "plan":
       return draft.plan !== (task.implementationPlan ?? "");
     case "notes":
@@ -334,6 +354,8 @@ export interface Submitted {
   status?: string;
   priority?: string;
   milestone?: string;
+  /** The single value sent; the re-read's whole assignee list is checked against it. */
+  assignee?: string;
   plan?: string;
   /** Replace only: an append cannot be compared against the result. */
   notes?: string;
@@ -363,6 +385,38 @@ export const EXTERNAL_EDITOR_ROUTE = "この画面下部の「外部エディタ
 export const EMPTY_REFERENCES_REASON =
   "References は最後の 1 件を削除できません（v1.47.1 の CLI に空集合化の手段がないため）。" +
   `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します（doc-5 §3.1・doc-8 §7）`;
+
+/**
+ * Why an emptied assignee box changes nothing. `task edit -a ""` exits 0 without clearing in
+ * v1.47.1 (実測) — the same silent-no-op as `--ref ""` — so blanking the box is read as "leave it
+ * alone" rather than issued as an unassignment that would be reported as a success and not happen.
+ */
+export const ASSIGNEE_NOT_CLEARABLE =
+  "assignee は空欄にしても解除されません（v1.47.1 の CLI に解除の手段がなく、`-a \"\"` は終了コード 0 で" +
+  `何も変えないため、空欄は「変更しない」として扱います）。解除する場合は${EXTERNAL_EDITOR_ROUTE}から` +
+  "管理ファイルを直接編集します（doc-5 §3・doc-8 §7）";
+
+/**
+ * Why the save being planned would leave one assignee. `-a` takes a single value and the write
+ * replaces the whole frontmatter list (実測), so the collapse is stated before the save rather than
+ * discovered in the re-read.
+ *
+ * Gated on the plan carrying an assignee, not on the list alone: this panel sends only touched
+ * fields (doc-9 §5 (ii)), so a title-only save on a multi-assignee task emits no `--assignee` and
+ * keeps every entry. Warning about it there would describe a collapse that is not going to happen.
+ */
+export function assigneeCollapseWarning(
+  plan: SavePlan | null,
+  current: readonly string[],
+): string | null {
+  if (plan === null || plan.state !== "ready" || plan.submitted.assignee === undefined) return null;
+  if (current.length < 2) return null;
+  return (
+    `このタスクの assignee は ${current.length} 件（${current.join(", ")}）ですが、` +
+    "`task edit -a` は 1 件しか受け取らず frontmatter の一覧を丸ごと置き換えます。" +
+    "保存すると入力した 1 件だけになります（doc-5 §3）"
+  );
+}
 
 export const EMPTY_DEPENDENCIES_REASON =
   "dependencies は最後の 1 件を削除できません（v1.47.1 の CLI に空集合化の手段がないため）。" +
@@ -456,6 +510,14 @@ export function buildSave(session: EditSession): SavePlan {
         edit.milestone = draft.milestone;
         submitted.milestone = draft.milestone;
         break;
+      case "assignee": {
+        // Trimmed before it is sent: the CLI would store surrounding whitespace as part of the
+        // assignee, and a blank is not dirty in the first place (ASSIGNEE_NOT_CLEARABLE).
+        const assignee = draft.assignee.trim();
+        edit.assignee = assignee;
+        submitted.assignee = assignee;
+        break;
+      }
       case "plan":
         edit.plan = draft.plan;
         submitted.plan = draft.plan;
@@ -671,6 +733,11 @@ export function divergence(submitted: Submitted, view: TaskView | null): string[
   text("status", submitted.status, task.status);
   text("priority", submitted.priority, task.priority);
   text("milestone", submitted.milestone, task.milestone);
+  if (submitted.assignee !== undefined && !sameSet([submitted.assignee], task.assignee)) {
+    // The whole list, not its first entry: a save asserts the assignee *is* the one value sent, so
+    // a re-read holding anything else — including a second entry — is a divergence.
+    diverged.push("assignee");
+  }
   text("実装計画", submitted.plan, task.implementationPlan);
   text("実装ノート", submitted.notes, task.implementationNotes);
   if (submitted.references !== undefined && !sameSet(submitted.references, task.references)) {

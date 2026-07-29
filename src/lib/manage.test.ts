@@ -74,10 +74,10 @@ function blockedReason(plan: IssuePlan): string {
 
 const READY: CliReadiness = { state: "ready", version: "1.47.1" };
 
-// --- 新規タスク作成 (doc-5 §3 task create, AC #1) ---------------------------------------------
+// --- 新規タスク作成 (doc-5 §3 task create・doc-10 §7 作成時に渡す範囲, AC #1) ------------------
 
 describe("buildTaskCreate", () => {
-  it("maps every field doc-5 §3's create row lists", () => {
+  it("maps every field the create-time range covers", () => {
     expect(
       action(
         buildTaskCreate(
@@ -103,6 +103,17 @@ describe("buildTaskCreate", () => {
         acceptanceCriteria: ["login works", "logout works"],
       },
     ]);
+  });
+
+  it("carries nothing outside the create-time range, whatever the CLI would accept", () => {
+    // The range is Atlas's, not v1.47.1's: `task create` also takes `-a`/`--plan`/`--notes`/
+    // `--ref`/`--depends-on` and stores them (doc-5 §3, 実測). Keeping the form narrower is the
+    // product judgment stated on `TaskCreateInput`, so this fixes what the operation may carry —
+    // it is not a record of a CLI limit.
+    const [operation] = action(
+      buildTaskCreate(taskInput({ description: "context", labels: ["ui"] })),
+    );
+    expect(Object.keys(operation).sort()).toEqual(["description", "labels", "op", "title"]);
   });
 
   it("omits an unset field instead of sending it empty", () => {

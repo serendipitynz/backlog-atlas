@@ -158,7 +158,8 @@ pub fn probe(cli: &dyn BacklogCli) -> CliStatus {
 // Tagged `op` and camelCase because doc-4 §3.1's wire contract is camelCase throughout.
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum UpdateOperation {
-    /// `task create` (doc-5 §3). Only the create-time fields doc-5's create row lists.
+    /// `task create` (doc-5 §3). The range Atlas passes at create time, narrower than what the CLI
+    /// accepts — a product judgment, not a CLI limit (see [`TaskCreate`], doc-10 §7).
     TaskCreate(TaskCreate),
     /// `task edit` (doc-5 §3): all combinable content/metadata edits in one call.
     #[serde(rename_all = "camelCase")]
@@ -210,8 +211,17 @@ pub enum UpdateOperation {
     MilestoneArchive { name: String },
 }
 
-/// `task create` fields (doc-5 §3 create row). Deliberately narrower than [`TaskEdit`]: doc-5's
-/// create map does not include plan/notes/dependencies/references, which are edit-time operations.
+/// `task create` fields — the range Atlas passes at create time (doc-5 §3, doc-10 §7).
+///
+/// Narrower than what the CLI accepts, by product judgment rather than by capability: v1.47.1's
+/// `task create` also takes `-a`/`--plan`/`--notes`/`--ref`/`--depends-on` and stores every one of
+/// them in the created file (measured 2026-07-29, doc-5 §3). What Atlas passes here is what
+/// identifies and classifies a task at the moment it is created; plan・notes・references・
+/// dependencies accrue while the work runs and are edited through [`TaskEdit`] (doc-8 §6), so
+/// offering them at create time would only move the same input earlier. assignee is the one
+/// omission with no create-time substitute, and is closed on the edit side instead
+/// ([`TaskEdit::assignee`], TASK-57) — assignment changes over a task's life, and a create-only
+/// route would set it once and never again.
 #[derive(Debug, Clone, Default, Deserialize)]
 // Only `title` is required — `task create` needs a title and nothing else (doc-5 §3). The rest
 // default so the frontend sends just what the user filled in, rather than a full null-padded record.
@@ -245,6 +255,13 @@ pub struct TaskEdit {
     pub status: Option<String>,
     pub priority: Option<String>,
     pub milestone: Option<String>,
+    /// `--assignee` (doc-5 §3). One value rather than a set, and the whole GUI route for assignee
+    /// (TASK-57): v1.47.1 takes a single assignee — a repeated `-a` keeps only the last, a
+    /// comma-separated value lands as one literal entry, and the write replaces the whole
+    /// frontmatter list however many entries it had (measured 2026-07-29). `Some(blank)` is refused
+    /// — `-a ""` exits 0 without clearing (measured), the same silent-no-op as `--ref ""`, so
+    /// unassigning is not a capability the CLI offers ([`RejectReason::EmptyAssignee`]).
+    pub assignee: Option<String>,
     pub plan: Option<String>,
     pub notes: NoteEdit,
     pub add_labels: Vec<String>,
@@ -453,6 +470,7 @@ fn allowed_options(command: &[&str]) -> &'static [&'static str] {
             "--status",
             "--priority",
             "--milestone",
+            "--assignee",
             "--add-label",
             "--remove-label",
             "--ac",
@@ -487,6 +505,10 @@ pub enum RejectReason {
     /// same silent-no-op as `--ref ""`, so clearing all dependencies is not offered — refused rather
     /// than reported as a success (doc-5 §5 縮退).
     EmptyDependencies,
+    /// `assignee` was `Some(blank)`. `-a ""` exits 0 without clearing (measured), the same
+    /// silent-no-op as `--ref ""`, so unassigning is not offered — refused rather than reported as
+    /// a success (doc-5 §5 縮退).
+    EmptyAssignee,
     /// A `task edit` that would set no field. `task edit` with only a taskId changes nothing, so it
     /// is refused instead of launched (doc-5 §5).
     NothingToEdit,
@@ -511,6 +533,10 @@ impl std::fmt::Display for RejectReason {
             RejectReason::EmptyDependencies => write!(
                 f,
                 "dependencies cannot be cleared through the CLI (v1.47.1); keep at least one dependency"
+            ),
+            RejectReason::EmptyAssignee => write!(
+                f,
+                "assignee cannot be cleared through the CLI (v1.47.1); pass a non-blank assignee"
             ),
             RejectReason::NothingToEdit => write!(f, "task edit was requested with no field to change"),
             RejectReason::NothingToUpdate => {
@@ -609,6 +635,16 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
         .opt_if("--priority", &edit.priority)
         .opt_if("--milestone", &edit.milestone)
         .opt_if("--plan", &edit.plan);
+
+    if let Some(assignee) = &edit.assignee {
+        // 解除は不可 (measured): `-a ""` exits 0 without clearing, so a blank value is refused
+        // rather than reported as a success (doc-5 §5 縮退, same trap as `--ref ""`). Whitespace is
+        // refused with it — the CLI would write it as the assignee, and could not then clear it.
+        if assignee.trim().is_empty() {
+            return Err(RejectReason::EmptyAssignee);
+        }
+        inv = inv.opt("--assignee", assignee.clone());
+    }
 
     inv = match &edit.notes {
         NoteEdit::Keep => inv,
@@ -1110,7 +1146,10 @@ mod tests {
     // --- AC #1: the operation map ------------------------------------------------------------
 
     #[test]
-    fn task_create_maps_every_create_field() {
+    fn task_create_maps_the_create_time_range_atlas_passes() {
+        // The range is Atlas's, not the CLI's: v1.47.1 `task create` also accepts `-a`/`--plan`/
+        // `--notes`/`--ref`/`--depends-on` (doc-5 §3). Every field this struct can hold reaches the
+        // argv; the ones it cannot hold are a product judgment stated on [`TaskCreate`].
         let cli = FakeCli::supported();
         run_one(
             UpdateOperation::TaskCreate(TaskCreate {
@@ -1514,6 +1553,50 @@ mod tests {
     }
 
     #[test]
+    fn task_edit_sets_the_assignee_as_one_value() {
+        // The GUI route for assignee is the edit side (TASK-57): one value, since a repeated `-a`
+        // keeps only the last and a comma-separated value becomes one literal entry (measured).
+        let cli = FakeCli::supported();
+        run_one(
+            UpdateOperation::TaskEdit {
+                task_id: "TASK-1".to_string(),
+                edit: TaskEdit {
+                    assignee: Some("@takkyun".to_string()),
+                    ..Default::default()
+                },
+            },
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(
+            cli.calls(),
+            vec![vec!["task", "edit", "TASK-1", "--assignee", "@takkyun"]]
+        );
+    }
+
+    #[test]
+    fn a_blank_assignee_is_refused_rather_than_silently_ignored() {
+        // `-a ""` exits 0 without clearing (measured), so issuing it would report an unassignment
+        // that never happened. Whitespace is refused with it — the CLI would write it verbatim.
+        let cli = FakeCli::supported();
+        for blank in ["", "   "] {
+            let err = run_one(
+                UpdateOperation::TaskEdit {
+                    task_id: "TASK-1".to_string(),
+                    edit: TaskEdit {
+                        assignee: Some(blank.to_string()),
+                        ..Default::default()
+                    },
+                },
+                &cli,
+            )
+            .unwrap_err();
+            assert_eq!(err, RejectReason::EmptyAssignee);
+        }
+        assert!(cli.calls().is_empty());
+    }
+
+    #[test]
     fn an_empty_task_edit_is_refused() {
         let cli = FakeCli::supported();
         let err = run_one(
@@ -1580,6 +1663,7 @@ mod tests {
                     status: Some("Done".to_string()),
                     priority: Some("low".to_string()),
                     milestone: Some("m-1".to_string()),
+                    assignee: Some("@takkyun".to_string()),
                     plan: Some("p".to_string()),
                     notes: NoteEdit::Set("n".to_string()),
                     add_labels: vec!["a".to_string()],
