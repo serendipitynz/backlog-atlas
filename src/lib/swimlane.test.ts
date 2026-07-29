@@ -5,6 +5,8 @@ import {
   CANONICAL_COLUMNS,
   buildSwimlane,
   compareCards,
+  laneNeighbourLabel,
+  laneNeighbours,
   type SwimlaneRow,
 } from "./swimlane";
 import { cardIdentity, crossTaskId } from "./card";
@@ -281,5 +283,78 @@ describe("AC #5/#6 rows: unreadable, empty, hidden, reordered", () => {
     expect(atlas.cells).toHaveLength(CANONICAL_COLUMNS.length);
     expect(atlas.cells.every((cell) => cell.tasks.length === 0)).toBe(true);
     expect(atlas.totalBeforeFilter).toBe(1);
+  });
+});
+
+// TASK-54: 前後移動 (doc-8 §2.2) reads the grid as drawn, so its tests live with the grid's.
+describe("AC #5 同一レーンセル内の前後タスクへ位置つきで移れる", () => {
+  const cell = [
+    taskView({ id: "TASK-1", sourcePath: "a.md", priority: "high" }),
+    taskView({ id: "TASK-2", sourcePath: "b.md", ordinal: 1 }),
+    taskView({ id: "TASK-3", sourcePath: "c.md", ordinal: 2 }),
+  ];
+
+  it("names the position in the cell and the tasks either side, in the cell's own order", () => {
+    const rows = swimlane(["atlas"], loadMap(loaded("atlas", cell)));
+    const middle = laneNeighbours(rows, { slug: "atlas", sourcePath: "b.md" });
+
+    expect(middle).not.toBeNull();
+    expect(middle!.group).toEqual({ kind: "column", column: "toDo" });
+    expect(middle!.position).toBe(2);
+    expect(middle!.total).toBe(3);
+    expect(middle!.previous?.task.id).toBe("TASK-1");
+    expect(middle!.next?.task.id).toBe("TASK-3");
+    expect(laneNeighbourLabel(middle!)).toBe("To Do セル内 2 / 3 件");
+  });
+
+  it("has no previous at the head and no next at the tail", () => {
+    const rows = swimlane(["atlas"], loadMap(loaded("atlas", cell)));
+    expect(laneNeighbours(rows, { slug: "atlas", sourcePath: "a.md" })?.previous).toBeNull();
+    expect(laneNeighbours(rows, { slug: "atlas", sourcePath: "c.md" })?.next).toBeNull();
+  });
+
+  it("moves within one cell only — a task in another column is not a neighbour", () => {
+    const rows = swimlane(
+      ["atlas"],
+      loadMap(
+        loaded("atlas", [
+          taskView({ id: "TASK-1", sourcePath: "a.md", column: "toDo" }),
+          taskView({ id: "TASK-2", sourcePath: "b.md", column: "inProgress" }),
+        ]),
+      ),
+    );
+
+    const first = laneNeighbours(rows, { slug: "atlas", sourcePath: "a.md" });
+    expect(first?.total).toBe(1);
+    expect(first?.next).toBeNull();
+  });
+
+  it("counts the 未対応区画 as its own run of cards, named apart from a canonical column", () => {
+    const rows = swimlane(
+      ["atlas"],
+      loadMap(
+        loaded("atlas", [
+          taskView({ id: "TASK-1", sourcePath: "a.md", column: null }),
+          taskView({ id: "TASK-2", sourcePath: "b.md", column: null }),
+        ]),
+      ),
+    );
+
+    const first = laneNeighbours(rows, { slug: "atlas", sourcePath: "a.md" });
+    expect(first?.group).toEqual({ kind: "unmapped" });
+    expect(laneNeighbourLabel(first!)).toBe("未対応 セル内 1 / 2 件");
+    expect(first?.next?.task.id).toBe("TASK-2");
+  });
+
+  it("gives no neighbours for a task the grid is not showing (filtered, hidden or unreadable)", () => {
+    const loads = loadMap(loaded("atlas", cell));
+    const filtered = swimlane(["atlas"], loads, { text: "no such task" });
+    expect(laneNeighbours(filtered, { slug: "atlas", sourcePath: "b.md" })).toBeNull();
+
+    const hidden = swimlane(["atlas"], loads, {}, ["atlas"]);
+    expect(laneNeighbours(hidden, { slug: "atlas", sourcePath: "b.md" })).toBeNull();
+
+    const broken = swimlane(["atlas"], loadMap(unreadable("atlas")), {});
+    expect(laneNeighbours(broken, { slug: "atlas", sourcePath: "b.md" })).toBeNull();
   });
 });

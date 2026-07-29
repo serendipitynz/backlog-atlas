@@ -170,6 +170,75 @@ function buildRow(
   };
 }
 
+// --- 前後移動 (doc-8 §2.2) ------------------------------------------------------------------
+
+/**
+ * Where one task sits among the cards it is shown beside, and which cards those neighbours are
+ * (doc-8 §2.2 前後移動). Computed from the built rows rather than from the snapshot, so the move
+ * follows exactly what the grid shows: the same filter, the same 安定並び (§5.4), the same row.
+ */
+export interface LaneNeighbours {
+  /**
+   * The group the task is in. 未対応区画 is not a レーンセル (doc-7 §1 makes a cell a row × a
+   * canonical column), but it is the run of cards the task is actually shown in — so moving through
+   * it is the same operation, and naming it apart keeps the position label honest.
+   */
+  group: { kind: "column"; column: StatusColumn } | { kind: "unmapped" };
+  /** 1-based position within the group, and how many cards it holds — doc-8 §2.2's セル内 n / m 件. */
+  position: number;
+  total: number;
+  previous: TaskView | null;
+  next: TaskView | null;
+}
+
+/**
+ * Find one task's neighbours in the grid as drawn. `null` when the task is not on the grid at all —
+ * its row is hidden or unreadable, or the filter took the card away — which is a state the panel
+ * states rather than a move it offers: the detail panel can be open on a task the grid is not
+ * currently showing, and inventing an order for cards that are not there would move the user to a
+ * task they cannot see.
+ */
+export function laneNeighbours(
+  rows: readonly SwimlaneRow[],
+  ref: { slug: string; sourcePath: string },
+): LaneNeighbours | null {
+  const row = rows.find((candidate) => candidate.slug === ref.slug);
+  if (row === undefined || row.state !== "loaded") return null;
+  const groups: { group: LaneNeighbours["group"]; tasks: TaskView[] }[] = [
+    ...row.cells.map((cell) => ({
+      group: { kind: "column" as const, column: cell.column },
+      tasks: cell.tasks,
+    })),
+    { group: { kind: "unmapped" as const }, tasks: row.unmapped },
+  ];
+  for (const { group, tasks } of groups) {
+    const at = tasks.findIndex((view) => view.task.sourcePath === ref.sourcePath);
+    if (at === -1) continue;
+    return {
+      group,
+      position: at + 1,
+      total: tasks.length,
+      previous: tasks[at - 1] ?? null,
+      next: tasks[at + 1] ?? null,
+    };
+  }
+  return null;
+}
+
+/** doc-8 §2.2 の位置表示: which cell, and where in it. */
+export function laneNeighbourLabel(neighbours: LaneNeighbours): string {
+  const where =
+    neighbours.group.kind === "column"
+      ? CANONICAL_COLUMN_LABEL[neighbours.group.column]
+      : "未対応";
+  return `${where} セル内 ${neighbours.position} / ${neighbours.total} 件`;
+}
+
+/** Why 前後移動 is not offered, when it is not (doc-11 §5: a withheld control says why). */
+export const NO_LANE_CELL_REASON =
+  "このタスクは今のスイムレーンに出ていないため（行の非表示・ルート読取不能・絞り込みのいずれか）、" +
+  "前後のタスクを決められません。";
+
 /**
  * The reason a row has no cards. Only ルート読取不能 and the ledger-level failures can reach a
  * row, so the detail-carrying variants are spelled out and the rest degrade to their tag

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   acProgress,
+  commitCountLine,
   commitList,
   degradeSummary,
   dependencyLinks,
   milestoneRef,
   referenceSplit,
   relationAvailability,
+  relationLine,
   type HistoryState,
 } from "./detail";
 import { CANONICAL_COLUMN_LABEL } from "./swimlane";
@@ -149,6 +151,33 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
     const notRead = relationAvailability(entry("atlas"), { state: "noTaskId" });
     if (notRead.state !== "notRead") throw new Error("expected an unattempted read");
     expect(notRead.detail).toContain("TASK-ID");
+  });
+
+  // TASK-54 / doc-8 §5: the narrow placements say the same things in one line each.
+  it("states the commit count in one line, without folding the absences together", () => {
+    const twoCommits = commitList(
+      loaded(history({ commits: { state: "searched", commits: [commit("a", "x"), commit("b", "y")] } })),
+    );
+    expect(commitCountLine(twoCommits)).toEqual({ text: "コミット 2 件", kind: "neutral" });
+
+    // 該当なし stays neutral, 対象不在 stays a setting, a failed read stays a failure (decision-6).
+    expect(commitCountLine({ state: "noCommits" }).kind).toBe("neutral");
+    expect(commitCountLine({ state: "noRepository", projectRoot: "/repos/x" }).kind).toBe("setting");
+    expect(commitCountLine({ state: "unreadable", detail: "git is unavailable" }).kind).toBe(
+      "failure",
+    );
+    expect(commitCountLine({ state: "noTaskId" }).kind).toBe("setting");
+  });
+
+  it("replaces 関連 PR の件数 with its state, since an unresolved relation has no count", () => {
+    // doc-8 §5 asks the narrow placements for 関連 PR m 件; doc-6 §6 leaves the resolution
+    // unimplemented, so every m would be 0 and would read as 関連が無い — which doc-8 §5 forbids.
+    const determined = relationLine({ state: "hostDetermined", host: "gitHub: a/b" });
+    expect(determined.text).toContain("未実装");
+    expect(relationLine({ state: "remoteAbsent" }).text).toContain("remote 不在");
+    expect(relationLine({ state: "hostUndetermined" }).kind).toBe("setting");
+    expect(relationLine({ state: "notRead", detail: "未照会" }).text).toContain("未照会");
+    expect(relationLine({ state: "loading" }).kind).toBe("neutral");
   });
 });
 
