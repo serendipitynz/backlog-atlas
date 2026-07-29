@@ -47,7 +47,7 @@
     onreread,
   }: Props = $props();
 
-  // 未対応区画は常設ではない (doc-7 §5): the column appears only while some row has a task in
+  // 未対応区画は常設ではない (doc-7 §2.2): the column appears only while some row has a task in
   // it, and disappears again once none does.
   let hasUnmapped = $derived(
     rows.some((row) => row.state === "loaded" && row.unmapped.length > 0),

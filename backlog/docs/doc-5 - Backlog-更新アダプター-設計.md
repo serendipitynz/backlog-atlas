@@ -3,7 +3,7 @@ id: doc-5
 title: Backlog 更新アダプター 設計
 type: specification
 created_date: '2026-07-21 10:05'
-updated_date: '2026-07-24 10:17'
+updated_date: '2026-07-29 02:58'
 ---
 # Backlog 更新アダプター 設計
 
@@ -34,8 +34,8 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 | 更新操作 | サブコマンド | 主な引数（配列要素） |
 |---|---|---|
-| タスク作成 | `task create` | `<title>`、`-d <description>`、`-s <status>`、`-l <labels>`、`--priority <p>`、`-m <milestone>`、`--ac <criteria>`（複数可） |
-| タスク編集（内容） | `task edit` | `<taskId>`、`-t <title>`、`-d <description>`、`--priority <p>`、`-m <milestone>` |
+| タスク作成 | `task create` | `<title>`、`-d <description>`、`-s <status>`、`-l <labels>`、`--priority <p>`、`-m <milestone>`、`--ac <criteria>`（複数可）、`-a <assignee>`、`--plan <text>`、`--notes <text>`、`--ref <reference>`（複数可）、`--depends-on <taskIds>` |
+| タスク編集（内容） | `task edit` | `<taskId>`、`-t <title>`、`-d <description>`、`--priority <p>`、`-m <milestone>`、`-a <assignee>` |
 | タスク status 変更 | `task edit` | `<taskId>`、`-s <status>` |
 | ラベル増減 | `task edit` | `<taskId>`、`--add-label <label>` / `--remove-label <label>` |
 | AC 増減・チェック | `task edit` | `<taskId>`、`--ac <text>` / `--remove-ac <index>` / `--check-ac <index>` / `--uncheck-ac <index>` |
@@ -55,6 +55,9 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | マイルストーン削除 | `milestone remove` | `<name>`、`--task-handling <clear\|keep\|reassign>`、reassign 時 `--reassign-to <milestone>` |
 | マイルストーンアーカイブ | `milestone archive` | `<name>` |
 
+- **作成時に渡せる引数（2026-07-29 訂正）**: 本書の初版はタスク作成を title・description・status・labels・priority・milestone・AC に限ると記述していたが、v1.47.1 の `task create` は `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` も受け取り、作成された管理ファイルへ保存する（一時プロジェクトで作成し `task view` で全項目の保持を確認）。上表の作成行はこの実測に合わせている。**GUI が作成フォームで受け取る範囲は、CLI が受け取れる範囲より狭くてよい**が、その場合に書く理由は「CLI に手段が無い」ではなく製品判断である（doc-10 §7）。境界の型と作成フォームの範囲を本訂正へ揃えるのは TASK-57。
+- **assignee の写像（2026-07-29 訂正）**: `task create` と `task edit` はいずれも `-a <assignee>` を受け取る（実測）。本書の初版は作成行・編集行のどちらにも書いていなかったため、現行の `TaskEdit` 型にも assignee のフィールドが無く、GUI から assignee を設定・変更する経路が存在しない。上表に加えたのはこの穴を閉じるためで、どの画面が assignee を扱うかは TASK-57 で決める。
+- **`-s <status>` の検査**: `-s` は対象プロジェクトの `config.yml` の `statuses` に宣言済みの値だけを受け取る。未宣言の値は `Invalid status: <値>. Valid statuses are: …` を出して終了コード 1 で失敗する（実測）。省略時は `default_status` が入る。正準ステータス列名（decision-4）と宣言済み status は一致するとは限らない点に注意する。`backlog init --defaults` が宣言するのは `To Do` / `In Progress` / `Done` の 3 つで、`In Review` は宣言されない（実測）。列から作成時の status を決める規則は doc-7 §4.1。
 - 操作写像は「1 更新操作 → 1 サブコマンド呼び出し」を基本とする。1 画面操作が複数フィールドを同時に変える場合は、`task edit`・`doc update` の複数オプションを 1 呼び出しにまとめられる範囲でまとめ、まとめられない操作（別サブコマンドが要る）だけ複数回に分ける。
 - **参照の全置換（`--ref`）**: v1.47.1 の `task edit --ref` は、渡した**非空**の参照集合で**全置換**する（既存へ追加ではない）。アダプターは、読み取り層（doc-4）が持つ現在の参照を基に、追加・削除後の**全集合**を組み立てて渡す。1 件だけ加える PR URL 登録（doc-8）でも、既存参照を含めた全集合を `--ref` へ渡す。ただし空集合へはできず（`--ref ""` で消えない、3.1）、最後の 1 件を消す操作は CLI から提供しない。`--content`（`doc update`、本文全置換）も単一オプションで全置換する。
 - **依存の全置換（`--depends-on`）**: v1.47.1 の `task edit --depends-on` は、渡した非空集合でカンマ区切り全置換する（既存へ追加ではない）。`--ref` と同様に空集合へはできず、`--depends-on ""` は終了コード 0 を返すだけで既存依存を消さない（実測）。加えて各値に `task_prefix` を前置して実在検証するため、`none` 等のセンチネルは不在エラーになる。最後の 1 件を消して依存を空にする操作は CLI から提供しない（3.1）。
