@@ -11,7 +11,7 @@
  *
  * | term | here | is |
  * |---|---|---|
- * | doc-5 §3 task create 写像 | [`TaskCreateInput`] + [`buildTaskCreate`] | the 新規タスク作成 form and the operation it issues |
+ * | doc-10 §7 作成時に渡す範囲 | [`TaskCreateInput`] + [`buildTaskCreate`] | the 新規タスク作成 form and the `task create` it issues |
  * | doc-5 §3 doc create 写像 | [`DocCreateInput`] + [`buildDocCreate`] | the 文書作成 form and its operation |
  * | doc-5 §3.2 文書更新（本文全置換） | [`DocSession`] + [`buildDocUpdate`] | the 文書更新 session and its operation |
  * | doc-5 §3 milestone add 写像 | [`MilestoneAddInput`] + [`buildMilestoneAdd`] | the マイルストーン作成 form and its operation |
@@ -93,12 +93,20 @@ function firstWithComma(values: readonly string[]): string | undefined {
   return values.find((value) => value.includes(","));
 }
 
-// --- 新規タスク作成 (doc-5 §3 task create, AC #1) ----------------------------------------------
+// --- 新規タスク作成 (doc-5 §3 task create・doc-10 §7 作成時に渡す範囲, AC #1) ------------------
 
 /**
- * The 新規タスク作成 form. Exactly doc-5 §3's create row — title・description・status・labels・
- * priority・milestone・AC — and nothing else: plan/notes/dependencies/references are edit-time
- * operations, so offering them here would promise a create the CLI does not have.
+ * The 新規タスク作成 form: the range Atlas passes at create time (doc-10 §7) — title・description・
+ * status・labels・priority・milestone・AC.
+ *
+ * Narrower than what the CLI accepts, and narrowed by product judgment rather than by capability:
+ * v1.47.1's `task create` also takes `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` and stores
+ * them in the created file (doc-5 §3, 2026-07-29 実測). The form holds what identifies and
+ * classifies a task at the moment it is created; plan・notes・references・dependencies accrue while
+ * the work runs and are edited from タスク詳細 (doc-8 §6), so a field here would only move the same
+ * input earlier. assignee is the one omission with no create-time substitute, and is closed on the
+ * edit side instead (`EditDraft.assignee`, TASK-57) — assignment changes over a task's life, and a
+ * create-only route would set it once and never again.
  */
 export interface TaskCreateInput {
   title: string;

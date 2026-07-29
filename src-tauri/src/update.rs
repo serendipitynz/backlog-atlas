@@ -158,7 +158,8 @@ pub fn probe(cli: &dyn BacklogCli) -> CliStatus {
 // Tagged `op` and camelCase because doc-4 §3.1's wire contract is camelCase throughout.
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum UpdateOperation {
-    /// `task create` (doc-5 §3). Only the create-time fields doc-5's create row lists.
+    /// `task create` (doc-5 §3). The range Atlas passes at create time, narrower than what the CLI
+    /// accepts — a product judgment, not a CLI limit (see [`TaskCreate`], doc-10 §7).
     TaskCreate(TaskCreate),
     /// `task edit` (doc-5 §3): all combinable content/metadata edits in one call.
     #[serde(rename_all = "camelCase")]
@@ -210,8 +211,17 @@ pub enum UpdateOperation {
     MilestoneArchive { name: String },
 }
 
-/// `task create` fields (doc-5 §3 create row). Deliberately narrower than [`TaskEdit`]: doc-5's
-/// create map does not include plan/notes/dependencies/references, which are edit-time operations.
+/// `task create` fields — the range Atlas passes at create time (doc-5 §3, doc-10 §7).
+///
+/// Narrower than what the CLI accepts, by product judgment rather than by capability: v1.47.1's
+/// `task create` also takes `-a`/`--plan`/`--notes`/`--ref`/`--depends-on` and stores every one of
+/// them in the created file (measured 2026-07-29, doc-5 §3). What Atlas passes here is what
+/// identifies and classifies a task at the moment it is created; plan・notes・references・
+/// dependencies accrue while the work runs and are edited through [`TaskEdit`] (doc-8 §6), so
+/// offering them at create time would only move the same input earlier. assignee is the one
+/// omission with no create-time substitute, and is closed on the edit side instead
+/// ([`TaskEdit::assignee`], TASK-57) — assignment changes over a task's life, and a create-only
+/// route would set it once and never again.
 #[derive(Debug, Clone, Default, Deserialize)]
 // Only `title` is required — `task create` needs a title and nothing else (doc-5 §3). The rest
 // default so the frontend sends just what the user filled in, rather than a full null-padded record.
@@ -1136,7 +1146,10 @@ mod tests {
     // --- AC #1: the operation map ------------------------------------------------------------
 
     #[test]
-    fn task_create_maps_every_create_field() {
+    fn task_create_maps_the_create_time_range_atlas_passes() {
+        // The range is Atlas's, not the CLI's: v1.47.1 `task create` also accepts `-a`/`--plan`/
+        // `--notes`/`--ref`/`--depends-on` (doc-5 §3). Every field this struct can hold reaches the
+        // argv; the ones it cannot hold are a product judgment stated on [`TaskCreate`].
         let cli = FakeCli::supported();
         run_one(
             UpdateOperation::TaskCreate(TaskCreate {
