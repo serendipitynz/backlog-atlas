@@ -1,0 +1,29 @@
+---
+id: TASK-46
+title: アプリ設定ファイルの読み書きと設定画面を実装する
+status: To Do
+assignee: []
+created_date: '2026-07-28 23:14'
+updated_date: '2026-07-28 23:18'
+labels:
+  - 'kind:feature'
+milestone: m-1
+dependencies: []
+ordinal: 46000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+decision-13 は、台帳エントリに属さない画面の既定値を、台帳ファイルとは別の単一ファイル `app_config_dir()/settings.toml` へ持つと決めた。現時点の Atlas が再起動をまたいで残す記録は台帳ファイルだけで、表示テーマ（TASK-47）・カード情報量（TASK-49）・既定の詳細配置（TASK-54）が載る先が無い。本タスクはその基盤を作る。読み書きは decision-9 で採用済みの `toml` crate で行い、新規依存を増やさない。台帳ファイルと同じ縮退規則（未知の上位版は読み取り専用）を持たせ、設定が読めないことを理由に画面を止めない（設定は表示の既定値であり、読み取りの前提ではない）。設定画面はスイムレーンの固定ヘッダから開く（doc-7 §2.1）。
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 settings.toml の読み書きを実装し、schema_version が未知の上位版のときは読み取り専用へ縮退して上書きしない
+- [ ] #2 ファイル不在・破損時は既定値で起動して画面を止めず、既定値で動いている旨を告げる
+- [ ] #3 decision-13 が挙げる項目を型として持ち、Tauri コマンド境界から読み書きできる
+- [ ] #4 固定ヘッダの「設定」から設定画面を開き、変更した値が次回起動後も残る
+- [ ] #5 列折畳み・行折畳み・行非表示は本ファイルへ保存しない（decision-13 の一時状態）
+- [ ] #6 外部エディタ指定を設定として持ち、外部エディタ経路の起動指定が「アプリ設定 → $VISUAL → $EDITOR」の順で解決する（doc-8 §7）
+<!-- AC:END -->
