@@ -43,8 +43,15 @@
     loaded: LoadedSettings | null;
     /** Where `settings.toml` is — shown because it is Atlas's own file and hand-editable. */
     path: string | null;
-    /** Persist the draft. Resolves with the failure's text, or `null` on success. */
-    onsave: (settings: AppSettings) => Promise<string | null>;
+    /**
+     * Persist the draft. Resolves with the failure's text, or `null` on success.
+     *
+     * A *change* against the settings current at write time, not a snapshot: アプリ設定 has a second
+     * writer (the 詳細配置 switch, doc-8 §2.2), and by the time this save reaches the file that writer's
+     * value may already be in it. Only this form knows which fields are its own to impose — the ones
+     * the user edited — so it decides that here rather than sending the whole document blind.
+     */
+    onsave: (change: (current: AppSettings) => AppSettings) => Promise<string | null>;
     onclose: () => void;
   }
 
@@ -149,12 +156,18 @@
 
   async function save(): Promise<void> {
     if (pending === null || !availability.enabled || saving) return;
+    // `pending`, not `draft`: the editor fields are part of the value being saved, and they are only
+    // folded in there. A half-typed program is never the 起動指定 in force all the same — this is the
+    // one place anything is written.
+    //
+    // Both are read before the await: the value is the one the user pressed 保存 on, and the baseline is
+    // what says which of its fields they edited. `mergeDraft` then imposes only those on whatever the
+    // settings are when the write is issued, so a 詳細配置 stored in the meantime survives this save.
+    const value = $state.snapshot(pending);
+    const base = baseline;
     saving = true;
     try {
-      // `pending`, not `draft`: the editor fields are part of the value being saved, and they are only
-      // folded in there. A half-typed program is never the 起動指定 in force all the same — this is the
-      // one place anything is written.
-      failure = await onsave($state.snapshot(pending));
+      failure = await onsave((current) => (base === null ? value : mergeDraft(base, value, current)));
     } finally {
       saving = false;
     }

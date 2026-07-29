@@ -61,6 +61,7 @@
     type VersionConflict,
   } from "./lib/mark";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
+  import { createSettingsWriter } from "./lib/settings-write";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, laneNeighbours, unreadableDetail } from "./lib/swimlane";
   import type {
@@ -479,21 +480,12 @@
 
   async function applyPlacement(next: DetailPlacement): Promise<void> {
     placement = next;
-    const current = settings;
-    if (current === null) {
-      placementFailure = "設定をまだ読み込めていないため、既定として保存していません";
-      return;
-    }
-    if (current.settings.default_detail_placement === next) {
-      placementFailure = null;
-      return;
-    }
-    try {
-      applySettings(await settingsSave({ ...current.settings, default_detail_placement: next }));
-      placementFailure = null;
-    } catch (error) {
-      placementFailure = unreadableDetail(asCommandError(error));
-    }
+    // Only this one field is imposed; everything else comes from the settings as they are when the
+    // write is issued, so a form save that landed in between is not carried back to its old values.
+    placementFailure = await writeSettings((current) => ({
+      ...current,
+      default_detail_placement: next,
+    }));
   }
 
   function sameStorage(a: readonly string[], b: readonly string[]): boolean {
@@ -501,31 +493,44 @@
   }
 
   /**
+   * Write アプリ設定 as a *change to whatever is current*, one write at a time (`settings-write.ts` says
+   * why: `settings.toml` is one document with two writers on screen at once). Held here beside the state
+   * it reads and adopts.
+   */
+  const writeSettings = createSettingsWriter({
+    peek: () => untrack(() => settings?.settings ?? null),
+    save: settingsSave,
+    adopt: applySettings,
+    describeError: (error) => unreadableDetail(asCommandError(error)),
+  });
+
+  /**
    * Persist アプリ設定 (AC #3) and make the change take effect now. Returns the failure text, or `null`
-   * on success — the 設定画面 states it, the shell only owns the consequences.
+   * on success — the 設定画面 states it, the shell only owns the consequences. The 設定画面 hands in a
+   * change rather than a value for the reason above: by the time its 保存 reaches the file, another
+   * writer's value may already be in it, and only the form knows which fields are its own to impose.
    *
    * 継続検出 is the one item with a consequence beyond the value: turning it off has to stop the watches
    * that are already running (otherwise the setting would only take effect on the next start, while
    * the screen already says the rows are stale), and turning it on has to start them for every open
    * root.
    */
-  async function saveSettings(next: AppSettings): Promise<string | null> {
+  async function saveSettings(
+    change: (current: AppSettings) => AppSettings,
+  ): Promise<string | null> {
+    const before = watchEnabled;
+    const failure = await writeSettings(change);
+    if (failure !== null) return failure;
+    if (before !== watchEnabled) await reconcileWatches();
+    // 起動指定の解決順 starts at アプリ設定 (doc-8 §7), so the probe's answer changes with this save.
+    // Re-probed here rather than left until the next start: the panel names the editor it would
+    // launch, and a stale name would say `$EDITOR` while the launch used the setting just typed.
     try {
-      const before = watchEnabled;
-      applySettings(await settingsSave(next));
-      if (before !== watchEnabled) await reconcileWatches();
-      // 起動指定の解決順 starts at アプリ設定 (doc-8 §7), so the probe's answer changes with this save.
-      // Re-probed here rather than left until the next start: the panel names the editor it would
-      // launch, and a stale name would say `$EDITOR` while the launch used the setting just typed.
-      try {
-        editorReadiness = await editorProbe();
-      } catch (error) {
-        notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
-      }
-      return null;
+      editorReadiness = await editorProbe();
     } catch (error) {
-      return unreadableDetail(asCommandError(error));
+      notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
+    return null;
   }
 
   /** Bring every registered root's watch in line with 継続検出の可否 (doc-9 §3.1). */
