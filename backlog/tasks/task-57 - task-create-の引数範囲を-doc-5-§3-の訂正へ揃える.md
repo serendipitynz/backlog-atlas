@@ -4,6 +4,7 @@ title: task create の引数範囲を doc-5 §3 の訂正へ揃える
 status: To Do
 assignee: []
 created_date: '2026-07-29 00:22'
+updated_date: '2026-07-29 02:58'
 labels:
   - 'kind:bug'
 milestone: m-1
@@ -28,4 +29,5 @@ doc-5 §3 の作成行は、設計時（TASK-9）にタスク作成を title・d
 - [ ] #2 「CLI に create の手段が無い」という記述をコード・画面文言から除去する
 - [ ] #3 範囲を広げる項目があれば境界の型・引数配列の組み立て・フォームまで通す
 - [ ] #4 作成に plan・notes・依存・参照が渡せないことを前提にした既存試験を訂正する
+- [ ] #5 assignee の GUI 経路を作成側か編集側のどちらで閉じるかを決め、決めた側の型（TaskCreate または TaskEdit）と引数配列へ通す（doc-5 §3・doc-10 §7）
 <!-- AC:END -->
