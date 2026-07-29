@@ -10,6 +10,7 @@
   import {
     CARD_DENSITY_LABEL,
     DETAIL_PLACEMENT_LABEL,
+    DETAIL_PLACEMENT_NOTE,
     NO_RECORDED_THEME_REASON,
     PENDING_CONSUMER_NOTE,
     RECORDED_THEMES,
@@ -223,7 +224,7 @@
           {label}
         </label>
       {/each}
-      <p class="hint">{PENDING_CONSUMER_NOTE}</p>
+      <p class="hint">{DETAIL_PLACEMENT_NOTE}</p>
     </section>
 
     <section>

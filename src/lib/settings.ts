@@ -73,12 +73,20 @@ export const NO_RECORDED_THEME_REASON =
 
 /**
  * What the screen says when this item's value is stored but nothing reads it yet. decision-13 puts all
- * six items in this file, while the screens that consume three of them are separate work (表示テーマ・
- * カード情報量・既定の詳細配置) — so the value persists and the screen says so, rather than the control
- * being absent (which would read as "Atlas does not have this setting").
+ * six items in this file, while the screens that consume two of them are separate work (表示テーマ・
+ * カード情報量) — so the value persists and the screen says so, rather than the control being absent
+ * (which would read as "Atlas does not have this setting").
  */
 export const PENDING_CONSUMER_NOTE =
   "値は保存され、次回起動後も残ります。これを反映する画面の実装はまだです。";
+
+/**
+ * 既定の詳細配置 (doc-8 §2.2) の説明。この項目は他の設定と違い、設定画面の外からも書き換わる — タスク
+ * 詳細の切替が選んだ配置をそのまま既定として保存するためで、そのことを設定画面側でも読めるようにする。
+ */
+export const DETAIL_PLACEMENT_NOTE =
+  "起動直後にタスク詳細を開く配置です。タスク詳細の見出しで配置を切り替えると、その配置がここへ保存され" +
+  "ます（doc-8 §2.2）。ここで変えた場合、開いている詳細はそのままで、次回起動時から新しい既定になります。";
 
 /**
  * decision-13 既定値で動いている旨 (AC #6): why the values in hand are the defaults, or `null` when they

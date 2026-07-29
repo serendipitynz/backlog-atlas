@@ -40,7 +40,14 @@
   } from "./lib/commands";
   import { refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
-  import { commandErrorDetail, failureDetail, type ApplyOutcome } from "./lib/edit";
+  import {
+    DISCARD_CONFIRM_KEEP,
+    DISCARD_CONFIRM_PROCEED,
+    DISCARD_CONFIRM_QUESTION,
+    commandErrorDetail,
+    failureDetail,
+    type ApplyOutcome,
+  } from "./lib/edit";
   import type { IssueOutcome } from "./lib/manage";
   import {
     WATCH_STOPPED_BEFORE_LAUNCH,
@@ -55,10 +62,11 @@
   } from "./lib/mark";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
-  import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
+  import { buildSwimlane, laneNeighbours, unreadableDetail } from "./lib/swimlane";
   import type {
     AppSettings,
     CliReadiness,
+    DetailPlacement,
     EditorReadiness,
     LaunchMethod,
     LedgerResponse,
@@ -162,13 +170,28 @@
    */
   let manageDirty = $state(false);
   /**
-   * Where the user asked to go while a screen held 未保存入力, held until they answer (doc-8 §6.3).
-   * Screen changes are here rather than only the task selection: switching tabs unmounts the panel
-   * holding the input, which discards it just as thoroughly as opening another task does.
+   * What the user asked for while a screen held 未保存入力, held as the continuation to run once they
+   * answer the 破棄前確認 (doc-8 §6.3). One pending action rather than a tagged union of destinations,
+   * because doc-8 §6.3 puts all five routes — キャンセル・閉じる・別タスクを開く・前後移動・詳細配置の
+   * 切替 — behind the same question in the same words: what differs between them is only what happens
+   * after "はい", which is exactly what a continuation carries.
+   *
+   * Screen changes go through it too: switching tabs unmounts the panel holding the input, which
+   * discards it just as thoroughly as opening another task does.
    */
-  let pendingLeave = $state<
-    { to: "task"; slug: string; sourcePath: string } | { to: "screen"; screen: Screen } | null
-  >(null);
+  let pendingDiscard = $state<(() => void) | null>(null);
+  /**
+   * 詳細配置 (doc-8 §2.1) in force. Held by the shell rather than the panel because the placement is
+   * *where the panel goes*: beside the grid, over it, or instead of it — and only the shell can put it
+   * there. Starts from アプリ設定 (`applySettings`) and is written back on every switch (doc-8 §2.2).
+   */
+  let placement = $state<DetailPlacement>("sidebar");
+  /**
+   * Why the last switch could not be stored as the 既定, or `null`. Kept apart from `notice` because
+   * the placement did take effect — only its persistence did not — and the panel states that beside
+   * the switch, where the 既定 mark is (doc-8 §2.2).
+   */
+  let placementFailure = $state<string | null>(null);
 
   let unlisten: UnlistenFn | null = null;
 
@@ -255,6 +278,12 @@
   let selectedEntry = $derived(
     entries.find((entry) => entry.slug === selectedRef?.slug) ?? null,
   );
+  /**
+   * The open task's neighbours in the cell it is drawn in (doc-8 §2.2 前後移動). Derived from the
+   * built rows, so the move follows the grid as filtered and ordered on screen; `null` while the grid
+   * is not showing the task, which the panel states instead of offering a move.
+   */
+  let neighbours = $derived(selectedRef === null ? null : laneNeighbours(rows, selectedRef));
   /** The 版ずれ record for the open task, so the panel shows what its card shows. */
   let selectedConflict = $derived(
     selectedRef === null
@@ -409,14 +438,47 @@
    * Only 既定の保存区分 is applied to live state, and only when the filter is still the one the
    * settings put there: it is an *initial* value (doc-7 §5.2), so overwriting a filter the user has
    * since narrowed would undo their work at the moment they pressed 保存 in another panel. 継続検出の
-   * 可否 is read straight off `settings` by `watchEnabled`; the other three items are stored for the
-   * screens that consume them (表示テーマ・カード情報量・既定の詳細配置).
+   * 可否 is read straight off `settings` by `watchEnabled`; the remaining two are stored for the
+   * screens that consume them (表示テーマ・カード情報量).
+   *
+   * 既定の詳細配置 is adopted on the *first* read only. It is the placement the app opens with
+   * (doc-8 §2.2 再起動後も保つ); changing it later from the 設定画面 moves the 既定 without moving the
+   * panel, which the switch shows as 次回起動時はこちら — the alternative would re-place an open panel
+   * from another screen, and doc-8 §6.3 puts a 破棄前確認 in front of every placement change.
    */
   function applySettings(next: LoadedSettings): void {
     const previous = settings?.settings.default_storage_filter ?? DEFAULT_FILTER.storage;
     const untouched = sameStorage(filter.storage, previous);
+    const first = settings === null;
     settings = next;
+    if (first) placement = next.settings.default_detail_placement;
     if (untouched) filter = { ...filter, storage: [...next.settings.default_storage_filter] };
+  }
+
+  /**
+   * Take another 詳細配置 and make it the 既定 (doc-8 §2.2 選んだ配置はアプリ設定に保存し、再起動後も
+   * 保つ). The screen changes first and the file follows: the placement is what the user asked for, and
+   * a write that fails — decision-13 refuses to overwrite a settings file newer than this build — must
+   * not undo a change they can see. What the failure costs is the *persistence*, which the switch then
+   * states beside the 既定 mark rather than swallowing.
+   */
+  async function applyPlacement(next: DetailPlacement): Promise<void> {
+    placement = next;
+    const current = settings;
+    if (current === null) {
+      placementFailure = "設定をまだ読み込めていないため、既定として保存していません";
+      return;
+    }
+    if (current.settings.default_detail_placement === next) {
+      placementFailure = null;
+      return;
+    }
+    try {
+      applySettings(await settingsSave({ ...current.settings, default_detail_placement: next }));
+      placementFailure = null;
+    } catch (error) {
+      placementFailure = unreadableDetail(asCommandError(error));
+    }
   }
 
   function sameStorage(a: readonly string[], b: readonly string[]): boolean {
@@ -650,33 +712,47 @@
   }
 
   /**
+   * Do something that would lose 未保存入力 — now if there is none, after the 破棄前確認 if there is
+   * (doc-8 §6.3). One gate for every such route, so none of them can grow its own wording or forget
+   * to ask; the panel's キャンセル reaches it through `onconfirmDiscard`, being the one route the
+   * shell cannot carry out itself.
+   */
+  function guardDiscard(dirty: boolean, proceed: () => void): void {
+    if (dirty) pendingDiscard = proceed;
+    else proceed();
+  }
+
+  /** Take the exit the user just confirmed, discarding the panel's 未保存入力 (doc-8 §6.3). */
+  function discardConfirmed(): void {
+    const proceed = pendingDiscard;
+    pendingDiscard = null;
+    proceed?.();
+  }
+
+  /**
    * Go to another screen. Asks first while the one being left holds 未保存入力 (doc-8 §6.3): its
    * panel is unmounted on the way, so the input is gone as surely as if another task had been opened.
    */
   function goToScreen(next: Screen): void {
     if (next === screen) return;
-    if (dirtyOn(screen)) {
-      pendingLeave = { to: "screen", screen: next };
-      return;
-    }
-    screen = next;
+    guardDiscard(dirtyOn(screen), () => {
+      // The panel holding the input is unmounted from here, so its `ondirty` will not run again to
+      // retract the flag. The task selection itself is kept: coming back reopens the task, with a
+      // fresh 編集セッション.
+      if (screen === "swimlane") detailDirty = false;
+      else if (screen === "manage") manageDirty = false;
+      screen = next;
+    });
   }
 
-  /** Take the exit the user just confirmed, discarding the panel's 未保存入力 (doc-8 §6.3). */
-  function leaveConfirmed(): void {
-    const target = pendingLeave;
-    pendingLeave = null;
-    if (target === null) return;
-    if (target.to === "task") {
-      selectedRef = { slug: target.slug, sourcePath: target.sourcePath };
-      return;
-    }
-    // The panel holding the input is unmounted from here, so its `ondirty` will not run again to
-    // retract the flag. The task selection itself is kept: coming back reopens the task, with a
-    // fresh 編集セッション.
-    if (screen === "swimlane") detailDirty = false;
-    else if (screen === "manage") manageDirty = false;
-    screen = target.screen;
+  /** Close the detail panel (doc-8 §6.3 の 5 経路のひとつ). */
+  function closeDetail(): void {
+    guardDiscard(detailDirty, () => {
+      // Cleared with the selection: the panel is unmounted from here on, so its own `ondirty` will
+      // not run again to retract a flag left standing.
+      selectedRef = null;
+      detailDirty = false;
+    });
   }
 
   /**
@@ -715,11 +791,11 @@
    */
   function open(view: TaskView): void {
     const next = { slug: view.task.project, sourcePath: view.task.sourcePath };
-    if (detailDirty && selectedRef !== null && selectedRef.sourcePath !== next.sourcePath) {
-      pendingLeave = { to: "task", ...next };
-      return;
-    }
-    selectedRef = next;
+    // 前後移動 (doc-8 §2.2) arrives here too: it is a selection change like any other, so it passes
+    // the same guard rather than a second one of its own.
+    const leaving =
+      detailDirty && selectedRef !== null && selectedRef.sourcePath !== next.sourcePath;
+    guardDiscard(leaving, () => (selectedRef = next));
   }
 
   /**
@@ -962,18 +1038,14 @@
     </div>
   {/if}
 
-  {#if pendingLeave !== null}
-    <!-- 破棄前確認 (doc-8 §6.3): the panel confirms its own cancel, and these are the other exits. -->
+  {#if pendingDiscard !== null}
+    <!-- 破棄前確認 (doc-8 §6.3), as the 上部帯 ① (doc-7 §5.3): one band, one wording, for all five
+         routes — キャンセル・閉じる・別タスクを開く・前後移動・詳細配置の切替. It stays above the
+         grid area, so it is readable and answerable while the 中央モーダル is up. -->
     <div class="confirm">
-      <span>
-        編集中の未保存入力があります。{pendingLeave.to === "task"
-          ? "別のタスクを開くと破棄されます。"
-          : "他の画面へ移ると破棄されます。"}
-      </span>
-      <button type="button" onclick={leaveConfirmed}>
-        {pendingLeave.to === "task" ? "破棄して開く" : "破棄して移動"}
-      </button>
-      <button type="button" onclick={() => (pendingLeave = null)}>編集に戻る</button>
+      <span>{DISCARD_CONFIRM_QUESTION}</span>
+      <button type="button" onclick={discardConfirmed}>{DISCARD_CONFIRM_PROCEED}</button>
+      <button type="button" onclick={() => (pendingDiscard = null)}>{DISCARD_CONFIRM_KEEP}</button>
     </div>
   {/if}
 
@@ -1016,70 +1088,87 @@
       から登録してください。
     </p>
   {:else}
-    <!-- The grid and the detail panel share the remaining height; the panel is beside the grid
-         rather than over it, so a task can be read while its row stays visible (doc-8 §2). -->
+    <!-- The grid and the detail panel share the remaining height. Which of the three ways the panel
+         is placed (doc-8 §2.1) is decided here, because the placement *is* where the panel goes:
+         beside the grid, over it, or instead of it. -->
     <div class="body">
-      <Swimlane
-        {rows}
-        {showStorageMark}
-        selectedPath={selectedRef?.sourcePath ?? null}
-        canReorder={!ledgerReadOnly}
-        unwatched={unwatchedRows}
-        conflictOf={(view) =>
-          conflicts[conflictKeyOf(view.task.project, view.task.sourcePath)] ?? null}
-        onselect={open}
-        onmove={move}
-        onhide={hide}
-        onretry={retry}
-        onreread={rereadRow}
-      />
+      {#if placement !== "full" || selectedRef === null}
+        <!-- 全面シングルビューはスイムレーンを退ける (doc-8 §2.1); the other two keep the row visible
+             while a task is read. With nothing open there is nothing to give way to. -->
+        <Swimlane
+          {rows}
+          {showStorageMark}
+          selectedPath={selectedRef?.sourcePath ?? null}
+          canReorder={!ledgerReadOnly}
+          unwatched={unwatchedRows}
+          conflictOf={(view) =>
+            conflicts[conflictKeyOf(view.task.project, view.task.sourcePath)] ?? null}
+          onselect={open}
+          onmove={move}
+          onhide={hide}
+          onretry={retry}
+          onreread={rereadRow}
+        />
+      {/if}
 
       <!-- カードを選ぶとタスク詳細画面を開く (doc-7 §3, doc-8 §2). -->
       {#if selectedRef !== null}
-        {#if shown !== null}
-          {@const view = shown.view}
-          <TaskDetail
-            {view}
-            snapshot={shown.snapshot}
-            missing={shown.missing}
-            entry={selectedEntry}
-            {history}
-            {readiness}
-            {editorReadiness}
-            watchStopped={selectedWatchStopped}
-            onreread={() => rereadRow(view.task.project)}
-            conflict={selectedConflict}
-            onconflict={noteConflict}
-            onapply={apply}
-            onopenExternally={openExternally}
-            onselect={open}
-            onreloadHistory={() =>
-              view.task.id === null
-                ? undefined
-                : void loadHistory(view.task.project, view.task.id)}
-            ondirty={(dirty) => (detailDirty = dirty)}
-            onclose={() => {
-              // Cleared with the selection: the panel is unmounted from here on, so its own
-              // `ondirty` will not run again to retract a flag left standing.
-              selectedRef = null;
-              detailDirty = false;
-            }}
-          />
+        {#if placement === "modal"}
+          <!-- 中央モーダル: over the grid, which stays behind it (doc-8 §2.1). The layer covers the
+               grid area only, so the 上部帯 — the 破棄前確認 among them (doc-8 §6.3) — stays visible
+               and answerable while the modal is up. -->
+          <div class="modal-layer">{@render detailPanel()}</div>
         {:else}
-          <!-- The task was open when its root stopped yielding it — deleted, moved, or the root
-               became unreadable. Distinct from an empty panel: the selection is still named. -->
-          <aside class="detail-gone">
-            <p>
-              {selectedRef.sourcePath} は現在の読み取り結果にありません（削除・移動、または
-              ルート読取不能の可能性）。
-            </p>
-            <button type="button" onclick={() => (selectedRef = null)}>閉じる</button>
-          </aside>
+          {@render detailPanel()}
         {/if}
       {/if}
     </div>
   {/if}
 </main>
+
+{#snippet detailPanel()}
+  {#if selectedRef === null}
+    <!-- Unreachable: every call site is already inside a selection check. -->
+  {:else if shown !== null}
+    {@const view = shown.view}
+    <TaskDetail
+      {view}
+      snapshot={shown.snapshot}
+      missing={shown.missing}
+      entry={selectedEntry}
+      {history}
+      {placement}
+      defaultPlacement={settings?.settings.default_detail_placement ?? placement}
+      {placementFailure}
+      onplacement={(next) => guardDiscard(detailDirty, () => void applyPlacement(next))}
+      {neighbours}
+      {readiness}
+      {editorReadiness}
+      watchStopped={selectedWatchStopped}
+      onreread={() => rereadRow(view.task.project)}
+      conflict={selectedConflict}
+      onconflict={noteConflict}
+      onapply={apply}
+      onopenExternally={openExternally}
+      onselect={open}
+      onreloadHistory={() =>
+        view.task.id === null ? undefined : void loadHistory(view.task.project, view.task.id)}
+      ondirty={(dirty) => (detailDirty = dirty)}
+      onconfirmDiscard={(proceed) => guardDiscard(true, proceed)}
+      onclose={closeDetail}
+    />
+  {:else}
+    <!-- The task was open when its root stopped yielding it — deleted, moved, or the root
+         became unreadable. Distinct from an empty panel: the selection is still named. -->
+    <aside class="detail-gone">
+      <p>
+        {selectedRef.sourcePath} は現在の読み取り結果にありません（削除・移動、または
+        ルート読取不能の可能性）。
+      </p>
+      <button type="button" onclick={() => (selectedRef = null)}>閉じる</button>
+    </aside>
+  {/if}
+{/snippet}
 
 <style lang="scss">
   .screen {
@@ -1243,6 +1332,20 @@
     flex: 1;
     min-height: 0;
     align-items: stretch;
+    // The 中央モーダル's layer is positioned against this box rather than the viewport, which is what
+    // keeps the fixed header and the 上部帯 outside it (doc-7 §5.3 の帯は隠さない).
+    position: relative;
+  }
+
+  .modal-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: color-mix(in srgb, canvastext 28%, transparent);
   }
 
   .detail-gone {

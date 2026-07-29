@@ -3,6 +3,11 @@
   // editing operations doc-8 §6 defines (TASK-36). Every edit is issued through the Backlog 更新
   // アダプター (doc-5) by the shell — this panel builds the 更新操作 and never touches a file.
   //
+  // The same panel is drawn three ways (doc-8 §2.1 詳細配置). What the placement changes is *where*
+  // the shell puts this element and, through `layoutFor`, how much of each 区画 is open and how much
+  // of the Git 履歴欄 is shown (doc-8 §3 の割当表). What it never changes is which 区画 exist: the
+  // panel shows the same task either way, and 縮退表示 stays 常設 in all three (doc-8 §3).
+  //
   // 参照系 (Type・References・Pull Request・Git 履歴) is read and shown for every 保存区分
   // (doc-8 §6.5); what changes with the 保存区分 is which operations are *offered*, and an
   // operation that is not offered carries the reason it is not (doc-5 §5).
@@ -13,6 +18,7 @@
   // URLs are text, not links, for the same reason inverted: an <a href> inside the Tauri WebView
   // would navigate the app window away from Atlas, and opening an external browser needs a
   // capability this build does not have.
+  import DetailSection from "./DetailSection.svelte";
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
   import { cardIdentity, crossTaskId } from "../lib/card";
@@ -26,6 +32,7 @@
   } from "../lib/detail";
   import {
     ASSIGNEE_NOT_CLEARABLE,
+    DISCARD_CONFIRM_PROCEED,
     EMPTY_DEPENDENCIES_REASON,
     EMPTY_REFERENCES_REASON,
     FILE_MISSING_REASON,
@@ -76,9 +83,28 @@
     type ConflictTarget,
     type VersionConflict,
   } from "../lib/mark";
-  import { CANONICAL_COLUMN_LABEL } from "../lib/swimlane";
+  import {
+    DEFAULT_PLACEMENT_MARK,
+    MODAL_COLUMN_GAP_REM,
+    MODAL_INSET_REM,
+    MODAL_MAX_WIDTH_REM,
+    MODAL_PADDING_REM,
+    MODAL_SIDE_COLUMN_REM,
+    PLACEMENTS,
+    layoutFor,
+    placementPersistence,
+    placementPersistenceNote,
+  } from "../lib/placement";
+  import { DETAIL_PLACEMENT_LABEL } from "../lib/settings";
+  import {
+    CANONICAL_COLUMN_LABEL,
+    NO_LANE_CELL_REASON,
+    laneNeighbourLabel,
+    type LaneNeighbours,
+  } from "../lib/swimlane";
   import type {
     CliReadiness,
+    DetailPlacement,
     EditorReadiness,
     LaunchMethod,
     ProjectEntry,
@@ -102,6 +128,23 @@
     missing: boolean;
     entry: ProjectEntry | null;
     history: HistoryState;
+    /** 詳細配置 (doc-8 §2.1): which of the three ways this panel is being placed right now. */
+    placement: DetailPlacement;
+    /** The placement アプリ設定 holds as the 既定 — what the switch marks (doc-8 §2.2). */
+    defaultPlacement: DetailPlacement;
+    /** Why the last switch could not be stored as the 既定, or `null` (decision-13 read-only file). */
+    placementFailure: string | null;
+    /**
+     * Ask for another 詳細配置. The shell owns the change because it owns both halves: where the panel
+     * is put on screen, and the 破棄前確認 the switch goes through while there is 未保存入力
+     * (doc-8 §2.2/§6.3).
+     */
+    onplacement: (placement: DetailPlacement) => void;
+    /**
+     * Where this task sits in the lane cell it is drawn in, and the cards either side of it
+     * (doc-8 §2.2 前後移動). `null` when the grid is not showing the task at all.
+     */
+    neighbours: LaneNeighbours | null;
     /** 縮退 (doc-5 §5): `null` while the probe is still running. */
     readiness: CliReadiness | null;
     /** 外部エディタ経路 (doc-8 §7): which launch methods exist. `null` while the probe is running. */
@@ -135,11 +178,17 @@
      * the same reason as `onapply` — it holds the (slug, path) the boundary resolves against.
      */
     onopenExternally: (method: LaunchMethod) => Promise<OpenOutcome>;
-    /** Follow a dependency to its task (doc-8 §3 解決先タスクへ辿れる). */
+    /** Follow a dependency to its task (doc-8 §3 解決先タスクへ辿れる), or move to a neighbour. */
     onselect: (view: TaskView) => void;
     onreloadHistory: () => void;
     /** Whether an 編集セッション holds 未保存入力 — the shell guards selection changes with it. */
     ondirty: (dirty: boolean) => void;
+    /**
+     * Ask the 破棄前確認 (doc-8 §6.3) for the one route the shell cannot carry out itself: キャンセル
+     * ends the session without leaving the task, so only the panel can do the discarding. The other
+     * four routes are the shell's, and go through the same band with the same words.
+     */
+    onconfirmDiscard: (proceed: () => void) => void;
     onclose: () => void;
   }
 
@@ -149,6 +198,11 @@
     missing,
     entry,
     history,
+    placement,
+    defaultPlacement,
+    placementFailure,
+    onplacement,
+    neighbours,
     readiness,
     editorReadiness,
     watchStopped,
@@ -160,6 +214,7 @@
     onselect,
     onreloadHistory,
     ondirty,
+    onconfirmDiscard,
     onclose,
   }: Props = $props();
 
@@ -190,6 +245,18 @@
    * what decision-6's 三者を同じ印へ混ぜない asks of a cross-cutting display (AC #4).
    */
   let marks = $derived(taskMarks(view, conflict));
+
+  // --- 詳細配置 (doc-8 §2) -----------------------------------------------------------------
+
+  /** doc-8 §3 の割当表 for the placement in force — one decision for every 区画 at once. */
+  let layout = $derived(layoutFor(placement));
+  let persistence = $derived(
+    placementPersistence(placement, defaultPlacement, placementFailure),
+  );
+  let persistenceNote = $derived(
+    placementPersistenceNote(persistence, (value) => DETAIL_PLACEMENT_LABEL[value]),
+  );
+  let crossId = $derived(crossTaskId(view));
 
   // --- 編集セッション (doc-8 §6.3) ---------------------------------------------------------
 
@@ -230,15 +297,32 @@
   $effect(() => {
     const path = view.task.sourcePath;
     if (session !== null && session.baseline.task.sourcePath !== path) {
-      session = null;
-      saveState = { state: "idle" };
-      confirming = null;
+      endSession();
     }
+  });
+
+  /**
+   * The placement the session was opened in. A switch ends the session, which is what makes the
+   * 破棄前確認 the shell asks for true — and it is done here rather than left to the remount the
+   * shell's own layout happens to cause, so the rule holds however the shell places the panel.
+   */
+  let sessionPlacement: DetailPlacement | null = null;
+  $effect(() => {
+    const next = placement;
+    if (sessionPlacement !== null && sessionPlacement !== next) endSession();
+    sessionPlacement = next;
   });
 
   $effect(() => {
     ondirty(dirty);
   });
+
+  function endSession(): void {
+    session = null;
+    saveState = { state: "idle" };
+    confirming = null;
+    clearAddBoxes();
+  }
 
   function edit<K extends keyof EditSession["draft"]>(
     key: K,
@@ -263,15 +347,10 @@
   }
 
   function cancelEditing(): void {
-    // 破棄前確認 (doc-8 §6.3): only when there is something to lose.
-    if (dirty && confirming !== "cancel") {
-      confirming = "cancel";
-      return;
-    }
-    session = null;
-    confirming = null;
-    saveState = { state: "idle" };
-    clearAddBoxes();
+    // 破棄前確認 (doc-8 §6.3): only when there is something to lose, and through the shell's band —
+    // the same words the other four routes use.
+    if (dirty) onconfirmDiscard(endSession);
+    else endSession();
   }
 
   /** The task a 版ずれ report is about, as of now. Captured before any await (see `save`). */
@@ -284,7 +363,7 @@
     const submitted = plan.submitted;
     // Captured before the await, like the 外部エディタ経路 does with its path: the answer is about
     // *this* task, and the panel may be pointed at another one by the time it arrives (a dirty
-    // session asks first, but 破棄して開く during the in-flight save is an answer).
+    // session asks first, but 破棄して続ける during the in-flight save is an answer).
     const target = conflictTarget();
     busy = true;
     try {
@@ -359,16 +438,6 @@
 
   /** Whether the last rebase had to drop index-bound AC operations (see `acDeltaForCli`). */
   let acDeltaDropped = $state(false);
-
-  function requestClose(): void {
-    // 破棄前確認 (doc-8 §6.3): closing the panel loses 未保存入力 exactly as キャンセル does, so
-    // it asks with the same words rather than being the one exit that does not.
-    if (dirty && confirming !== "close") {
-      confirming = "close";
-      return;
-    }
-    onclose();
-  }
 
   /**
    * Transitions ask for a second press. Not a general habit — none of these has a reverse
@@ -458,6 +527,48 @@
         : { state: outcome.state, path, detail: outcome.detail };
   }
 
+  // --- 見出しの操作群 (doc-8 §2.2) ----------------------------------------------------------
+
+  /**
+   * 横断タスクID のコピー (doc-8 §2.2). Atlas has no URL, so this is the only way to point at a task
+   * from a commit message or a chat — which is why the failure is not swallowed: the id is offered as
+   * selectable text instead, rather than the press quietly doing nothing.
+   *
+   * Keyed by path like the launch notice above, so "コピーしました" cannot outlive the task it was
+   * about when the panel is pointed at another one.
+   */
+  let copyState = $state<
+    | { state: "idle" }
+    | { state: "copied"; path: string }
+    | { state: "failed"; path: string; text: string }
+  >({ state: "idle" });
+  let copyNotice = $derived(
+    copyState.state !== "idle" && copyState.path === task.sourcePath ? copyState : null,
+  );
+
+  async function copyCrossTaskId(): Promise<void> {
+    const id = crossId;
+    if (id === null) return;
+    const path = task.sourcePath;
+    try {
+      await navigator.clipboard.writeText(id);
+      copyState = { state: "copied", path };
+    } catch {
+      // No reason text: what the user needs here is the id itself, in a form they can select — the
+      // clipboard API's own message ("permission denied", "not focused") does not help them copy it.
+      copyState = { state: "failed", path, text: id };
+    }
+  }
+
+  /**
+   * 前後移動 (doc-8 §2.2). The move is an ordinary selection change, so it goes through the shell's
+   * `onselect` — and therefore through the same 破棄前確認 as clicking another card. Asking here as
+   * well would put the question twice.
+   */
+  function moveTo(target: TaskView | null): void {
+    if (target !== null) onselect(target);
+  }
+
   function addTo(values: string[], value: string): string[] {
     const trimmed = value.trim();
     return trimmed === "" || values.includes(trimmed) ? values : [...values, trimmed];
@@ -524,14 +635,15 @@
   </div>
 {/snippet}
 
-<aside class="detail" aria-label="タスク詳細">
+<!-- 見出し (doc-8 §3): 常設 in all three placements. -->
+{#snippet heading()}
   <header class="heading">
     <div class="line">
       <!-- 横断タスクID を併記 (doc-8 §2, doc-3 §5.3): the panel is single-project, but the heading
            still says which project's task this is. A 解析不能 file has no id, so it is named by
            its file — the only stable handle it has (doc-4 §5). -->
       <span class="identity">{cardIdentity(view)}</span>
-      {#if crossTaskId(view) === null}
+      {#if crossId === null}
         <!-- 解析不能 (doc-4 §5): a required field the read layer could not get — the 縮退 family,
              not the 版ずれ one, since the divergence has nothing to do with it. -->
         <span class="mark" data-kind="degraded">TASK-ID 不明</span>
@@ -544,13 +656,96 @@
       {#if missing}
         <span class="mark" data-kind="unreadable">ファイル不明</span>
       {/if}
-      <button type="button" class="close" onclick={requestClose}>
-        {confirming === "close" ? "破棄して閉じる" : "閉じる"}
-      </button>
-      {#if confirming === "close"}
-        <button type="button" class="close" onclick={() => (confirming = null)}>やめる</button>
-      {/if}
+
+      <!-- 配置の切替は「閉じる ×」と同じ操作群に置く (doc-8 §2.2): both answer "この面をどうするか",
+           and neither belongs among the operations on the task's contents. -->
+      <div class="frame">
+        <div class="placement" role="group" aria-label="詳細配置">
+          {#each PLACEMENTS as candidate (candidate)}
+            <button
+              type="button"
+              class="switch"
+              class:on={candidate === placement}
+              aria-pressed={candidate === placement}
+              onclick={() => onplacement(candidate)}
+            >
+              {DETAIL_PLACEMENT_LABEL[candidate]}
+              {#if candidate === defaultPlacement}
+                <!-- 既定の配置がどれかを切替の見た目で示す (doc-8 §2.2). -->
+                <span class="default-mark">{DEFAULT_PLACEMENT_MARK}</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+        <button type="button" class="close" onclick={onclose}>閉じる</button>
+      </div>
     </div>
+
+    {#if persistenceNote !== null}
+      <p class="hint">{persistenceNote}</p>
+    {/if}
+
+    <!-- 前後移動 と ID コピー (doc-8 §2.2). Both sit in the heading in all three placements: the
+         id copy is the only way to point at this task from outside Atlas, and the move is what makes
+         the panel a place to read a cell from rather than a single stop. -->
+    <div class="line nav">
+      <!-- 端での無効化の理由は、隣の位置表示（セル内 n / m 件）がそのまま担う。読めない位置に理由を
+           隠さない、が doc-11 §5 の要求である。 -->
+      <button
+        type="button"
+        class="mini"
+        disabled={neighbours === null || neighbours.previous === null}
+        title={neighbours === null
+          ? NO_LANE_CELL_REASON
+          : neighbours.previous === null
+            ? "セルの先頭です"
+            : "セル内のひとつ前のタスクへ"}
+        onclick={() => moveTo(neighbours?.previous ?? null)}
+      >
+        ← 前のタスク
+      </button>
+      <span class="position">
+        {neighbours === null ? "セル内の位置不明" : laneNeighbourLabel(neighbours)}
+      </span>
+      <button
+        type="button"
+        class="mini"
+        disabled={neighbours === null || neighbours.next === null}
+        title={neighbours === null
+          ? NO_LANE_CELL_REASON
+          : neighbours.next === null
+            ? "セルの末尾です"
+            : "セル内のひとつ次のタスクへ"}
+        onclick={() => moveTo(neighbours?.next ?? null)}
+      >
+        次のタスク →
+      </button>
+      <button
+        type="button"
+        class="mini"
+        disabled={crossId === null}
+        onclick={copyCrossTaskId}
+      >
+        横断タスクID をコピー
+      </button>
+    </div>
+    {#if neighbours === null}
+      <!-- 無効化提示 (doc-11 §5): the reason sits beside the control, not only in a tooltip. -->
+      <p class="hint">{NO_LANE_CELL_REASON}</p>
+    {/if}
+    {#if crossId === null}
+      <p class="hint">
+        TASK-ID を読めないため横断タスクID を作れません（doc-4 §5 の解析不能）。
+      </p>
+    {/if}
+    {#if copyNotice !== null && copyNotice.state === "copied"}
+      <p class="ok">横断タスクID をコピーしました。</p>
+    {:else if copyNotice !== null}
+      <p class="warn">
+        クリップボードへ書けませんでした。次の文字列を選択してコピーしてください。
+        <input type="text" readonly value={copyNotice.text} aria-label="横断タスクID" />
+      </p>
+    {/if}
 
     {#if missing}
       <!-- doc-8 §6.4: an external move does not get to take the 未保存入力 with it. The panel
@@ -682,9 +877,11 @@
       <dd class="path">{task.sourcePath}</dd>
     </dl>
   </header>
+{/snippet}
 
-  <!-- 編集セッションの操作卓 (doc-8 §6.3). 明示保存 only: nothing on this panel writes as you
-       type, and Enter is not one of the save keys (doc-8 §6.2). -->
+<!-- 編集（明示保存） (doc-8 §3): 常設 in all three. Nothing here writes as you type, and Enter is
+     not one of the save keys (doc-8 §6.2). -->
+{#snippet editConsole()}
   <section class="console">
     {#if session === null}
       {#if availability.state === "editable"}
@@ -704,12 +901,7 @@
         >
           {busy ? "保存中…" : "保存"}
         </button>
-        <button type="button" onclick={cancelEditing}>
-          {confirming === "cancel" ? "破棄してよいですか？（もう一度押す）" : "キャンセル"}
-        </button>
-        {#if confirming === "cancel"}
-          <button type="button" onclick={() => (confirming = null)}>編集に戻る</button>
-        {/if}
+        <button type="button" onclick={cancelEditing}>キャンセル</button>
       </div>
       {#if !missing}
         <!-- Withheld while the file is gone: naming the save shortcut there would advertise an
@@ -723,6 +915,14 @@
         <p class="warn">{plan.reason}</p>
       {:else if plan !== null && plan.state === "nothingToSave" && !missing}
         <p class="hint">{NOTHING_TO_SAVE_REASON}。</p>
+      {/if}
+      {#if dirty}
+        <!-- 破棄前確認を通す 5 経路 (doc-8 §6.3) を、押す前に読める形で置く: どれを押しても同じ確認が
+             上部帯に出る、という予告である。 -->
+        <p class="hint">
+          未保存入力があります。キャンセル・閉じる・別タスク選択・前後移動・配置切替のいずれでも、
+          破棄する前に「{DISCARD_CONFIRM_PROCEED}」の確認を通します（doc-8 §6.3）。
+        </p>
       {/if}
       {#if externalChange}
         <!-- 編集中の継続検出 (doc-8 §6.4). The 版ずれ family, not a generic notice: the version has
@@ -805,10 +1005,37 @@
       </p>
     {/if}
   </section>
+{/snippet}
 
-  <!-- Type と通常ラベルは別区画 (doc-8 §4): two sections, never one label list. -->
-  <section>
-    <h3>Type</h3>
+<!-- 縮退表示 (doc-4 §5, doc-8 §3): 3 配置とも常設で、折り畳めない。折畳みへ落とすと問題のあるタスクが
+     正常に見えるためであり（doc-8 §3）、それは開閉できる折畳みでも「前のタスクで閉じた状態」が引き継
+     がれる形で起こりうる。 -->
+{#snippet degradePanel()}
+  {#if degrade.degraded || task.unknownSections.length > 0}
+    <section class="degrade-panel">
+      <h3>縮退（判別できなかった項目）</h3>
+      {#if degrade.missingRequired.length > 0}
+        <p>解析不能: {degrade.missingRequired.join("・")} を読めません</p>
+      {/if}
+      {#each degrade.schemaIssues as issue, index (index)}
+        <p>想定外スキーマ: {issue}</p>
+      {/each}
+      {#each degrade.danglingReferences as dangling, index (index)}
+        <p>参照欠損: {REFERENCE_KIND_LABEL[dangling.kind]} {dangling.target}</p>
+      {/each}
+      {#each task.unknownSections as section, index (index)}
+        <details>
+          <summary>未知セクション {section.name}（保持のみ）</summary>
+          <pre class="body">{section.body}</pre>
+        </details>
+      {/each}
+    </section>
+  {/if}
+{/snippet}
+
+<!-- Type と通常ラベルは別区画 (doc-8 §4): two sections, never one label list. -->
+{#snippet typeSection()}
+  <DetailSection title="Type" disposition={layout.sections.type}>
     {#if types.length === 0}
       <p class="neutral">Type 未設定</p>
     {:else}
@@ -823,10 +1050,15 @@
     {#if session !== null}
       <p class="hint">{TYPE_NOT_EDITABLE}</p>
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <section>
-    <h3>通常ラベル</h3>
+{#snippet labelsSection()}
+  <DetailSection
+    title="通常ラベル"
+    disposition={layout.sections.labels}
+    count={`${task.labels.length} 件`}
+  >
     {#if session === null}
       {#if task.labels.length === 0}
         <p class="neutral">なし</p>
@@ -847,10 +1079,11 @@
         null,
       )}
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <section>
-    <h3>Description</h3>
+{#snippet descriptionSection()}
+  <DetailSection title="Description" disposition={layout.sections.description}>
     {#if session === null}
       {#if task.description}
         <pre class="body">{task.description}</pre>
@@ -866,10 +1099,15 @@
         onsave={save}
       />
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <section>
-    <h3>Acceptance Criteria <span class="count">{ac.checked} / {ac.total}</span></h3>
+{#snippet acSection()}
+  <DetailSection
+    title="Acceptance Criteria"
+    disposition={layout.sections.ac}
+    count={`${ac.checked} / ${ac.total}`}
+  >
     {#if session === null}
       {#if ac.total === 0}
         <p class="neutral">なし</p>
@@ -1010,10 +1248,11 @@
         </p>
       {/if}
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <section>
-    <h3>実装計画</h3>
+{#snippet planSection()}
+  <DetailSection title="実装計画" disposition={layout.sections.plan}>
     {#if session === null}
       {#if task.implementationPlan}
         <pre class="body">{task.implementationPlan}</pre>
@@ -1028,10 +1267,11 @@
         onsave={save}
       />
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <section>
-    <h3>実装ノート</h3>
+{#snippet notesSection()}
+  <DetailSection title="実装ノート" disposition={layout.sections.notes}>
     {#if session === null}
       {#if task.implementationNotes}
         <pre class="body">{task.implementationNotes}</pre>
@@ -1064,10 +1304,15 @@
         onsave={save}
       />
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <section>
-    <h3>dependencies</h3>
+{#snippet dependenciesSection()}
+  <DetailSection
+    title="dependencies"
+    disposition={layout.sections.dependencies}
+    count={`${task.dependencies.length} 件`}
+  >
     {#if session === null}
       {#if dependencies.length === 0}
         <p class="neutral">なし</p>
@@ -1100,12 +1345,17 @@
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます（doc-5 §3 の非空全置換）。</p>
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <!-- Pull Request URL は References と分離して独立表示 (doc-8 §4). Both sections stay visible in
-       every 保存区分 (doc-8 §6.5) — they are 参照系, which reading never depends on edit rights. -->
-  <section>
-    <h3>Pull Request</h3>
+<!-- Pull Request URL は References と分離して独立表示 (doc-8 §4). Both sections stay visible in
+     every 保存区分 (doc-8 §6.5) — they are 参照系, which reading never depends on edit rights. -->
+{#snippet pullRequestSection()}
+  <DetailSection
+    title="Pull Request"
+    disposition={layout.sections.pullRequest}
+    count={`${references.pullRequests.length} 件`}
+  >
     {#if references.pullRequests.length === 0}
       <p class="neutral">References に Pull Request URL はありません</p>
     {:else}
@@ -1128,10 +1378,17 @@
         既存参照を含む非空全集合で置き換えます。
       </p>
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <section>
-    <h3>References</h3>
+{#snippet referencesSection()}
+  <!-- 折畳み（件数を見せる） (doc-8 §3): the count is on the summary, so a folded References still
+       says how many there are. -->
+  <DetailSection
+    title="References"
+    disposition={layout.sections.references}
+    count={`${references.references.length} 件`}
+  >
     {#if session === null}
       {#if references.references.length === 0}
         <p class="neutral">なし</p>
@@ -1160,12 +1417,13 @@
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます（doc-5 §3 の非空全置換）。</p>
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <!-- 状態遷移の入口 (doc-8 §6.5, doc-5 §3.2/§3.3). Offered per 保存区分; an operation the CLI does
-       not have is not drawn at all, and one it has but cannot run now says why. -->
-  <section class="transitions">
-    <h3>状態遷移</h3>
+<!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行であり、同じ割当（併置・モーダルでは折畳み、全面では
+     常設）で動く。2 つの区画に分けてあるのは操作の系統が違うためで、開き方は 1 つの規則に従う。 -->
+{#snippet transitionsSection()}
+  <DetailSection title="状態遷移" disposition={layout.sections.transitions}>
     {#if transitions.state === "none"}
       <p class="neutral">{transitions.reason}</p>
     {:else}
@@ -1189,14 +1447,15 @@
         {/each}
       </ul>
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <!-- 外部エディタ経路 (doc-8 §7). Atlas starts the editor and writes nothing; the editor's save comes
-       back through the file watch (doc-9 §3), so nothing here waits for it to close. Offered for every
-       保存区分 and independently of the CLI probe: this is where doc-8 §6.5 and doc-5 §3.1 send the
-       edits Atlas itself cannot issue. -->
-  <section class="external-editor">
-    <h3>外部エディタで開く</h3>
+<!-- 外部エディタ経路 (doc-8 §7). Atlas starts the editor and writes nothing; the editor's save comes
+     back through the file watch (doc-9 §3), so nothing here waits for it to close. Offered for every
+     保存区分 and independently of the CLI probe: this is where doc-8 §6.5 and doc-5 §3.1 send the
+     edits Atlas itself cannot issue. -->
+{#snippet externalEditorSection()}
+  <DetailSection title="外部エディタで開く" disposition={layout.sections.transitions}>
     <p class="hint">{CLI_LIMIT_GUIDANCE}</p>
     <!-- 開く前に示す (doc-8 §7 難点と受け方): the frontmatter is exposed and the CLI's schema checking
          is bypassed, so this is stated before a launch rather than after a degraded read. -->
@@ -1244,31 +1503,79 @@
            what to do next in either case. -->
       <p class="warn">{openNotice.detail}</p>
     {/if}
-  </section>
+  </DetailSection>
+{/snippet}
 
-  <GitHistory {history} {entry} onreload={onreloadHistory} />
+{#snippet gitHistorySection()}
+  <DetailSection title="Git 履歴欄" disposition={layout.sections.gitHistory}>
+    <GitHistory
+      {history}
+      {entry}
+      detail={layout.history}
+      onexpand={placement === "full" ? null : () => onplacement("full")}
+      onreload={onreloadHistory}
+    />
+  </DetailSection>
+{/snippet}
 
-  {#if degrade.degraded || task.unknownSections.length > 0}
-    <!-- 縮退表示 (doc-4 §5, doc-8 §3): the panel above already showed every item it could read;
-         this states what is missing, so 判別できた項目 and 不足 are never confused. -->
-    <section class="degrade-panel">
-      <h3>縮退（判別できなかった項目）</h3>
-      {#if degrade.missingRequired.length > 0}
-        <p>解析不能: {degrade.missingRequired.join("・")} を読めません</p>
-      {/if}
-      {#each degrade.schemaIssues as issue, index (index)}
-        <p>想定外スキーマ: {issue}</p>
-      {/each}
-      {#each degrade.danglingReferences as dangling, index (index)}
-        <p>参照欠損: {REFERENCE_KIND_LABEL[dangling.kind]} {dangling.target}</p>
-      {/each}
-      {#each task.unknownSections as section, index (index)}
-        <details>
-          <summary>未知セクション {section.name}（保持のみ）</summary>
-          <pre class="body">{section.body}</pre>
-        </details>
-      {/each}
-    </section>
+<!-- 1 列の並び (併置サイドバー・全面シングルビュー): doc-8 §3 の割当表の順。Type と通常ラベルが本文の
+     前に来るのは表のとおりで、Pull Request を References の前に置くのは、PR 区画の注記が「下の
+     References 欄へ足すと」と、その並びを指しているためである。 -->
+{#snippet flowSections()}
+  {@render typeSection()}
+  {@render labelsSection()}
+  {@render descriptionSection()}
+  {@render acSection()}
+  {@render planSection()}
+  {@render notesSection()}
+  {@render dependenciesSection()}
+  {@render pullRequestSection()}
+  {@render referencesSection()}
+  {@render gitHistorySection()}
+  {@render transitionsSection()}
+  {@render externalEditorSection()}
+{/snippet}
+
+<!-- 主列 / 脇列 (doc-8 §2.1). 見出し・編集卓・縮退表示 are drawn outside both: those three belong to
+     the panel rather than to a column (`SECTION_COLUMN` records the assignment). -->
+{#snippet mainColumn()}
+  {@render descriptionSection()}
+  {@render acSection()}
+  {@render planSection()}
+  {@render notesSection()}
+  {@render gitHistorySection()}
+{/snippet}
+
+{#snippet sideColumn()}
+  {@render typeSection()}
+  {@render labelsSection()}
+  {@render dependenciesSection()}
+  {@render pullRequestSection()}
+  {@render referencesSection()}
+  {@render transitionsSection()}
+  {@render externalEditorSection()}
+{/snippet}
+
+<aside
+  class="detail"
+  data-placement={placement}
+  aria-label="タスク詳細"
+  style="--modal-side-column: {MODAL_SIDE_COLUMN_REM}rem; --modal-column-gap: {MODAL_COLUMN_GAP_REM}rem; --modal-padding: {MODAL_PADDING_REM /
+    2}rem; --modal-inset: {MODAL_INSET_REM / 2}rem; --modal-max-width: {MODAL_MAX_WIDTH_REM}rem;"
+>
+  {@render heading()}
+  {@render editConsole()}
+  {@render degradePanel()}
+
+  {#if layout.columns === 2}
+    <!-- 中央モーダルは 2 列を保つ (doc-8 §2.1): the 脇列 is a fixed 18rem and the 主列 takes the
+         rest, with no breakpoint that stacks them — 狭いからといって縦積みへ落とさない. -->
+    <div class="columns">
+      <div class="col">{@render mainColumn()}</div>
+      <div class="col">{@render sideColumn()}</div>
+    </div>
+  {:else}
+    <div class="flow">{@render flowSections()}</div>
   {/if}
 
   <footer class="note">
@@ -1282,14 +1589,58 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    // Fixed share of the width: the grid beside it is the element that gives way (it scrolls).
-    flex: none;
-    width: min(30rem, 45vw);
     padding: 0.6rem 0.75rem 1rem;
-    border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
     background: color-mix(in srgb, canvas 94%, canvastext 6%);
     // Scrolls inside itself so the swimlane keeps its own scroll position while the panel is open.
     overflow-y: auto;
+  }
+
+  // 併置サイドバー (doc-8 §2.1): a fixed share of the width — the grid beside it is the element
+  // that gives way (it scrolls).
+  .detail[data-placement="sidebar"] {
+    flex: none;
+    width: min(30rem, 45vw);
+    border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  }
+
+  // 中央モーダル (doc-8 §2.1): a box over the grid, wide enough for two columns at 1280×800. The
+  // numbers come from `lib/placement.ts` through the custom properties above, so the width the
+  // test checks and the width the browser lays out are the same numbers.
+  .detail[data-placement="modal"] {
+    width: min(var(--modal-max-width), calc(100vw - var(--modal-inset) * 2));
+    max-height: 100%;
+    padding: 0.6rem var(--modal-padding) 1rem;
+    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-radius: 6px;
+    box-shadow: 0 8px 32px color-mix(in srgb, canvastext 25%, transparent);
+  }
+
+  // 全面シングルビュー (doc-8 §2.1): the swimlane is put away and the panel takes the space.
+  .detail[data-placement="full"] {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .columns,
+  .flow,
+  .col {
+    display: grid;
+    align-content: start;
+    gap: 0.6rem;
+  }
+
+  // 1 列 (併置サイドバー・全面シングルビュー) と、モーダルの各列そのもの.
+  // `minmax(0, 1fr)` は、長い 1 行が列幅を押し広げて隣の列を箱の外へ追い出すのを止める。
+  .flow,
+  .col {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  // 中央モーダルの 2 列 (doc-8 §2.1): 脇列は固定 18rem、主列が残りを取る。畳む分岐は無い。
+  .columns {
+    grid-template-columns: minmax(0, 1fr) var(--modal-side-column);
+    gap: var(--modal-column-gap);
+    align-items: start;
   }
 
   .heading {
@@ -1311,22 +1662,59 @@
     gap: 0.35rem;
   }
 
+  .nav {
+    align-items: center;
+  }
+
+  .position {
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.7;
+  }
+
   .identity {
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
     opacity: 0.75;
   }
 
-  .close {
+  // 配置の切替と閉じるは 1 つの操作群 (doc-8 §2.2).
+  .frame {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     margin-left: auto;
+  }
+
+  .placement {
+    display: flex;
+    gap: 0.2rem;
+  }
+
+  .switch {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+
+    &.on {
+      border-color: var(--info);
+      background: color-mix(in srgb, var(--info) 14%, transparent);
+    }
+  }
+
+  // 既定の印は中立: 状態の族ではなく、次回起動時にどれで開くかという情報である (decision-6).
+  .default-mark {
+    padding: 0 0.25rem;
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-radius: 3px;
+    font-size: 0.6rem;
+    opacity: 0.75;
+  }
+
+  .close {
     padding: 0 0.4rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-    border-radius: 4px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
     font-size: 0.7rem;
-    cursor: pointer;
   }
 
   .facts {
@@ -1372,12 +1760,6 @@
       margin: 0;
       font-size: 0.8rem;
     }
-  }
-
-  .count {
-    font-size: 0.7rem;
-    font-variant-numeric: tabular-nums;
-    opacity: 0.65;
   }
 
   .body {
