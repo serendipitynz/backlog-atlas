@@ -3,12 +3,12 @@ id: doc-8
 title: タスク詳細画面 設計（References・PR・Type・Git 履歴）
 type: specification
 created_date: '2026-07-21 10:17'
-updated_date: '2026-07-29 21:43'
+updated_date: '2026-07-30 11:36'
 ---
 # タスク詳細画面 設計（References・PR・Type・Git 履歴）
 
 TASK-12 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書で導入する語は初出に定義を置く。
-前提は doc-4（読み取り層・ドメインモデル・References 保持）・doc-5（Backlog 更新アダプター）・doc-6（Git・PR 履歴参照）・decision-5（Type 導出）・decision-13（アプリ設定）。描き方は doc-11 が定める。画面設計案（doc-1 追補で定義。02）を反映する。引用する事実は doc-12 §5 に転記してある。
+前提は doc-4（読み取り層・ドメインモデル・References 保持）・doc-5（Backlog 更新アダプター）・doc-6（Git・PR 履歴参照）・decision-5（Type 導出）・decision-13（アプリ設定）。描き方は doc-11 が定める。画面設計案（doc-1 追補で定義。02）を反映する。引用する事実は doc-12 §3 に転記してある。
 
 ## 1. 用語
 
