@@ -37,6 +37,21 @@ start implementing — resolve the contradiction first.
   Markdown/frontmatter parser, bundling the Backlog CLI, and so on — confirm the
   selection rationale and the scope of its introduction.
 
+## Task state
+
+A task's `status` says where its work stands, so move it as the work moves rather
+than in one step at the end. The four states this project uses:
+
+- **To Do** — not started.
+- **In Progress** — set as soon as work on the task begins; an instruction to start
+  it is enough. This one need not be committed: its purpose is that the ledger shows
+  what is being worked on right now.
+- **In Review** — set when the Pull Request is created, and included in the PR-ready
+  commit, so the PR carries the state the task is in.
+- **Done** — set after the PR is merged, on the default branch.
+
+Move the state through Backlog CLI calls, like every other task update.
+
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.
