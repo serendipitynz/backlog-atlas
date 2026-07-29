@@ -3,7 +3,7 @@ id: doc-3
 title: プロジェクト台帳と横断タスクID 設計
 type: specification
 created_date: '2026-07-21 09:36'
-updated_date: '2026-07-28 23:12'
+updated_date: '2026-07-30 11:36'
 ---
 # プロジェクト台帳と横断タスクID 設計
 

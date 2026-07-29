@@ -4,7 +4,7 @@ title: Backlog Atlas の専用リポジトリを初期化する
 status: Done
 assignee: []
 created_date: '2026-07-21 00:17'
-updated_date: '2026-07-21 00:17'
+updated_date: '2026-07-30 11:36'
 labels:
   - 'kind:maintenance'
 dependencies: []

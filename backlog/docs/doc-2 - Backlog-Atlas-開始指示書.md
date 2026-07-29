@@ -3,7 +3,7 @@ id: doc-2
 title: Backlog Atlas 開始指示書
 type: guide
 created_date: '2026-07-20 23:22'
-updated_date: '2026-07-22'
+updated_date: '2026-07-30 11:36'
 tags:
   - planning
   - backlog-atlas
