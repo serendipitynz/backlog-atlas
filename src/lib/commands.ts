@@ -14,12 +14,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import type {
+  AppSettings,
   CliReadiness,
   CommandError,
   EditorLaunch,
   EditorReadiness,
   LaunchMethod,
   LedgerResponse,
+  LoadedSettings,
   ProjectLoad,
   ProjectSnapshot,
   RegisterRequest,
@@ -145,6 +147,28 @@ export function projectWatchStop(slug: string): Promise<void> {
  */
 export function taskHistoryRead(slug: string, taskId: string): Promise<TaskHistory> {
   return invoke<TaskHistory>("task_history_read", { slug, taskId });
+}
+
+/**
+ * アプリ設定 と、それが既定値かどうか (decision-13). Never rejects for a missing, unreadable or too-new
+ * file: those arrive as the defaults plus a `status`, because decision-13 forbids stopping the screen
+ * over settings it could not read.
+ */
+export function settingsRead(): Promise<LoadedSettings> {
+  return invoke<LoadedSettings>("settings_read");
+}
+
+/**
+ * Persist アプリ設定 (decision-13). Rejects with a `settings` error when the file on disk is a newer
+ * schema version than this build understands — it is left untouched rather than overwritten.
+ */
+export function settingsSave(settings: AppSettings): Promise<LoadedSettings> {
+  return invoke<LoadedSettings>("settings_save", { settings });
+}
+
+/** Where the settings file is (decision-13), for the 設定画面 to name — it is hand-editable. */
+export function settingsLocation(): Promise<string> {
+  return invoke<string>("settings_location");
 }
 
 /**

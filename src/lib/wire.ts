@@ -18,6 +18,14 @@
 /** Where a task file sits, independent of its frontmatter status (doc-4 §3.4). */
 export type StorageState = "active" | "draft" | "completed" | "archive";
 
+/**
+ * One 保存区分 choice the filter can hold (doc-7 §5.2): the four states plus `indeterminate`, a task
+ * file found outside the recognized scan locations (`storageState` is `null`). Declared here rather
+ * than only in `filter.ts` because アプリ設定 persists a list of these (`default_storage_filter`), so it
+ * is a wire value; `filter.ts` re-exports it and states why the indeterminate case exists.
+ */
+export type StorageSelection = StorageState | "indeterminate";
+
 export type RequiredField = "id" | "title" | "status";
 
 export type ReferenceKind = "milestone" | "documentation" | "reference";
@@ -315,6 +323,9 @@ export type CommandError =
   | { kind: "taskNotFound"; slug: string; task_id: string }
   // Git 対象不在 / a failed Git read are not errors here: they are `CommitSearch` states, so a
   // root that is no Git repository still returns its Pull Request 区画 (decision-6, doc-8 §5).
+  // アプリ設定 (decision-13): only a *save* fails — a read degrades to the defaults and says why
+  // through `SettingsStatus`, so this always means the values on screen were not persisted.
+  | { kind: "settings"; detail: string }
   | { kind: "updatesUnavailable"; readiness: CliReadiness }
   | { kind: "updateRejected"; detail: string }
   | { kind: "uncheckableTarget"; what: string; detail: string }
@@ -333,11 +344,23 @@ export type CommandError =
 /** Which of doc-8 §7's two launch methods to use: `$VISUAL`/`$EDITOR`, or the OS association. */
 export type LaunchMethod = "configured" | "association";
 
-/** The editor `VISUAL`/`EDITOR` names. `variable` is which of the two is in effect. */
-export interface ConfiguredEditor {
-  variable: string;
+/**
+ * 起動指定 (doc-8 §7): the program to start and the arguments preceding the file path. Also the shape
+ * アプリ設定 stores it in (`AppSettings.external_editor`), so the setting and the launch agree.
+ */
+export interface EditorCommand {
   program: string;
   /** Arguments preceding the file path (`code -w` → `["-w"]`). */
+  args: string[];
+}
+
+/** Where the 起動指定 in effect came from (doc-8 §7 の解決順: アプリ設定 → `$VISUAL` → `$EDITOR`). */
+export type EditorSource = "appSettings" | "visual" | "editor";
+
+/** The 起動指定 resolution picked, with the source it came from. */
+export interface ConfiguredEditor {
+  source: EditorSource;
+  program: string;
   args: string[];
 }
 
@@ -489,4 +512,51 @@ export type ProjectLoad =
 export interface ReloadEvent {
   slug: string;
   load: ProjectLoad;
+}
+
+// --- アプリ設定 (decision-13, TASK-46) ------------------------------------------------------
+
+/** カード情報量 (doc-7 §3): which column of the card assignment table is in force. 既定は M. */
+export type CardDensity = "s" | "m" | "l";
+
+/** 詳細配置 (doc-8 §2.1): 併置サイドバー / 中央モーダル / 全面シングルビュー. */
+export type DetailPlacement = "sidebar" | "modal" | "full";
+
+/**
+ * アプリ設定 (decision-13): the display defaults that belong to no ledger entry. snake_case, like the
+ * ledger's types — these names are the `settings.toml` keys too, and doc-3 §2.2's hand-editing rule
+ * applies to both app-config files.
+ *
+ * Deliberately absent: 列折畳み・行折畳み・行非表示 (画面の一時状態, decision-13) and 起動時の全ルート
+ * 読み取り (doc-9 §3.2 makes it mandatory rather than a setting).
+ */
+export interface AppSettings {
+  schema_version: number;
+  /** 表示テーマ (decision-12). `null` = 未選択, i.e. follow the OS's light/dark. */
+  theme: string | null;
+  card_density: CardDensity;
+  /** 既定の保存区分 — the selection the filter starts with (doc-7 §5.2). */
+  default_storage_filter: StorageSelection[];
+  default_detail_placement: DetailPlacement;
+  /** 継続検出の可否 (doc-9 §3.1). False stops every root's watch. */
+  watch_external_changes: boolean;
+  /** 外部エディタ指定 (doc-8 §7). Absent — not `null` — when unset: the key is skipped in the file. */
+  external_editor?: EditorCommand;
+}
+
+/**
+ * Why the settings in hand are what they are (decision-13). Only `readOnly` forbids saving; `absent`
+ * and `unreadable` are both "running on the defaults", which the screen states (AC #6), and the next
+ * save rebuilds the file.
+ */
+export type SettingsStatus =
+  | { state: "stored" }
+  | { state: "absent" }
+  | { state: "unreadable"; detail: string }
+  | { state: "readOnly"; version: number };
+
+/** What `settings_read` / `settings_save` return: the values in force, and why. */
+export interface LoadedSettings {
+  settings: AppSettings;
+  status: SettingsStatus;
 }
