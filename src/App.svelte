@@ -462,6 +462,21 @@
    * not undo a change they can see. What the failure costs is the *persistence*, which the switch then
    * states beside the 既定 mark rather than swallowing.
    */
+  /**
+   * Answer the switch's press (doc-8 §2.2). A press on the placement already in force changes nothing
+   * on screen, so it goes straight through: there is nothing to discard, and asking anyway would give
+   * the user a 破棄前確認 whose "はい" then keeps the input — a confirmation that lies about what it did.
+   * It is still forwarded rather than dropped, because on a placement whose 既定 write was refused the
+   * same press is the retry of that write.
+   */
+  function requestPlacement(next: DetailPlacement): void {
+    if (next === placement) {
+      void applyPlacement(next);
+      return;
+    }
+    guardDiscard(detailDirty, () => void applyPlacement(next));
+  }
+
   async function applyPlacement(next: DetailPlacement): Promise<void> {
     placement = next;
     const current = settings;
@@ -1140,7 +1155,7 @@
       {placement}
       defaultPlacement={settings?.settings.default_detail_placement ?? placement}
       {placementFailure}
-      onplacement={(next) => guardDiscard(detailDirty, () => void applyPlacement(next))}
+      onplacement={requestPlacement}
       {neighbours}
       {readiness}
       {editorReadiness}

@@ -7,6 +7,7 @@
   // The component holds a draft and issues one 保存; it never writes as the user types. Same reason the
   // detail panel uses 明示保存 (doc-8 §6.3): a half-typed editor path saved on every keystroke would be
   // the 起動指定 in force for as long as it took to finish typing.
+  import { untrack } from "svelte";
   import {
     CARD_DENSITY_LABEL,
     DETAIL_PLACEMENT_LABEL,
@@ -24,6 +25,7 @@
     editorCommandOf,
     emptyStorageWarning,
     isDirty,
+    mergeDraft,
     saveAvailability,
     statusNotice,
     toggleStorage,
@@ -53,13 +55,45 @@
   let saving = $state(false);
   /** The result of the last 保存 attempt: its failure text, or `null` once it succeeded. */
   let failure = $state<string | null>(null);
+  /**
+   * The values the draft was seeded from — what tells a field the user edited from one they left alone
+   * (`mergeDraft`). Plain, not `$state`: it is read only inside the effect below, which must not depend
+   * on it.
+   */
+  let baseline: AppSettings | null = null;
 
   $effect(() => {
-    // Seeded from `loaded` alone: a save returns a fresh `LoadedSettings`, which lands here and
-    // becomes the new baseline, so 変更あり goes back to false without the form being rebuilt.
+    // Seeded from `loaded`: a save returns a fresh `LoadedSettings`, which lands here and becomes the
+    // new baseline, so 変更あり goes back to false without the form being rebuilt.
+    //
+    // But this screen is not the only writer any more — choosing a 詳細配置 stores it as the 既定
+    // (doc-8 §2.2) while this form may be open with unsaved input — so a new value is *merged* rather
+    // than assigned: untouched fields follow the file, edited ones stay as the user left them. The
+    // reads are untracked because the merge writes what it reads; `loaded` is the whole dependency.
     const settings = loaded?.settings;
-    draft = settings === undefined ? null : { ...settings };
-    failure = null;
+    untrack(() => {
+      if (settings === undefined) {
+        draft = null;
+        baseline = null;
+        failure = null;
+        return;
+      }
+      // The editor fields are two controls over one field, so they are folded in before the merge and
+      // read back out of it — otherwise a half-typed 起動指定 would be lost to an outside write.
+      const current =
+        draft === null
+          ? null
+          : {
+              ...$state.snapshot(draft),
+              external_editor: editorCommandOf(editorProgram, editorArgs),
+            };
+      const merged = mergeDraft(baseline, current, settings);
+      baseline = { ...settings };
+      draft = merged;
+      editorProgram = merged.external_editor?.program ?? "";
+      editorArgs = editorArgsText(merged.external_editor);
+      failure = null;
+    });
   });
 
   let notice = $derived(loaded === null ? null : statusNotice(loaded.status));
@@ -100,14 +134,13 @@
       : [stored, ...RECORDED_THEMES];
   });
 
-  /** The 外部エディタ指定 as two fields (see `settings.ts`: never one command line). */
+  /**
+   * The 外部エディタ指定 as two fields (see `settings.ts`: never one command line). Seeded by the merge
+   * effect above rather than by an effect of their own: they are part of the same value, and a second
+   * seeding effect would overwrite the merged result with the file's.
+   */
   let editorProgram = $state("");
   let editorArgs = $state("");
-  $effect(() => {
-    const command = loaded?.settings.external_editor;
-    editorProgram = command?.program ?? "";
-    editorArgs = editorArgsText(command);
-  });
 
   function setStorage(value: StorageSelection, on: boolean): void {
     if (draft === null) return;

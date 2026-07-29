@@ -5,9 +5,10 @@
   // failed" call for different actions from the user (decision-6).
   //
   // How much of that is shown depends on the 詳細配置 (doc-8 §5 配置ごとの粒度): 件数のみ, 直近 2 件,
-  // or 全件＋関連解決の状態. The narrow placements omit the 関連解決の状態 because it means "今は
-  // 確かめられない" rather than "関連が無い" and does not fit one line without being misread — so
-  // doc-8 §5 requires them to carry a 導線 to the placement that does show it, which `onexpand` is.
+  // or 全件＋関連解決の状態. What the two narrow placements leave out is the *per-cause account*, not
+  // the state itself — the state means "今は確かめられない" rather than "関連が無い", so hiding it
+  // altogether is what would be misread (doc-8 §5). They therefore state it in one line and carry the
+  // 導線 to the placement that writes each cause out, which `onexpand` is.
   import {
     commitCountLine,
     commitList,

@@ -14,6 +14,7 @@
  * | doc-8 §7 外部エディタ指定 | [`editorCommandOf`] / [`editorArgsText`] | the 起動指定 as two form fields ↔ one `EditorCommand` |
  * | decision-12 表示テーマ | [`RECORDED_THEMES`] | the colour sets this build has; empty until TASK-47 records them |
  * | doc-7 §5.2 既定の保存区分 | [`STORAGE_SELECTION_LABEL`] + [`toggleStorage`] | which 保存区分 the filter starts with |
+ * | doc-8 §2.2 既定の詳細配置（第 2 の書き手） | [`mergeDraft`] | how a placement stored elsewhere lands in an open form without taking its input |
  *
  * One rule runs through it, the same one `edit.ts` and `external-editor.ts` follow: **a withheld
  * control says why** (doc-5 §5, doc-11 §5). No item is hidden because it cannot be changed yet or
@@ -200,6 +201,62 @@ export const STARTUP_READ_NOTE =
 export const TRANSIENT_STATE_NOTE =
   "列折畳み・行折畳み・行非表示は画面の一時状態として扱い、この設定には保存しません。" +
   "前回どけた行が消えたままだと、登録したはずのプロジェクトが失われたように読めるためです（decision-13）。";
+
+/**
+ * Fold a baseline that arrived from *outside* the 設定画面 into the draft it is editing: every field the
+ * user has changed away from the previous baseline stays as they left it, and the rest comes from the
+ * new one. `baseline`/`draft` are `null` before the form has anything to protect, which is the plain
+ * "seed from the new values" case.
+ *
+ * Needed because アプリ設定 has a second writer: choosing a 詳細配置 stores it as the 既定 (doc-8 §2.2)
+ * while the 設定画面 may be open over the same screen with unsaved input. Re-seeding the whole form on
+ * that write would take the input away — which doc-8 §6.4 forbids of the detail panel's 編集セッション,
+ * and the same reasoning applies to this form: an edit the user is in the middle of is not the writer's
+ * to discard. Adopting the incoming value for *untouched* fields is what keeps 保存 from silently
+ * putting the placement back the way it was.
+ *
+ * `schema_version` is never taken from the draft: it describes the file's format, not the user's choice.
+ */
+export function mergeDraft(
+  baseline: AppSettings | null,
+  draft: AppSettings | null,
+  next: AppSettings,
+): AppSettings {
+  if (baseline === null || draft === null) return { ...next };
+  const merged: AppSettings = {
+    schema_version: next.schema_version,
+    theme: pick(draft.theme, baseline.theme, next.theme),
+    card_density: pick(draft.card_density, baseline.card_density, next.card_density),
+    default_storage_filter: pick(
+      draft.default_storage_filter,
+      baseline.default_storage_filter,
+      next.default_storage_filter,
+    ),
+    default_detail_placement: pick(
+      draft.default_detail_placement,
+      baseline.default_detail_placement,
+      next.default_detail_placement,
+    ),
+    watch_external_changes: pick(
+      draft.watch_external_changes,
+      baseline.watch_external_changes,
+      next.watch_external_changes,
+    ),
+  };
+  const editor = pick(draft.external_editor, baseline.external_editor, next.external_editor);
+  // Absent rather than `undefined`-valued: the key is skipped in the file when there is no 起動指定.
+  if (editor !== undefined) merged.external_editor = editor;
+  return merged;
+}
+
+/** One field's merged value: the user's if they moved it off the baseline, otherwise the new baseline's. */
+function pick<T>(draft: T, baseline: T, next: T): T {
+  return sameValue(draft, baseline) ? next : draft;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
 
 /** True when two settings values differ — what makes 保存 meaningful and 取消 offerable. */
 export function isDirty(a: AppSettings, b: AppSettings): boolean {
