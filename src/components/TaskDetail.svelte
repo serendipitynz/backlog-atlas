@@ -25,6 +25,7 @@
     type HistoryState,
   } from "../lib/detail";
   import {
+    ASSIGNEE_NOT_CLEARABLE,
     EMPTY_DEPENDENCIES_REASON,
     EMPTY_REFERENCES_REASON,
     FILE_MISSING_REASON,
@@ -33,6 +34,7 @@
     TYPE_NOT_EDITABLE,
     acDeltaDroppedByRebase,
     acRows,
+    assigneeCollapseWarning,
     buildSave,
     canRemoveLast,
     divergence,
@@ -219,6 +221,8 @@
   /** One decision for the save control's enabled state and its reason (doc-5 §5). */
   let saveGate = $derived(saveAvailability(plan, { fileMissing: missing, busy }));
   let acView = $derived(session === null ? [] : acRows(session));
+  /** Stated while editing, not after saving: `-a` collapses a multi-assignee list to one value. */
+  let assigneeCollapse = $derived(assigneeCollapseWarning(view.task.assignee));
 
   // The session belongs to one file. A different task in the same panel starts from that task's
   // own read rather than inheriting a draft written against another one; the shell asks before
@@ -619,7 +623,24 @@
       </dd>
 
       <dt>assignee</dt>
-      <dd>{task.assignee.length > 0 ? task.assignee.join(", ") : "—"}</dd>
+      <dd>
+        {#if session !== null}
+          <!-- 担当の設定・付け替えはこの画面で閉じる (doc-5 §3・doc-10 §7, TASK-57). 1 欄 1 値 —
+               `-a` は 1 件しか受け取らず、frontmatter の一覧を丸ごと置き換える. -->
+          <input
+            type="text"
+            aria-label="assignee"
+            value={session.draft.assignee}
+            oninput={(event) => edit("assignee", event.currentTarget.value)}
+          />
+          <p class="hint">{ASSIGNEE_NOT_CLEARABLE}</p>
+          {#if assigneeCollapse !== null}
+            <p class="warn">{assigneeCollapse}</p>
+          {/if}
+        {:else}
+          {task.assignee.length > 0 ? task.assignee.join(", ") : "—"}
+        {/if}
+      </dd>
 
       <dt>milestone</dt>
       <dd>

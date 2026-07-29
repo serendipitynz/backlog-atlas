@@ -245,6 +245,13 @@ pub struct TaskEdit {
     pub status: Option<String>,
     pub priority: Option<String>,
     pub milestone: Option<String>,
+    /// `--assignee` (doc-5 §3). One value rather than a set, and the whole GUI route for assignee
+    /// (TASK-57): v1.47.1 takes a single assignee — a repeated `-a` keeps only the last, a
+    /// comma-separated value lands as one literal entry, and the write replaces the whole
+    /// frontmatter list however many entries it had (measured 2026-07-29). `Some(blank)` is refused
+    /// — `-a ""` exits 0 without clearing (measured), the same silent-no-op as `--ref ""`, so
+    /// unassigning is not a capability the CLI offers ([`RejectReason::EmptyAssignee`]).
+    pub assignee: Option<String>,
     pub plan: Option<String>,
     pub notes: NoteEdit,
     pub add_labels: Vec<String>,
@@ -453,6 +460,7 @@ fn allowed_options(command: &[&str]) -> &'static [&'static str] {
             "--status",
             "--priority",
             "--milestone",
+            "--assignee",
             "--add-label",
             "--remove-label",
             "--ac",
@@ -487,6 +495,10 @@ pub enum RejectReason {
     /// same silent-no-op as `--ref ""`, so clearing all dependencies is not offered — refused rather
     /// than reported as a success (doc-5 §5 縮退).
     EmptyDependencies,
+    /// `assignee` was `Some(blank)`. `-a ""` exits 0 without clearing (measured), the same
+    /// silent-no-op as `--ref ""`, so unassigning is not offered — refused rather than reported as
+    /// a success (doc-5 §5 縮退).
+    EmptyAssignee,
     /// A `task edit` that would set no field. `task edit` with only a taskId changes nothing, so it
     /// is refused instead of launched (doc-5 §5).
     NothingToEdit,
@@ -511,6 +523,10 @@ impl std::fmt::Display for RejectReason {
             RejectReason::EmptyDependencies => write!(
                 f,
                 "dependencies cannot be cleared through the CLI (v1.47.1); keep at least one dependency"
+            ),
+            RejectReason::EmptyAssignee => write!(
+                f,
+                "assignee cannot be cleared through the CLI (v1.47.1); pass a non-blank assignee"
             ),
             RejectReason::NothingToEdit => write!(f, "task edit was requested with no field to change"),
             RejectReason::NothingToUpdate => {
@@ -609,6 +625,16 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
         .opt_if("--priority", &edit.priority)
         .opt_if("--milestone", &edit.milestone)
         .opt_if("--plan", &edit.plan);
+
+    if let Some(assignee) = &edit.assignee {
+        // 解除は不可 (measured): `-a ""` exits 0 without clearing, so a blank value is refused
+        // rather than reported as a success (doc-5 §5 縮退, same trap as `--ref ""`). Whitespace is
+        // refused with it — the CLI would write it as the assignee, and could not then clear it.
+        if assignee.trim().is_empty() {
+            return Err(RejectReason::EmptyAssignee);
+        }
+        inv = inv.opt("--assignee", assignee.clone());
+    }
 
     inv = match &edit.notes {
         NoteEdit::Keep => inv,
@@ -1514,6 +1540,50 @@ mod tests {
     }
 
     #[test]
+    fn task_edit_sets_the_assignee_as_one_value() {
+        // The GUI route for assignee is the edit side (TASK-57): one value, since a repeated `-a`
+        // keeps only the last and a comma-separated value becomes one literal entry (measured).
+        let cli = FakeCli::supported();
+        run_one(
+            UpdateOperation::TaskEdit {
+                task_id: "TASK-1".to_string(),
+                edit: TaskEdit {
+                    assignee: Some("@takkyun".to_string()),
+                    ..Default::default()
+                },
+            },
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(
+            cli.calls(),
+            vec![vec!["task", "edit", "TASK-1", "--assignee", "@takkyun"]]
+        );
+    }
+
+    #[test]
+    fn a_blank_assignee_is_refused_rather_than_silently_ignored() {
+        // `-a ""` exits 0 without clearing (measured), so issuing it would report an unassignment
+        // that never happened. Whitespace is refused with it — the CLI would write it verbatim.
+        let cli = FakeCli::supported();
+        for blank in ["", "   "] {
+            let err = run_one(
+                UpdateOperation::TaskEdit {
+                    task_id: "TASK-1".to_string(),
+                    edit: TaskEdit {
+                        assignee: Some(blank.to_string()),
+                        ..Default::default()
+                    },
+                },
+                &cli,
+            )
+            .unwrap_err();
+            assert_eq!(err, RejectReason::EmptyAssignee);
+        }
+        assert!(cli.calls().is_empty());
+    }
+
+    #[test]
     fn an_empty_task_edit_is_refused() {
         let cli = FakeCli::supported();
         let err = run_one(
@@ -1580,6 +1650,7 @@ mod tests {
                     status: Some("Done".to_string()),
                     priority: Some("low".to_string()),
                     milestone: Some("m-1".to_string()),
+                    assignee: Some("@takkyun".to_string()),
                     plan: Some("p".to_string()),
                     notes: NoteEdit::Set("n".to_string()),
                     add_labels: vec!["a".to_string()],

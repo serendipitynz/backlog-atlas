@@ -7,6 +7,7 @@ import {
   NOTHING_TO_SAVE_REASON,
   acDeltaDroppedByRebase,
   acRows,
+  assigneeCollapseWarning,
   buildSave,
   canRemoveLast,
   commandErrorDetail,
@@ -90,6 +91,37 @@ describe("ラベルの増減", () => {
     const view = taskView({ labels: ["a", "b"] });
     const session = setField(startSession(view), "labels", ["b", "c"]);
     expect(editOf(ready(session).action)).toEqual({ addLabels: ["c"], removeLabels: ["a"] });
+  });
+});
+
+describe("assignee の設定・付け替え (doc-5 §3, TASK-57)", () => {
+  it("1 件だけを --assignee へ渡し、前後の空白は落とす", () => {
+    const session = setField(startSession(taskView({ assignee: [] })), "assignee", " @takkyun ");
+    expect(editOf(ready(session).action)).toEqual({ assignee: "@takkyun" });
+  });
+
+  it("空欄は「変更しない」であり、解除としては発行しない", () => {
+    // `-a ""` は終了コード 0 で何も変えない（実測）。解除できたかのように発行しないための規則。
+    const session = setField(startSession(taskView({ assignee: ["@takkyun"] })), "assignee", "  ");
+    expect(isDirty(session)).toBe(false);
+    expect(buildSave(session).state).toBe("nothingToSave");
+  });
+
+  it("複数 assignee のタスクは、同じ値に触れただけでも 1 件化として保存対象になる", () => {
+    // 一覧を丸ごと置き換えるため（実測）、先頭と同じ値でも保存すれば 2 件が 1 件になる。
+    const view = taskView({ assignee: ["@takkyun", "@someone"] });
+    const session = setField(startSession(view), "assignee", "@takkyun");
+    expect(isDirty(session)).toBe(true);
+    expect(editOf(ready(session).action)).toEqual({ assignee: "@takkyun" });
+    expect(assigneeCollapseWarning(view.task.assignee)).toContain("2 件");
+    expect(assigneeCollapseWarning(["@takkyun"])).toBeNull();
+  });
+
+  it("再読込結果の assignee が送った 1 件と違えば事後通知に載る", () => {
+    expect(divergence({ assignee: "@takkyun" }, taskView({ assignee: ["@takkyun"] }))).toEqual([]);
+    expect(
+      divergence({ assignee: "@takkyun" }, taskView({ assignee: ["@takkyun", "@someone"] })),
+    ).toEqual(["assignee"]);
   });
 });
 
