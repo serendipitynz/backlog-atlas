@@ -1,10 +1,10 @@
 ---
 id: TASK-46
 title: アプリ設定ファイルの読み書きと設定画面を実装する
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-28 23:14'
-updated_date: '2026-07-29 02:58'
+updated_date: '2026-07-29 05:33'
 labels:
   - 'kind:feature'
 milestone: m-1
