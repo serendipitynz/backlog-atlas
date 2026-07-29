@@ -24,7 +24,7 @@ import { taskView } from "./fixtures";
 import type { EditorReadiness } from "./wire";
 
 const WITH_EDITOR: EditorReadiness = {
-  configured: { variable: "VISUAL", program: "code", args: ["-w"] },
+  configured: { source: "visual", program: "code", args: ["-w"] },
   association: "open",
 };
 
@@ -32,7 +32,7 @@ const WITHOUT_EDITOR: EditorReadiness = { configured: null, association: "open" 
 
 /** A platform with no association launcher this build will spawn (Windows — `cmd` is a shell). */
 const WITHOUT_ASSOCIATION: EditorReadiness = {
-  configured: { variable: "EDITOR", program: "notepad", args: [] },
+  configured: { source: "editor", program: "notepad", args: [] },
   association: null,
 };
 
@@ -49,10 +49,23 @@ describe("editorOffers", () => {
     const offers = editorOffers(WITH_EDITOR, { fileMissing: false });
     expect(offers.map((entry) => entry.method)).toEqual(["configured", "association"]);
     expect(offers.every((entry) => entry.enabled)).toBe(true);
-    // The variable in effect is named, so "which editor" is never guessed from the program alone.
-    expect(offer(WITH_EDITOR, "configured").label).toContain("VISUAL");
+    // The source in effect is named, so "which editor" is never guessed from the program alone.
+    expect(offer(WITH_EDITOR, "configured").label).toContain("$VISUAL");
     expect(offer(WITH_EDITOR, "configured").command).toBe("code -w <このタスクのファイル>");
     expect(offer(WITH_EDITOR, "association").command).toContain("open");
+  });
+
+  it("names アプリ設定 as the source when the setting is what resolved", () => {
+    // doc-8 §7 の解決順 puts アプリ設定 first, and the label has to say so: calling it `$…` would send
+    // the user looking for an environment variable that is not the one in effect.
+    const fromSettings: EditorReadiness = {
+      configured: { source: "appSettings", program: "/Applications/My Editor", args: [] },
+      association: "open",
+    };
+    const configured = offer(fromSettings, "configured");
+    expect(configured.label).toContain("アプリ設定");
+    expect(configured.label).not.toContain("$");
+    expect(configured.command).toBe("/Applications/My Editor <このタスクのファイル>");
   });
 
   it("keeps the association method when no editor variable is set", () => {
@@ -61,6 +74,8 @@ describe("editorOffers", () => {
     const configured = offer(WITHOUT_EDITOR, "configured");
     expect(configured.enabled).toBe(false);
     expect(configured.reason).toBe(NO_CONFIGURED_EDITOR_REASON);
+    // The reason has to name both ways out, since アプリ設定 is now the first of them (doc-8 §7).
+    expect(configured.reason).toContain("設定画面");
   });
 
   it("withholds the association method where the platform has no non-shell launcher", () => {

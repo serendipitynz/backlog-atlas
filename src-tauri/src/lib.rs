@@ -24,6 +24,10 @@ mod ledger;
 // command layer will call, and its scan-source boundary (decision-3) is meant to be
 // implementable from outside this module.
 pub mod read;
+// Public: アプリ設定 (TASK-46 / decision-13). The ledger's sibling under the app-config dir — the
+// ledger defines what Atlas reads, this holds how it is shown — kept a separate file so the ledger's
+// read-only degrade cannot also freeze the display defaults.
+pub mod settings;
 // Public: same-root freshness — file watch, read-version index, pre-update conflict detection, and
 // the shared reload path (TASK-32 / doc-9). The read/update layers' freshness counterpart: it keeps
 // the domain model in step with a Backlog root other processes may also write, detecting external
@@ -63,6 +67,10 @@ pub fn run() {
             commands::project_watch_start,
             commands::project_watch_stop,
             commands::task_history_read,
+            // アプリ設定 (decision-13): display defaults, in Atlas's own config dir.
+            commands::settings_read,
+            commands::settings_save,
+            commands::settings_location,
             // 外部エディタ経路 (doc-8 §7): neither path — Atlas starts an editor and writes nothing.
             commands::editor_probe,
             commands::task_file_open,

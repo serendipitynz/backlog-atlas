@@ -14,7 +14,8 @@
  * | doc-8 §7 `$EDITOR` 起動 / OS の関連付け起動 | [`EditorOffer`] per `LaunchMethod` | one control each, because the two are not interchangeable |
  * | doc-8 §7 開く前の注意表示 | [`FRONTMATTER_NOTICE`] | breaking frontmatter degrades the read (doc-4 §5), stated before the launch |
  * | doc-8 §6.4 二重取り込みの回避 | [`UNSAVED_INPUT_WARNING`] + [`needsConfirmation`] | an open 編集セッション makes the launch ask first |
- * | doc-8 §7 書き戻し | [`WRITE_BACK_NOTE`] | the editor's save arrives through doc-9's watch; no exit detection |
+ * | doc-8 §7 書き戻し（継続検出が動いている場合） | [`WRITE_BACK_NOTE`] | the editor's save arrives through doc-9's watch; no exit detection |
+ * | doc-8 §7 書き戻し（継続検出が止まっている場合） | [`WATCH_STOPPED_NOTE`] | the save will *not* arrive on its own; the row has to be re-read, and the panel offers it |
  * | doc-5 §3.1 / doc-8 §6.5 の案内先 | [`CLI_LIMIT_GUIDANCE`] | what this route exists for: the operations the CLI cannot do |
  *
  * Two rules the module follows, the same two `edit.ts` follows:
@@ -25,7 +26,13 @@
  *   draft (doc-8 §6.4); it only warns, and the save's 更新前競合検出 is what acts on the divergence.
  */
 
-import type { CommandError, EditorLaunch, EditorReadiness, LaunchMethod } from "./wire";
+import type {
+  CommandError,
+  EditorLaunch,
+  EditorReadiness,
+  EditorSource,
+  LaunchMethod,
+} from "./wire";
 import { commandErrorDetail } from "./edit";
 
 /**
@@ -34,6 +41,12 @@ import { commandErrorDetail } from "./edit";
  */
 export type OpenOutcome =
   | { state: "launched"; launch: EditorLaunch }
+  /**
+   * Nothing was started: the attempt to (re)start the watch found 継続検出 stopped for this root, and
+   * the panel had not said so before the press. doc-8 §7 requires that to be read *before* the editor
+   * opens, so the launch waits for the next press — by which time the notice is on screen.
+   */
+  | { state: "deferred"; detail: string }
   | { state: "failed"; detail: string };
 
 /** One launch method as a control: what it would run, whether it may be pressed, and why not. */
@@ -61,6 +74,33 @@ export const FRONTMATTER_NOTICE =
 export const WRITE_BACK_NOTE =
   "外部エディタで保存すると、ファイル監視が変更を拾って再読込します（エディタを閉じる必要は" +
   "ありません。doc-9 §3）。";
+
+/**
+ * 書き戻し when 継続検出 is stopped (doc-8 §7): the save will not arrive on its own. Shown *before* the
+ * launch, beside the frontmatter notice — doc-8 §7 is explicit that the user must not learn this only
+ * after the editor is open. The re-read it names is the control the panel offers next to it, so the
+ * user reaches the reflected change without leaving the screen.
+ *
+ * One text for both causes (the watch failed, or アプリ設定 turned it off): doc-9 §3.1 keeps the state
+ * and its mark the same either way and puts the difference only in the reason, which the swimlane's
+ * 帯 states.
+ */
+export const WATCH_STOPPED_NOTE =
+  "このルートは継続検出が止まっているため、外部エディタでの保存は自動では反映されません。" +
+  "編集を終えたら、下の「このルートを再読込」を押してください（タスクを開き直すだけでは読み直しません）。";
+
+/** The re-read control doc-8 §7 requires beside the launch while 継続検出 is stopped. */
+export const REREAD_ROOT_LABEL = "このルートを再読込";
+
+/**
+ * What a [`OpenOutcome`] `deferred` says. The stop was discovered by the press itself — the watch had
+ * not failed yet when the panel was drawn — so the notice above appears at the same moment. Opening
+ * anyway would satisfy doc-8 §7's wording and not its point: the user would be reading the warning
+ * with the editor already up.
+ */
+export const WATCH_STOPPED_BEFORE_LAUNCH =
+  "このルートの継続検出が止まっていることが分かったため、まだ開いていません。上の注意を読んでから、" +
+  "もう一度押すと開きます。";
 
 /** 案内先 (doc-5 §3.1・doc-8 §6.5): the operations that exist nowhere else in Atlas. */
 export const CLI_LIMIT_GUIDANCE =
@@ -91,9 +131,20 @@ export const NO_ASSOCIATION_LAUNCHER_REASON =
   "このプラットフォームでは OS 関連付け起動を提供しません（シェルを介さない関連付け API を" +
   "使うまで無効にしています）。$EDITOR / $VISUAL での起動は使えます";
 
+/**
+ * How each 起動指定の出所 is named (doc-8 §7 の解決順). アプリ設定 is spelled as itself rather than as a
+ * variable name: it is the指定手段 for users whose environment never reaches the process, and calling
+ * it `$…` would send them looking for a variable that does not exist.
+ */
+export const EDITOR_SOURCE_LABEL: Record<EditorSource, string> = {
+  appSettings: "アプリ設定の外部エディタ指定",
+  visual: "$VISUAL",
+  editor: "$EDITOR",
+};
+
 export const NO_CONFIGURED_EDITOR_REASON =
-  "VISUAL・EDITOR のいずれも設定されていないため、この方式は提供しません" +
-  "（環境変数を設定して Atlas を起動し直すか、OS の関連付けで開いてください）";
+  "アプリ設定の外部エディタ指定も VISUAL・EDITOR も設定されていないため、この方式は提供しません" +
+  "（設定画面で指定するか、環境変数を設定して Atlas を起動し直すか、OS の関連付けで開いてください）";
 
 export const EDITOR_PROBE_PENDING_REASON = "外部エディタの確認中です";
 
@@ -136,7 +187,7 @@ export function editorOffers(
       label:
         configured === null
           ? "$EDITOR で開く"
-          : `${configured.variable} で開く（${configured.program}）`,
+          : `${EDITOR_SOURCE_LABEL[configured.source]} で開く（${configured.program}）`,
       command: configuredCommand,
       enabled: blocked === null && configured !== null,
       reason:

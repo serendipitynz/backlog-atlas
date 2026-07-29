@@ -8,7 +8,9 @@
 //! | term | here | is |
 //! |---|---|---|
 //! | doc-8 §7 外部エディタ経路 | this module + [`open`] | handing one management file to the user's editor; the write is the editor's, never Atlas's |
-//! | doc-8 §7 `$EDITOR` 起動 | [`LaunchMethod::Configured`] / [`ConfiguredEditor`] | the program `VISUAL`/`EDITOR` names, with its leading arguments |
+//! | doc-8 §7 起動指定 | [`EditorCommand`] | the program to start and the arguments that precede the file path |
+//! | doc-8 §7 起動指定の解決順 | [`resolve`] / [`EditorSource`] | which of アプリ設定 → `$VISUAL` → `$EDITOR` supplied the 起動指定 in effect |
+//! | doc-8 §7 `$EDITOR` 起動 | [`LaunchMethod::Configured`] / [`ConfiguredEditor`] | the 起動指定 that resolution picked, with the source it came from |
 //! | doc-8 §7 OS の関連付け起動 | [`LaunchMethod::Association`] | the platform's association launcher (`open` / `xdg-open`), where one exists that is not a shell |
 //! | 起動できる方式 | [`EditorReadiness`] | which of the two methods this environment has, so the UI offers only those |
 //! | 起動した事実 | [`EditorLaunch`] | what was actually spawned — the program and argument array, for the UI to state |
@@ -33,7 +35,9 @@
 //! `~` expansion and variable substitution are shell features, and running the value through a shell
 //! to get them would put the file path — a value from disk — into a string a shell then re-parses.
 //! The cost is that an editor whose *executable path* contains a space cannot be expressed in the
-//! variable; such a value simply fails to spawn, and the failure names the program it tried.
+//! variable; such a value simply fails to spawn, and the failure names the program it tried. アプリ設定's
+//! 外部エディタ指定 does not pay it: it stores the program and the argument array as separate values
+//! ([`EditorCommand`]), so nothing has to be split and a path with spaces is expressible there.
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -46,20 +50,60 @@ use std::process::{Command, Stdio};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LaunchMethod {
-    /// `VISUAL`, else `EDITOR` (doc-8 §7 `$EDITOR`).
+    /// The 起動指定 that アプリ設定 → `$VISUAL` → `$EDITOR` resolves to (doc-8 §7 `$EDITOR` 起動).
     Configured,
     /// The platform's file-association launcher (doc-8 §7 OS の関連付け起動).
     Association,
 }
 
-/// The editor `VISUAL`/`EDITOR` names. `VISUAL` wins: the POSIX convention is that `EDITOR` may be a
-/// line editor while `VISUAL` is the screen-oriented one, so a user who set both meant `VISUAL` for
-/// a full-screen edit — which is what this path is for.
+/// 起動指定 (doc-8 §7): the program to start and the arguments that precede the file path. Held as a
+/// program plus an argument *array* rather than a command line, because that is how it reaches the OS
+/// (`Command::new(program).args(argv)`) — a single string would have to be re-split by something, and
+/// the only thing that splits command lines properly is a shell (AGENTS: never one).
+///
+/// Also the shape アプリ設定 stores (decision-13 外部エディタ指定); [`crate::settings`] deserializes
+/// this type straight out of `settings.toml`, so the file and the launch agree by construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EditorCommand {
+    pub program: String,
+    /// Arguments that precede the file path (`code -w` → `["-w"]`).
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+impl EditorCommand {
+    /// The 起動指定 this value names, or `None` when it names no program. A blank `program` is treated
+    /// as unset for the same reason a blank `VISUAL` is (see [`from_variable`]): it would offer a
+    /// control whose only outcome is a spawn error.
+    fn named(&self) -> Option<&EditorCommand> {
+        (!self.program.trim().is_empty()).then_some(self)
+    }
+}
+
+/// Where the 起動指定 in effect came from (doc-8 §7 起動指定の解決順). A value rather than the
+/// variable's name, because アプリ設定 is not a variable: reporting it as one would make the UI say
+/// "アプリ設定 で開く（…）" in the slot that otherwise holds `VISUAL`/`EDITOR`, and a user reading that
+/// would go looking for an environment variable that does not exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EditorSource {
+    /// アプリ設定 の外部エディタ指定 (decision-13) — highest precedence (doc-8 §7).
+    AppSettings,
+    Visual,
+    Editor,
+}
+
+/// The 起動指定 resolution picked, and where it came from. `VISUAL` wins over `EDITOR`: the POSIX
+/// convention is that `EDITOR` may be a line editor while `VISUAL` is the screen-oriented one, so a
+/// user who set both meant `VISUAL` for a full-screen edit — which is what this path is for. アプリ設定
+/// wins over both, because doc-8 §7 gives it as the指定手段 for the users whose environment variables
+/// never reach the process (a Finder/launcher start), and an environment that cannot be seen must not
+/// override a setting the user typed into Atlas itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfiguredEditor {
-    /// Which variable it came from — shown by the UI, so "which one is in effect" is never guessed.
-    pub variable: String,
+    /// Which of the three supplied it — shown by the UI, so "which one is in effect" is never guessed.
+    pub source: EditorSource,
     pub program: String,
     /// Arguments that precede the file path (`code -w` → `["-w"]`).
     pub args: Vec<String>,
@@ -165,31 +209,53 @@ impl Launcher for SystemLauncher {
 /// The launch methods this environment has (doc-8 §7). Called per open rather than cached: a
 /// `VISUAL` exported after Atlas started will not appear (the variable is read from Atlas's own
 /// environment), but re-probing keeps the answer to "which editor" in one place and costs nothing.
-pub fn probe(env: &dyn Environment) -> EditorReadiness {
+/// `settings` is アプリ設定's 外部エディタ指定 (decision-13), which the caller reads per call for the
+/// same reason — it can change while Atlas runs.
+pub fn probe(settings: Option<&EditorCommand>, env: &dyn Environment) -> EditorReadiness {
     EditorReadiness {
-        configured: configured_editor(env),
+        configured: resolve(settings, env),
         association: association_launcher().map(|launcher| launcher.program.to_string()),
     }
 }
 
-/// Read `VISUAL`, else `EDITOR`. A variable set to whitespace only is treated as unset: it names no
-/// program, and reporting it as available would offer a control whose only outcome is a spawn error.
-fn configured_editor(env: &dyn Environment) -> Option<ConfiguredEditor> {
-    for variable in ["VISUAL", "EDITOR"] {
-        let Some(value) = env.var(variable) else {
-            continue;
-        };
-        let mut words = value.split_whitespace().map(str::to_string);
-        let Some(program) = words.next() else {
-            continue;
-        };
+/// 起動指定の解決順 (doc-8 §7): アプリ設定 → `$VISUAL` → `$EDITOR`, first one that names a program.
+/// `None` when none of the three does, which is what makes the `$EDITOR` control a disabled one with a
+/// reason rather than a button that fails on press.
+pub fn resolve(
+    settings: Option<&EditorCommand>,
+    env: &dyn Environment,
+) -> Option<ConfiguredEditor> {
+    if let Some(command) = settings.and_then(EditorCommand::named) {
         return Some(ConfiguredEditor {
-            variable: variable.to_string(),
-            program,
-            args: words.collect(),
+            source: EditorSource::AppSettings,
+            program: command.program.trim().to_string(),
+            args: command.args.clone(),
         });
     }
-    None
+    from_variable(env, "VISUAL", EditorSource::Visual)
+        .or_else(|| from_variable(env, "EDITOR", EditorSource::Editor))
+}
+
+/// Read one editor variable. A variable set to whitespace only is treated as unset: it names no
+/// program, and reporting it as available would offer a control whose only outcome is a spawn error.
+///
+/// The value is split on ASCII whitespace into a program and its leading arguments — the whole of the
+/// parsing (see this module's header). アプリ設定 needs no such split, because it stores the program and
+/// the argument array separately, which is why an editor whose path contains a space can be named
+/// there and not in the variables.
+fn from_variable(
+    env: &dyn Environment,
+    variable: &str,
+    source: EditorSource,
+) -> Option<ConfiguredEditor> {
+    let value = env.var(variable)?;
+    let mut words = value.split_whitespace().map(str::to_string);
+    let program = words.next()?;
+    Some(ConfiguredEditor {
+        source,
+        program,
+        args: words.collect(),
+    })
 }
 
 /// The platform's association launcher: the program that hands a file to whatever the OS associates
@@ -245,6 +311,7 @@ pub const NO_ASSOCIATION_LAUNCHER: &str =
 /// which program, and the file path as its own argument array element — is asserted in tests without
 /// a process being started.
 pub fn plan(
+    settings: Option<&EditorCommand>,
     env: &dyn Environment,
     method: LaunchMethod,
     file: &Path,
@@ -252,8 +319,9 @@ pub fn plan(
     let path = file.to_string_lossy().into_owned();
     match method {
         LaunchMethod::Configured => {
-            let editor = configured_editor(env).ok_or_else(|| EditorError::Unavailable {
-                detail: "VISUAL・EDITOR のいずれも設定されていません".to_string(),
+            let editor = resolve(settings, env).ok_or_else(|| EditorError::Unavailable {
+                detail: "アプリ設定の外部エディタ指定・VISUAL・EDITOR のいずれも設定されていません"
+                    .to_string(),
             })?;
             let mut args = editor.args;
             args.push(path);
@@ -281,12 +349,13 @@ pub fn plan(
 /// Open `file` in the user's editor (doc-8 §7). `file` is the management file itself — the caller
 /// resolves it from its own read model, so no path from the frontend reaches a process here.
 pub fn open(
+    settings: Option<&EditorCommand>,
     env: &dyn Environment,
     launcher: &dyn Launcher,
     method: LaunchMethod,
     file: &Path,
 ) -> Result<EditorLaunch, EditorError> {
-    let launch = plan(env, method, file)?;
+    let launch = plan(settings, env, method, file)?;
     launcher
         .spawn(&launch.program, &launch.args)
         .map_err(|error| EditorError::LaunchFailed {
@@ -338,11 +407,19 @@ mod tests {
         }
     }
 
+    /// The 起動指定 アプリ設定 would hold (decision-13), for the resolution-order tests.
+    fn setting(program: &str, args: &[&str]) -> EditorCommand {
+        EditorCommand {
+            program: program.to_string(),
+            args: args.iter().map(|arg| arg.to_string()).collect(),
+        }
+    }
+
     #[test]
     fn visual_wins_over_editor() {
         let env = FakeEnv::with(&[("VISUAL", "mate -w"), ("EDITOR", "vi")]);
-        let editor = configured_editor(&env).expect("configured");
-        assert_eq!(editor.variable, "VISUAL");
+        let editor = resolve(None, &env).expect("configured");
+        assert_eq!(editor.source, EditorSource::Visual);
         assert_eq!(editor.program, "mate");
         assert_eq!(editor.args, vec!["-w".to_string()]);
     }
@@ -350,18 +427,74 @@ mod tests {
     #[test]
     fn editor_is_used_when_visual_is_absent() {
         let env = FakeEnv::with(&[("EDITOR", "vi")]);
-        let editor = configured_editor(&env).expect("configured");
-        assert_eq!(editor.variable, "EDITOR");
+        let editor = resolve(None, &env).expect("configured");
+        assert_eq!(editor.source, EditorSource::Editor);
         assert_eq!(editor.program, "vi");
         assert!(editor.args.is_empty());
+    }
+
+    /// doc-8 §7 起動指定の解決順 (TASK-46 AC #5): アプリ設定 → `$VISUAL` → `$EDITOR`. The setting has to
+    /// win, because the case it exists for is a start from Finder/a launcher, where the variables that
+    /// would otherwise decide are not even visible to the process.
+    #[test]
+    fn the_app_setting_wins_over_both_variables() {
+        let env = FakeEnv::with(&[("VISUAL", "mate -w"), ("EDITOR", "vi")]);
+        let configured = setting("/Applications/Zed.app/Contents/MacOS/cli", &["--wait"]);
+        let editor = resolve(Some(&configured), &env).expect("configured");
+        assert_eq!(editor.source, EditorSource::AppSettings);
+        assert_eq!(editor.program, "/Applications/Zed.app/Contents/MacOS/cli");
+        assert_eq!(editor.args, vec!["--wait".to_string()]);
+    }
+
+    #[test]
+    fn without_the_app_setting_the_variables_still_resolve() {
+        let env = FakeEnv::with(&[("EDITOR", "vi")]);
+        // A setting whose program is blank names no program, so it must not shadow `EDITOR` — the same
+        // rule a blank variable follows below.
+        let blank = setting("  ", &[]);
+        assert_eq!(
+            resolve(Some(&blank), &env).expect("configured").source,
+            EditorSource::Editor
+        );
+        assert_eq!(
+            resolve(None, &env).expect("configured").source,
+            EditorSource::Editor
+        );
+    }
+
+    /// The program may contain spaces when it comes from アプリ設定: nothing splits it, because the
+    /// setting stores the argument array separately. This is the whole reason the setting is not a
+    /// command *line* — the variables cannot express such a path (see the module header).
+    #[test]
+    fn a_setting_program_with_spaces_stays_one_argument() {
+        let env = FakeEnv::default();
+        let configured = setting(
+            "/Applications/My Editor.app/Contents/MacOS/my editor",
+            &["-w"],
+        );
+        let launch = plan(
+            Some(&configured),
+            &env,
+            LaunchMethod::Configured,
+            Path::new("/roots/p/tasks/task-1 - a.md"),
+        )
+        .expect("planned");
+        assert_eq!(
+            launch.program,
+            "/Applications/My Editor.app/Contents/MacOS/my editor"
+        );
+        assert_eq!(
+            launch.args,
+            vec!["-w".to_string(), "/roots/p/tasks/task-1 - a.md".to_string()]
+        );
     }
 
     #[test]
     fn a_blank_variable_is_not_an_editor() {
         // Offering a control for `EDITOR=" "` would promise a launch whose only outcome is an error.
         let env = FakeEnv::with(&[("VISUAL", "   "), ("EDITOR", "  \t ")]);
-        assert_eq!(configured_editor(&env), None);
-        assert_eq!(probe(&env).configured, None);
+        assert_eq!(resolve(None, &env), None);
+        assert_eq!(probe(None, &env).configured, None);
     }
 
     #[test]
@@ -369,6 +502,7 @@ mod tests {
         // A path with spaces must survive as one element: no shell, so no word splitting (AGENTS).
         let env = FakeEnv::with(&[("EDITOR", "code -n")]);
         let launch = plan(
+            None,
             &env,
             LaunchMethod::Configured,
             Path::new("/roots/my backlog/tasks/task-1 - a.md"),
@@ -387,8 +521,13 @@ mod tests {
     #[test]
     fn configured_launch_is_unavailable_without_the_variables() {
         let env = FakeEnv::default();
-        let error = plan(&env, LaunchMethod::Configured, Path::new("/roots/a.md"))
-            .expect_err("unavailable");
+        let error = plan(
+            None,
+            &env,
+            LaunchMethod::Configured,
+            Path::new("/roots/a.md"),
+        )
+        .expect_err("unavailable");
         assert!(matches!(error, EditorError::Unavailable { .. }));
     }
 
@@ -397,15 +536,20 @@ mod tests {
     fn association_launch_needs_no_editor_variable() {
         // The whole point of the second method: a machine with no EDITOR can still open the file.
         let env = FakeEnv::default();
-        let launch = plan(&env, LaunchMethod::Association, Path::new("/roots/a.md"))
-            .expect("the association launcher needs no environment");
+        let launch = plan(
+            None,
+            &env,
+            LaunchMethod::Association,
+            Path::new("/roots/a.md"),
+        )
+        .expect("the association launcher needs no environment");
         assert_eq!(launch.method, LaunchMethod::Association);
         assert_eq!(
             launch.args.last().map(String::as_str),
             Some("/roots/a.md"),
             "the file is the last argument, after the launcher's own"
         );
-        assert_eq!(probe(&env).association, Some(launch.program));
+        assert_eq!(probe(None, &env).association, Some(launch.program));
     }
 
     /// The launcher is never a command interpreter, on any platform. Spawning one would hand the path
@@ -439,8 +583,9 @@ mod tests {
     #[test]
     fn windows_withholds_the_association_method_instead_of_using_a_shell() {
         let env = FakeEnv::default();
-        assert_eq!(probe(&env).association, None);
+        assert_eq!(probe(None, &env).association, None);
         let error = plan(
+            None,
             &env,
             LaunchMethod::Association,
             Path::new("C:/roots/a&calc.md"),
@@ -450,6 +595,7 @@ mod tests {
 
         let env = FakeEnv::with(&[("EDITOR", "notepad")]);
         let launch = plan(
+            None,
             &env,
             LaunchMethod::Configured,
             Path::new("C:/roots/a&calc.md"),
@@ -468,7 +614,7 @@ mod tests {
         let env = FakeEnv::with(&[("VISUAL", "zed")]);
         let launcher = FakeLauncher::default();
         let file = Path::new("/roots/p/tasks/task-1 - a.md");
-        let launch = open(&env, &launcher, LaunchMethod::Configured, file).expect("launched");
+        let launch = open(None, &env, &launcher, LaunchMethod::Configured, file).expect("launched");
         assert_eq!(
             launcher.spawns.borrow().as_slice(),
             &[(
@@ -487,6 +633,7 @@ mod tests {
             ..FakeLauncher::default()
         };
         let error = open(
+            None,
             &env,
             &launcher,
             LaunchMethod::Configured,
@@ -556,7 +703,7 @@ mod tests {
         std::fs::write(&file, "before").expect("seed");
         let env = FakeEnv::with(&[("EDITOR", "noop")]);
         let launcher = FakeLauncher::default();
-        open(&env, &launcher, LaunchMethod::Configured, &file).expect("launched");
+        open(None, &env, &launcher, LaunchMethod::Configured, &file).expect("launched");
         assert_eq!(std::fs::read_to_string(&file).expect("read"), "before");
         std::fs::remove_dir_all(&dir).ok();
     }

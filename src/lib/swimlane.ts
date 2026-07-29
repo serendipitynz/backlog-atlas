@@ -179,6 +179,7 @@ export function unreadableDetail(error: CommandError): string {
   switch (error.kind) {
     case "rootUnreadable":
     case "ledger":
+    case "settings":
     case "watchFailed":
     case "updateRejected":
     case "versionProbeFailed":

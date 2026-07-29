@@ -639,6 +639,10 @@ export function commandErrorDetail(error: CommandError): string {
     case "ledger":
     case "watchFailed":
       return error.detail;
+    // アプリ設定 (decision-13): only a save fails, and it does not touch this task — the panel states
+    // it as what it is, so a settings write failure never reads as a failed edit.
+    case "settings":
+      return `設定を保存できませんでした: ${error.detail}`;
   }
 }
 

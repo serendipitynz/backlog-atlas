@@ -25,7 +25,9 @@
  */
 
 import { cardIdentity } from "./card";
-import type { StorageState, TaskView } from "./wire";
+import type { StorageSelection, TaskView } from "./wire";
+
+export type { StorageSelection };
 
 /** One Type choice: a concrete Type value, or one of the two doc-7 §5 boundary cases. */
 export type TypeSelection =
@@ -33,9 +35,10 @@ export type TypeSelection =
   | { kind: "unset" }
   | { kind: "unknown" };
 
-/**
- * One 保存区分 choice. The four doc-4 §3.4 states, plus `indeterminate` for a task file found
- * outside the recognized scan locations, whose storage state is `null`.
+/*
+ * `StorageSelection` (declared in `wire.ts`, re-exported above) is the four doc-4 §3.4 states plus
+ * `indeterminate` — a task file found outside the recognized scan locations, whose storage state is
+ * `null`.
  *
  * `indeterminate` is its own selection rather than being folded anywhere, because both docs
  * constrain it and only this satisfies them at once: doc-4 §3.4 forbids treating a `null`
@@ -45,8 +48,9 @@ export type TypeSelection =
  * invisible, which is dropping it by another name. doc-7 §5 enumerates the four determinate
  * states because those are what it is naming; it does not say the indeterminate one is
  * unreachable.
+ *
+ * It lives in `wire.ts` because アプリ設定 persists a list of these as 既定の保存区分 (decision-13).
  */
-export type StorageSelection = StorageState | "indeterminate";
 
 export interface CardFilter {
   types: TypeSelection[];

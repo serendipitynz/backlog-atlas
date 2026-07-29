@@ -21,6 +21,7 @@
 //! | doc-3 §4.1 登録を拒否し理由を示す | [`LedgerRefusal`] | which refusal a 登録・削除・更新 hit, as a value the screen branches on instead of a sentence it parses |
 //! | doc-3 §2.1 台帳ファイル | [`ledger_location`] | the one file Atlas reads and writes, named so the screen can show where the registration lives |
 //! | doc-3 §3.1 slug の既定値 | [`ledger_default_slug`] | the derivation from a project root, exposed so the screen previews the default instead of re-deriving it |
+//! | decision-13 アプリ設定 | [`settings_read`] / [`settings_save`] | the display defaults, read and written as one value with the state that says whether saving is allowed |
 //! | every layer's failure type | [`CommandError`] | one error type that keeps the core's distinctions (root unreadable / 縮退 / 拒否 / 照合不能) intact |
 //!
 //! ## Read and update stay separate paths (AC #2)
@@ -63,8 +64,8 @@
 
 use crate::domain::{Config, Decision, Document, Milestone, ProjectModel, Task};
 use crate::editor::{
-    self, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod, Launcher,
-    SystemEnv, SystemLauncher,
+    self, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod,
+    Launcher, SystemEnv, SystemLauncher,
 };
 use crate::history::{self, Commit, HistoryError, RemoteHost};
 use crate::interpret::{interpret_task, TaskInterpretation};
@@ -73,6 +74,7 @@ use crate::ledger::{
 };
 use crate::read::scan::{ScanSource, WorkingTree};
 use crate::read::RootError;
+use crate::settings::{self, AppSettings, LoadedSettings, SettingsError};
 use crate::sync::{
     FileVersions, FsVersions, GuardError, GuardedUpdate, ReloadReason, SyncState, WatchSession,
 };
@@ -279,6 +281,10 @@ pub enum CommandError {
         reason: LedgerRefusal,
         detail: String,
     },
+    /// アプリ設定ファイルへの書き込みが行われなかった (decision-13). Only saving can fail — a read
+    /// degrades to the defaults and reports why through [`SettingsStatus`] instead (AC #6), so this
+    /// variant means the settings on screen were *not* persisted.
+    Settings { detail: String },
     /// ルート読取不能 (doc-4 §5): the root as a whole has no model. Per doc-7 §6 the project's row
     /// survives this, which is why it also appears as a [`ProjectLoad`] value.
     RootUnreadable { slug: String, detail: String },
@@ -393,6 +399,14 @@ impl From<LedgerError> for CommandError {
             | LedgerError::BareIdNeedsContext => return CommandError::Ledger { detail },
         };
         CommandError::LedgerRefused { reason, detail }
+    }
+}
+
+impl From<SettingsError> for CommandError {
+    fn from(error: SettingsError) -> Self {
+        CommandError::Settings {
+            detail: error.to_string(),
+        }
     }
 }
 
@@ -549,6 +563,10 @@ impl Workspace {
     ///   be launched; anything else is [`CommandError::UnknownTaskFile`]. The frontend gets these
     ///   paths from its own read, so this is the same rule [`SyncState::guarded_update`] applies to
     ///   update targets: the boundary names the file from its model rather than trusting a caller.
+    /// - **The 起動指定 is passed in, not read here.** `configured` is アプリ設定's 外部エディタ指定
+    ///   (decision-13); the command reads it per launch so a setting changed in this session takes
+    ///   effect without a restart, and [`editor::resolve`] is the one place doc-8 §7's order
+    ///   (アプリ設定 → `$VISUAL` → `$EDITOR`) is applied.
     /// - **No CLI capability, no 保存区分 gate.** This is the route doc-8 §6.5 and doc-5 §3.1 point at
     ///   for what the CLI *cannot* do — a draft's or an archived task's content, emptying References —
     ///   so gating it on the CLI probe or the 保存区分 would remove it exactly where it is needed.
@@ -558,6 +576,7 @@ impl Workspace {
         entry: &ProjectEntry,
         source_path: &Path,
         method: LaunchMethod,
+        configured: Option<&EditorCommand>,
         env: &dyn Environment,
         launcher: &dyn Launcher,
     ) -> Result<EditorLaunch, CommandError> {
@@ -576,7 +595,13 @@ impl Workspace {
                 path: source_path.to_path_buf(),
             });
         }
-        Ok(editor::open(env, launcher, method, source_path)?)
+        Ok(editor::open(
+            configured,
+            env,
+            launcher,
+            method,
+            source_path,
+        )?)
     }
 
     /// Run one screen action against an open root (doc-5 §5, doc-9 §4). The only method here that
@@ -1184,14 +1209,79 @@ pub fn task_history_read(
     lock(&state.workspace).history(&entry, &task_id)
 }
 
+// --- commands: アプリ設定 (decision-13) ------------------------------------------------------------
+
+/// Resolve the single settings file under the OS app-config dir (decision-13). Beside the ledger, in
+/// Atlas's own config dir and in no project's Backlog root — decision-13's reason for the location is
+/// that the user can find both files, and back them up, in one place.
+fn settings_path(app: &AppHandle) -> Result<PathBuf, CommandError> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| CommandError::Settings {
+            detail: format!("the application config directory could not be resolved: {e}"),
+        })?;
+    Ok(dir.join("settings.toml"))
+}
+
+/// The settings in force, for this boundary's own use. A path that cannot be resolved is the one read
+/// failure this returns rather than degrades, because the caller needs *some* settings either way —
+/// so it is turned into the defaults here, and the screen learns of it through [`settings_read`].
+fn current_settings(app: &AppHandle) -> AppSettings {
+    match settings_path(app) {
+        Ok(path) => LoadedSettings::load(&path).settings,
+        Err(_) => AppSettings::default(),
+    }
+}
+
+/// アプリ設定 and why they are what they are (decision-13, AC #2/#6). Reading never fails: a missing,
+/// unreadable or too-new file yields the defaults with a `status` the screen states — decision-13 is
+/// explicit that the screen must not stop because the settings could not be read.
+#[tauri::command(async)]
+pub fn settings_read(
+    app: AppHandle,
+    state: State<'_, AtlasState>,
+) -> Result<LoadedSettings, CommandError> {
+    // Under the lifecycle lock like the ledger reads: `settings_save` is a read-modify-write on one
+    // file, and a read overlapping it could otherwise see the half-written bytes as 破損.
+    let _lifecycle = lifecycle(&state);
+    Ok(LoadedSettings::load(&settings_path(&app)?))
+}
+
+/// Persist アプリ設定 (AC #2/#3). Refused when the on-disk `schema_version` is newer than this build
+/// understands (AC #1) — checked against the file at write time, not against an earlier read, so a
+/// file replaced while Atlas ran is still not clobbered.
+#[tauri::command(async)]
+pub fn settings_save(
+    app: AppHandle,
+    state: State<'_, AtlasState>,
+    settings: AppSettings,
+) -> Result<LoadedSettings, CommandError> {
+    let _lifecycle = lifecycle(&state);
+    Ok(settings::save(&settings_path(&app)?, &settings)?)
+}
+
+/// Where the settings file is (decision-13). Shown by the 設定画面 for the same reason
+/// [`ledger_location`] is shown by the 台帳管理画面: the file is Atlas's own, hand-editable, and the
+/// user is meant to be able to find it. Resolving the path reads nothing, so this takes no lock.
+#[tauri::command(async)]
+pub fn settings_location(app: AppHandle) -> Result<PathBuf, CommandError> {
+    settings_path(&app)
+}
+
 // --- commands: 外部エディタ経路 (doc-8 §7) --------------------------------------------------------
 
 /// Which launch methods this environment offers (doc-8 §7). Probed on demand for the same reason as
 /// [`cli_probe`]: the UI offers a control per available method and states why the other is missing, and
 /// the answer is one environment read.
+///
+/// The アプリ設定 側 of 起動指定の解決順 is read here rather than passed from the frontend, so the panel
+/// cannot show a different editor than the one a launch would start: both go through
+/// [`editor::resolve`] with the same input.
 #[tauri::command(async)]
-pub fn editor_probe() -> EditorReadiness {
-    editor::probe(&SystemEnv)
+pub fn editor_probe(app: AppHandle) -> EditorReadiness {
+    let settings = current_settings(&app);
+    editor::probe(settings.external_editor.as_ref(), &SystemEnv)
 }
 
 /// Open one task's management file in the user's editor (doc-8 §7). The write is the editor's; Atlas
@@ -1211,7 +1301,15 @@ pub fn task_file_open(
 ) -> Result<EditorLaunch, CommandError> {
     let lifecycle = lifecycle(&state);
     let entry = entry_for(&app, &lifecycle, &slug)?;
-    lock(&state.workspace).open_in_editor(&entry, &source_path, method, &SystemEnv, &SystemLauncher)
+    let settings = current_settings(&app);
+    lock(&state.workspace).open_in_editor(
+        &entry,
+        &source_path,
+        method,
+        settings.external_editor.as_ref(),
+        &SystemEnv,
+        &SystemLauncher,
+    )
 }
 
 // --- commands: update path (decision-2, doc-5, AC #2/#4) ----------------------------------------
@@ -1551,6 +1649,7 @@ ordinal: 1000\n\
                 &entry,
                 &path,
                 LaunchMethod::Configured,
+                None,
                 &FixedEnv("my-editor"),
                 &launcher,
             )
@@ -1587,6 +1686,7 @@ ordinal: 1000\n\
                 &entry,
                 &outside,
                 LaunchMethod::Configured,
+                None,
                 &FixedEnv("my-editor"),
                 &launcher,
             )
@@ -1625,6 +1725,7 @@ ordinal: 1000\n\
                 &entry,
                 &completed.task.source_path,
                 LaunchMethod::Configured,
+                None,
                 &FixedEnv("my-editor"),
                 &launcher,
             )
@@ -1640,6 +1741,7 @@ ordinal: 1000\n\
                 &entry,
                 Path::new("/anywhere/task-1 - a.md"),
                 LaunchMethod::Association,
+                None,
                 &FixedEnv("my-editor"),
                 &RecordingLauncher::default(),
             )
@@ -1659,9 +1761,9 @@ ordinal: 1000\n\
             serde_json::from_value(serde_json::json!("association")).unwrap();
         assert_eq!(method, LaunchMethod::Association);
 
-        let readiness = editor::probe(&FixedEnv("code -w"));
+        let readiness = editor::probe(None, &FixedEnv("code -w"));
         let json = serde_json::to_value(&readiness).unwrap();
-        assert_eq!(json["configured"]["variable"], "EDITOR");
+        assert_eq!(json["configured"]["source"], "editor");
         assert_eq!(json["configured"]["program"], "code");
         assert_eq!(json["configured"]["args"][0], "-w");
         // A string where a launcher exists, `null` where the platform has none (Windows — see
@@ -1669,6 +1771,7 @@ ordinal: 1000\n\
         assert!(json["association"].is_string() || json["association"].is_null());
 
         let launch = editor::plan(
+            None,
             &FixedEnv("code"),
             LaunchMethod::Configured,
             Path::new("/roots/p/tasks/task-1 - a.md"),
@@ -1678,6 +1781,46 @@ ordinal: 1000\n\
         assert_eq!(json["method"], "configured");
         assert_eq!(json["program"], "code");
         assert_eq!(json["args"][0], "/roots/p/tasks/task-1 - a.md");
+    }
+
+    /// アプリ設定 の wire 形 (decision-13, TASK-46 AC #2). `src/lib/wire.ts` is hand-written, so a
+    /// renamed key would otherwise only surface inside the running app — and here the key names are
+    /// also the *file's* keys, so a rename would silently orphan every saved settings file.
+    #[test]
+    fn the_settings_wire_shape_matches_the_frontend() {
+        use crate::settings::SettingsStatus;
+
+        let loaded = LoadedSettings {
+            settings: AppSettings::default(),
+            status: SettingsStatus::Absent,
+        };
+        let json = serde_json::to_value(&loaded).unwrap();
+        assert_eq!(json["status"]["state"], "absent");
+        assert_eq!(json["settings"]["schema_version"], 1);
+        assert_eq!(json["settings"]["card_density"], "m");
+        assert_eq!(json["settings"]["default_storage_filter"][0], "active");
+        assert_eq!(json["settings"]["default_detail_placement"], "sidebar");
+        assert_eq!(json["settings"]["watch_external_changes"], true);
+        assert!(json["settings"]["theme"].is_null());
+        // 未設定 の外部エディタ指定 is absent from the payload, not `null`: the field is skipped so the
+        // written file stays terse, and the frontend's optional field mirrors that.
+        assert!(json["settings"].get("external_editor").is_none());
+
+        let json = serde_json::to_value(SettingsStatus::ReadOnly { version: 2 }).unwrap();
+        assert_eq!(json["state"], "readOnly");
+        assert_eq!(json["version"], 2);
+
+        // `settings_save` takes the same shape back from the frontend, so it must round-trip.
+        let sent = AppSettings {
+            external_editor: Some(EditorCommand {
+                program: "code".into(),
+                args: vec!["-w".into()],
+            }),
+            ..AppSettings::default()
+        };
+        let round: AppSettings =
+            serde_json::from_value(serde_json::to_value(&sent).unwrap()).unwrap();
+        assert_eq!(round, sent);
     }
 
     // --- AC #4: user input travels as argument-array elements, never a shell string --------------
