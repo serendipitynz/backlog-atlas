@@ -3,7 +3,7 @@ id: doc-5
 title: Backlog 更新アダプター 設計
 type: specification
 created_date: '2026-07-21 10:05'
-updated_date: '2026-07-29 02:58'
+updated_date: '2026-07-29 07:28'
 ---
 # Backlog 更新アダプター 設計
 
@@ -55,8 +55,8 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | マイルストーン削除 | `milestone remove` | `<name>`、`--task-handling <clear\|keep\|reassign>`、reassign 時 `--reassign-to <milestone>` |
 | マイルストーンアーカイブ | `milestone archive` | `<name>` |
 
-- **作成時に渡せる引数（2026-07-29 訂正）**: 本書の初版はタスク作成を title・description・status・labels・priority・milestone・AC に限ると記述していたが、v1.47.1 の `task create` は `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` も受け取り、作成された管理ファイルへ保存する（一時プロジェクトで作成し `task view` で全項目の保持を確認）。上表の作成行はこの実測に合わせている。**GUI が作成フォームで受け取る範囲は、CLI が受け取れる範囲より狭くてよい**が、その場合に書く理由は「CLI に手段が無い」ではなく製品判断である（doc-10 §7）。境界の型と作成フォームの範囲を本訂正へ揃えるのは TASK-57。
-- **assignee の写像（2026-07-29 訂正）**: `task create` と `task edit` はいずれも `-a <assignee>` を受け取る（実測）。本書の初版は作成行・編集行のどちらにも書いていなかったため、現行の `TaskEdit` 型にも assignee のフィールドが無く、GUI から assignee を設定・変更する経路が存在しない。上表に加えたのはこの穴を閉じるためで、どの画面が assignee を扱うかは TASK-57 で決める。
+- **作成時に渡せる引数（2026-07-29 訂正）**: 本書の初版はタスク作成を title・description・status・labels・priority・milestone・AC に限ると記述していたが、v1.47.1 の `task create` は `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` も受け取り、作成された管理ファイルへ保存する（一時プロジェクトで作成し `task view` で全項目の保持を確認）。上表の作成行はこの実測に合わせている。**GUI が作成フォームで受け取る範囲は、CLI が受け取れる範囲より狭くてよい**が、その場合に書く理由は「CLI に手段が無い」ではなく製品判断である（doc-10 §7）。**作成時に渡す範囲**（Atlas が `task create` の 1 回の呼び出しへ載せる項目集合。CLI が受け取れる範囲とは別）は、TASK-57 で title・description・status・labels・priority・milestone・AC に確定した。実装計画・ノート・参照・依存を作成時に出さないのは、作成時点で要るのは識別と分類であり、これらは作業の進行に伴って増える項目で編集経路（doc-8 §6）を持つためである。境界の型（`update.rs` の `TaskCreate`・`manage.ts` の `TaskCreateInput`）もこの範囲に合わせる。
+- **assignee の写像（2026-07-29 訂正）**: `task create` と `task edit` はいずれも `-a <assignee>` を受け取る（実測）。本書の初版は作成行・編集行のどちらにも書いていなかったため、現行の `TaskEdit` 型にも assignee のフィールドが無く、GUI から assignee を設定・変更する経路が存在しなかった。上表に加えたのはこの穴を閉じるためで、**TASK-57 は編集側で閉じると決めた**: assignee を設定・変更できる GUI 上の場所はタスク詳細の編集セッション 1 箇所とし（doc-8 §6）、`TaskEdit` に assignee を持たせて `--assignee` へ通す。作成フォームには出さない（作成時にだけ設定できて後から変えられない経路を作らないため。doc-10 §7）。値は 1 件で、集合ではない: `-a` を複数回渡しても最後の 1 値だけが残り、カンマ区切りの値は分割されず 1 件の文字列として保存され、書き込みは frontmatter の assignee 一覧を渡した 1 件だけの一覧へ置き換える（**assignee の 1 件化**。実測）。複数 assignee のタスクを編集側で保存すると 1 件になるため、GUI は保存前にその旨を示す。
 - **`-s <status>` の検査**: `-s` は対象プロジェクトの `config.yml` の `statuses` に宣言済みの値だけを受け取る。未宣言の値は `Invalid status: <値>. Valid statuses are: …` を出して終了コード 1 で失敗する（実測）。省略時は `default_status` が入る。正準ステータス列名（decision-4）と宣言済み status は一致するとは限らない点に注意する。`backlog init --defaults` が宣言するのは `To Do` / `In Progress` / `Done` の 3 つで、`In Review` は宣言されない（実測）。列から作成時の status を決める規則は doc-7 §4.1。
 - 操作写像は「1 更新操作 → 1 サブコマンド呼び出し」を基本とする。1 画面操作が複数フィールドを同時に変える場合は、`task edit`・`doc update` の複数オプションを 1 呼び出しにまとめられる範囲でまとめ、まとめられない操作（別サブコマンドが要る）だけ複数回に分ける。
 - **参照の全置換（`--ref`）**: v1.47.1 の `task edit --ref` は、渡した**非空**の参照集合で**全置換**する（既存へ追加ではない）。アダプターは、読み取り層（doc-4）が持つ現在の参照を基に、追加・削除後の**全集合**を組み立てて渡す。1 件だけ加える PR URL 登録（doc-8）でも、既存参照を含めた全集合を `--ref` へ渡す。ただし空集合へはできず（`--ref ""` で消えない、3.1）、最後の 1 件を消す操作は CLI から提供しない。`--content`（`doc update`、本文全置換）も単一オプションで全置換する。
@@ -72,6 +72,7 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - 文書側は `doc update` が title・本文（`--content` は全置換）・type・path・tags を更新でき、部分更新（本文の一部差し替え・追記）や frontmatter の任意フィールド更新には対応しない。
 - **AC 全体を差し替える単一オプション**: `--acceptance-criteria` は名称に反し、v1.47.1 では既存 AC を残して追加する（実測。`--help` の "set" 表記と挙動が一致しない）。単一オプションでの AC 全体差し替えは無い。AC 全体の置き換えは、1 回の `task edit` に既存全 index の `--remove-ac`・新項目の `--ac`・完了の `--check-ac` を併せて渡す複合操作で行う（3 章の表）。
 - **参照を空集合にする操作**: `--ref` は非空集合を渡せば全置換するが、空文字 `--ref ""` を渡しても既存参照は消えない（実測）。最後の 1 件を消して参照を空にする操作は v1.47.1 の CLI から行えない。GUI では最後の参照削除を無効化し、必要なら外部エディタ経路（doc-8）へ案内する。
+- **assignee を解除する操作**: `-a` は非空の値を渡せば設定・付け替えできるが、`-a ""` は終了コード 0 を返すだけで既存の assignee を消さない（実測。`--ref ""`・`--depends-on ""` と同型の沈黙無変更）。assignee を空にする操作は v1.47.1 の CLI から行えない。GUI では空欄を「変更しない」として扱い、解除が要る場合は外部エディタ経路（doc-8）へ案内する。
 - **依存を空集合にする操作**: `--depends-on` も非空集合を渡せば全置換するが、`--depends-on ""` は終了コード 0 でも既存依存を消さない（実測。`--ref ""` と同型の沈黙無変更）。さらに `--depends-on` は各値に `task_prefix` を前置して実在検証するため、空を意味するセンチネル値も渡せない。最後の 1 件を消して依存を空にする操作は v1.47.1 の CLI から行えない。GUI では最後の依存削除を無効化し、必要なら外部エディタ経路（doc-8）へ案内する。
 
 これらは decision-2 の「更新は Backlog CLI へ委譲」を保つ限り、CLI が提供するまで Atlas も提供しない。CLI 版が上がって対応サブコマンドが増えた場合に操作写像へ追加する（3 章末の版検査に従う）。
@@ -80,7 +81,7 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 上記制約から、タスク詳細（doc-8）・マイルストーン操作の GUI が提供する更新操作を次に限る。
 
-- **タスク**: 3 章の `task create`/`task edit` 写像に載る操作（title・description・status・ラベル増減・AC 増減/チェック・AC 差し替え・References 非空全置換・priority・milestone・dependencies・実装計画/ノート等）。References・dependencies の非空全置換は既存値を含めた非空全集合を渡す（3 章。いずれも空集合化は不可）。AC 差し替えは複合操作（`--remove-ac`＋`--ac`＋`--check-ac` を 1 呼び出し、3 章）。
+- **タスク**: 3 章の `task create`/`task edit` 写像に載る操作（title・description・status・ラベル増減・AC 増減/チェック・AC 差し替え・References 非空全置換・priority・milestone・assignee・dependencies・実装計画/ノート等）。assignee は編集側だけが扱い、設定・付け替えのみを提供する（解除は不可、3.1）。References・dependencies の非空全置換は既存値を含めた非空全集合を渡す（3 章。いずれも空集合化は不可）。AC 差し替えは複合操作（`--remove-ac`＋`--ac`＋`--check-ac` を 1 呼び出し、3 章）。
 - **draft**: 状態遷移（`draft promote`／`draft archive`／`task demote`）のみを提供し、draft の内容編集は GUI に出さない（3.3）。
 - **active の状態遷移**: active タスクには内容編集に加え、`task demote`（→ draft）・`task archive`（→ `archive/tasks`、status を問わず可）・`task complete`（→ `completed`、status が `Done` のときのみ可）を提供する。`task complete` は非 Done では失敗するため（5 章）、Done のタスクに限って能動化する。
 - **保存区分別の可否**: 上記タスク操作は保存区分（doc-4 の 3.4）が active のタスクに適用する。completed・archive のタスクは `task edit` が `not found`（終了コード 1）になるため、CLI による内容編集を提供しない（詳細画面での可否は doc-8 の 6.5）。
