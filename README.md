@@ -55,10 +55,10 @@ holds; the CLI-mediated path is not the only way managed Markdown changes.
 ## Status
 
 The design phase (m-0) is complete and the implementation phase (m-1) is under way.
-Decisions 1–11 are recorded in `backlog/decisions/`, and the specifications
-(`backlog/docs/doc-1`–`doc-9`) cover the scope above.
+Decisions 1–13 are recorded in `backlog/decisions/`, and the specifications
+(`backlog/docs/doc-1`–`doc-11`) cover the scope above.
 
-Implemented (TASK-25–39):
+Implemented (TASK-25–42):
 
 - Rust core: reading and writing the project ledger (`projects.toml`) with
   register/remove/update, the domain model, the read layer (config resolution,
@@ -69,15 +69,24 @@ Implemented (TASK-25–39):
 - The Tauri command boundary between the Rust core and the frontend.
 - Screens: per-project swimlanes; task detail (Type, References, Pull Requests, Git
   history); GUI editing of a task's detail; the external-editor path; ledger and
-  project registration/management; and the distinct display of target-absent,
+  project registration/management; the document and milestone management GUI with
+  the entry point for creating a task; and the distinct display of target-absent,
   unreadable, and no-match.
 
-Not started (TASK-40–44): the document and milestone management GUI with the entry
-point for creating a task, the reference means for resolving relations between
-commits and Pull Requests (doc-6 §6 fixes only its structure and leaves each host's
-means to a later addition), and three settled fixes (`task_prefix` matching in a
-cross-project task ID, the handling of an invalid status alias, and the
-OS-association launch on Windows).
+Not started (TASK-43–45): the reference means for resolving relations between commits
+and Pull Requests (doc-6 §6 fixes only its structure and leaves each host's means to
+a later addition), the OS-association launch on Windows, and the matching rule for
+reference-following rewrites that would enable renaming, removing, and archiving a
+milestone.
+
+Not started (TASK-46–57), from the screen design proposal and the corrections it
+surfaced: the app-settings file and settings screen (decision-13), the display-theme
+mechanism (decision-12), the shared drawing rules of doc-11, card information levels
+S/M/L, the lane-header-row rebuild of the swimlane with column and row folding, the
+token-based filter bar, the fixed order of the top banners, in-column new-task input,
+the three task-detail placements with a persisted default, the project detail screen
+(doc-10), the fixed header with its menu, and the correction of what `task create`
+actually accepts (TASK-57).
 
 Distribution — packaging, and bundling the Backlog CLI as a sidecar — has not
 started.
@@ -101,6 +110,10 @@ Key decisions:
   with component-scoped styles (decision-8).
 - Dependency choices: `toml` for the ledger, `serde_yaml_ng` for frontmatter parsing,
   and `notify` for the file watch (decision-9–11).
+- Colour: a display theme holds one set of colour values, chosen in the settings; the
+  mark families stay defined in one place per theme (decision-12).
+- App settings: kept in a file of their own next to the ledger, so the ledger's
+  read-only degradation does not take the display defaults with it (decision-13).
 
 Bundling the Backlog CLI as a sidecar is a distribution choice; it does not mean
 Backlog Atlas owns the source of truth for tasks.
