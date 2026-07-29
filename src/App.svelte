@@ -11,6 +11,7 @@
   import FilterBar from "./components/FilterBar.svelte";
   import ProjectLedger from "./components/ProjectLedger.svelte";
   import ProjectManage from "./components/ProjectManage.svelte";
+  import Settings from "./components/Settings.svelte";
   import Swimlane from "./components/Swimlane.svelte";
   import TaskDetail from "./components/TaskDetail.svelte";
   import {
@@ -29,6 +30,9 @@
     projectOpen,
     projectWatchStart,
     projectWatchStop,
+    settingsLocation,
+    settingsRead,
+    settingsSave,
     taskFileOpen,
     taskHistoryRead,
     updateApply,
@@ -49,10 +53,12 @@
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, unreadableDetail } from "./lib/swimlane";
   import type {
+    AppSettings,
     CliReadiness,
     EditorReadiness,
     LaunchMethod,
     LedgerResponse,
+    LoadedSettings,
     ProjectEntry,
     ProjectLoad,
     ProjectSnapshot,
@@ -76,6 +82,16 @@
   let entries = $state<ProjectEntry[]>([]);
   /** The ledger file's path (doc-3 §2.1), for the 台帳管理画面 to show. `null` until it is known. */
   let ledgerPath = $state<string | null>(null);
+  /**
+   * アプリ設定 and why they are what they are (decision-13). `null` until the first read answers, which
+   * is why the screen waits for it before opening any root: 継続検出の可否 and 既定の保存区分 decide what
+   * the first read *does*, and applying them after the fact would start a watch the user turned off.
+   */
+  let settings = $state<LoadedSettings | null>(null);
+  /** Where `settings.toml` is (decision-13), for the 設定画面 to name. `null` while unknown. */
+  let settingsPath = $state<string | null>(null);
+  /** Whether the 設定画面 is open. Opened from the fixed header's 設定 (doc-7 §2.1). */
+  let settingsOpen = $state(false);
   let loadBySlug = $state<Record<string, ProjectLoad>>({});
   let hidden = $state<string[]>([]);
   let filter = $state<CardFilter>(DEFAULT_FILTER);
@@ -190,13 +206,34 @@
     }),
   );
   /**
+   * 継続検出の可否 (doc-9 §3.1, decision-13). Defaults to on until the settings are read, which is the
+   * state a build without a settings file has always been in.
+   */
+  let watchEnabled = $derived(settings?.settings.watch_external_changes ?? true);
+  /**
    * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
-   * A dead subscription means *every* registered row (nothing can arrive at all); otherwise it is the
-   * roots whose own watch would not start. Only registered rows either way — a slug that left the
-   * ledger has no row to re-read.
+   * Three causes converge here: the user turned 継続検出 off (every row), the event subscription is
+   * dead so nothing can arrive at all (every row), or a root's own watch would not start. doc-9 §3.1
+   * requires exactly this — the state and its mark are the same however it came about, and only the
+   * reason differs, which `unwatchedReason` below states. Only registered rows either way: a slug
+   * that left the ledger has no row to re-read.
    */
   let unwatchedRows = $derived(
-    reloadFeed === "unavailable" ? order : unwatched.filter((slug) => order.includes(slug)),
+    !watchEnabled || reloadFeed === "unavailable"
+      ? order
+      : unwatched.filter((slug) => order.includes(slug)),
+  );
+  /** Why 継続検出 is stopped, for the 帯. The state's name and mark stay the same (doc-9 §3.1). */
+  let unwatchedReason = $derived(
+    !watchEnabled
+      ? "設定で継続検出を切っているため、どの行も自動では更新されません"
+      : reloadFeed === "unavailable"
+        ? "変更の通知を購読できていないため、どの行も自動では更新されません"
+        : "変更監視が動いていない行があります",
+  );
+  /** Whether the open task's root is one of those (AC #7: the 外部エディタ経路 states it before opening). */
+  let selectedWatchStopped = $derived(
+    selectedRef !== null && unwatchedRows.includes(selectedRef.slug),
   );
 
   // The open task, resolved against the *current* read of its root, so a reload refreshes the
@@ -300,7 +337,24 @@
     } catch {
       ledgerPath = null;
     }
+    // アプリ設定 (decision-13), before the first read: 継続検出の可否 decides whether `load` starts any
+    // watch, and 既定の保存区分 is the filter the first cards are drawn through. Awaited rather than
+    // applied later, so the screen never briefly runs on settings the user changed away from.
+    // A rejection here is not fatal either (AC #6): the boundary already degrades a missing or broken
+    // file to the defaults, so this only fires if the IPC call itself failed, and the defaults stand.
+    try {
+      applySettings(await settingsRead());
+    } catch (error) {
+      notice = `設定を読み込めませんでした（${unreadableDetail(asCommandError(error))}）。既定値で動きます。`;
+    }
+    try {
+      settingsPath = await settingsLocation();
+    } catch {
+      settingsPath = null;
+    }
     // 外部エディタ経路 (doc-8 §7): one environment read, so it is probed once beside the CLI probe.
+    // Probed *after* the settings are read, because doc-8 §7's 起動指定の解決順 starts at アプリ設定 —
+    // probing first would report `$EDITOR` as the editor in effect when a setting outranks it.
     // Left `null` on failure — the panel then withholds both launch controls as 確認中, which is what
     // the state actually is; the notice says why it will stay that way.
     try {
@@ -343,6 +397,67 @@
     }
   }
 
+  // --- アプリ設定 (decision-13, TASK-46) ------------------------------------------------------
+
+  /**
+   * Adopt a settings value the boundary returned, and apply the parts the shell owns.
+   *
+   * Only 既定の保存区分 is applied to live state, and only when the filter is still the one the
+   * settings put there: it is an *initial* value (doc-7 §5.2), so overwriting a filter the user has
+   * since narrowed would undo their work at the moment they pressed 保存 in another panel. 継続検出の
+   * 可否 is read straight off `settings` by `watchEnabled`; the other three items are stored for the
+   * screens that consume them (表示テーマ・カード情報量・既定の詳細配置).
+   */
+  function applySettings(next: LoadedSettings): void {
+    const previous = settings?.settings.default_storage_filter ?? DEFAULT_FILTER.storage;
+    const untouched = sameStorage(filter.storage, previous);
+    settings = next;
+    if (untouched) filter = { ...filter, storage: [...next.settings.default_storage_filter] };
+  }
+
+  function sameStorage(a: readonly string[], b: readonly string[]): boolean {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+  }
+
+  /**
+   * Persist アプリ設定 (AC #3) and make the change take effect now. Returns the failure text, or `null`
+   * on success — the 設定画面 states it, the shell only owns the consequences.
+   *
+   * 継続検出 is the one item with a consequence beyond the value: turning it off has to stop the watches
+   * that are already running (otherwise the setting would only take effect on the next start, while
+   * the screen already says the rows are stale), and turning it on has to start them for every open
+   * root.
+   */
+  async function saveSettings(next: AppSettings): Promise<string | null> {
+    try {
+      const before = watchEnabled;
+      applySettings(await settingsSave(next));
+      if (before !== watchEnabled) await reconcileWatches();
+      // 起動指定の解決順 starts at アプリ設定 (doc-8 §7), so the probe's answer changes with this save.
+      // Re-probed here rather than left until the next start: the panel names the editor it would
+      // launch, and a stale name would say `$EDITOR` while the launch used the setting just typed.
+      try {
+        editorReadiness = await editorProbe();
+      } catch (error) {
+        notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
+      }
+      return null;
+    } catch (error) {
+      return unreadableDetail(asCommandError(error));
+    }
+  }
+
+  /** Bring every registered root's watch in line with 継続検出の可否 (doc-9 §3.1). */
+  async function reconcileWatches(): Promise<void> {
+    for (const slug of order) {
+      if (watchEnabled) await startWatch(slug);
+      else await projectWatchStop(slug).catch(() => {});
+    }
+    // Nothing is watched while the setting is off, so per-root failures recorded earlier no longer
+    // describe anything: `unwatchedRows` already covers every row from the setting alone.
+    if (!watchEnabled) unwatched = [];
+  }
+
   /**
    * Start 継続検出 for one root, reporting whether it is running (doc-9 §3). A failed watch is not a
    * failed read: the row's cards are already on screen and only stay as fresh as the last read, so it
@@ -350,6 +465,10 @@
    * refreshes that root is an explicit re-read, and the screen has to offer one (`unwatched` below).
    */
   async function startWatch(slug: string): Promise<boolean> {
+    // 継続検出を切っている間は張らない (doc-9 §3.1). Reported as "not watching" without a notice: the
+    // user chose it, and `unwatchedRows` already carries every row while the setting is off, so the
+    // 帯 states the reason once instead of once per root.
+    if (!watchEnabled) return false;
     try {
       await projectWatchStart(slug);
       unwatched = unwatched.filter((candidate) => candidate !== slug);
@@ -697,29 +816,21 @@
    * the same reason as `apply`: the boundary resolves the file from the (slug, path) the selection is
    * held as, and nothing else knows both.
    *
-   * The watch is (re)started before the launch. It is the whole of the 書き戻し path — the editor's
-   * save reaches Atlas only because doc-9's 継続検出 picks it up (AC #2) — so a root whose watch never
-   * started, or whose start failed earlier, would take the edit and show nothing. The underlying
-   * command is idempotent, so this costs nothing when the watch is already running.
+   * The watch is (re)started before the launch, when 継続検出 is on. It is the whole of the 書き戻し
+   * path — the editor's save reaches Atlas only because doc-9's 継続検出 picks it up — so a root whose
+   * watch failed to start earlier would take the edit and show nothing. The underlying command is
+   * idempotent, so this costs nothing when the watch is already running, and `startWatch` declines by
+   * itself while the setting is off.
+   *
+   * Nothing is *reported* here. doc-8 §7 requires the user to be told 開く前に, not after the editor is
+   * already up, so the panel states it beside the launch controls (`watchStopped` below) and offers
+   * the re-read there — a notice from this point would arrive too late to be the warning doc-8 asks
+   * for, and would repeat what the panel already says.
    */
   async function openExternally(method: LaunchMethod): Promise<OpenOutcome> {
     const ref = selectedRef;
     if (ref === null) return { state: "failed", detail: "対象タスクを特定できません" };
-    // Awaited before the launch: if it cannot start, the editor's save has nothing to bring it back
-    // (AC #2's mechanism is absent), and the user is told so with the re-read control that does work —
-    // `startWatch` lists the root in `unwatched`, which draws the 再読込 button below. The launch still
-    // happens: this route is the way through for edits the CLI cannot make, so removing it here would
-    // take away the escape hatch precisely on a machine whose watch is broken.
-    // Both halves of 継続検出 have to be live for the save to arrive: the root's watch, and the event
-    // subscription that brings its re-read to the screen. Either one missing leads to the same place —
-    // the manual re-read — so they are reported together rather than only where the cause differs.
-    const watching = await startWatch(ref.slug);
-    if (!watching || reloadFeed === "unavailable") {
-      notice =
-        `${ref.slug}: ${watching ? "変更の通知を購読できていない" : "変更監視が動いていない"}ため、` +
-        `外部エディタの保存は自動では反映されません。編集を終えたら ${ref.slug} 行の「再読込」を` +
-        "押してください（タスクを開き直すだけでは読み直しません）。";
-    }
+    await startWatch(ref.slug);
     try {
       return { state: "launched", launch: await taskFileOpen(ref.slug, ref.sourcePath, method) };
     } catch (error) {
@@ -779,10 +890,27 @@
         文書・マイルストーン・新規タスク
       </button>
     </nav>
+    <!-- 設定 (doc-7 §2.1): an entry point on the fixed header, opening アプリ設定 (decision-13) over the
+         screen rather than as a fourth tab — it is not a place to work, and the swimlane behind it
+         keeps its state. -->
+    <button type="button" class="settings-open" onclick={() => (settingsOpen = true)}>設定</button>
     {#if ledgerReadOnly && screen === "swimlane"}
       <span class="badge">台帳は読み取り専用（行の並べ替えは不可）</span>
     {/if}
   </header>
+
+  {#if settingsOpen}
+    <!-- Kept over the screen with the shell's state intact: an アプリ設定 change is about how the
+         swimlane is shown, so losing the rows, filter and selection to open it would be backwards. -->
+    <div class="settings-panel">
+      <Settings
+        loaded={settings}
+        path={settingsPath}
+        onsave={saveSettings}
+        onclose={() => (settingsOpen = false)}
+      />
+    </div>
+  {/if}
 
   {#if screen === "swimlane"}
     <FilterBar
@@ -814,9 +942,7 @@
          (doc-9 §5 照合不能の提示 makes the same distinction). -->
     <div class="unwatched">
       <span>
-        {reloadFeed === "unavailable"
-          ? "変更の通知を購読できていないため、どの行も自動では更新されません"
-          : "変更監視が動いていない行があります"}（外部エディタ・別プロセスの保存は自動反映されません）。
+        {unwatchedReason}（外部エディタ・別プロセスの保存は自動反映されません）。
         該当行の「{UNWATCHED_MARK.label}」印と「再読込」を参照してください。
       </span>
     </div>
@@ -906,6 +1032,8 @@
             {history}
             {readiness}
             {editorReadiness}
+            watchStopped={selectedWatchStopped}
+            onreread={() => rereadRow(view.task.project)}
             conflict={selectedConflict}
             onconflict={noteConflict}
             onapply={apply}
@@ -998,6 +1126,25 @@
     border-radius: 3px;
     font-size: 0.7rem;
     opacity: 0.8;
+  }
+
+  // The 設定 entry point sits apart from the screen tabs: it opens a panel, not another screen.
+  .settings-open {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+
+  .settings-panel {
+    max-height: 60vh;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    background: color-mix(in srgb, canvas 94%, canvastext 6%);
+    overflow-y: auto;
   }
 
   .hidden-rows {
