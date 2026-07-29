@@ -1,10 +1,10 @@
 ---
 id: TASK-57
 title: task create の引数範囲を doc-5 §3 の訂正へ揃える
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-29 00:22'
-updated_date: '2026-07-29 07:30'
+updated_date: '2026-07-29 11:11'
 labels:
   - 'kind:bug'
 milestone: m-1
