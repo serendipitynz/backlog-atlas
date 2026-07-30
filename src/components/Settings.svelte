@@ -10,9 +10,9 @@
   import { untrack } from "svelte";
   import {
     CARD_DENSITY_LABEL,
+    CARD_DENSITY_NOTE,
     DETAIL_PLACEMENT_LABEL,
     DETAIL_PLACEMENT_NOTE,
-    PENDING_CONSUMER_NOTE,
     STARTUP_READ_NOTE,
     STORAGE_SELECTIONS,
     STORAGE_SELECTION_LABEL,
@@ -247,7 +247,7 @@
           {label}
         </label>
       {/each}
-      <p class="hint">{PENDING_CONSUMER_NOTE}</p>
+      <p class="hint">{CARD_DENSITY_NOTE}</p>
     </section>
 
     <section>

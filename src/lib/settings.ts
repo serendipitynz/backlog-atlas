@@ -59,13 +59,13 @@ export const STORAGE_SELECTIONS: StorageSelection[] = [
 ];
 
 /**
- * What the screen says when this item's value is stored but nothing reads it yet. decision-13 puts all
- * six items in this file, while the screen that consumes カード情報量 is separate work (doc-7 §3) — so
- * the value persists and the screen says so, rather than the control being absent (which would read as
- * "Atlas does not have this setting"). 表示テーマ left this state in TASK-47: it now paints on save.
+ * カード情報量 (doc-7 §3) の説明。何が増減するかと、**何が増減しないか**を両方言う: 状態の印はどの段でも
+ * 落とさない (doc-7 §3) ため、S を選ぶと縮退・版ずれの印まで消えると読まれてはいけない。反映が保存時で
+ * あることも書く — このフォームは打鍵ごとには書かず、保存が唯一の書き手である（表示テーマと同じ）。
  */
-export const PENDING_CONSUMER_NOTE =
-  "値は保存され、次回起動後も残ります。これを反映する画面の実装はまだです。";
+export const CARD_DENSITY_NOTE =
+  "保存すると、スイムレーンのタスクカードへ反映され、次回起動後も残ります。" +
+  "状態の印（縮退・版ずれ・保存区分・未対応列の原文 status）は、どの段でも落としません（doc-7 §3）。";
 
 /**
  * 既定の詳細配置 (doc-8 §2.2) の説明。この項目は他の設定と違い、設定画面の外からも書き換わる — タスク
