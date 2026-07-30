@@ -1,10 +1,10 @@
 ---
 id: TASK-47
 title: 表示テーマ機構を実装し収録条件を満たすテーマを収録する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:14'
-updated_date: '2026-07-30 01:01'
+updated_date: '2026-07-30 06:06'
 labels:
   - 'kind:feature'
 milestone: m-1
