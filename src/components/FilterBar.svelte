@@ -180,7 +180,7 @@
     align-items: flex-start;
     gap: 0.4rem 0.8rem;
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-bottom: 1px solid var(--line);
     font-size: 0.75rem;
   }
 
@@ -190,7 +190,7 @@
     gap: 0.1rem 0.5rem;
     margin: 0;
     padding: 0.1rem 0.4rem 0.2rem;
-    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border: 1px solid var(--line);
     border-radius: 4px;
   }
 
@@ -220,9 +220,9 @@
 
   input[type="search"] {
     padding: 0.15rem 0.35rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
-    background: canvas;
+    background: var(--bg);
     color: inherit;
     font: inherit;
     font-size: 0.75rem;
@@ -232,7 +232,7 @@
     align-self: center;
     margin-left: auto;
     padding: 0.15rem 0.5rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;

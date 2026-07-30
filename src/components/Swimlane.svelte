@@ -180,8 +180,8 @@
     top: 0;
     z-index: 1;
     padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-    background: canvas;
+    border-bottom: 1px solid var(--line-strong);
+    background: var(--bg);
     font-size: 0.8rem;
     font-weight: 600;
   }
@@ -192,7 +192,7 @@
 
   .row-head,
   .row-message {
-    border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    border-bottom: 1px solid var(--line);
   }
 
   .row-head {
@@ -200,23 +200,32 @@
     flex-direction: column;
     gap: 0.2rem;
     padding: 0.5rem;
-    background: color-mix(in srgb, canvastext 3%, transparent);
+    background: var(--inset);
 
+    // 読取不能 as 問題の縁 (doc-11 §2.3) rather than as a tint over the whole row header. The tint
+    // used to sit *under* the 継続検出停止 chip — a root that cannot be read is exactly a root whose
+    // watch is not running, so both show at once — and a chip's 12% 混色背景 over a tinted face is a
+    // different colour than over `--inset`, which is what the 収録条件 was verified against
+    // (decision-12, `lib/theme.test.ts`). The edge says the same thing and cannot get behind a chip.
     &.unreadable {
-      background: color-mix(in srgb, var(--mark-unreadable) 8%, transparent);
+      border-left: 3px solid var(--mark-unreadable);
     }
   }
 
-  // 印の族ごとの色は app.scss の一箇所定義から取る (decision-6).
+  // 印チップ配色規則 (decision-12): 文字＝族の色、背景＝族の色 12% 混色、枠＝族の色 45% 混色。族の色は
+  // app.scss の表示テーマ 1 箇所から取る (decision-6). The chip sits on the レーンヘッダ行 (`--inset`),
+  // which is one of the two surfaces the 収録条件 is verified on (`lib/theme.test.ts`).
   .mark {
     align-self: flex-start;
     padding: 0 0.3rem;
+    border: 1px solid color-mix(in srgb, var(--family) 45%, transparent);
     border-radius: 3px;
+    background: color-mix(in srgb, var(--family) 12%, transparent);
+    color: var(--family);
     font-size: 0.65rem;
-    color: #fff;
 
     &[data-kind="undetectable"] {
-      background: var(--mark-undetectable);
+      --family: var(--mark-undetectable);
     }
   }
 
@@ -249,7 +258,7 @@
 
     button {
       padding: 0 0.35rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;
@@ -275,7 +284,7 @@
 
     button {
       padding: 0.1rem 0.5rem;
-      border: 1px solid currentColor;
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;

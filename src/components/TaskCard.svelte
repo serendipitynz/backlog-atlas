@@ -114,20 +114,20 @@
     gap: 0.25rem;
     width: 100%;
     padding: 0.4rem 0.5rem;
-    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    border: 1px solid var(--line);
     border-radius: 5px;
-    background: color-mix(in srgb, canvas 92%, canvastext 8%);
+    background: var(--panel);
     color: inherit;
     font: inherit;
     text-align: left;
     cursor: pointer;
 
     &:hover {
-      border-color: color-mix(in srgb, currentColor 45%, transparent);
+      border-color: var(--line-strong);
     }
 
     &.selected {
-      outline: 2px solid highlight;
+      outline: 2px solid var(--sel);
       outline-offset: 1px;
     }
 
@@ -164,51 +164,58 @@
     gap: 0.2rem;
   }
 
+  // priority は族の色を借りない (decision-12): high の赤と medium の黄土は読取不能・縮退の族の色と
+  // 同色で、赤い priority を読取不能と読み違える経路になっていた。3 段は `--fg`／`--bg` の濃淡と
+  // 枠線だけで作る (doc-11 §3). An unrecognised value keeps this base style rather than being
+  // guessed into one of the three — the file's own word is still shown.
   .priority {
     padding: 0 0.3rem;
+    border: 1px solid var(--line);
     border-radius: 999px;
+    color: var(--muted);
     font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 0.02em;
-    background: color-mix(in srgb, currentColor 12%, transparent);
 
     &[data-priority="high"] {
-      background: #c0392b;
-      color: #fff;
+      border-color: var(--fg);
+      background: var(--fg);
+      color: var(--bg);
     }
 
     &[data-priority="medium"] {
-      background: #b8860b;
-      color: #fff;
-    }
-
-    &[data-priority="low"] {
-      background: color-mix(in srgb, currentColor 18%, transparent);
+      border-color: var(--line-strong);
+      color: var(--fg);
     }
   }
 
-  // 印の族ごとの色は app.scss の一箇所定義から取る (decision-6): the chip names its family and
-  // never picks a hue, so 縮退 and 版ずれ cannot converge on one colour here.
+  // 印チップ配色規則 (decision-12): 文字＝族の色、背景＝族の色 12% 混色、枠＝族の色 45% 混色。The
+  // family colour arrives as `--family` and every family sets only that, so the chip names its
+  // family and never picks a hue — 縮退 and 版ずれ cannot converge on one colour here (decision-6).
+  // The old ベタ塗り＋白文字 left the chip's own text at about 2.8:1; this rule holds every recorded
+  // theme's five families at 4.5:1 or better (`lib/theme.test.ts`).
   .mark {
     padding: 0 0.3rem;
+    border: 1px solid color-mix(in srgb, var(--family) 45%, transparent);
     border-radius: 3px;
+    background: color-mix(in srgb, var(--family) 12%, transparent);
+    color: var(--family);
     font-size: 0.65rem;
-    color: #fff;
 
     &[data-kind="degraded"] {
-      background: var(--mark-degraded);
+      --family: var(--mark-degraded);
     }
 
     &[data-kind="versionConflict"] {
-      background: var(--mark-version-conflict);
+      --family: var(--mark-version-conflict);
     }
 
     &[data-kind="undetectable"] {
-      background: var(--mark-undetectable);
+      --family: var(--mark-undetectable);
     }
 
     &[data-kind="unreadable"] {
-      background: var(--mark-unreadable);
+      --family: var(--mark-unreadable);
     }
   }
 
@@ -225,22 +232,22 @@
   // as one list (doc-7 §3).
   .type {
     border-radius: 3px;
-    background: color-mix(in srgb, currentColor 16%, transparent);
+    background: color-mix(in srgb, var(--fg) 16%, transparent);
 
     &.unset {
       background: none;
-      border: 1px dashed color-mix(in srgb, currentColor 35%, transparent);
+      border: 1px dashed var(--line-strong);
       opacity: 0.7;
     }
 
     &.unknown {
       background: none;
-      border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+      border: 1px solid var(--line-strong);
     }
   }
 
   .label {
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 999px;
   }
 
@@ -250,7 +257,7 @@
 
   .status,
   .storage {
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 3px;
     opacity: 0.85;
   }
