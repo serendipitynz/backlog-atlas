@@ -1,10 +1,10 @@
 ---
 id: TASK-49
 title: カード情報量 S/M/L を実装する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:15'
-updated_date: '2026-07-30 11:51'
+updated_date: '2026-07-30 12:06'
 labels:
   - 'kind:feature'
 milestone: m-1

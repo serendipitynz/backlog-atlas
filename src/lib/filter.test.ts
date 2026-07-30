@@ -151,11 +151,11 @@ describe("facets offered by the control", () => {
       taskView({ types: [] }),
     ]);
 
-    expect(facets.labels).toEqual(["backend", "ui"]);
+    expect(facets.labels.map((value) => value.value)).toEqual(["backend", "ui"]);
     // Ranked high → low rather than alphabetical.
-    expect(facets.priorities).toEqual(["high", "medium"]);
-    expect(facets.assignees).toEqual(["a", "b"]);
-    expect(facets.types.map(typeSelectionKey)).toEqual([
+    expect(facets.priorities.map((value) => value.value)).toEqual(["high", "medium"]);
+    expect(facets.assignees.map((value) => value.value)).toEqual(["a", "b"]);
+    expect(facets.types.map((value) => typeSelectionKey(value.value))).toEqual([
       "value:feature",
       "value:spike",
       "unset",
@@ -165,6 +165,39 @@ describe("facets offered by the control", () => {
 
   it("offers 未設定 and 未知 only when some task is in that state", () => {
     const facets = collectFacets([taskView({ types: [type("feature")] })]);
-    expect(facets.types.map(typeSelectionKey)).toEqual(["value:feature"]);
+    expect(facets.types.map((value) => typeSelectionKey(value.value))).toEqual(["value:feature"]);
+  });
+
+  it("counts each value over every read task, so the popover can show 値ごとの件数", () => {
+    const facets = collectFacets([
+      taskView({ types: [type("feature")], labels: ["ui", "backend"], priority: "high" }),
+      taskView({ types: [type("feature"), type("spike", false)], labels: ["ui"] }),
+      taskView({
+        storageState: "archive",
+        types: [],
+        health: { state: "degraded", events: [{ event: "unexpectedSchema", detail: "x" }] },
+      }),
+    ]);
+
+    expect(facets.labels).toEqual([
+      { value: "backend", count: 1 },
+      { value: "ui", count: 2 },
+    ]);
+    expect(facets.priorities).toEqual([{ value: "high", count: 1 }]);
+    expect(facets.types.map((value) => value.count)).toEqual([2, 1, 1, 1]);
+    expect(facets.degraded).toBe(1);
+  });
+
+  it("offers the four 保存区分 whatever their counts, and 保存区分不明 only when one is", () => {
+    const known = collectFacets([taskView({ storageState: "draft" })]);
+    expect(known.storage).toEqual([
+      { value: "active", count: 0 },
+      { value: "draft", count: 1 },
+      { value: "completed", count: 0 },
+      { value: "archive", count: 0 },
+    ]);
+
+    const indeterminate = collectFacets([taskView({ storageState: null })]);
+    expect(indeterminate.storage.at(-1)).toEqual({ value: "indeterminate", count: 1 });
   });
 });

@@ -1,34 +1,46 @@
 <script lang="ts">
-  // フィルタ (doc-7 §5). Every control here only takes cards away; none of them can change the
-  // rows or the columns. The 保存区分 control is the one that starts from a default rather than
-  // from "off" — active alone — which is why it is drawn first and always shows its state.
+  // フィルタ帯 (doc-7 §5.2). Every control here only takes cards away; none of them can change the
+  // rows or the columns.
+  //
+  // The bar shows *the conditions that are on*, as 絞り込みトークン, and nothing else: the values a
+  // condition could be built from live in the popover behind ＋ 絞り込み. That is the whole point of
+  // the shape — a workspace with 20 labels and 6 assignees used to expand into some five rows of
+  // checkboxes, and every one of those rows came out of the grid's height. With tokens the bar grows
+  // with the number of conditions *chosen*, which is small, and is capped at two wrapped rows on top
+  // of that (see `.tokens` below).
+  //
+  // 保存区分 is the one facet that starts from a 既定 rather than from "off" (doc-7 §5.2), so its
+  // tokens are standing before the user has done anything — doc-12 §4 の常設トークン.
+  import FilterPopover from "./FilterPopover.svelte";
+  import { defaultFilter, type CardFilter, type Facets } from "../lib/filter";
   import {
-    hasTypeSelection,
-    toggleTypeSelection,
-    toggleValue,
-    typeSelectionKey,
-    type CardFilter,
-    type Facets,
-    type StorageSelection,
-    type TypeSelection,
-  } from "../lib/filter";
+    filterTokens,
+    lastCondition,
+    nothingToClear,
+    removeCondition,
+    removeLastCondition,
+    setText,
+  } from "../lib/token";
+  import type { StorageSelection } from "../lib/wire";
 
   interface Props {
     filter: CardFilter;
     facets: Facets;
-    /** Whether any read task has an indeterminate storage state (doc-4 §3.4). */
-    hasIndeterminateStorage: boolean;
+    /** 既定の保存区分 (decision-13): the state 全解除 puts the filter back to. */
+    defaultStorage: readonly StorageSelection[];
+    /** 表示 n / m 件 (doc-7 §5.2): cards the grid is showing, and cards its rows hold in all. */
+    shown: number;
+    total: number;
     onchange: (filter: CardFilter) => void;
-    onreset: () => void;
   }
 
-  let { filter, facets, hasIndeterminateStorage, onchange, onreset }: Props = $props();
+  let { filter, facets, defaultStorage, shown, total, onchange }: Props = $props();
 
   // The text box keeps its own state and is bound (DOM → state), never written back on every
   // keystroke: writing the value back mid-composition is what breaks IME input, and the filter
   // is not worth re-running on each intermediate 変換 candidate either. `isComposing` holds the
   // dispatch until the composition ends, and the effect only re-syncs when the filter is
-  // changed from outside (the reset button).
+  // changed from outside (全解除).
   let text = $state("");
   $effect(() => {
     text = filter.text;
@@ -38,31 +50,37 @@
     // `isComposing` is true for every keystroke of an IME composition; the browser fires one
     // more `input` once the composition is committed, which is the one that gets through.
     if ((event as InputEvent).isComposing) return;
-    onchange({ ...filter, text });
+    // Through `setText` rather than by writing the field, so the text takes its place in 追加順 and
+    // 直前の 1 つを戻す can take it back like any other condition (`token.ts` says why it has no token).
+    onchange(setText(filter, text));
   }
 
-  const STORAGE_CHOICES: { value: StorageSelection; label: string }[] = [
-    { value: "active", label: "active" },
-    { value: "draft", label: "draft" },
-    { value: "completed", label: "completed" },
-    { value: "archive", label: "archive" },
-  ];
+  let tokens = $derived(filterTokens(filter));
 
-  let storageChoices = $derived(
-    hasIndeterminateStorage
-      ? [...STORAGE_CHOICES, { value: "indeterminate" as StorageSelection, label: "保存区分不明" }]
-      : STORAGE_CHOICES,
+  // 無効化提示 (doc-11 §5): the two 解除 controls stay in place when there is nothing to remove, and
+  // the reason sits beside them as text — `aria-disabled` keeps them focusable so `aria-describedby`
+  // reaches it without a pointer, and `title` only repeats what is already on screen.
+  const BLOCKED_ID = "filter-clear-blocked";
+  // `nothingToClear` implies `undoBlocked` (it is one of its two halves), so the pair can never end
+  // up stating that there is nothing to undo beside an enabled 直前の 1 つを戻す.
+  let undoBlocked = $derived(lastCondition(filter) === null);
+  let clearBlocked = $derived(nothingToClear(filter, defaultStorage));
+  let blockedReason = $derived(
+    clearBlocked
+      ? "絞り込みは既定のままです。戻す条件も解除する条件もありません。"
+      : undoBlocked
+        ? "自分で足した条件がないため、直前の 1 つは戻せません（保存区分の既定は各トークンの × で外します）。"
+        : null,
   );
 
-  function typeLabel(selection: TypeSelection): string {
-    switch (selection.kind) {
-      case "value":
-        return selection.value;
-      case "unset":
-        return "Type 未設定";
-      case "unknown":
-        return "未知 Type";
-    }
+  let open = $state(false);
+  let anchor = $state<HTMLDivElement | null>(null);
+  let opener = $state<HTMLButtonElement | null>(null);
+
+  function close(): void {
+    open = false;
+    // Back to the control the popover was opened from, so the next keystroke has somewhere to go.
+    opener?.focus();
   }
 </script>
 
@@ -77,145 +95,103 @@
     />
   </label>
 
-  <fieldset>
-    <legend>保存区分</legend>
-    {#each storageChoices as choice (choice.value)}
-      <label>
-        <input
-          type="checkbox"
-          checked={filter.storage.includes(choice.value)}
-          onchange={() =>
-            onchange({ ...filter, storage: toggleValue(filter.storage, choice.value) })}
-        />
-        {choice.label}
-      </label>
+  <!-- 値の一覧は「＋ 絞り込み」から開くポップオーバーで選ぶ (doc-7 §5.2). Kept outside the token
+       area so it stays put while the tokens scroll. -->
+  <div class="add" bind:this={anchor}>
+    <button
+      type="button"
+      class="control"
+      bind:this={opener}
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      onclick={() => (open ? close() : (open = true))}>＋ 絞り込み</button
+    >
+    {#if open}
+      <FilterPopover {filter} {facets} boundary={anchor} {onchange} onclose={close} />
+    {/if}
+  </div>
+
+  <div class="tokens">
+    {#each tokens as token (token.key)}
+      <!-- 属性名・値・解除操作の組 (doc-7 §1). -->
+      <span class="token" class:baseline={token.baseline}>
+        <span class="facet">{token.facet}</span>
+        {#if token.value !== null}
+          <span class="value" title={token.value}>{token.value}</span>
+        {/if}
+        <button
+          type="button"
+          class="drop"
+          aria-label="{token.facet}{token.value === null ? '' : ` ${token.value}`} を解除"
+          onclick={() => onchange(removeCondition(filter, token.condition))}>×</button
+        >
+      </span>
+    {:else}
+      <!-- Only reachable by taking every 保存区分 off: the selection is positive (doc-7 §5.2), so an
+           empty one shows nothing. Said plainly, because an empty grid otherwise reads as a workspace
+           with no tasks in it. -->
+      <span class="empty">保存区分がひとつも選ばれていないため、カードは出ません</span>
     {/each}
-  </fieldset>
+  </div>
 
-  {#if facets.types.length > 0}
-    <fieldset>
-      <legend>Type</legend>
-      {#each facets.types as selection (typeSelectionKey(selection))}
-        <label>
-          <input
-            type="checkbox"
-            checked={hasTypeSelection(filter, selection)}
-            onchange={() => onchange(toggleTypeSelection(filter, selection))}
-          />
-          {typeLabel(selection)}
-        </label>
-      {/each}
-    </fieldset>
-  {/if}
+  <div class="actions">
+    <!-- 末尾から 1 件ずつ解除 (doc-7 §5.2). Tokens carry an order, which is what makes 直前の 1 つ
+         a thing that can be pointed at at all. -->
+    <button
+      type="button"
+      class="control"
+      aria-disabled={undoBlocked}
+      aria-describedby={undoBlocked ? BLOCKED_ID : undefined}
+      title={undoBlocked ? (blockedReason ?? undefined) : "最後に足した条件を 1 件戻します"}
+      onclick={() => !undoBlocked && onchange(removeLastCondition(filter))}
+    >
+      直前の 1 つを戻す
+    </button>
+    <button
+      type="button"
+      class="control"
+      aria-disabled={clearBlocked}
+      aria-describedby={clearBlocked ? BLOCKED_ID : undefined}
+      title={clearBlocked ? (blockedReason ?? undefined) : "すべての条件を外し、保存区分を既定へ戻します"}
+      onclick={() => !clearBlocked && onchange(defaultFilter(defaultStorage))}
+    >
+      全解除
+    </button>
+    {#if blockedReason !== null}
+      <span class="blocked-note" id={BLOCKED_ID}>{blockedReason}</span>
+    {/if}
+  </div>
 
-  {#if facets.priorities.length > 0}
-    <fieldset>
-      <legend>priority</legend>
-      {#each facets.priorities as priority (priority)}
-        <label>
-          <input
-            type="checkbox"
-            checked={filter.priorities.includes(priority)}
-            onchange={() =>
-              onchange({ ...filter, priorities: toggleValue(filter.priorities, priority) })}
-          />
-          {priority}
-        </label>
-      {/each}
-    </fieldset>
-  {/if}
-
-  {#if facets.labels.length > 0}
-    <fieldset>
-      <legend>ラベル</legend>
-      {#each facets.labels as label (label)}
-        <label>
-          <input
-            type="checkbox"
-            checked={filter.labels.includes(label)}
-            onchange={() => onchange({ ...filter, labels: toggleValue(filter.labels, label) })}
-          />
-          {label}
-        </label>
-      {/each}
-    </fieldset>
-  {/if}
-
-  {#if facets.assignees.length > 0}
-    <fieldset>
-      <legend>assignee</legend>
-      {#each facets.assignees as assignee (assignee)}
-        <label>
-          <input
-            type="checkbox"
-            checked={filter.assignees.includes(assignee)}
-            onchange={() =>
-              onchange({ ...filter, assignees: toggleValue(filter.assignees, assignee) })}
-          />
-          {assignee}
-        </label>
-      {/each}
-    </fieldset>
-  {/if}
-
-  <fieldset>
-    <legend>縮退</legend>
-    <label>
-      <input
-        type="checkbox"
-        checked={filter.degradedOnly}
-        onchange={() => onchange({ ...filter, degradedOnly: !filter.degradedOnly })}
-      />
-      縮退のみ
-    </label>
-  </fieldset>
-
-  <button type="button" class="reset" onclick={onreset}>既定に戻す</button>
+  <!-- 総計は帯の右端に常設 (doc-7 §5.2). The per-row 内訳 stays on each レーンヘッダ行 and this is
+       their sum, so the two never disagree: both count the rows the grid is drawing. -->
+  <span class="total">表示 {shown} / {total} 件</span>
 </div>
 
 <style lang="scss">
   .bar {
+    // The one row a token occupies. Named here because two rules depend on it agreeing: the token's
+    // own height and the two-row cap computed from it.
+    --token-line: 1.25rem;
+
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    gap: 0.4rem 0.8rem;
-    padding: 0.5rem 0.75rem;
+    gap: 0.3rem 0.6rem;
+    padding: 0.4rem 0.75rem;
     border-bottom: 1px solid var(--line);
-    font-size: 0.75rem;
-  }
-
-  fieldset {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.1rem 0.5rem;
-    margin: 0;
-    padding: 0.1rem 0.4rem 0.2rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-  }
-
-  legend {
-    padding: 0 0.2rem;
-    font-size: 0.65rem;
-    opacity: 0.7;
-  }
-
-  label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    white-space: nowrap;
+    font-size: 0.72rem;
   }
 
   .text {
+    display: inline-flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 0.1rem;
   }
 
   .caption {
-    font-size: 0.65rem;
-    opacity: 0.7;
+    font-size: 0.62rem;
+    color: var(--muted);
   }
 
   input[type="search"] {
@@ -225,12 +201,96 @@
     background: var(--bg);
     color: inherit;
     font: inherit;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
   }
 
-  .reset {
+  .add {
+    // The popover is positioned against this box, so it opens under ＋ 絞り込み wherever the bar's
+    // wrapping has put it.
+    position: relative;
     align-self: center;
-    margin-left: auto;
+  }
+
+  /*
+   * 折り返し 2 行で頭打ち (doc-7 §5.2). The cap is a height, not a limit on how many conditions may
+   * be held: past two rows the area scrolls, so every token stays reachable while the bar stops
+   * taking height from the grid. Hiding the overflow instead would drop conditions out of sight
+   * while they were still filtering the cards, which is the one thing this shape exists to prevent.
+   */
+  .tokens {
+    display: flex;
+    max-height: calc(var(--token-line) * 2 + 0.2rem);
+    flex: 1;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 0.2rem;
+    overflow-y: auto;
+  }
+
+  .token {
+    display: inline-flex;
+    height: var(--token-line);
+    max-width: 14rem;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0 0.15rem 0 0.3rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    background: var(--inset);
+    font-size: 0.68rem;
+    white-space: nowrap;
+
+    // 保存区分's 既定 was not chosen by anyone, so it is drawn a shade quieter than the conditions
+    // the user did add — without a colour, since it is not a 印 and nothing is wrong (decision-6).
+    &.baseline {
+      border-style: dashed;
+      background: transparent;
+    }
+  }
+
+  .facet {
+    color: var(--muted);
+    font-size: 0.62rem;
+  }
+
+  .value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .drop {
+    display: inline-flex;
+    width: 0.95rem;
+    height: 0.95rem;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.7rem;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+      background: color-mix(in srgb, var(--fg) 10%, transparent);
+      color: var(--fg);
+    }
+  }
+
+  .empty {
+    align-self: center;
+    color: var(--muted);
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .control {
     padding: 0.15rem 0.5rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
@@ -239,5 +299,20 @@
     font: inherit;
     font-size: 0.7rem;
     cursor: pointer;
+  }
+
+  // The 理由 doc-11 §5 requires to be readable without hovering. It sits on the bar's own line
+  // rather than on one of its own, so stating it costs the grid no height.
+  .blocked-note {
+    color: var(--muted);
+    font-size: 0.65rem;
+  }
+
+  .total {
+    align-self: center;
+    margin-left: auto;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 </style>
