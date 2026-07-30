@@ -3,7 +3,7 @@ id: doc-3
 title: プロジェクト台帳と横断タスクID 設計
 type: specification
 created_date: '2026-07-21 09:36'
-updated_date: '2026-07-28 23:12'
+updated_date: '2026-07-30 11:36'
 ---
 # プロジェクト台帳と横断タスクID 設計
 
@@ -40,16 +40,18 @@ schema_version = 1
 
 [[project]]
 slug = "geomyth"
-project_root = "/Users/ootani/Projects/_snz/geomyth"
-backlog_root = "/Users/ootani/Projects/_snz/geomyth/backlog"
+project_root = "/path/to/geomyth"
+backlog_root = "/path/to/geomyth/backlog"
 git_remote_present = true
 
 [[project]]
 slug = "backlog-atlas"
-project_root = "/Users/ootani/Projects/_snz/backlog-atlas"
-backlog_root = "/Users/ootani/Projects/_snz/backlog-atlas/backlog"
+project_root = "/path/to/backlog-atlas"
+backlog_root = "/path/to/backlog-atlas/backlog"
 git_remote_present = false
 ```
+
+例中の `/path/to/...` はプレースホルダである。実際の値は、その環境で解決できる絶対パスを書く。
 
 - `schema_version` … 台帳ファイルのスキーマ版。読み込み時に既知の版か検査し、未知の上位版は上書き保存で破壊しないよう読み取り専用で縮退する。
 - `[[project]]` … 台帳エントリの配列。並び順は表示既定順に用いる。
@@ -96,8 +98,8 @@ git_remote_present = false
 ```toml
 [[project]]
 slug = "example"
-project_root = "/Users/ootani/Projects/_snz/example"
-backlog_root = "/Users/ootani/Projects/_snz/example/backlog"
+project_root = "/path/to/example"
+backlog_root = "/path/to/example/backlog"
 git_remote_present = true
 
 # status 別名表: プロジェクト固有 status → 正準ステータス列。既定は空。

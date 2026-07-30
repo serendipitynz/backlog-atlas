@@ -4,12 +4,11 @@ title: Backlog Atlas の専用リポジトリを初期化する
 status: Done
 assignee: []
 created_date: '2026-07-21 00:17'
-updated_date: '2026-07-21 00:17'
+updated_date: '2026-07-30 11:36'
 labels:
   - 'kind:maintenance'
 dependencies: []
-references:
-  - /Users/ootani/Projects/_snz/backlog-atlas
+references: []
 documentation:
   - backlog/docs/doc-2 - Backlog-Atlas-開始指示書.md
 priority: medium
@@ -19,7 +18,7 @@ ordinal: 1000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Backlog Atlas を実装する専用リポジトリを作成し、Backlog.md を正本として扱うための README とエージェント規約を整える。対象は `/Users/ootani/Projects/_snz/backlog-atlas`。このタスクはリポジトリ初期化と運用文書の作成までであり、Tauri/Wails の選定、アプリ本体、Backlog CLI の sidecar 同梱、リモート作成、commit は含めない。詳細は doc-2 を参照する。
+Backlog Atlas を実装する専用リポジトリを作成し、Backlog.md を正本として扱うための README とエージェント規約を整える。対象はこのリポジトリ（`backlog-atlas`）自身。このタスクはリポジトリ初期化と運用文書の作成までであり、Tauri/Wails の選定、アプリ本体、Backlog CLI の sidecar 同梱、リモート作成、commit は含めない。詳細は doc-2 を参照する。
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

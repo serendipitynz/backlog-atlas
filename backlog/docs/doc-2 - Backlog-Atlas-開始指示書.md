@@ -3,7 +3,7 @@ id: doc-2
 title: Backlog Atlas 開始指示書
 type: guide
 created_date: '2026-07-20 23:22'
-updated_date: '2026-07-22'
+updated_date: '2026-07-30 11:36'
 tags:
   - planning
   - backlog-atlas
@@ -14,7 +14,7 @@ tags:
 ## この指示書が対象にするリポジトリ
 
 - リポジトリ名: `backlog-atlas`
-- 配置先: `/Users/ootani/Projects/_snz/backlog-atlas`
+- 配置先: 作業者のプロジェクト置き場に作る `backlog-atlas` ディレクトリ（以下、リポジトリルート）
 - 初期ブランチ: `main`
 - 現在の状態: 配置先ディレクトリは作成済み。Git リポジトリ、README、エージェント規約、アプリ本体は未作成。
 - 初期用途: 個人利用のローカルデスクトップアプリ。公開リポジトリ、配布、リモート接続は、この初期化には含めない。
@@ -36,8 +36,10 @@ Backlog Atlas は、複数の Backlog.md プロジェクトを扱う **Backlog.m
 
 | project slug | project root | Backlog root |
 |---|---|---|
-| `geomyth` | `/Users/ootani/Projects/_snz/geomyth` | `/Users/ootani/Projects/_snz/geomyth/backlog` |
-| `backlog-atlas` | `/Users/ootani/Projects/_snz/backlog-atlas` | `/Users/ootani/Projects/_snz/backlog-atlas/backlog` |
+| `geomyth` | `/path/to/geomyth` | `/path/to/geomyth/backlog` |
+| `backlog-atlas` | `/path/to/backlog-atlas` | `/path/to/backlog-atlas/backlog` |
+
+`/path/to/...` はプレースホルダである。実際の登録値は、その環境で解決できる絶対パスを書く。
 
 対象の追加・削除は Atlas のプロジェクト台帳で行う。タスクへ `project:<slug>` を付けて所属を表す方式は採用しない。プロジェクトは、そのタスクを読み込んだ Backlog ルートから決定する。
 
@@ -63,7 +65,7 @@ Backlog Atlas は、複数の Backlog.md プロジェクトを扱う **Backlog.m
 
 この開始作業では、次を完了条件とする。
 
-1. 作成済みの `/Users/ootani/Projects/_snz/backlog-atlas` が Git リポジトリとして初期化され、現在のブランチが `main` である。
+1. 作成済みのリポジトリルートが Git リポジトリとして初期化され、現在のブランチが `main` である。
 2. `README.md`、`README.ja.md`、`AGENTS.md`、`AGENTS.ja.md`、`.gitignore` が存在する。
 3. 英語版と日本語版の README が、一つの Atlas プロセス、複数の Backlog ルート、各プロジェクトに残るタスク正本を同じ意味で説明している。
 4. `AGENTS.md` と `AGENTS.ja.md` が、管理対象 Markdown の直接編集禁止、対象プロジェクトでの Backlog CLI 実行、横断タスク ID、Git・Pull Request 参照を同じ意味で指示している。
@@ -73,15 +75,17 @@ Backlog Atlas は、複数の Backlog.md プロジェクトを扱う **Backlog.m
 
 配置先ディレクトリは既に存在する。最初に、別の Git 履歴や既存ファイルがないことを確認する。
 
+以下のコマンドは、いずれもリポジトリルートを作業ディレクトリとして実行する。
+
 ```sh
-git -C /Users/ootani/Projects/_snz/backlog-atlas rev-parse --is-inside-work-tree
-find /Users/ootani/Projects/_snz/backlog-atlas -maxdepth 2 -mindepth 1 -print
+git rev-parse --is-inside-work-tree
+find . -maxdepth 2 -mindepth 1 -print
 ```
 
 Git リポジトリでなく、既存内容との衝突もない場合だけ、次を実行する。
 
 ```sh
-git -C /Users/ootani/Projects/_snz/backlog-atlas init -b main
+git init -b main
 ```
 
 別の Git 履歴または意図不明の既存ファイルがある場合は初期化を続けない。初期化直後は commit を作らない。README と AGENTS を確認した後に、作成者が明示的に commit を求めた場合だけ最初の commit を作る。
@@ -146,13 +150,13 @@ sidecar 同梱は配布方法の選択であり、Backlog Atlas がタスク正�
 初期化後、少なくとも次を確認する。
 
 ```sh
-git -C /Users/ootani/Projects/_snz/backlog-atlas rev-parse --is-inside-work-tree
-git -C /Users/ootani/Projects/_snz/backlog-atlas branch --show-current
-git -C /Users/ootani/Projects/_snz/backlog-atlas status --short
-test -f /Users/ootani/Projects/_snz/backlog-atlas/README.md
-test -f /Users/ootani/Projects/_snz/backlog-atlas/README.ja.md
-test -f /Users/ootani/Projects/_snz/backlog-atlas/AGENTS.md
-test -f /Users/ootani/Projects/_snz/backlog-atlas/AGENTS.ja.md
+git rev-parse --is-inside-work-tree
+git branch --show-current
+git status --short
+test -f README.md
+test -f README.ja.md
+test -f AGENTS.md
+test -f AGENTS.ja.md
 ```
 
 期待結果は、Git ワークツリーであること、ブランチが `main` であること、四つの文書が存在すること、未確認の変更以外の出力がないことである。
