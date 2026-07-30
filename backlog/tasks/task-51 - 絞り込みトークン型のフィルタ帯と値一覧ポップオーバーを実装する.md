@@ -1,10 +1,10 @@
 ---
 id: TASK-51
 title: 絞り込みトークン型のフィルタ帯と値一覧ポップオーバーを実装する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:15'
-updated_date: '2026-07-30 21:15'
+updated_date: '2026-07-30 22:57'
 labels:
   - 'kind:feature'
 milestone: m-1
