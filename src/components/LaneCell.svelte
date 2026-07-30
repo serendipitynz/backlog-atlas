@@ -4,7 +4,7 @@
   // "ルートが読めない", which is a row-level state (doc-7 §6).
   import TaskCard from "./TaskCard.svelte";
   import type { VersionConflict } from "../lib/mark";
-  import type { TaskView } from "../lib/wire";
+  import type { CardDensity, TaskView } from "../lib/wire";
 
   interface Props {
     tasks: TaskView[];
@@ -18,6 +18,8 @@
      * only would put the same status at a different x in each row and break the 縦読み.
      */
     collapsed?: boolean;
+    /** カード情報量 (doc-7 §3): one 段 for the whole grid, handed down to each card. */
+    density: CardDensity;
     showStorageMark: boolean;
     selectedPath: string | null;
     /** 版ずれ (doc-9) per task, from the shell's record — a lookup, not a copy of the map. */
@@ -30,6 +32,7 @@
     label,
     unmapped = false,
     collapsed = false,
+    density,
     showStorageMark,
     selectedPath,
     conflictOf,
@@ -55,6 +58,7 @@
     {#each tasks as view (view.task.sourcePath)}
       <TaskCard
         {view}
+        {density}
         {showStorageMark}
         showRawStatus={unmapped}
         selected={selectedPath === view.task.sourcePath}

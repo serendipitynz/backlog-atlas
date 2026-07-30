@@ -60,6 +60,7 @@
     type ConflictTarget,
     type VersionConflict,
   } from "./lib/mark";
+  import { DEFAULT_CARD_DENSITY } from "./lib/card";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { createSettingsWriter } from "./lib/settings-write";
   import { themeAttribute } from "./lib/theme";
@@ -239,6 +240,13 @@
    * state a build without a settings file has always been in.
    */
   let watchEnabled = $derived(settings?.settings.watch_external_changes ?? true);
+  /**
+   * カード情報量 (doc-7 §3, decision-13). Read straight off the settings rather than copied into state
+   * on load, so a 保存 in the 設定画面 changes the cards without the grid being rebuilt — the same
+   * treatment 継続検出の可否 gets. The fallback is the doc's 既定 M, which is what the grid draws while
+   * the first read is in flight and after a read that degraded to the defaults.
+   */
+  let cardDensity = $derived(settings?.settings.card_density ?? DEFAULT_CARD_DENSITY);
   /**
    * 表示テーマ (decision-12) applied to the document: the chosen set's name on `<html data-theme>`, or
    * the attribute removed for 未選択. Removed rather than resolved to a name, so the OS switching
@@ -1134,6 +1142,7 @@
              while a task is read. With nothing open there is nothing to give way to. -->
         <Swimlane
           {rows}
+          density={cardDensity}
           {showStorageMark}
           selectedPath={selectedRef?.sourcePath ?? null}
           canReorder={!ledgerReadOnly}

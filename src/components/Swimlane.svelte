@@ -17,10 +17,16 @@
     visibleCount,
     type SwimlaneRow,
   } from "../lib/swimlane";
-  import type { StatusColumn, TaskView } from "../lib/wire";
+  import type { CardDensity, StatusColumn, TaskView } from "../lib/wire";
 
   interface Props {
     rows: SwimlaneRow[];
+    /**
+     * カード情報量 (doc-7 §3, decision-13). One 段 for the whole grid, not per row or per column: it is
+     * an アプリ設定, and a grid whose rows carried different 段 would make the cards' heights say
+     * something about the row rather than about the task.
+     */
+    density: CardDensity;
     showStorageMark: boolean;
     selectedPath: string | null;
     /** False on a read-only ledger: row order lives there, so it cannot be written (doc-3 §2.2). */
@@ -42,6 +48,7 @@
 
   let {
     rows,
+    density,
     showStorageMark,
     selectedPath,
     canReorder,
@@ -260,6 +267,7 @@
             tasks={cell.tasks}
             label={CANONICAL_COLUMN_LABEL[cell.column]}
             collapsed={collapsedColumns.includes(cell.column)}
+            {density}
             {showStorageMark}
             {selectedPath}
             {conflictOf}
@@ -271,6 +279,7 @@
             tasks={row.unmapped}
             label={UNMAPPED_LABEL}
             unmapped
+            {density}
             {showStorageMark}
             {selectedPath}
             {conflictOf}

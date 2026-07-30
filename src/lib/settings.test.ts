@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  PENDING_CONSUMER_NOTE,
+  CARD_DENSITY_LABEL,
+  CARD_DENSITY_NOTE,
   STORAGE_SELECTIONS,
   editorArgsText,
   editorCommandOf,
@@ -131,11 +132,18 @@ describe("保存の失敗", () => {
   });
 });
 
-describe("画面が持たない項目", () => {
-  it("says a stored-but-unused value is stored (rather than hiding the control)", () => {
-    // decision-13 puts all six items in this file while two of the screens that read them are
-    // separate work; an absent control would read as "Atlas has no such setting".
-    expect(PENDING_CONSUMER_NOTE).toContain("保存");
+describe("カード情報量", () => {
+  it("says the 状態の印 survive every 段 (doc-7 §3, AC #2)", () => {
+    // Otherwise S reads as "fewer items, so probably fewer warnings too", and a user who wants a
+    // dense grid would be choosing — as far as they could tell — to stop being told about 縮退.
+    expect(CARD_DENSITY_NOTE).toContain("状態の印");
+    expect(CARD_DENSITY_NOTE).toContain("どの段でも落としません");
+  });
+
+  it("names what each 段 adds, so the choice is readable before it is made", () => {
+    expect(CARD_DENSITY_LABEL.s).toContain("1 行");
+    expect(CARD_DENSITY_LABEL.m).toContain("Type");
+    expect(CARD_DENSITY_LABEL.l).toContain("assignee");
   });
 });
 
