@@ -1,10 +1,10 @@
 ---
 id: TASK-48
 title: 印・Type・通常ラベル・priority・無効化の描き方を doc-11 へ揃える
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:15'
-updated_date: '2026-07-30 08:23'
+updated_date: '2026-07-30 09:16'
 labels:
   - 'kind:refactor'
 milestone: m-1
