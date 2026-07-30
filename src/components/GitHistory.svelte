@@ -45,6 +45,11 @@
         : [],
   );
   let remaining = $derived(commits.state === "commits" ? commits.commits.length - shown.length : 0);
+  /**
+   * なぜ再取得が押せないか、押せないときだけ (doc-11 §5). One value for both the withheld state and the
+   * sentence beside the button: derived apart, a control can end up blocked with nothing said about it.
+   */
+  let reloadBlocked = $derived(history.state === "loading" ? "取得中です" : null);
 
   /** Author date is strict ISO 8601 (doc-6 §3); show it without inventing a timezone for it. */
   function day(date: string): string {
@@ -56,15 +61,25 @@
   <!-- No heading of its own: this is the body of the Git 履歴欄 区画, and `DetailSection` already
        names it — a second heading would put the same words twice, once foldable and once not. -->
   <div class="tools">
-    <button type="button" onclick={onreload} disabled={history.state === "loading"}>
+    <button
+      type="button"
+      onclick={onreload}
+      disabled={reloadBlocked !== null}
+      title={reloadBlocked ?? "Git 履歴を取り直します"}
+    >
       再取得
     </button>
+    <!-- 無効化の理由を常時表示で添える (doc-11 §5): a disabled button takes no focus, so a `title` would
+         leave the reason out of reach from the keyboard and from a screen reader. -->
+    {#if reloadBlocked !== null}
+      <span class="reason">{reloadBlocked}。完了するまで再取得はできません。</span>
+    {/if}
   </div>
 
   {#if detail === "count"}
     <!-- 件数のみ (doc-8 §5 併置サイドバー). The two lines keep their own family (decision-6): a
          narrower placement narrows the text, never the distinction between the kinds of absence. -->
-    <p class={countLine.kind}>{countLine.text}</p>
+    <p class={countLine.kind} class:absence={commits.state === "noCommits"}>{countLine.text}</p>
     <p class={relationSummary.kind}>{relationSummary.text}</p>
   {:else}
     {#if shown.length > 0}
@@ -83,7 +98,7 @@
     {:else if commits.state === "noCommits"}
       <!-- コミット該当なし is a normal state (未着手・未コミット), so it is neutral, not an error
            (decision-6 エラー提示方針). -->
-      <p class="neutral">対応コミット無し（このリポジトリに TASK-ID を含むコミットがありません）</p>
+      <p class="neutral absence">対応コミット無し（このリポジトリに TASK-ID を含むコミットがありません）</p>
     {:else if commits.state === "noRepository"}
       <p class="setting">
         Git 対象不在: {commits.projectRoot} は Git リポジトリではないため、ローカル履歴も関連解決も出せません。
@@ -166,11 +181,7 @@
     font: inherit;
     font-size: 0.68rem;
     cursor: pointer;
-
-    &:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
+    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a `:disabled` rule here would outrank it.
   }
 
   .commits {
@@ -225,8 +236,23 @@
   // 正常な不在は中立、設定・未設定は中間、失敗はエラー (decision-6 エラー提示方針). The families are
   // `lib/mark.ts` の MarkKind: `neutral` and `setting` deliberately carry no hue — a colour would
   // contradict "これは正常" and "設定で解消できる" — and only the failure takes one.
+  // `HistoryLine.kind` の `neutral` (lib/detail.ts) is decision-6's family, and it covers more than
+  // 正常な不在: コミット n 件, 読み込み中, 関連 PR の状態 all arrive under it. So the class carries 副次
+  // の `--muted`, and 弱 の `--faint` is opted into by the one line that really is an absence
+  // (doc-11 §2.1). Painting the whole class 弱 put the 再取得 の無効化理由 — the only always-visible
+  // reason a keyboard user has for that control — at 1.79:1–3.19:1 on the recorded themes.
   .neutral {
-    opacity: 0.7;
+    color: var(--muted);
+  }
+
+  // 正常な不在 (doc-11 §6), the same 弱 as 空セル の `—`.
+  .absence {
+    color: var(--faint);
+  }
+
+  // 無効化の理由 (doc-11 §5): 副次の文であり、弱めてよいものではない。
+  .reason {
+    color: var(--muted);
   }
 
   .setting {

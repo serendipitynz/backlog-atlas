@@ -17,6 +17,7 @@
     EMPTY_DOC_CREATE,
     EMPTY_MILESTONE_ADD,
     EMPTY_TASK_CREATE,
+    ISSUE_BUSY_REASON,
     MILESTONE_DESCRIPTION_NOT_EDITABLE,
     WITHHELD_MILESTONE_OPERATIONS,
     buildDocCreate,
@@ -310,6 +311,9 @@
     return trimmed === "" || values.includes(trimmed) ? values : [...values, trimmed];
   }
 
+  /** Where 文書一覧の 編集 send `aria-describedby` while an action is in flight (doc-11 §5). */
+  const DOC_EDIT_BLOCKED_ID = "manage-doc-edit-blocked";
+
   /** The reason a control is withheld, for its `title`. Empty when it is offered. */
   function why(availability: { state: string; reason?: string }): string {
     return availability.state === "blocked" ? (availability.reason ?? "") : "";
@@ -534,6 +538,14 @@
       {#if project.documents.length === 0}
         <p class="neutral">文書はありません。</p>
       {:else}
+        {#if busy}
+          <!-- 一覧の 編集 は全て同じ理由で押せない (doc-11 §5): the reason is written once above the list
+               and each 編集 is bound to it, rather than repeated on every document. The buttons stay
+               `aria-disabled` so they keep taking focus and the binding is reachable without a pointer. -->
+          <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
+            {ISSUE_BUSY_REASON}。完了するまで文書の編集は開けません。
+          </p>
+        {/if}
         <ul class="records">
           {#each project.documents as document (document.id)}
             <li>
@@ -547,8 +559,10 @@
                 <button
                   type="button"
                   class="mini"
-                  disabled={busy}
-                  onclick={() => edit(document)}
+                  aria-disabled={busy}
+                  aria-describedby={busy ? DOC_EDIT_BLOCKED_ID : undefined}
+                  title={busy ? ISSUE_BUSY_REASON : "この文書を編集します"}
+                  onclick={() => !busy && edit(document)}
                 >
                   {docSession?.baseline.id === document.id ? "編集中" : "編集"}
                 </button>
@@ -940,11 +954,7 @@
     font: inherit;
     font-size: 0.74rem;
     cursor: pointer;
-
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
-    }
+    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a `:disabled` rule here would outrank it.
 
     &.mini {
       padding: 0 0.3rem;
@@ -953,10 +963,12 @@
   }
 
   .hint,
+  // 無効化の理由 (doc-11 §5): 副次の文なので `--muted` (doc-11 §2.1). Not an opacity — the reason has to
+  // stay readable on every 表示テーマ, and dimming it further is the opposite of what it is here for.
   .reason {
     margin: 0.2rem 0 0;
+    color: var(--muted);
     font-size: 0.7rem;
-    opacity: 0.75;
   }
 
   .neutral {

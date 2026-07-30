@@ -266,6 +266,8 @@
   /** A destructive action awaiting its second press — see `CONFIRMED_ACTIONS` below. */
   let confirming = $state<string | null>(null);
   let busy = $state(false);
+  /** Why every 状態遷移 is withheld while one is in flight (doc-11 §5: 理由の無い無効化を残さない). */
+  const TRANSITION_BUSY_REASON = "更新を発行中です。完了するまで次の遷移は始められません。";
   /** Draft text of the "add one" boxes, which are inputs rather than part of the session. */
   let newLabel = $state("");
   let newDependency = $state("");
@@ -651,7 +653,14 @@
       <!-- 縮退（解析起因）と版ずれ（doc-9 の競合）は別の印 (decision-6, AC #4): the same chips, in
            the same words and colours, as the card in the swimlane. -->
       {#each marks as mark (mark.kind)}
-        <span class="mark" data-kind={mark.kind} title={mark.detail}>{mark.label}</span>
+        <span
+          class="mark"
+          data-kind={mark.kind}
+          title={mark.detail}
+          aria-label="{mark.label}: {mark.detail}"
+        >
+          {mark.label}
+        </span>
       {/each}
       {#if missing}
         <span class="mark" data-kind="unreadable">ファイル不明</span>
@@ -1036,17 +1045,19 @@
 <!-- Type と通常ラベルは別区画 (doc-8 §4): two sections, never one label list. -->
 {#snippet typeSection()}
   <DetailSection title="Type" disposition={layout.sections.type}>
-    {#if types.length === 0}
-      <p class="neutral">Type 未設定</p>
-    {:else}
-      <ul class="chips">
+    <ul class="chips">
+      {#if types.length === 0}
+        <!-- Type 未設定 は破線輪郭のチップ (doc-11 §3), カードと同じ形で. A sentence here and a chip on
+             the card made the same 未設定 read as two different findings. -->
+        <li class="type unset">Type 未設定</li>
+      {:else}
         {#each types as value, index (index)}
           <li class="type" class:unknown={!value.known}>
             {value.value}{value.known ? "" : "（未知）"}
           </li>
         {/each}
-      </ul>
-    {/if}
+      {/if}
+    </ul>
     {#if session !== null}
       <p class="hint">{TYPE_NOT_EDITABLE}</p>
     {/if}
@@ -1425,8 +1436,15 @@
 {#snippet transitionsSection()}
   <DetailSection title="状態遷移" disposition={layout.sections.transitions}>
     {#if transitions.state === "none"}
-      <p class="neutral">{transitions.reason}</p>
+      <!-- 提供しない理由であって不在ではない (doc-11 §5): 空表示の弱 (`--faint`) で描くと、読ませたい
+           理由が一番読みにくい文字になる。 -->
+      <p class="withheld-reason">{transitions.reason}</p>
     {:else}
+      {#if busy}
+        <!-- 発行中は全ての遷移が同じ理由で押せない (doc-11 §5): the offers' own reasons say nothing about
+             it, so it is stated once for the list rather than left to each button's `title`. -->
+        <p class="hint">{TRANSITION_BUSY_REASON}</p>
+      {/if}
       <ul class="transition-list">
         {#each transitions.offers as offer (offer.kind)}
           <li>
@@ -1434,7 +1452,7 @@
               type="button"
               class="transition"
               disabled={!offer.enabled || busy}
-              title={offer.reason ?? offer.effect}
+              title={busy ? TRANSITION_BUSY_REASON : (offer.reason ?? offer.effect)}
               onclick={() => runTransition(offer)}
             >
               {confirming === offer.kind ? `${offer.label}：実行してよいですか？（もう一度押す）` : offer.label}
@@ -1786,12 +1804,21 @@
     font-size: 0.7rem;
   }
 
-  // Same shapes as the card's (doc-7 §3): Type is a filled chip, 通常ラベル an outlined one, so
-  // the two 区画 read as different kinds of thing here too (doc-8 §4).
+  // Same rule as the card's (doc-11 §3), so the two screens do not draw the same distinction two
+  // ways: Type は塗り＋太字＋角丸 3px、通常ラベルは輪郭ピル＋細字＋`--muted`. Here the two are already
+  // separate 区画 (doc-8 §4), and the chip shapes keep them apart once both are on screen at once.
   .type {
     padding: 0 0.35rem;
     border-radius: 3px;
-    background: color-mix(in srgb, var(--fg) 16%, transparent);
+    background: color-mix(in srgb, var(--fg) 13%, transparent);
+    font-weight: 600;
+
+    &.unset {
+      background: none;
+      border: 1px dashed var(--line-strong);
+      color: var(--muted);
+      font-weight: 400;
+    }
 
     &.unknown {
       background: none;
@@ -1803,6 +1830,7 @@
     padding: 0 0.35rem;
     border: 1px solid var(--line-strong);
     border-radius: 999px;
+    color: var(--muted);
   }
 
   .ac,
@@ -1897,6 +1925,13 @@
     font-size: 0.66rem;
   }
 
+  // 印は `cursor: help` と説明を伴う (doc-11 §3). Keyed on the explanation actually being there: the
+  // 見出し carries chips that are their own whole statement (TASK-ID 不明・ファイル不明), and a help
+  // cursor over one of those would promise something more to read that does not exist.
+  .mark[title] {
+    cursor: help;
+  }
+
   // 解析縮退・版ずれ・未対応・中立の印を混ぜない (decision-6): each family takes its own colour from
   // the 表示テーマ's one definition in `app.scss` (`lib/mark.ts` の MarkKind), an unmapped or dangling
   // reference is outlined, and a merely-informative state stays plain.
@@ -1929,8 +1964,10 @@
     border: 1px solid var(--line-strong);
   }
 
+  // 中立の情報は族でも Type でもない (doc-11 §3): `--muted`, no family colour — it reports what the
+  // project's config says, not that anything is wrong with it.
   .mark.neutral {
-    opacity: 0.65;
+    color: var(--muted);
   }
 
   p {
@@ -1938,8 +1975,15 @@
     font-size: 0.74rem;
   }
 
+  // 正常な不在は `--faint` (doc-11 §2.1・§6), the same 弱 as 空セル の `—` and the Git 履歴欄's 該当なし.
+  // An opacity would land somewhere else on every 表示テーマ and pull the three apart. Only 空表示
+  // takes it: a 理由 is 副次 (`--muted`), never 弱 — see `.withheld-reason`.
   .neutral {
-    opacity: 0.7;
+    color: var(--faint);
+  }
+
+  .withheld-reason {
+    color: var(--muted);
   }
 
   .degrade-panel {
@@ -2019,11 +2063,9 @@
     font: inherit;
     font-size: 0.72rem;
     cursor: pointer;
-
-    &:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
+    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5). Nothing here may add a `:disabled` rule: a
+    // component-scoped one outranks the global selector and would put this screen's blocked controls
+    // back out of step with the others.
   }
 
   button.primary {

@@ -99,6 +99,20 @@
   let registerIssues = $derived(registerProblems(registerInput, taken));
   let previewBacklogRoot = $derived(resolvedBacklogRoot(registerInput));
   let canRegister = $derived(!readOnly && !busy && !registerBusy && registerIssues.length === 0);
+  /**
+   * なぜ登録できないか、できないときだけ (doc-11 §5). Same shape as `entryActionsBlocked`: one string
+   * that drives both the withheld state and the sentence under the button, so the two cannot disagree.
+   * 入力の指摘 (`registerIssues`) は欄ごとに出ているが、それが登録を止めていることは別に述べる。
+   */
+  let registerBlocked = $derived(
+    readOnly
+      ? "台帳が読み取り専用のため、プロジェクトを登録できません（doc-3 §2.2）。"
+      : busy || registerBusy
+        ? "台帳の更新を実行中です。完了するまで登録は始められません。"
+        : registerIssues.length > 0
+          ? "入力に問題があります（各欄の指摘を参照）。"
+          : null,
+  );
 
   async function readDefaultSlug(): Promise<void> {
     const projectRoot = registerInput.projectRoot.trim();
@@ -189,6 +203,59 @@
   /** The refusal to show for one entry, if the last one was about it. */
   function reportFor(slug: string): RefusalReport | null {
     return entryReport?.slug === slug ? entryReport.report : null;
+  }
+
+  /** Where an entry's blocked controls send `aria-describedby` (doc-11 §5). */
+  const ENTRY_BLOCKED_ID = "ledger-entry-blocked";
+  const REGISTER_BLOCKED_ID = "ledger-register-blocked";
+  const READ_ONLY_ID = "ledger-read-only";
+  const READ_ONLY_PICK_REASON =
+    "台帳が読み取り専用のため、フォルダを選んでも登録できません（doc-3 §2.2）。";
+  const orderId = (slug: string): string => `ledger-order-${slug}`;
+  /** One edit form is open at a time (`editing`), so its reason needs no per-entry id. */
+  const EDIT_BLOCKED_ID = "ledger-edit-blocked";
+
+  /**
+   * なぜ登録済みエントリの操作が押せないか、押せないときだけ (doc-11 §5). One reason for 並べ替え・編集・
+   * 削除・保存 together, because one thing blocks them all at a time — so it is written once above the
+   * list and each control is bound to it, instead of the same sentence appearing on every entry.
+   */
+  let entryActionsBlocked = $derived(
+    // Ordered as the obstacles are: a ledger that cannot be written blocks everything whatever else
+    // is going on, and an action already in flight is the next thing in the way.
+    readOnly
+      ? "台帳が読み取り専用のため、登録済みプロジェクトの並べ替え・編集・削除はできません（doc-3 §2.2）。"
+      : busy || busySlug !== null
+        ? "台帳の更新を実行中です。完了するまで次の操作は始められません。"
+        : null,
+  );
+
+  /** 開いている編集フォームの 保存 が押せない理由 (doc-11 §5). Its 入力の指摘 are shown field by field
+   * above the button; that they are what stops the save is a separate thing to say. */
+  let editSaveBlocked = $derived(
+    entryActionsBlocked ??
+      (editIssues.length > 0 ? "入力に問題があります（上の指摘を参照）。" : null),
+  );
+
+  /** Which of the two reasons an arrow is stopped by — the shared one, or its own end of the list. */
+  function arrowBlocked(index: number, direction: -1 | 1): string | null {
+    if (entryActionsBlocked !== null) return entryActionsBlocked;
+    if (direction === -1 && index === 0) return "先頭のため、これ以上は上へ動かせません。";
+    if (direction === 1 && index === entries.length - 1) {
+      return "末尾のため、これ以上は下へ動かせません。";
+    }
+    return null;
+  }
+
+  /**
+   * The element that carries a blocked control's reason: the one shared by the whole list when that is
+   * what stopped it, and otherwise `ownId` — the element the caller put its own reason in. An arrow's
+   * `ownId` is the entry's 表示順 (「n / m 番目」), which is the end-of-list reason stated as a fact and
+   * is on screen whether or not any arrow is blocked — the device タスク詳細's 前後移動 already uses.
+   */
+  function blockedBy(reason: string | null, ownId: string): string | undefined {
+    if (reason === null) return undefined;
+    return reason === entryActionsBlocked ? ENTRY_BLOCKED_ID : ownId;
   }
 
   /**
@@ -307,7 +374,9 @@
       </span>
     </p>
     {#if readOnly}
-      <p class="readonly">
+      <!-- 画面全体に効く無効化理由 (doc-11 §5): the folder pickers below bind to this rather than
+           repeating it, since it sits above them and is on screen the whole time it applies. -->
+      <p class="readonly" id={READ_ONLY_ID}>
         台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。
         登録・削除・更新はできません（doc-3 §2.2）。
       </p>
@@ -331,9 +400,17 @@
     {:else if entries.length === 0}
       <p class="empty">まだ登録がありません。下の「プロジェクトを登録」から追加してください。</p>
     {:else}
+      {#if entryActionsBlocked !== null}
+        <!-- 無効化の理由は常時表示で置き、`title` を唯一の格納先にしない (doc-11 §5). Written once for the
+             whole list: 並べ替え・編集・削除 are stopped by one thing at a time, and repeating it on
+             every entry would put the same sentence on screen as many times as there are projects. -->
+        <p class="blocked-note" id={ENTRY_BLOCKED_ID}>{entryActionsBlocked}</p>
+      {/if}
       <ul>
         {#each entries as entry, index (entry.slug)}
           {@const state = readState(entry.slug)}
+          {@const upBlocked = arrowBlocked(index, -1)}
+          {@const downBlocked = arrowBlocked(index, 1)}
           <li>
             <div class="entry">
               <div class="identity">
@@ -364,29 +441,48 @@
                 </dd>
               </dl>
               <div class="controls">
+                <!-- 押せない操作は消さずに残す (doc-11 §5). The arrows keep `aria-disabled` rather than
+                     `disabled` so they still take focus and their `aria-describedby` is reachable
+                     without a pointer; `title` repeats the reason for the pointer only. -->
                 <button
                   type="button"
-                  title="表示順を上へ"
-                  disabled={readOnly || busy || index === 0 || busySlug !== null}
-                  onclick={() => reorder(entry.slug, index - 1)}>↑</button
+                  aria-label="{entry.slug} の表示順を上へ"
+                  aria-disabled={upBlocked !== null}
+                  aria-describedby={blockedBy(upBlocked, orderId(entry.slug))}
+                  title={upBlocked ?? "表示順を上へ"}
+                  onclick={() => upBlocked === null && reorder(entry.slug, index - 1)}>↑</button
                 >
                 <button
                   type="button"
-                  title="表示順を下へ"
-                  disabled={readOnly || busy || index === entries.length - 1 || busySlug !== null}
-                  onclick={() => reorder(entry.slug, index + 1)}>↓</button
+                  aria-label="{entry.slug} の表示順を下へ"
+                  aria-disabled={downBlocked !== null}
+                  aria-describedby={blockedBy(downBlocked, orderId(entry.slug))}
+                  title={downBlocked ?? "表示順を下へ"}
+                  onclick={() => downBlocked === null && reorder(entry.slug, index + 1)}>↓</button
                 >
+                <!-- 端での無効化の理由は、この表示順そのものが担う (doc-11 §5): 「1 / 5 番目」は矢印が
+                     押せるかどうかによらず出ているので、理由を読むためにホバーする必要がない。 -->
+                <span class="ordinal" id={orderId(entry.slug)}>
+                  表示順 {index + 1} / {entries.length} 番目
+                </span>
                 <button
                   type="button"
-                  disabled={readOnly || busy || busySlug !== null}
-                  onclick={() => (editing?.slug === entry.slug ? cancelEdit() : startEdit(entry))}
+                  aria-disabled={entryActionsBlocked !== null}
+                  aria-describedby={blockedBy(entryActionsBlocked, orderId(entry.slug))}
+                  title={entryActionsBlocked ?? "この登録を編集します"}
+                  onclick={() =>
+                    entryActionsBlocked === null &&
+                    (editing?.slug === entry.slug ? cancelEdit() : startEdit(entry))}
                 >
                   {editing?.slug === entry.slug ? "編集をやめる" : "編集"}
                 </button>
                 <button
                   type="button"
-                  disabled={readOnly || busy || busySlug !== null}
+                  aria-disabled={entryActionsBlocked !== null}
+                  aria-describedby={blockedBy(entryActionsBlocked, orderId(entry.slug))}
+                  title={entryActionsBlocked ?? "この登録を台帳から外します"}
                   onclick={() => {
+                    if (entryActionsBlocked !== null) return;
                     removing = entry.slug;
                     entryReport = null;
                   }}>削除</button
@@ -412,8 +508,11 @@
                 <div class="row">
                   <button
                     type="button"
-                    disabled={busy || busySlug !== null}
-                    onclick={() => confirmRemove(entry.slug)}>台帳から外す</button
+                    aria-disabled={entryActionsBlocked !== null}
+                    aria-describedby={blockedBy(entryActionsBlocked, orderId(entry.slug))}
+                    title={entryActionsBlocked ?? "この登録を台帳から外します"}
+                    onclick={() => entryActionsBlocked === null && confirmRemove(entry.slug)}
+                    >台帳から外す</button
                   >
                   <button type="button" onclick={() => (removing = null)}>やめる</button>
                 </div>
@@ -516,11 +615,18 @@
                   <button
                     type="button"
                     class="primary"
-                    disabled={readOnly || busy || busySlug !== null || editIssues.length > 0}
-                    onclick={submitEdit}>保存</button
+                    aria-disabled={editSaveBlocked !== null}
+                    aria-describedby={blockedBy(editSaveBlocked, EDIT_BLOCKED_ID)}
+                    title={editSaveBlocked ?? "この登録の変更を台帳へ書きます"}
+                    onclick={() => editSaveBlocked === null && submitEdit()}>保存</button
                   >
                   <button type="button" onclick={cancelEdit}>取消</button>
                 </div>
+                <!-- 入力の指摘は上に出ているが、それが保存を止めていることは別に述べる (doc-11 §5):
+                     指摘が読めることと、なぜボタンが押せないかが分かることは同じではない。 -->
+                {#if editSaveBlocked !== null && editSaveBlocked !== entryActionsBlocked}
+                  <p class="blocked-note" id={EDIT_BLOCKED_ID}>{editSaveBlocked}</p>
+                {/if}
               </div>
             {/if}
           </li>
@@ -548,7 +654,13 @@
           bind:value={registerInput.projectRoot}
           onchange={readDefaultSlug}
         />
-        <button type="button" disabled={readOnly} onclick={pickRegisterProjectRoot}>選択…</button>
+        <button
+          type="button"
+          aria-disabled={readOnly}
+          aria-describedby={readOnly ? READ_ONLY_ID : undefined}
+          title={readOnly ? READ_ONLY_PICK_REASON : "フォルダを選びます"}
+          onclick={() => !readOnly && pickRegisterProjectRoot()}>選択…</button
+        >
       </span>
     </label>
     {#each problemsFor(registerIssues, "projectRoot") as message (message)}
@@ -564,7 +676,13 @@
           spellcheck="false"
           bind:value={registerInput.backlogRoot}
         />
-        <button type="button" disabled={readOnly} onclick={pickRegisterBacklogRoot}>選択…</button>
+        <button
+          type="button"
+          aria-disabled={readOnly}
+          aria-describedby={readOnly ? READ_ONLY_ID : undefined}
+          title={readOnly ? READ_ONLY_PICK_REASON : "フォルダを選びます"}
+          onclick={() => !readOnly && pickRegisterBacklogRoot()}>選択…</button
+        >
       </span>
     </label>
     {#if registerInput.backlogRoot.trim() === "" && previewBacklogRoot !== ""}
@@ -612,10 +730,22 @@
     {/if}
 
     <div class="row">
-      <button type="button" class="primary" disabled={!canRegister} onclick={submitRegister}>
+      <button
+        type="button"
+        class="primary"
+        aria-disabled={!canRegister}
+        aria-describedby={canRegister ? undefined : REGISTER_BLOCKED_ID}
+        title={registerBlocked ?? "入力の内容で台帳へ登録します"}
+        onclick={submitRegister}
+      >
         {registerBusy ? "登録中…" : "登録"}
       </button>
     </div>
+    <!-- 押せない理由を常時表示で置く (doc-11 §5): the 選択… buttons above point here too — the ledger
+         being read-only is what stops all three, and it is stated once for them. -->
+    {#if registerBlocked !== null}
+      <p class="blocked-note" id={REGISTER_BLOCKED_ID}>{registerBlocked}</p>
+    {/if}
   </div>
 </section>
 
@@ -751,7 +881,24 @@
   .row {
     display: flex;
     flex-wrap: wrap;
+    align-items: baseline;
     gap: 0.25rem;
+  }
+
+  // 端の矢印が押せない理由そのもの (doc-11 §5). Always on screen, not only while an arrow is blocked:
+  // a reason that appears at the moment it applies is one more thing to notice, and this one reads as
+  // an ordinary fact about the entry either way.
+  .ordinal {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  // 無効化の理由 (doc-11 §5): 副次の文なので `--muted` (doc-11 §2.1).
+  .blocked-note {
+    margin: 0 0 0.4rem;
+    color: var(--muted);
+    font-size: 0.72rem;
   }
 
   button {
@@ -763,11 +910,7 @@
     font: inherit;
     font-size: 0.72rem;
     cursor: pointer;
-
-    &:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
+    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a `:disabled` rule here would outrank it.
 
     &.primary {
       border-color: var(--info);

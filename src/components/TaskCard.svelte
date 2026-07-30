@@ -202,6 +202,13 @@
     color: var(--family);
     font-size: 0.65rem;
 
+    // 印は `cursor: help` と説明を伴う (doc-11 §3): the short word on the chip is not the whole finding.
+    // Keyed on the explanation being present, as in the detail heading — inside a pressable card the
+    // help cursor is the one thing that says this chip has more to read than the card's own title.
+    &[title] {
+      cursor: help;
+    }
+
     &[data-kind="degraded"] {
       --family: var(--mark-degraded);
     }
@@ -228,16 +235,21 @@
     padding: 0 0.3rem;
   }
 
-  // Type: filled chip. 通常ラベル: outlined chip. The shapes differ so the two are never read
-  // as one list (doc-7 §3).
+  // Type と通常ラベルの差は角丸だけでは弱い (doc-11 §3): Type is a filled, bold, 3px chip and 通常ラベル
+  // an outlined pill in 細字・`--muted`. Three differences at once — 塗りの有無・太さ・字の濃さ — so the
+  // two are told apart at a glance in one wrapped row, which a 3px-vs-999px radius alone did not do.
   .type {
     border-radius: 3px;
-    background: color-mix(in srgb, var(--fg) 16%, transparent);
+    background: color-mix(in srgb, var(--fg) 13%, transparent);
+    font-weight: 600;
 
+    // 未知 Type は実線輪郭、Type 未設定は破線輪郭で、どちらにも色を与えない (doc-11 §3・§6). 未設定 is
+    // an absence, not a fault, so 族の色 would say the wrong thing about it (decision-6 の中立表示).
     &.unset {
       background: none;
       border: 1px dashed var(--line-strong);
-      opacity: 0.7;
+      color: var(--muted);
+      font-weight: 400;
     }
 
     &.unknown {
@@ -249,16 +261,19 @@
   .label {
     border: 1px solid var(--line-strong);
     border-radius: 999px;
+    color: var(--muted);
   }
 
   .assignee {
-    opacity: 0.8;
+    color: var(--muted);
   }
 
+  // 保存区分印 と 未対応区画の原文 status は族でも Type でもない中立の情報 (doc-11 §3): outline only,
+  // `--muted`, no family colour. They say どこに置かれているか・元の語は何か, not that anything is wrong.
   .status,
   .storage {
     border: 1px solid var(--line-strong);
     border-radius: 3px;
-    opacity: 0.85;
+    color: var(--muted);
   }
 </style>

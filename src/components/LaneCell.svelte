@@ -62,9 +62,12 @@
     background: var(--inset);
   }
 
+  // `--faint` (doc-11 §2.1・§6), not an opacity: the theme carries its own 弱 colour, and an opacity
+  // over `--fg` lands somewhere else on every 表示テーマ — the two would not stay the same 弱 as the
+  // Git 履歴欄's 該当なし, which is the other 正常な不在 on screen.
   .empty {
     padding: 0.2rem 0.1rem;
+    color: var(--faint);
     font-size: 0.75rem;
-    opacity: 0.4;
   }
 </style>

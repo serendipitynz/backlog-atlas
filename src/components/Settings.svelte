@@ -153,6 +153,20 @@
   let editorProgram = $state("");
   let editorArgs = $state("");
 
+  /**
+   * なぜ押せないか、押せないときだけ (doc-11 §5). Derived as a string rather than left as a boolean so
+   * that the same value drives the `disabled` state and the 補助文 below the buttons: a disabled state
+   * computed separately from its reason is how a 理由の無い無効化 gets in.
+   *
+   * Ordered as the obstacles are: a settings file that cannot be written blocks 保存 whatever the form
+   * holds, and 変更はありません is only worth saying once writing is possible at all.
+   */
+  let saveBlocked = $derived(
+    availability.reason ?? (saving ? "保存中です" : dirty ? null : "変更はありません"),
+  );
+  /** 取り消す is a change to the form only, so the file's writability has no bearing on it. */
+  let revertBlocked = $derived(saving ? "保存中です" : dirty ? null : "変更はありません");
+
   function setStorage(value: StorageSelection, on: boolean): void {
     if (draft === null) return;
     draft.default_storage_filter = toggleStorage(draft.default_storage_filter, value, on);
@@ -305,17 +319,29 @@
     <footer>
       <button
         type="button"
-        disabled={!availability.enabled || !dirty || saving}
-        title={availability.reason ?? (dirty ? "" : "変更はありません")}
+        disabled={saveBlocked !== null}
+        title={saveBlocked ?? "設定を書き込みます"}
         onclick={save}
       >
         {saving ? "保存中…" : "保存"}
       </button>
-      <button type="button" class="mini" disabled={!dirty || saving} onclick={revert}>
+      <button
+        type="button"
+        class="mini"
+        disabled={revertBlocked !== null}
+        title={revertBlocked ?? "読み込んだ内容へ戻します"}
+        onclick={revert}
+      >
         変更を取り消す
       </button>
-      {#if availability.reason !== null}
-        <span class="hint">{availability.reason}</span>
+      <!-- 無効化の理由は常時表示の補助文として置く (doc-11 §5): `title` はホバーにしか出ず、`disabled`
+           な操作はフォーカスも受け取らないため、それだけではキーボードにもスクリーンリーダーにも届かない。
+           2 つ目は理由が食い違うときだけ出す（同じ理由を二度書かない）。 -->
+      {#if saveBlocked !== null}
+        <span class="hint">保存できません: {saveBlocked}</span>
+      {/if}
+      {#if revertBlocked !== null && revertBlocked !== saveBlocked}
+        <span class="hint">変更を取り消せません: {revertBlocked}</span>
       {/if}
       {#if path !== null}
         <span class="hint path">{path}</span>
@@ -400,11 +426,8 @@
     font: inherit;
     font-size: 0.75rem;
     cursor: pointer;
-
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
-    }
+    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5): a `:disabled` rule written here would outrank
+    // the global one and take this screen back out of step with the rest.
 
     &.mini {
       font-size: 0.7rem;
