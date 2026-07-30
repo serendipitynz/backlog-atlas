@@ -62,6 +62,7 @@
   } from "./lib/mark";
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { createSettingsWriter } from "./lib/settings-write";
+  import { themeAttribute } from "./lib/theme";
   import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
   import { buildSwimlane, laneNeighbours, unreadableDetail } from "./lib/swimlane";
   import type {
@@ -238,6 +239,22 @@
    * state a build without a settings file has always been in.
    */
   let watchEnabled = $derived(settings?.settings.watch_external_changes ?? true);
+  /**
+   * 表示テーマ (decision-12) applied to the document: the chosen set's name on `<html data-theme>`, or
+   * the attribute removed for 未選択. Removed rather than resolved to a name, so the OS switching
+   * light↔dark is followed by `app.scss`'s media query for as long as nothing has been chosen — the
+   * shell has no listener to keep in step, and the first paint (before this read answers) is already
+   * the right one.
+   *
+   * Written from an effect rather than from `applySettings`, because `<html>` is outside this
+   * component's markup and the same attribute has to follow *every* path a theme can change by: the
+   * 設定画面's 保存, the first read at startup, and a read that degraded to the defaults.
+   */
+  $effect(() => {
+    const chosen = themeAttribute(settings?.settings.theme ?? null);
+    if (chosen === null) delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = chosen;
+  });
   /**
    * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
    * Three causes converge here: the user turned 継続検出 off (every row), the event subscription is
@@ -1216,7 +1233,7 @@
 
     button {
       padding: 0.1rem 0.5rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;
@@ -1245,7 +1262,7 @@
 
   .badge {
     padding: 0 0.35rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 3px;
     font-size: 0.7rem;
     opacity: 0.8;
@@ -1254,7 +1271,7 @@
   // The 設定 entry point sits apart from the screen tabs: it opens a panel, not another screen.
   .settings-open {
     padding: 0.1rem 0.5rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;
@@ -1265,8 +1282,8 @@
 
   .settings-panel {
     max-height: 60vh;
-    border-bottom: 1px solid color-mix(in srgb, currentColor 22%, transparent);
-    background: color-mix(in srgb, canvas 94%, canvastext 6%);
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
     overflow-y: auto;
   }
 
@@ -1276,12 +1293,12 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.35rem 0.75rem;
-    border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border-bottom: 1px solid var(--line);
     font-size: 0.72rem;
 
     button {
       padding: 0 0.35rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;
@@ -1314,7 +1331,7 @@
 
     button {
       padding: 0 0.4rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;
@@ -1365,7 +1382,7 @@
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    background: color-mix(in srgb, canvastext 28%, transparent);
+    background: color-mix(in srgb, var(--fg) 28%, transparent);
   }
 
   .detail-gone {
@@ -1375,7 +1392,7 @@
     gap: 0.4rem;
     width: min(30rem, 45vw);
     padding: 0.6rem 0.75rem;
-    border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    border-left: 1px solid var(--line);
     font-size: 0.75rem;
 
     p {
@@ -1384,7 +1401,7 @@
 
     button {
       padding: 0 0.4rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;
