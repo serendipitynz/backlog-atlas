@@ -3,10 +3,18 @@ import { DEFAULT_FILTER, type CardFilter } from "./filter";
 import { loadMap, loaded, taskView, unreadable } from "./fixtures";
 import {
   CANONICAL_COLUMNS,
+  ROW_FOLD_ABSENT_REASON,
+  UNMAPPED_FOLD_ABSENT_REASON,
+  UNMAPPED_LABEL,
   buildSwimlane,
+  cellCount,
+  columnTotal,
   compareCards,
+  laneCounts,
   laneNeighbourLabel,
   laneNeighbours,
+  rowFoldable,
+  visibleCount,
   type SwimlaneRow,
 } from "./swimlane";
 import { cardIdentity, crossTaskId } from "./card";
@@ -356,5 +364,135 @@ describe("AC #5 同一レーンセル内の前後タスクへ位置つきで移�
 
     const broken = swimlane(["atlas"], loadMap(unreadable("atlas")), {});
     expect(laneNeighbours(broken, { slug: "atlas", sourcePath: "b.md" })).toBeNull();
+  });
+});
+
+// TASK-50: 折畳み (doc-7 §2.2・§2.3・§5.1). The counts are what a fold keeps, so they are what the
+// tests are about — the widths and the toggles are the component's, the numbers are here.
+describe("AC #2 列折畳みは全行同時にのみ効き、畳んだ列が列名と件数を残す", () => {
+  it("counts a column across every row, which is what a folded column can still show", () => {
+    const rows = swimlane(
+      ["atlas", "geomyth"],
+      loadMap(
+        loaded("atlas", [
+          taskView({ id: "TASK-1", sourcePath: "a.md", column: "toDo" }),
+          taskView({ id: "TASK-2", sourcePath: "b.md", column: "toDo" }),
+          taskView({ id: "TASK-3", sourcePath: "c.md", column: "done" }),
+        ]),
+        loaded("geomyth", [taskView({ id: "TASK-4", sourcePath: "d.md", column: "toDo" })]),
+      ),
+    );
+
+    expect(columnTotal(rows, "toDo")).toBe(3);
+    expect(columnTotal(rows, "done")).toBe(1);
+    expect(columnTotal(rows, "inReview")).toBe(0);
+  });
+
+  it("keeps each row's own count in the folded column, so the 縦読み survives the fold", () => {
+    const rows = swimlane(
+      ["atlas", "geomyth"],
+      loadMap(
+        loaded("atlas", [
+          taskView({ id: "TASK-1", sourcePath: "a.md", column: "inProgress" }),
+          taskView({ id: "TASK-2", sourcePath: "b.md", column: "inProgress" }),
+        ]),
+        loaded("geomyth", []),
+      ),
+    );
+
+    expect(cellCount(row(rows, "atlas"), "inProgress")).toBe(2);
+    expect(cellCount(row(rows, "geomyth"), "inProgress")).toBe(0);
+  });
+});
+
+describe("AC #3 行折畳みでレーンセル群が畳まれ、列別の件数がレーンヘッダ行に出る", () => {
+  it("gives the four canonical columns in their fixed order, zeros included", () => {
+    const rows = swimlane(
+      ["atlas"],
+      loadMap(
+        loaded("atlas", [
+          taskView({ id: "TASK-1", sourcePath: "a.md", column: "toDo" }),
+          taskView({ id: "TASK-2", sourcePath: "b.md", column: "done" }),
+          taskView({ id: "TASK-3", sourcePath: "c.md", column: "done" }),
+        ]),
+      ),
+    );
+
+    expect(laneCounts(row(rows, "atlas"), false)).toEqual([
+      { column: "toDo", label: "To Do", count: 1 },
+      { column: "inProgress", label: "In Progress", count: 0 },
+      { column: "inReview", label: "In Review", count: 0 },
+      { column: "done", label: "Done", count: 2 },
+    ]);
+  });
+
+  it("adds 未対応 only while the grid is showing that column", () => {
+    const rows = swimlane(
+      ["atlas"],
+      loadMap(
+        loaded("atlas", [taskView({ id: "TASK-1", sourcePath: "a.md", column: null })]),
+      ),
+    );
+
+    expect(laneCounts(row(rows, "atlas"), false).map((entry) => entry.label)).not.toContain(
+      UNMAPPED_LABEL,
+    );
+    expect(laneCounts(row(rows, "atlas"), true).at(-1)).toEqual({
+      column: null,
+      label: UNMAPPED_LABEL,
+      count: 1,
+    });
+  });
+
+  it("counts what the filter left, so a folded row reports the grid it was folded from", () => {
+    const loads = loadMap(
+      loaded("atlas", [
+        taskView({ id: "TASK-1", sourcePath: "a.md", column: "toDo", title: "parser" }),
+        taskView({ id: "TASK-2", sourcePath: "b.md", column: "toDo", title: "reader" }),
+      ]),
+    );
+
+    expect(laneCounts(row(swimlane(["atlas"], loads), "atlas"), false)[0].count).toBe(2);
+    expect(
+      laneCounts(row(swimlane(["atlas"], loads, { text: "parser" }), "atlas"), false)[0].count,
+    ).toBe(1);
+  });
+});
+
+describe("AC #4 行折畳みと行非表示は件数が読めるか否かで分かれる", () => {
+  it("folding leaves the row's counts computable; hiding takes the row out of the grid", () => {
+    const loads = loadMap(
+      loaded("atlas", [taskView({ id: "TASK-1", sourcePath: "a.md", column: "toDo" })]),
+    );
+
+    // 行折畳み is not a row state: the row is still built, and its counts are still there to draw.
+    const folded = row(swimlane(["atlas"], loads), "atlas");
+    expect(visibleCount(folded)).toBe(1);
+    expect(laneCounts(folded, false)[0].count).toBe(1);
+
+    // 行非表示 removes the row itself, so there is no count left to read anywhere (doc-7 §5.1).
+    expect(swimlane(["atlas"], loads, {}, ["atlas"])).toEqual([]);
+  });
+});
+
+describe("AC #5・#6 折畳みの対象にしないもの", () => {
+  it("withholds 行折畳み from a row with no cells to fold, with the reason spelled out", () => {
+    const rows = swimlane(
+      ["broken", "waiting", "atlas"],
+      loadMap(unreadable("broken"), loaded("atlas", [taskView()])),
+    );
+
+    expect(rowFoldable(row(rows, "broken"))).toBe(false);
+    expect(rowFoldable(row(rows, "waiting"))).toBe(false);
+    expect(rowFoldable(row(rows, "atlas"))).toBe(true);
+    expect(ROW_FOLD_ABSENT_REASON).not.toBe("");
+  });
+
+  it("leaves 未対応 out of the columns 列折畳み can reach", () => {
+    // 列折畳み is offered per `CANONICAL_COLUMNS` entry, and 未対応 is not one of them (doc-7 §2.2).
+    expect(CANONICAL_COLUMNS).not.toContain(UNMAPPED_LABEL);
+    expect(laneCounts(row(swimlane(["atlas"], loadMap(loaded("atlas", []))), "atlas"), true).at(-1)
+      ?.column).toBeNull();
+    expect(UNMAPPED_FOLD_ABSENT_REASON).not.toBe("");
   });
 });
