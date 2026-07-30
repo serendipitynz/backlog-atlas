@@ -49,6 +49,13 @@ export type IssuePlan =
 export type IssueAvailability = { state: "ready" } | { state: "blocked"; reason: string };
 
 /**
+ * Why every 発行 control is withheld while one action is in flight. Exported so that the controls the
+ * screen withholds for the same reason — 文書の編集 among them, which builds no plan of its own — say
+ * it in the same words as the ones `issueAvailability` speaks for (doc-11 §5 理由の無い無効化を残さない).
+ */
+export const ISSUE_BUSY_REASON = "発行中です";
+
+/**
  * Whether a form's 発行 control may be pressed, and the reason when it may not. One decision for
  * both the disabled state and the message: derived separately, a state that stops the issue from
  * happening can still leave the button looking pressable — the one outcome doc-5 §5 rules out.
@@ -61,7 +68,7 @@ export function issueAvailability(
   // holds, and a form still filling in is the user's own next step.
   const degraded = readinessReason(context.readiness);
   if (degraded !== null) return { state: "blocked", reason: degraded };
-  if (context.busy) return { state: "blocked", reason: "発行中です" };
+  if (context.busy) return { state: "blocked", reason: ISSUE_BUSY_REASON };
   return plan.state === "ready" ? { state: "ready" } : { state: "blocked", reason: plan.reason };
 }
 

@@ -47,6 +47,17 @@
     onreread,
   }: Props = $props();
 
+  /**
+   * 無効化の理由の置き場 (doc-11 §5). Every ↑↓ on the grid is blocked by the same one thing, so the
+   * reason is written once as a full-width row and the arrows are bound to it with `aria-describedby`
+   * — repeating the sentence on each row would put the same words on screen as many times as there
+   * are projects. The arrows stay `aria-disabled` rather than `disabled` so they keep taking focus:
+   * that is what makes the binding reachable from the keyboard and from a screen reader.
+   */
+  const REORDER_REASON_ID = "swimlane-reorder-blocked";
+  const REORDER_BLOCKED_REASON =
+    "台帳が読み取り専用のため、行の並べ替えはできません（doc-3 §2.2）。台帳画面で理由を確認できます。";
+
   // 未対応区画は常設ではない (doc-7 §2.2): the column appears only while some row has a task in
   // it, and disappears again once none does.
   let hasUnmapped = $derived(
@@ -69,6 +80,10 @@
     <div class="head unmapped">未対応</div>
   {/if}
 
+  {#if !canReorder}
+    <p class="blocked-note" id={REORDER_REASON_ID}>{REORDER_BLOCKED_REASON}</p>
+  {/if}
+
   {#each rows as row (row.slug)}
     <div class="row-head" class:unreadable={row.state === "unreadable"}>
       <div class="names">
@@ -85,22 +100,34 @@
       {#if unwatched.includes(row.slug)}
         <!-- 継続検出停止: the cards below are only as fresh as the last read, and 版ずれ の有無は
              確かめられない — a distinct family from both 縮退 and 版ずれ (doc-9 §3/§5). -->
-        <span class="mark" data-kind={UNWATCHED_MARK.kind} title={UNWATCHED_MARK.detail}>
+        <span
+          class="mark"
+          data-kind={UNWATCHED_MARK.kind}
+          title={UNWATCHED_MARK.detail}
+          aria-label="{UNWATCHED_MARK.label}: {UNWATCHED_MARK.detail}"
+        >
           {UNWATCHED_MARK.label}
         </span>
       {/if}
       <div class="controls">
+        <!-- 押せない矢印は消さずに残す (doc-11 §5). `aria-label` carries the name the arrow glyph does
+             not spell out, and the reason travels through `aria-describedby` to the one line above the
+             rows; `title` repeats it for the pointer only, never as its only home. -->
         <button
           type="button"
-          title="上へ"
-          disabled={!canReorder}
-          onclick={() => onmove(row.slug, -1)}>↑</button
+          aria-label="{row.slug} を上へ"
+          aria-disabled={!canReorder}
+          aria-describedby={canReorder ? undefined : REORDER_REASON_ID}
+          title={canReorder ? "表示順を上へ" : REORDER_BLOCKED_REASON}
+          onclick={() => canReorder && onmove(row.slug, -1)}>↑</button
         >
         <button
           type="button"
-          title="下へ"
-          disabled={!canReorder}
-          onclick={() => onmove(row.slug, 1)}>↓</button
+          aria-label="{row.slug} を下へ"
+          aria-disabled={!canReorder}
+          aria-describedby={canReorder ? undefined : REORDER_REASON_ID}
+          title={canReorder ? "表示順を下へ" : REORDER_BLOCKED_REASON}
+          onclick={() => canReorder && onmove(row.slug, 1)}>↓</button
         >
         <button type="button" title="この行を隠す" onclick={() => onhide(row.slug)}>隠す</button>
         {#if unwatched.includes(row.slug)}
@@ -224,6 +251,12 @@
     color: var(--family);
     font-size: 0.65rem;
 
+    // 印は `cursor: help` と説明を伴う (doc-11 §3), keyed on the explanation being there — the same
+    // rule the card and the detail heading use, so one chip does not promise more than another.
+    &[title] {
+      cursor: help;
+    }
+
     &[data-kind="undetectable"] {
       --family: var(--mark-undetectable);
     }
@@ -265,12 +298,19 @@
       font: inherit;
       font-size: 0.7rem;
       cursor: pointer;
-
-      &:disabled {
-        opacity: 0.4;
-        cursor: default;
-      }
+      // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a `:disabled` rule here would outrank it.
     }
+  }
+
+  // The reason sits above the rows and spans every column, so it is read before the arrows it
+  // explains rather than found by hovering one of them (doc-11 §5).
+  .blocked-note {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.7rem;
   }
 
   .row-message {

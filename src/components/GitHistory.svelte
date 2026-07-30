@@ -45,6 +45,11 @@
         : [],
   );
   let remaining = $derived(commits.state === "commits" ? commits.commits.length - shown.length : 0);
+  /**
+   * なぜ再取得が押せないか、押せないときだけ (doc-11 §5). One value for both the withheld state and the
+   * sentence beside the button: derived apart, a control can end up blocked with nothing said about it.
+   */
+  let reloadBlocked = $derived(history.state === "loading" ? "取得中です" : null);
 
   /** Author date is strict ISO 8601 (doc-6 §3); show it without inventing a timezone for it. */
   function day(date: string): string {
@@ -56,9 +61,19 @@
   <!-- No heading of its own: this is the body of the Git 履歴欄 区画, and `DetailSection` already
        names it — a second heading would put the same words twice, once foldable and once not. -->
   <div class="tools">
-    <button type="button" onclick={onreload} disabled={history.state === "loading"}>
+    <button
+      type="button"
+      onclick={onreload}
+      disabled={reloadBlocked !== null}
+      title={reloadBlocked ?? "Git 履歴を取り直します"}
+    >
       再取得
     </button>
+    <!-- 無効化の理由を常時表示で添える (doc-11 §5): a disabled button takes no focus, so a `title` would
+         leave the reason out of reach from the keyboard and from a screen reader. -->
+    {#if reloadBlocked !== null}
+      <span class="neutral">{reloadBlocked}。完了するまで再取得はできません。</span>
+    {/if}
   </div>
 
   {#if detail === "count"}
@@ -166,11 +181,7 @@
     font: inherit;
     font-size: 0.68rem;
     cursor: pointer;
-
-    &:disabled {
-      opacity: 0.4;
-      cursor: default;
-    }
+    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a `:disabled` rule here would outrank it.
   }
 
   .commits {
@@ -225,8 +236,10 @@
   // 正常な不在は中立、設定・未設定は中間、失敗はエラー (decision-6 エラー提示方針). The families are
   // `lib/mark.ts` の MarkKind: `neutral` and `setting` deliberately carry no hue — a colour would
   // contradict "これは正常" and "設定で解消できる" — and only the failure takes one.
+  // 正常な不在は `--faint`（doc-11 §2.1・§6）: an opacity dimmed the text against whatever it sat on,
+  // which is not the same thing as the theme's own 弱 colour and drifted from 空セル の `—`.
   .neutral {
-    opacity: 0.7;
+    color: var(--faint);
   }
 
   .setting {
