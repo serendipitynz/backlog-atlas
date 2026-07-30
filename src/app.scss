@@ -1,28 +1,275 @@
 // Minimal global baseline. Follow the user's styling policy: no Tailwind, and keep
 // per-screen styling component-scoped (Svelte <style lang="scss">). Only truly global
 // concerns belong here.
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
+//
+// 表示テーマ (decision-12): every colour value in the app lives in this file and nowhere else. A
+// component names a variable — never a hue, never a system colour — so adding a theme is adding one
+// entry to `$themes` below, and no component is touched (doc-11 §7).
+@use "sass:map";
 
-  // 印の族ごとの色 (decision-6, `lib/mark.ts` の MarkKind). Global on purpose, against the
-  // component-scoped default: decision-6's rule is 三者を同じ印へ混ぜない, and a hue chosen inside
-  // each component is exactly how two families quietly converge on one colour. One definition per
-  // family means a component names the family, never the colour — so 縮退 and 版ずれ cannot become
-  // the same amber by accident, on either screen.
-  //
-  // neutral (正常な不在) and setting (未設定) get no hue at all: decision-6 asks for them to read as
-  // 中立 and as 未設定, which a colour would contradict. They are opacity and a border.
-  --mark-degraded: #b8860b; // 解析縮退 (doc-4 §5)
-  --mark-version-conflict: #7d5ba6; // 版ずれ (doc-9) — divergence actually observed
-  --mark-undetectable: #5f6b7a; // 照合不能・継続検出停止 (doc-9 §4.2/§3) — no way to look
-  --mark-unreadable: #c0392b; // ルート読取不能・破損 (decision-6 エラー提示)
+// 表示テーマ 10 組 (decision-12 収録テーマ). The palettes come from 画面設計案 05 (transcribed in
+// doc-12 §6.2/§6.3), with the 4 族 + `--info` moved in lightness until every one of them clears the
+// 収録条件 — 印の文字色と 12% 混色背景の比 4.5:1 以上 — on every surface an 印 sits on.
+// `theme.test.ts` recomputes those cells from this file, so no theme can be added or edited into
+// breaking the condition unnoticed (decision-12 の費用: 検算を怠ると画面上は気付けない).
+//
+// Only lightness moves. The hue role (縮退＝黄土・版ずれ＝紫・照合不能／継続検出停止＝灰青・
+// 読取不能＝赤・通知＝青) is what tells the families apart alongside the chip's wording
+// (decision-6), so it is fixed across all ten; chroma is kept as drawn and only trimmed where the
+// darker or lighter value left the sRGB gamut. That is why the borrowed palettes (One / Solarized /
+// Catppuccin / Rosé Pine) do not match their upstream values exactly — decision-12 accepts that cost
+// and refuses the alternative, which is recording a theme whose 印 cannot be read.
+//
+// `muted`/`faint`/`line`/`line-strong` are percentages of `fg` rather than colours: doc-12 §6.3 has
+// them that way, and it keeps a theme's greys tied to its text colour instead of drifting from it.
+$themes: (
+  "atlas-light": (
+    scheme: light,
+    bg: #f4f5f7,
+    panel: #fdfdfe,
+    inset: #eceef1,
+    fg: #2b3240,
+    muted: 62%,
+    faint: 40%,
+    line: 14%,
+    line-strong: 30%,
+    degraded: #7b5a00,
+    version-conflict: #71489f,
+    undetectable: #556171,
+    unreadable: #af2f1f,
+    info: #21648f,
+    sel: #21648f,
+  ),
+  "atlas-dark": (
+    scheme: dark,
+    bg: #20242b,
+    panel: #272c35,
+    inset: #1a1e24,
+    fg: #d5dae2,
+    muted: 62%,
+    faint: 40%,
+    line: 14%,
+    line-strong: 30%,
+    degraded: #d9a83e,
+    version-conflict: #b997e2,
+    undetectable: #99a7b8,
+    unreadable: #f68270,
+    info: #66acdc,
+    sel: #66acdc,
+  ),
+  "one-light": (
+    scheme: light,
+    bg: #fafafa,
+    panel: #ffffff,
+    inset: #f0f0f1,
+    fg: #383a42,
+    muted: 62%,
+    faint: 40%,
+    line: 14%,
+    line-strong: 30%,
+    degraded: #7a5d00,
+    version-conflict: #7d3f9e,
+    undetectable: #5b626f,
+    unreadable: #bd003a,
+    info: #2a58cb,
+    // Not this theme's `--info`: doc-12 §6.3 has 3 テーマ where 選択のアウトライン and 通知 differ in
+    // the 設計案, and the transcription keeps them apart rather than tidying them into one.
+    sel: #4078f2,
+  ),
+  "one-dark": (
+    scheme: dark,
+    bg: #282c34,
+    panel: #2f343e,
+    inset: #21252b,
+    fg: #abb2bf,
+    muted: 65%,
+    faint: 42%,
+    line: 15%,
+    line-strong: 32%,
+    degraded: #e5c07b,
+    version-conflict: #e191f8,
+    undetectable: #a9b2c0,
+    unreadable: #ff8f95,
+    info: #69b7f7,
+    sel: #69b7f7,
+  ),
+  "solarized-light": (
+    scheme: light,
+    bg: #fdf6e3,
+    panel: #fffcf2,
+    inset: #eee8d5,
+    fg: #586e75,
+    muted: 68%,
+    faint: 45%,
+    line: 16%,
+    line-strong: 32%,
+    degraded: #755800,
+    version-conflict: #5154a4,
+    undetectable: #4d6066,
+    unreadable: #b50d16,
+    info: #006099,
+    sel: #268bd2,
+  ),
+  "solarized-dark": (
+    scheme: dark,
+    bg: #002b36,
+    panel: #073642,
+    inset: #00242d,
+    fg: #93a1a1,
+    muted: 68%,
+    faint: 45%,
+    line: 16%,
+    line-strong: 32%,
+    degraded: #cda41f,
+    version-conflict: #9ea5f8,
+    undetectable: #97b0bb,
+    unreadable: #ff8276,
+    info: #5cb4f5,
+    sel: #5cb4f5,
+  ),
+  "catppuccin-latte": (
+    scheme: light,
+    bg: #eff1f5,
+    panel: #ffffff,
+    inset: #e6e9ef,
+    fg: #4c4f69,
+    muted: 62%,
+    faint: 40%,
+    line: 14%,
+    line-strong: 30%,
+    degraded: #765800,
+    version-conflict: #7628db,
+    undetectable: #585b76,
+    unreadable: #b5002e,
+    info: #024edc,
+    sel: #024edc,
+  ),
+  "catppuccin-mocha": (
+    scheme: dark,
+    bg: #1e1e2e,
+    panel: #27273a,
+    inset: #181825,
+    fg: #cdd6f4,
+    muted: 62%,
+    faint: 40%,
+    line: 14%,
+    line-strong: 30%,
+    degraded: #f2d5a0,
+    version-conflict: #cba6f7,
+    undetectable: #9ba1be,
+    unreadable: #f38ba8,
+    info: #89b4fa,
+    sel: #89b4fa,
+  ),
+  "rose-pine-dawn": (
+    scheme: light,
+    bg: #faf4ed,
+    panel: #fffaf3,
+    inset: #f2e9e1,
+    fg: #575279,
+    muted: 65%,
+    faint: 42%,
+    line: 15%,
+    line-strong: 32%,
+    degraded: #7a5800,
+    version-conflict: #685586,
+    undetectable: #5f5b76,
+    unreadable: #a33458,
+    info: #23647e,
+    sel: #56949f,
+  ),
+  "rose-pine": (
+    scheme: dark,
+    bg: #191724,
+    panel: #1f1d2e,
+    inset: #141220,
+    fg: #e0def4,
+    muted: 62%,
+    faint: 40%,
+    line: 14%,
+    line-strong: 30%,
+    degraded: #f6c177,
+    version-conflict: #c4a7e7,
+    undetectable: #9692b0,
+    unreadable: #eb6f92,
+    info: #9ccfd8,
+    sel: #9ccfd8,
+  ),
+);
+
+/// One 表示テーマ as custom properties.
+///
+/// `color-scheme` is declared per theme (decision-12): form controls and scrollbars are painted by
+/// the platform, and a light theme whose `<select>` and scrollbars stay dark is the same
+/// inconsistency the system-colour references caused — one surface following the OS while everything
+/// else follows the chosen theme.
+///
+/// 印の族ごとの色 (decision-6, `lib/mark.ts` の MarkKind) belong to this set on purpose, against the
+/// component-scoped default: decision-6's rule is 三者を同じ印へ混ぜない, and a hue chosen inside each
+/// component is exactly how two families quietly converge on one colour. One definition per theme
+/// means a component names the family, never the colour — so 縮退 and 版ずれ cannot become the same
+/// amber by accident, on either screen. neutral (正常な不在) and setting (未設定) get no hue at all:
+/// decision-6 asks for them to read as 中立 and as 未設定, which a colour would contradict.
+@mixin theme-vars($theme) {
+  color-scheme: map.get($theme, scheme);
+
+  --bg: #{map.get($theme, bg)};
+  --panel: #{map.get($theme, panel)};
+  --inset: #{map.get($theme, inset)};
+
+  --fg: #{map.get($theme, fg)};
+  --muted: #{color-mix(in srgb, map.get($theme, fg) map.get($theme, muted), transparent)};
+  --faint: #{color-mix(in srgb, map.get($theme, fg) map.get($theme, faint), transparent)};
+  --line: #{color-mix(in srgb, map.get($theme, fg) map.get($theme, line), transparent)};
+  --line-strong: #{color-mix(
+      in srgb,
+      map.get($theme, fg) map.get($theme, line-strong),
+      transparent
+    )};
+
+  --mark-degraded: #{map.get($theme, degraded)}; // 解析縮退 (doc-4 §5)
+  --mark-version-conflict: #{map.get($theme, version-conflict)}; // 版ずれ (doc-9) — observed divergence
+  --mark-undetectable: #{map.get($theme, undetectable)}; // 照合不能・継続検出停止 (doc-9 §4.2/§3)
+  --mark-unreadable: #{map.get($theme, unreadable)}; // ルート読取不能・破損 (decision-6 エラー提示)
   // Not a member of the set above: ordinary notices and confirmations, which must not borrow any
   // family's hue (a blue 確認 is not a 版ずれ).
-  --info: #2f6f9f;
+  --info: #{map.get($theme, info)};
+  --sel: #{map.get($theme, sel)}; // 選択のアウトライン (doc-11 §2.3)
+}
+
+// 未選択 (アプリ設定 theme = null) は OS の明暗に従って Atlas Light / Atlas Dark (decision-12 の既定).
+// Left to a media query rather than resolved in JS so that the OS switching mid-session is followed
+// without the shell listening for it — and so the first paint, before the settings file has been
+// read, is already the right one instead of flashing a light theme onto a dark desktop.
+:root {
+  @include theme-vars(map.get($themes, "atlas-light"));
+
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    @include theme-vars(map.get($themes, "atlas-dark"));
+  }
+}
+
+// 明示的に選ばれた 1 組 (decision-12: 利用者の選択が OS の明暗より優先される). Written as
+// `:root[data-theme=…]` rather than `[data-theme=…]` so the choice outranks the two rules above
+// whatever the source order. A `data-theme` this build does not record matches nothing here and so
+// lands on the OS-following default — the degradation decision-13 asks for when a stored setting
+// cannot be honoured.
+@each $name, $theme in $themes {
+  :root[data-theme="#{$name}"] {
+    @include theme-vars($theme);
+  }
 }
 
 body {
   margin: 0;
+  // The ground and its text come from the theme, not from `canvas`/`canvastext` (decision-12): with
+  // the system colours in place, choosing a light theme on a dark desktop left the ground dark
+  // under light panels.
+  background: var(--bg);
+  color: var(--fg);
 }
