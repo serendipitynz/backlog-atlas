@@ -1436,7 +1436,9 @@
 {#snippet transitionsSection()}
   <DetailSection title="状態遷移" disposition={layout.sections.transitions}>
     {#if transitions.state === "none"}
-      <p class="neutral">{transitions.reason}</p>
+      <!-- 提供しない理由であって不在ではない (doc-11 §5): 空表示の弱 (`--faint`) で描くと、読ませたい
+           理由が一番読みにくい文字になる。 -->
+      <p class="withheld-reason">{transitions.reason}</p>
     {:else}
       {#if busy}
         <!-- 発行中は全ての遷移が同じ理由で押せない (doc-11 §5): the offers' own reasons say nothing about
@@ -1974,9 +1976,14 @@
   }
 
   // 正常な不在は `--faint` (doc-11 §2.1・§6), the same 弱 as 空セル の `—` and the Git 履歴欄's 該当なし.
-  // An opacity would land somewhere else on every 表示テーマ and pull the three apart.
+  // An opacity would land somewhere else on every 表示テーマ and pull the three apart. Only 空表示
+  // takes it: a 理由 is 副次 (`--muted`), never 弱 — see `.withheld-reason`.
   .neutral {
     color: var(--faint);
+  }
+
+  .withheld-reason {
+    color: var(--muted);
   }
 
   .degrade-panel {
