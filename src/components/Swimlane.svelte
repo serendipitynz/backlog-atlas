@@ -8,9 +8,16 @@
   import {
     CANONICAL_COLUMNS,
     CANONICAL_COLUMN_LABEL,
+    ROW_FOLD_ABSENT_REASON,
+    UNMAPPED_FOLD_ABSENT_REASON,
+    UNMAPPED_LABEL,
+    columnTotal,
+    laneCounts,
+    rowFoldable,
+    visibleCount,
     type SwimlaneRow,
   } from "../lib/swimlane";
-  import type { TaskView } from "../lib/wire";
+  import type { StatusColumn, TaskView } from "../lib/wire";
 
   interface Props {
     rows: SwimlaneRow[];
@@ -63,21 +70,87 @@
   let hasUnmapped = $derived(
     rows.some((row) => row.state === "loaded" && row.unmapped.length > 0),
   );
-  function visibleCount(row: SwimlaneRow): number {
-    if (row.state !== "loaded") return 0;
-    return (
-      row.cells.reduce((sum, cell) => sum + cell.tasks.length, 0) + row.unmapped.length
-    );
+
+  /**
+   * 列折畳み・行折畳み are 画面の一時状態 (doc-7 §5.1, decision-13): they are never written to the
+   * settings file or the ledger, and nothing outside the grid reads them — the counts a fold keeps
+   * are computed from the rows the shell already passes in — so they live here rather than in the
+   * shell beside 行非表示, which the 上部帯 does have to see.
+   */
+  let collapsedColumns = $state<StatusColumn[]>([]);
+  let foldedRows = $state<string[]>([]);
+
+  function toggleColumn(column: StatusColumn): void {
+    collapsedColumns = collapsedColumns.includes(column)
+      ? collapsedColumns.filter((candidate) => candidate !== column)
+      : [...collapsedColumns, column];
   }
+
+  function toggleRow(slug: string): void {
+    foldedRows = foldedRows.includes(slug)
+      ? foldedRows.filter((candidate) => candidate !== slug)
+      : [...foldedRows, slug];
+  }
+
+  // 列の幅. A folded column is a narrow band; the 未対応 column stays narrower than the four and last
+  // (doc-7 §2.2). The band has to hold the column name at 0.7rem, which is what fixes it at 5rem.
+  const OPEN_COLUMN = "minmax(13rem, 1fr)";
+  const FOLDED_COLUMN = "5rem";
+  const UNMAPPED_COLUMN = "minmax(10rem, 0.7fr)";
+
+  /**
+   * The grid's columns, as one template for the whole grid. 列折畳みが全行同時にしか効かないのは、
+   * 畳んだ幅がここに 1 度だけ書かれるからである (doc-7 §2.2): a row cannot narrow a column on its own,
+   * so the same status keeps the same x in every row and the 縦読み holds.
+   */
+  let columnTemplate = $derived(
+    [
+      ...CANONICAL_COLUMNS.map((column) =>
+        collapsedColumns.includes(column) ? FOLDED_COLUMN : OPEN_COLUMN,
+      ),
+      ...(hasUnmapped ? [UNMAPPED_COLUMN] : []),
+    ].join(" "),
+  );
+
+  // 行折畳み と 行非表示 は別の語・別の操作 (doc-7 §5.1). The two sentences are kept apart word for
+  // word — 件数を残す against 件数も読めなくなる — because that difference *is* the distinction, and
+  // a shared phrasing would be the取り違え the doc names.
+  const ROW_FOLD_HINT = "行折畳み: レーンセルを畳み、列別の件数をこの行に残します。";
+  const ROW_UNFOLD_HINT = "行折畳みを解き、レーンセルを戻します。";
+  const HIDE_HINT =
+    "行非表示: この行を画面から取り除きます（件数も読めなくなります）。上部の一覧から戻せます。";
+  const COLUMN_FOLD_HINT = "列折畳み: この列を全行同時に畳み、列名と件数を残します。";
+  const COLUMN_UNFOLD_HINT = "列折畳みを解き、この列のカードを全行で戻します。";
 </script>
 
-<div class="grid" class:with-unmapped={hasUnmapped}>
-  <div class="head corner">プロジェクト</div>
+<div class="grid" style="--columns: {columnTemplate}">
   {#each CANONICAL_COLUMNS as column (column)}
-    <div class="head">{CANONICAL_COLUMN_LABEL[column]}</div>
+    {@const folded = collapsedColumns.includes(column)}
+    <div class="head" class:folded>
+      <span class="label">{CANONICAL_COLUMN_LABEL[column]}</span>
+      {#if folded}
+        <!-- 畳んだ列は列名と件数を残す (doc-7 §2.2): the band keeps the column's own total, and each
+             row keeps its own count in the cell, so folding never makes 何件あるか unreadable. -->
+        <span class="total">{columnTotal(rows, column)} 件</span>
+      {/if}
+      <button
+        type="button"
+        class="fold"
+        aria-expanded={!folded}
+        aria-label="{CANONICAL_COLUMN_LABEL[column]} 列の列折畳みを{folded ? '解く' : '行う'}"
+        title={folded ? COLUMN_UNFOLD_HINT : COLUMN_FOLD_HINT}
+        onclick={() => toggleColumn(column)}>{folded ? "展開" : "畳む"}</button
+      >
+    </div>
   {/each}
   {#if hasUnmapped}
-    <div class="head unmapped">未対応</div>
+    <!-- 未対応列は列折畳みの対象にしない (doc-7 §2.2). The control is not placed, and the reason is
+         written beside where it would have been — the same treatment doc-7 §4.1 gives an entry it
+         does not offer, which is not the 無効化 of doc-11 §5. -->
+    <div class="head unmapped">
+      <span class="label">{UNMAPPED_LABEL}</span>
+      <span class="withheld" title={UNMAPPED_FOLD_ABSENT_REASON}>正準列ではないため列折畳みなし</span>
+    </div>
   {/if}
 
   {#if !canReorder}
@@ -85,9 +158,35 @@
   {/if}
 
   {#each rows as row (row.slug)}
-    <div class="row-head" class:unreadable={row.state === "unreadable"}>
+    <!-- A row that is no longer loaded is never drawn folded, whatever it was when the user folded
+         it: a re-read can turn a loaded row unreadable (App.svelte's reload and retry paths) while
+         its slug sits in `foldedRows`, and the folded branch would then print four zeros the row
+         does not have — with the unfold button gone, since 読取不能行 has none (doc-7 §6). The state
+         is kept rather than cleared, so the row folds back the way the user left it if a later read
+         succeeds. -->
+    {@const folded = rowFoldable(row) && foldedRows.includes(row.slug)}
+    <!-- レーンヘッダ行 (doc-7 §2.3): the row's own full-width line. There is no fixed project column
+         at the left edge, so the name never has to be traded against the width the four columns get. -->
+    <div class="lane-head" class:unreadable={row.state === "unreadable"}>
+      {#if rowFoldable(row)}
+        <button
+          type="button"
+          class="fold"
+          aria-expanded={!folded}
+          aria-label="{row.slug} の行折畳みを{folded ? '解く' : '行う'}"
+          title={folded ? ROW_UNFOLD_HINT : ROW_FOLD_HINT}
+          onclick={() => toggleRow(row.slug)}
+        >
+          <span aria-hidden="true">{folded ? "▲" : "▼"}</span>{folded ? "展開" : "畳む"}
+        </button>
+      {/if}
       <div class="names">
-        <span class="project">
+        <!-- The name is the only part of the header that gives up room when the window narrows, so
+             `title` keeps the full one reachable; the slug beside it never shortens. -->
+        <span
+          class="project"
+          title={row.state === "loaded" && row.projectName ? row.projectName : row.slug}
+        >
           {row.state === "loaded" && row.projectName ? row.projectName : row.slug}
         </span>
         {#if row.state === "loaded" && row.projectName}
@@ -96,6 +195,18 @@
       </div>
       {#if row.state === "loaded"}
         <span class="count">{visibleCount(row)} / {row.totalBeforeFilter} 件</span>
+      {/if}
+      {#if folded}
+        <!-- 畳んでも件数は読める (doc-7 §2.3・§5.1): the cells are gone, so their counts come up here
+             column by column. This is the whole visible difference from 行非表示, which takes the
+             counts away with the row. -->
+        <div class="fold-counts">
+          {#each laneCounts(row, hasUnmapped) as entry (entry.label)}
+            <span class="fold-count">
+              <span class="name">{entry.label}</span><span class="n">{entry.count}</span>
+            </span>
+          {/each}
+        </div>
       {/if}
       {#if unwatched.includes(row.slug)}
         <!-- 継続検出停止: the cards below are only as fresh as the last read, and 版ずれ の有無は
@@ -129,7 +240,7 @@
           title={canReorder ? "表示順を下へ" : REORDER_BLOCKED_REASON}
           onclick={() => canReorder && onmove(row.slug, 1)}>↓</button
         >
-        <button type="button" title="この行を隠す" onclick={() => onhide(row.slug)}>隠す</button>
+        <button type="button" title={HIDE_HINT} onclick={() => onhide(row.slug)}>隠す</button>
         {#if unwatched.includes(row.slug)}
           <!-- The manual 再読込契機 (doc-9 §3) sits on the row it refreshes: a row that says its
                cards may be stale has to carry the one control that resolves that. -->
@@ -143,24 +254,29 @@
     </div>
 
     {#if row.state === "loaded"}
-      {#each row.cells as cell (cell.column)}
-        <LaneCell
-          tasks={cell.tasks}
-          {showStorageMark}
-          {selectedPath}
-          {conflictOf}
-          {onselect}
-        />
-      {/each}
-      {#if hasUnmapped}
-        <LaneCell
-          tasks={row.unmapped}
-          unmapped
-          {showStorageMark}
-          {selectedPath}
-          {conflictOf}
-          {onselect}
-        />
+      {#if !folded}
+        {#each row.cells as cell (cell.column)}
+          <LaneCell
+            tasks={cell.tasks}
+            label={CANONICAL_COLUMN_LABEL[cell.column]}
+            collapsed={collapsedColumns.includes(cell.column)}
+            {showStorageMark}
+            {selectedPath}
+            {conflictOf}
+            {onselect}
+          />
+        {/each}
+        {#if hasUnmapped}
+          <LaneCell
+            tasks={row.unmapped}
+            label={UNMAPPED_LABEL}
+            unmapped
+            {showStorageMark}
+            {selectedPath}
+            {conflictOf}
+            {onselect}
+          />
+        {/if}
       {/if}
     {:else if row.state === "unreadable"}
       <!-- ルート読取不能 (doc-7 §6): the row stays and states why it has no cards. Nothing is
@@ -168,6 +284,7 @@
       <div class="row-message">
         <span class="reason">ルート読取不能: {row.detail}</span>
         <button type="button" onclick={() => onretry(row.slug)}>再読み込み</button>
+        <span class="withheld">{ROW_FOLD_ABSENT_REASON}</span>
       </div>
     {:else}
       <div class="row-message pending">読み込み中…</div>
@@ -178,9 +295,11 @@
 <style lang="scss">
   .grid {
     display: grid;
-    // Row header, then the four canonical columns at equal width so the same status sits at
-    // the same x for every project. The 未対応 column is narrower and last.
-    grid-template-columns: minmax(11rem, 14rem) repeat(4, minmax(13rem, 1fr));
+    // The four canonical columns at equal width so the same status sits at the same x for every
+    // project, with the 未対応 column narrower and last. No project column at the left: the row's
+    // identity is on its レーンヘッダ行 (doc-7 §2.3), which frees the whole width for the columns.
+    // The script builds the template so that folding a column is one edit for the whole grid.
+    grid-template-columns: var(--columns);
     align-items: stretch;
     // Rows keep their content height; leftover space stays at the bottom instead of being
     // shared out, which would stretch the header and every row of a short grid.
@@ -193,40 +312,81 @@
     min-height: 0;
     min-width: 0;
     overflow: auto;
-
-    &.with-unmapped {
-      grid-template-columns: minmax(11rem, 14rem) repeat(4, minmax(13rem, 1fr)) minmax(
-          10rem,
-          0.7fr
-        );
-    }
   }
 
   .head {
     position: sticky;
     top: 0;
     z-index: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 0.3rem;
     padding: 0.4rem 0.5rem;
     border-bottom: 1px solid var(--line-strong);
     background: var(--bg);
     font-size: 0.8rem;
     font-weight: 600;
+
+    .label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    // 畳んだ列 (doc-7 §2.2): a band 5rem wide, so the name, the count and the way back stack
+    // instead of sitting side by side. Nothing but the width changes about the column.
+    &.folded {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.16rem;
+      padding: 0.4rem 0.25rem;
+      font-size: 0.7rem;
+      text-align: center;
+    }
   }
 
+  .head .fold {
+    margin-left: auto;
+  }
+
+  .head.folded .fold {
+    margin-left: 0;
+  }
+
+  .total {
+    color: var(--muted);
+    font-size: 0.65rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+
+  // 未対応列 has no 畳む to put on the right, and the sentence that says why stands under the name
+  // rather than beside it — side by side, the name is what gives up room and 未対応 would ellipsise.
   .head.unmapped {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
     opacity: 0.75;
   }
 
-  .row-head,
+  .lane-head,
   .row-message {
     border-bottom: 1px solid var(--line);
   }
 
-  .row-head {
+  // レーンヘッダ行 (doc-7 §2.3): one line across the whole grid. `nowrap` holds it to that one line —
+  // the width is the reason this方式 was chosen over a fixed column, so a header that wrapped would
+  // give back what it bought. What can lose room does: the folded row's counts scroll inside
+  // themselves, and the name ellipsises, while the counts and the controls keep their size.
+  .lane-head {
+    grid-column: 1 / -1;
     display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.5rem;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.5rem;
+    border-top: 1px solid var(--line);
     background: var(--inset);
 
     // 読取不能 as 問題の縁 (doc-11 §2.3) rather than as a tint over the whole row header. The tint
@@ -243,7 +403,7 @@
   // app.scss の表示テーマ 1 箇所から取る (decision-6). The chip sits on the レーンヘッダ行 (`--inset`),
   // which is one of the two surfaces the 収録条件 is verified on (`lib/theme.test.ts`).
   .mark {
-    align-self: flex-start;
+    flex: none;
     padding: 0 0.3rem;
     border: 1px solid color-mix(in srgb, var(--family) 45%, transparent);
     border-radius: 3px;
@@ -262,32 +422,94 @@
     }
   }
 
+  // The one part of the header allowed to lose room, since the name is also readable in the slug
+  // beside it and in full through the `title`.
   .names {
     display: flex;
-    flex-wrap: wrap;
     align-items: baseline;
     gap: 0.3rem;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
   }
 
   .project {
+    overflow: hidden;
     font-size: 0.85rem;
     font-weight: 600;
+    text-overflow: ellipsis;
   }
 
+  // 副次 (doc-11 §2.1): the theme's own colour, not an opacity over `--fg` — an opacity lands
+  // somewhere different on every 表示テーマ, which is what decision-12 keeps the colours for.
   .slug {
+    flex: none;
+    color: var(--muted);
     font-size: 0.7rem;
-    opacity: 0.6;
   }
 
   .count {
+    flex: none;
+    color: var(--muted);
     font-size: 0.7rem;
     font-variant-numeric: tabular-nums;
-    opacity: 0.7;
+  }
+
+  // 行折畳み時の列別件数 (doc-7 §2.3). Kept on the one line by scrolling inside itself: the counts
+  // are the part of the folded row that grows with the number of columns, and the row header must
+  // not wrap (doc-7 §2.3 の 折り返しなし).
+  .fold-counts {
+    display: flex;
+    flex: 1;
+    gap: 0.5rem;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .fold-count {
+    display: inline-flex;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+
+    .name {
+      color: var(--muted);
+    }
+
+    .n {
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  // 置かない操作の理由 (doc-7 §4.1・§6). 副次の文であって 弱 でも 空表示 でもないので `--muted`
+  // (doc-11 §2.1) — the same colour TASK-48 moved the withheld reasons of the Git 履歴欄 to.
+  .withheld {
+    color: var(--muted);
+    font-size: 0.65rem;
+    font-weight: 400;
+    line-height: 1.25;
+  }
+
+  .fold {
+    display: inline-flex;
+    flex: none;
+    gap: 0.2rem;
+    align-items: center;
+    padding: 0 0.35rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
   }
 
   .controls {
     display: flex;
+    flex: none;
     gap: 0.2rem;
+    margin-left: auto;
 
     button {
       padding: 0 0.35rem;
@@ -315,10 +537,12 @@
 
   .row-message {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.6rem;
-    // Spans every column but the row header, whatever the 未対応 column's presence makes that.
-    grid-column: 2 / -1;
+    // The row's whole width, under its レーンヘッダ行: with no project column left, there is nothing
+    // for the message to sit beside (doc-7 §2.3).
+    grid-column: 1 / -1;
     padding: 0.5rem;
     font-size: 0.8rem;
 

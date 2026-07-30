@@ -15,6 +15,9 @@
  * | §1 レーンセル | `LaneCell` | one row × one canonical column, holding that column's cards |
  * | §1 タスクカード | a `TaskView` inside a cell | the display unit; `TaskCard.svelte` renders it |
  * | §2 未対応区画 | `SwimlaneRow.unmapped` | the row's tasks whose status maps to no column |
+ * | §1 レーンヘッダ行 | `Swimlane.svelte` の `.lane-head` | the row's own full-width line: name, slug, counts, row-level controls |
+ * | §1 列折畳み | `columnFoldable` / a collapsed `StatusColumn` | one column narrowed to a band in every row at once, keeping name and count |
+ * | §1 行折畳み | `rowFoldable` / `laneCounts` | one row's cells folded away, keeping the per-column counts |
  * | §5 セル内の安定並び | `compareCards` | priority 降順 → ordinal 昇順 → updated_date 新しい順 |
  * | §6 ルート読取不能 | `SwimlaneRow` state `"unreadable"` | the row stays, with the reason instead of cards |
  * | doc-3 §5.3 横断タスクID | `crossTaskId` (`card.ts`) | `<slug>:<TASK-ID>`, always slug-prefixed on this screen |
@@ -48,6 +51,13 @@ export const CANONICAL_COLUMN_LABEL: Record<StatusColumn, string> = {
   inReview: "In Review",
   done: "Done",
 };
+
+/**
+ * What the 未対応区画 is called wherever it is named beside the four (doc-7 §2.2). It is not a
+ * canonical column, so it has no entry in `CANONICAL_COLUMN_LABEL`; keeping the word here stops the
+ * grid's column head, the folded row's counts and the detail panel's 位置表示 from drifting apart.
+ */
+export const UNMAPPED_LABEL = "未対応";
 
 /** One row × one canonical column. Empty `tasks` is an empty cell — 該当タスク無し (doc-7 §6). */
 export interface LaneCell {
@@ -170,6 +180,81 @@ function buildRow(
   };
 }
 
+// --- 折畳み (doc-7 §2.2・§2.3・§5.1) ----------------------------------------------------------
+
+/**
+ * One entry of the counts a folded row shows in place of its cells (doc-7 §2.3). 畳んでも件数は
+ * 読める is the whole difference between 行折畳み and 行非表示 (doc-7 §5.1), so the folded row is
+ * given the numbers as data rather than leaving each call site to count the cells again.
+ */
+export interface LaneCount {
+  /** `null` は 未対応区画: it holds cards but is not a 正準ステータス列 (doc-7 §1). */
+  column: StatusColumn | null;
+  label: string;
+  count: number;
+}
+
+/** Cards this row currently shows in one canonical column — the count a folded column keeps. */
+export function cellCount(row: SwimlaneRow, column: StatusColumn): number {
+  if (row.state !== "loaded") return 0;
+  return row.cells.find((cell) => cell.column === column)?.tasks.length ?? 0;
+}
+
+/** Cards the row shows after filtering, across every column and its 未対応区画 (doc-7 §5.2 の n). */
+export function visibleCount(row: SwimlaneRow): number {
+  if (row.state !== "loaded") return 0;
+  return row.cells.reduce((sum, cell) => sum + cell.tasks.length, 0) + row.unmapped.length;
+}
+
+/**
+ * 列別の件数 for a folded row (doc-7 §2.3). The four canonical columns are always listed — a column
+ * with no cards reads as 0 rather than disappearing, so the folded row and the unfolded grid line up
+ * on the same four positions. The 未対応区画 joins them only while the grid is showing that column
+ * (doc-7 §2.2: 該当がある間だけ現れる), which is what `withUnmapped` carries in.
+ */
+export function laneCounts(row: SwimlaneRow, withUnmapped: boolean): LaneCount[] {
+  const counts: LaneCount[] = CANONICAL_COLUMNS.map((column) => ({
+    column,
+    label: CANONICAL_COLUMN_LABEL[column],
+    count: cellCount(row, column),
+  }));
+  if (withUnmapped) {
+    counts.push({
+      column: null,
+      label: UNMAPPED_LABEL,
+      count: row.state === "loaded" ? row.unmapped.length : 0,
+    });
+  }
+  return counts;
+}
+
+/** The whole grid's cards in one column — the count a 畳んだ列 keeps in its head (doc-7 §2.2). */
+export function columnTotal(rows: readonly SwimlaneRow[], column: StatusColumn): number {
+  return rows.reduce((sum, row) => sum + cellCount(row, column), 0);
+}
+
+/**
+ * Whether 行折畳み applies to this row. Only a loaded row has cells to fold away; 読取不能行 is
+ * excluded by doc-7 §6 for exactly that reason, and a pending row has not been read yet, so folding
+ * it would fold nothing and then unfold into cards that appeared meanwhile.
+ */
+export function rowFoldable(row: SwimlaneRow): boolean {
+  return row.state === "loaded";
+}
+
+/**
+ * Why 読取不能行 gets no 行折畳み. Written as a sentence next to the row rather than as a disabled
+ * button: doc-7 §4.1 draws the same distinction for 列内新規タスク入力 — an operation Atlas does not
+ * place says why it is absent, which is not the same as an operation that is there but blocked
+ * (doc-11 §5).
+ */
+export const ROW_FOLD_ABSENT_REASON =
+  "ルートが読めず畳む対象のセルがないため、この行に行折畳みは置きません（doc-7 §6）。行非表示は使えます。";
+
+/** Why the 未対応列 gets no 列折畳み (doc-7 §2.2). Same 置かない, same reason-beside-it treatment. */
+export const UNMAPPED_FOLD_ABSENT_REASON =
+  "未対応列は正準ステータス列ではないため、列折畳みの対象にしません（doc-7 §2.2）。";
+
 // --- 前後移動 (doc-8 §2.2) ------------------------------------------------------------------
 
 /**
@@ -230,7 +315,7 @@ export function laneNeighbourLabel(neighbours: LaneNeighbours): string {
   const where =
     neighbours.group.kind === "column"
       ? CANONICAL_COLUMN_LABEL[neighbours.group.column]
-      : "未対応";
+      : UNMAPPED_LABEL;
   return `${where} セル内 ${neighbours.position} / ${neighbours.total} 件`;
 }
 

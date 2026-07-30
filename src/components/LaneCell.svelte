@@ -8,8 +8,16 @@
 
   interface Props {
     tasks: TaskView[];
+    /** The column this cell belongs to, for the count a 畳んだ列 announces (doc-7 §2.2). */
+    label: string;
     /** 未対応区画 shows each card's original status string (doc-7 §2). */
     unmapped?: boolean;
+    /**
+     * 列折畳み (doc-7 §2.2): the column is a narrow band in *every* row, so the cell keeps its count
+     * and drops its cards. Decided per column by the grid, never per row — a column folded in one row
+     * only would put the same status at a different x in each row and break the 縦読み.
+     */
+    collapsed?: boolean;
     showStorageMark: boolean;
     selectedPath: string | null;
     /** 版ずれ (doc-9) per task, from the shell's record — a lookup, not a copy of the map. */
@@ -19,7 +27,9 @@
 
   let {
     tasks,
+    label,
     unmapped = false,
+    collapsed = false,
     showStorageMark,
     selectedPath,
     conflictOf,
@@ -27,8 +37,16 @@
   }: Props = $props();
 </script>
 
-<div class="cell" class:unmapped>
-  {#if tasks.length === 0}
+<div class="cell" class:unmapped class:collapsed>
+  {#if collapsed}
+    <!-- 畳んだ列は件数を残す (doc-7 §2.2): the number is the cell's whole content, and the column name
+         travels with it in the label so the band is readable without the column head beside it. Zero
+         is written as `0`, not as the 空セル's `—`: in a folded column the cell *is* the count, and a
+         band mixing dashes with numbers cannot be read down the grid, which is the reading the count
+         was kept for. `—` stays the form of an 空セル in an open column (doc-11 §6), where the absence
+         is what has to be shown rather than a number. -->
+    <span class="count" aria-label="{label} {tasks.length} 件">{tasks.length}</span>
+  {:else if tasks.length === 0}
     <!-- 空セル (doc-7 §6): 該当タスク無し is normal, so it is neutral — opacity only, no colour
          and no symbol (decision-6 エラー提示方針). ルート読取不能 never reaches here; it replaces
          the row's cells entirely, which is what keeps the two apart (AC #2). -->
@@ -60,6 +78,20 @@
   .unmapped {
     border-left: 2px dashed var(--line-strong);
     background: var(--inset);
+  }
+
+  // 畳んだ列 (doc-7 §2.2). Centred so the numbers of a band line up down the grid, and
+  // `tabular-nums` (doc-11 §2.2) so they can be compared row to row — the same reason the
+  // レーンヘッダ行's counts carry it.
+  .collapsed {
+    align-items: center;
+    padding: 0.4rem 0.2rem;
+  }
+
+  .count {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
   }
 
   // `--faint` (doc-11 §2.1・§6), not an opacity: the theme carries its own 弱 colour, and an opacity
