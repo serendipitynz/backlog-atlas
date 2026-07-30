@@ -158,7 +158,13 @@
   {/if}
 
   {#each rows as row (row.slug)}
-    {@const folded = foldedRows.includes(row.slug)}
+    <!-- A row that is no longer loaded is never drawn folded, whatever it was when the user folded
+         it: a re-read can turn a loaded row unreadable (App.svelte's reload and retry paths) while
+         its slug sits in `foldedRows`, and the folded branch would then print four zeros the row
+         does not have — with the unfold button gone, since 読取不能行 has none (doc-7 §6). The state
+         is kept rather than cleared, so the row folds back the way the user left it if a later read
+         succeeds. -->
+    {@const folded = rowFoldable(row) && foldedRows.includes(row.slug)}
     <!-- レーンヘッダ行 (doc-7 §2.3): the row's own full-width line. There is no fixed project column
          at the left edge, so the name never has to be traded against the width the four columns get. -->
     <div class="lane-head" class:unreadable={row.state === "unreadable"}>

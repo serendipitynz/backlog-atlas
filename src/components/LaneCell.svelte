@@ -38,9 +38,13 @@
 </script>
 
 <div class="cell" class:unmapped class:collapsed>
-  {#if collapsed && tasks.length > 0}
+  {#if collapsed}
     <!-- 畳んだ列は件数を残す (doc-7 §2.2): the number is the cell's whole content, and the column name
-         travels with it in the label so the band is readable without the column head beside it. -->
+         travels with it in the label so the band is readable without the column head beside it. Zero
+         is written as `0`, not as the 空セル's `—`: in a folded column the cell *is* the count, and a
+         band mixing dashes with numbers cannot be read down the grid, which is the reading the count
+         was kept for. `—` stays the form of an 空セル in an open column (doc-11 §6), where the absence
+         is what has to be shown rather than a number. -->
     <span class="count" aria-label="{label} {tasks.length} 件">{tasks.length}</span>
   {:else if tasks.length === 0}
     <!-- 空セル (doc-7 §6): 該当タスク無し is normal, so it is neutral — opacity only, no colour
