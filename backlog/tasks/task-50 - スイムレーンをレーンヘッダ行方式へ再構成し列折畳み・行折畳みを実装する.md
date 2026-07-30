@@ -1,10 +1,10 @@
 ---
 id: TASK-50
 title: スイムレーンをレーンヘッダ行方式へ再構成し列折畳み・行折畳みを実装する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:15'
-updated_date: '2026-07-30 10:41'
+updated_date: '2026-07-30 11:16'
 labels:
   - 'kind:feature'
 milestone: m-1
