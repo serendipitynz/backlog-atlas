@@ -7,6 +7,7 @@ import {
   filterTokens,
   hasCondition,
   lastCondition,
+  nothingToClear,
   removeCondition,
   removeLastCondition,
   setText,
@@ -105,6 +106,24 @@ describe("直前の 1 つを戻す・全解除 (doc-7 §5.2)", () => {
     expect(removeLastCondition(DEFAULT_FILTER)).toEqual(DEFAULT_FILTER);
   });
 
+  it("keeps 全解除 offered while 追加順 still holds something to undo", () => {
+    // The selections come back to the 既定 by a route that records history: 保存区分's 既定 taken
+    // off its token, then the same division picked again in the popover.
+    const retaken = addCondition(removeCondition(DEFAULT_FILTER, { facet: "storage", value: "active" }), {
+      facet: "storage",
+      value: "active",
+    });
+    expect(retaken.storage).toEqual(DEFAULT_FILTER.storage);
+    expect(lastCondition(retaken)).toEqual({ facet: "storage", value: "active" });
+    // Blocking 全解除 here would leave that history with no way to clear it, beside an enabled
+    // 直前の 1 つを戻す whose press empties the grid.
+    expect(nothingToClear(retaken, ["active"])).toBe(false);
+
+    const cleared = defaultFilter(["active"]);
+    expect(nothingToClear(cleared, ["active"])).toBe(true);
+    expect(lastCondition(cleared)).toBeNull();
+  });
+
   it("returns to the 既定の保存区分 on 全解除, not to an empty selection", () => {
     const filter = built({ facet: "label", value: "ui" }, { facet: "degraded" });
     const cleared = defaultFilter(["active", "draft"]);
@@ -170,6 +189,16 @@ describe("order kept as a hint, never as a second source of truth", () => {
     expect(applied.order).toEqual([]);
     expect(names(applied)).toEqual(["保存区分:active", "保存区分:completed"]);
     expect(lastCondition(applied)).toBeNull();
+  });
+
+  it("draws one token per condition when a hand-edited 既定の保存区分 repeats a value", () => {
+    // `settings.toml` is hand-editable and the boundary reads the list as written, so this reaches
+    // the screen; two tokens keyed alike would throw out of Svelte's keyed each instead of drawing.
+    const repeated: CardFilter = { ...DEFAULT_FILTER, storage: ["active", "active", "draft"] };
+    const keys = filterTokens(repeated).map((token) => token.key);
+    expect(keys).toEqual(["storage:active", "storage:draft"]);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(conditionCount(repeated)).toBe(2);
   });
 
   it("survives a facet toggled without going through a condition", () => {

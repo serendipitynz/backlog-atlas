@@ -31,6 +31,7 @@
 
 import {
   hasTypeSelection,
+  isDefaultFilter,
   toggleTypeSelection,
   toggleValue,
   typeSelectionKey,
@@ -298,7 +299,35 @@ export function conditionCount(filter: CardFilter): number {
   return heldConditions(filter).length;
 }
 
-/** Every condition in force, in `FACET_ORDER` and, within a facet, in the filter's own order. */
+/**
+ * Whether 全解除 has anything left to do — false while any condition beyond the 既定 is held, *or*
+ * while 追加順 still holds one 直前の 1 つを戻す would act on.
+ *
+ * The second half is what keeps the two controls from contradicting each other. The selections can
+ * come back to the 既定 by a route that leaves history behind — take 保存区分's 既定 off its token
+ * and pick the same division again in the popover, and the values are the 既定 again while
+ * `storage:active` is now something the user *added*. Judged on the values alone, 全解除 would go
+ * blocked ("既定のままです") next to an enabled 直前の 1 つを戻す whose press then empties the grid,
+ * with no way to clear the history it acts on.
+ */
+export function nothingToClear(
+  filter: CardFilter,
+  storage: readonly StorageSelection[],
+): boolean {
+  return isDefaultFilter(filter, storage) && lastCondition(filter) === null;
+}
+
+/**
+ * Every condition in force, in `FACET_ORDER` and, within a facet, in the filter's own order.
+ *
+ * One condition per key, however often the underlying array repeats it. `settings.toml` is meant to
+ * be hand-editable (decision-13) and the boundary reads 既定の保存区分 into a list without rejecting
+ * a repeated entry, so `default_storage_filter = ["active", "active"]` reaches the screen intact —
+ * and a token row drawn from it would key two elements the same, which is an exception in Svelte's
+ * keyed `{#each}` rather than a duplicate chip. The selection means the same thing either way
+ * (`matchesFilter` asks whether the state is *in* the list), so the repeat is dropped here rather
+ * than treated as a broken settings file.
+ */
 function heldConditions(filter: CardFilter): FilterCondition[] {
   const held: FilterCondition[] = [];
   for (const facet of FACET_ORDER) {
@@ -326,5 +355,12 @@ function heldConditions(filter: CardFilter): FilterCondition[] {
   // Not in `FACET_ORDER` because it has no token to draw, but it is a condition: it counts, it holds
   // a place in 追加順, and 直前の 1 つを戻す can take it back.
   if (filter.text.trim() !== "") held.push({ facet: "text", value: filter.text });
-  return held;
+
+  const seen = new Set<string>();
+  return held.filter((condition) => {
+    const key = conditionKey(condition);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

@@ -12,10 +12,11 @@
   // 保存区分 is the one facet that starts from a 既定 rather than from "off" (doc-7 §5.2), so its
   // tokens are standing before the user has done anything — doc-12 §4 の常設トークン.
   import FilterPopover from "./FilterPopover.svelte";
-  import { defaultFilter, isDefaultFilter, type CardFilter, type Facets } from "../lib/filter";
+  import { defaultFilter, type CardFilter, type Facets } from "../lib/filter";
   import {
     filterTokens,
     lastCondition,
+    nothingToClear,
     removeCondition,
     removeLastCondition,
     setText,
@@ -60,8 +61,10 @@
   // the reason sits beside them as text — `aria-disabled` keeps them focusable so `aria-describedby`
   // reaches it without a pointer, and `title` only repeats what is already on screen.
   const BLOCKED_ID = "filter-clear-blocked";
+  // `nothingToClear` implies `undoBlocked` (it is one of its two halves), so the pair can never end
+  // up stating that there is nothing to undo beside an enabled 直前の 1 つを戻す.
   let undoBlocked = $derived(lastCondition(filter) === null);
-  let clearBlocked = $derived(isDefaultFilter(filter, defaultStorage));
+  let clearBlocked = $derived(nothingToClear(filter, defaultStorage));
   let blockedReason = $derived(
     clearBlocked
       ? "絞り込みは既定のままです。戻す条件も解除する条件もありません。"
