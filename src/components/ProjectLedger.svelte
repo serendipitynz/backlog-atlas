@@ -676,7 +676,7 @@
 
   li {
     margin-bottom: 0.5rem;
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border: 1px solid var(--line);
     border-radius: 5px;
   }
 
@@ -703,7 +703,7 @@
 
   .immutable {
     padding: 0 0.3rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 3px;
     font-size: 0.65rem;
     opacity: 0.7;
@@ -756,7 +756,7 @@
 
   button {
     padding: 0.1rem 0.45rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;
@@ -778,7 +778,7 @@
   .confirm,
   .edit {
     padding: 0.5rem;
-    border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border-top: 1px solid var(--line);
   }
 
   .confirm {
@@ -822,7 +822,7 @@
       flex: 1;
       min-width: 0;
       padding: 0.15rem 0.3rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;
@@ -853,7 +853,7 @@
   .aliases {
     margin: 0;
     padding: 0.4rem;
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border: 1px solid var(--line);
     border-radius: 4px;
 
     legend {
@@ -872,7 +872,7 @@
     input[type="text"] {
       width: 12rem;
       padding: 0.15rem 0.3rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;
@@ -899,7 +899,7 @@
     max-width: 40rem;
     margin-top: 1rem;
     padding: 0.6rem;
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border: 1px solid var(--line);
     border-radius: 5px;
   }
 </style>

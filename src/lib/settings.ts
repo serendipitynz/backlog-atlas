@@ -12,7 +12,7 @@
  * | decision-13 既定値で動いている旨 | [`statusNotice`] | why these values are the defaults, in one sentence the screen shows (AC #6) |
  * | decision-13 未知の上位版は上書きしない | [`saveAvailability`] | whether 保存 may be pressed, and the reason when it may not |
  * | doc-8 §7 外部エディタ指定 | [`editorCommandOf`] / [`editorArgsText`] | the 起動指定 as two form fields ↔ one `EditorCommand` |
- * | decision-12 表示テーマ | [`RECORDED_THEMES`] | the colour sets this build has; empty until TASK-47 records them |
+ * | decision-12 表示テーマ | `theme.ts` の `RECORDED_THEMES` | the colour sets this build has; named there, defined in `app.scss` |
  * | doc-7 §5.2 既定の保存区分 | [`STORAGE_SELECTION_LABEL`] + [`toggleStorage`] | which 保存区分 the filter starts with |
  * | doc-8 §2.2 既定の詳細配置（第 2 の書き手） | [`mergeDraft`] | how a placement stored elsewhere lands in an open form without taking its input |
  *
@@ -59,24 +59,10 @@ export const STORAGE_SELECTIONS: StorageSelection[] = [
 ];
 
 /**
- * The 表示テーマ this build can offer (decision-12). Empty on purpose: decision-12 fixes the roster of
- * ten candidate sets but also a 収録条件 (contrast) that not all of them meet as drafted, and adjusting
- * the colour values until they do is TASK-47's work — so listing a name here now would offer a theme
- * that may never be recorded. Until then the only choice is 未選択 = OS の明暗に従う, which is what
- * decision-12 makes the default anyway.
- */
-export const RECORDED_THEMES: string[] = [];
-
-export const THEME_UNSET_LABEL = "OS の明暗に従う（既定）";
-
-export const NO_RECORDED_THEME_REASON =
-  "収録済みの表示テーマがまだないため、選択肢は OS の明暗に従う 1 つだけです。";
-
-/**
  * What the screen says when this item's value is stored but nothing reads it yet. decision-13 puts all
- * six items in this file, while the screens that consume two of them are separate work (表示テーマ・
- * カード情報量) — so the value persists and the screen says so, rather than the control being absent
- * (which would read as "Atlas does not have this setting").
+ * six items in this file, while the screen that consumes カード情報量 is separate work (doc-7 §3) — so
+ * the value persists and the screen says so, rather than the control being absent (which would read as
+ * "Atlas does not have this setting"). 表示テーマ left this state in TASK-47: it now paints on save.
  */
 export const PENDING_CONSUMER_NOTE =
   "値は保存され、次回起動後も残ります。これを反映する画面の実装はまだです。";

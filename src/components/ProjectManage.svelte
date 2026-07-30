@@ -808,7 +808,7 @@
   section {
     margin-top: 1rem;
     padding-top: 0.6rem;
-    border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border-top: 1px solid var(--line);
   }
 
   h2 {
@@ -848,9 +848,9 @@
   input[type="text"],
   select {
     padding: 0.25rem 0.35rem;
-    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
-    background: color-mix(in srgb, canvas 88%, canvastext 12%);
+    background: var(--inset);
     color: inherit;
     font: inherit;
     font-size: 0.74rem;
@@ -869,7 +869,7 @@
       align-items: center;
       gap: 0.25rem;
       padding: 0.1rem 0.3rem;
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 3px;
       font-size: 0.72rem;
     }
@@ -888,7 +888,7 @@
 
     li {
       padding: 0.3rem 0;
-      border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+      border-bottom: 1px solid var(--line);
     }
   }
 
@@ -919,7 +919,7 @@
   .create-panel {
     margin-top: 0.6rem;
     padding: 0.5rem;
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border: 1px solid var(--line);
     border-radius: 5px;
   }
 
@@ -933,7 +933,7 @@
 
   button {
     padding: 0.15rem 0.5rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;

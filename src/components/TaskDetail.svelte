@@ -1590,7 +1590,7 @@
     flex-direction: column;
     gap: 0.6rem;
     padding: 0.6rem 0.75rem 1rem;
-    background: color-mix(in srgb, canvas 94%, canvastext 6%);
+    background: var(--panel);
     // Scrolls inside itself so the swimlane keeps its own scroll position while the panel is open.
     overflow-y: auto;
   }
@@ -1600,7 +1600,7 @@
   .detail[data-placement="sidebar"] {
     flex: none;
     width: min(30rem, 45vw);
-    border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    border-left: 1px solid var(--line);
   }
 
   // 中央モーダル (doc-8 §2.1): a box over the grid, wide enough for two columns at 1280×800. The
@@ -1610,9 +1610,9 @@
     width: min(var(--modal-max-width), calc(100vw - var(--modal-inset) * 2));
     max-height: 100%;
     padding: 0.6rem var(--modal-padding) 1rem;
-    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 6px;
-    box-shadow: 0 8px 32px color-mix(in srgb, canvastext 25%, transparent);
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--fg) 25%, transparent);
   }
 
   // 全面シングルビュー (doc-8 §2.1): the swimlane is put away and the panel takes the space.
@@ -1706,7 +1706,7 @@
   // 既定の印は中立: 状態の族ではなく、次回起動時にどれで開くかという情報である (decision-6).
   .default-mark {
     padding: 0 0.25rem;
-    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 3px;
     font-size: 0.6rem;
     opacity: 0.75;
@@ -1765,9 +1765,9 @@
   .body {
     margin: 0;
     padding: 0.35rem 0.45rem;
-    border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border: 1px solid var(--line);
     border-radius: 4px;
-    background: color-mix(in srgb, canvas 88%, canvastext 12%);
+    background: var(--inset);
     font-family: inherit;
     font-size: 0.74rem;
     line-height: 1.5;
@@ -1791,17 +1791,17 @@
   .type {
     padding: 0 0.35rem;
     border-radius: 3px;
-    background: color-mix(in srgb, currentColor 16%, transparent);
+    background: color-mix(in srgb, var(--fg) 16%, transparent);
 
     &.unknown {
       background: none;
-      border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+      border: 1px solid var(--line-strong);
     }
   }
 
   .label {
     padding: 0 0.35rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 999px;
   }
 
@@ -1854,7 +1854,7 @@
       align-items: baseline;
       gap: 0.4rem;
       padding: 0.1rem 0.35rem;
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
       color: inherit;
@@ -1864,7 +1864,7 @@
       cursor: pointer;
 
       &:hover {
-        border-color: color-mix(in srgb, currentColor 50%, transparent);
+        border-color: var(--line-strong);
       }
     }
   }
@@ -1898,30 +1898,35 @@
   }
 
   // 解析縮退・版ずれ・未対応・中立の印を混ぜない (decision-6): each family takes its own colour from
-  // the one definition in `app.scss` (`lib/mark.ts` の MarkKind), an unmapped or dangling reference
-  // is outlined, and a merely-informative state stays plain.
+  // the 表示テーマ's one definition in `app.scss` (`lib/mark.ts` の MarkKind), an unmapped or dangling
+  // reference is outlined, and a merely-informative state stays plain.
+  //
+  // 印チップ配色規則 (decision-12): 文字＝族の色、背景＝族の色 12% 混色、枠＝族の色 45% 混色。Each family
+  // sets `--family` and nothing else, so the same three declarations serve all four.
   .mark[data-kind] {
-    color: #fff;
+    border: 1px solid color-mix(in srgb, var(--family) 45%, transparent);
+    background: color-mix(in srgb, var(--family) 12%, transparent);
+    color: var(--family);
   }
 
   .mark[data-kind="degraded"] {
-    background: var(--mark-degraded);
+    --family: var(--mark-degraded);
   }
 
   .mark[data-kind="versionConflict"] {
-    background: var(--mark-version-conflict);
+    --family: var(--mark-version-conflict);
   }
 
   .mark[data-kind="undetectable"] {
-    background: var(--mark-undetectable);
+    --family: var(--mark-undetectable);
   }
 
   .mark[data-kind="unreadable"] {
-    background: var(--mark-unreadable);
+    --family: var(--mark-unreadable);
   }
 
   .mark.unmapped {
-    border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+    border: 1px solid var(--line-strong);
   }
 
   .mark.neutral {
@@ -1957,7 +1962,7 @@
   .console {
     gap: 0.3rem;
     padding: 0.4rem 0.45rem;
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border: 1px solid var(--line);
     border-radius: 4px;
   }
 
@@ -1986,9 +1991,9 @@
   input[type="text"],
   select {
     padding: 0.15rem 0.3rem;
-    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
-    background: color-mix(in srgb, canvas 88%, canvastext 12%);
+    background: var(--inset);
     color: inherit;
     font: inherit;
     font-size: 0.74rem;
@@ -2007,7 +2012,7 @@
 
   button {
     padding: 0.1rem 0.4rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;
@@ -2022,7 +2027,7 @@
   }
 
   button.primary {
-    background: color-mix(in srgb, currentColor 14%, transparent);
+    background: color-mix(in srgb, var(--fg) 14%, transparent);
     font-weight: 600;
   }
 
@@ -2031,7 +2036,7 @@
   }
 
   button.mini.on {
-    background: color-mix(in srgb, currentColor 18%, transparent);
+    background: color-mix(in srgb, var(--fg) 18%, transparent);
   }
 
   .ac button.box {
@@ -2046,7 +2051,7 @@
     flex-direction: column;
     gap: 0.2rem;
     padding-bottom: 0.25rem;
-    border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    border-bottom: 1px solid var(--line);
   }
 
   .check {

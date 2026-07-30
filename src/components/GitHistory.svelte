@@ -159,7 +159,7 @@
 
   button {
     padding: 0 0.35rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;
@@ -231,8 +231,8 @@
 
   .setting {
     padding: 0.2rem 0.35rem;
-    border-left: 2px solid color-mix(in srgb, currentColor 35%, transparent);
-    background: color-mix(in srgb, canvastext 4%, transparent);
+    border-left: 2px solid var(--line-strong);
+    background: var(--inset);
   }
 
   .failure {

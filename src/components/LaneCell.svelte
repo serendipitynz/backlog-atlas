@@ -54,12 +54,12 @@
     gap: 0.3rem;
     min-width: 0;
     padding: 0.4rem;
-    border-left: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    border-left: 1px solid var(--line);
   }
 
   .unmapped {
-    border-left: 2px dashed color-mix(in srgb, currentColor 30%, transparent);
-    background: color-mix(in srgb, canvastext 4%, transparent);
+    border-left: 2px dashed var(--line-strong);
+    background: var(--inset);
   }
 
   .empty {

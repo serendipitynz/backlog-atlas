@@ -12,13 +12,10 @@
     CARD_DENSITY_LABEL,
     DETAIL_PLACEMENT_LABEL,
     DETAIL_PLACEMENT_NOTE,
-    NO_RECORDED_THEME_REASON,
     PENDING_CONSUMER_NOTE,
-    RECORDED_THEMES,
     STARTUP_READ_NOTE,
     STORAGE_SELECTIONS,
     STORAGE_SELECTION_LABEL,
-    THEME_UNSET_LABEL,
     TRANSIENT_STATE_NOTE,
     WATCH_OFF_NOTE,
     editorArgsText,
@@ -30,6 +27,12 @@
     statusNotice,
     toggleStorage,
   } from "../lib/settings";
+  import {
+    RECORDED_THEME_IDS,
+    THEME_LIST_NOTE,
+    THEME_UNSET_LABEL,
+    themeLabel,
+  } from "../lib/theme";
   import type {
     AppSettings,
     CardDensity,
@@ -132,13 +135,14 @@
    * The theme names to offer. A stored name this build does not record — a hand-edited file, or a
    * file written by a build that had more themes — is listed too, marked as such: dropping it from
    * the list would leave the select with nothing selected and quietly rewrite the user's choice on
-   * the next save. Empty means the only option is 未選択, which is when the control is withheld.
+   * the next save. Such a name paints as 未選択 (`theme.ts` の `themeAttribute`), which is what the
+   * marked option tells the user rather than leaving them with a selection that does nothing.
    */
   let themeChoices = $derived.by(() => {
     const stored = draft?.theme ?? null;
-    return stored === null || RECORDED_THEMES.includes(stored)
-      ? RECORDED_THEMES
-      : [stored, ...RECORDED_THEMES];
+    return stored === null || RECORDED_THEME_IDS.includes(stored)
+      ? RECORDED_THEME_IDS
+      : [stored, ...RECORDED_THEME_IDS];
   });
 
   /**
@@ -204,23 +208,16 @@
     <section>
       <h3>表示テーマ</h3>
       <label>
-        <select
-          bind:value={draft.theme}
-          disabled={themeChoices.length === 0}
-          title={RECORDED_THEMES.length === 0 ? NO_RECORDED_THEME_REASON : ""}
-        >
+        <select bind:value={draft.theme}>
           <option value={null}>{THEME_UNSET_LABEL}</option>
           {#each themeChoices as name (name)}
             <option value={name}>
-              {RECORDED_THEMES.includes(name) ? name : `${name}（このビルドには収録されていません）`}
+              {themeLabel(name) ?? `${name}（このビルドには収録されていません）`}
             </option>
           {/each}
         </select>
       </label>
-      {#if RECORDED_THEMES.length === 0}
-        <p class="hint">{NO_RECORDED_THEME_REASON}</p>
-      {/if}
-      <p class="hint">{PENDING_CONSUMER_NOTE}</p>
+      <p class="hint">{THEME_LIST_NOTE}</p>
     </section>
 
     <section>
@@ -353,7 +350,7 @@
     flex-direction: column;
     gap: 0.25rem;
     padding-bottom: 0.5rem;
-    border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border-bottom: 1px solid var(--line);
 
     h3 {
       margin: 0;
@@ -378,7 +375,7 @@
       flex: 1;
       min-width: 12rem;
       padding: 0.15rem 0.3rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line-strong);
       border-radius: 3px;
       background: transparent;
       color: inherit;
@@ -396,7 +393,7 @@
 
   button {
     padding: 0.1rem 0.5rem;
-    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;

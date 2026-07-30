@@ -114,9 +114,9 @@
   textarea {
     width: 100%;
     padding: 0.35rem 0.45rem;
-    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+    border: 1px solid var(--line-strong);
     border-radius: 4px;
-    background: color-mix(in srgb, canvas 88%, canvastext 12%);
+    background: var(--inset);
     color: inherit;
     font: inherit;
     font-size: 0.74rem;
@@ -133,7 +133,7 @@
 
     &.promoted {
       height: 10rem;
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      border: 1px solid var(--line-strong);
       resize: vertical;
       overflow: auto;
     }

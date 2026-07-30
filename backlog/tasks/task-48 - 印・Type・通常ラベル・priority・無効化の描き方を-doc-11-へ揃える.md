@@ -4,7 +4,7 @@ title: 印・Type・通常ラベル・priority・無効化の描き方を doc-11
 status: To Do
 assignee: []
 created_date: '2026-07-28 23:15'
-updated_date: '2026-07-29 00:22'
+updated_date: '2026-07-30 00:59'
 labels:
   - 'kind:refactor'
 milestone: m-1
@@ -30,3 +30,12 @@ doc-11（画面共通のデザインシステム）が、複数画面で共有�
 - [ ] #7 無効化の理由を、常時表示の補助文または aria-describedby で参照できる説明として置き、title を唯一の格納先にしない（doc-11 §5）
 - [ ] #8 キーボードのみとスクリーンリーダーで、無効化された操作の理由へ到達できることを確かめる
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-07-30 00:59
+---
+TASK-47 で印チップ配色規則（文字＝族の色・背景 12% 混色・枠 45% 混色）と priority の無彩 3 段を先に実装した。TASK-47 の AC #1「コンポーネントは変数名と color-mix のみを参照する」を満たすには、印の白文字ベタ塗りと priority の #c0392b／#b8860b を残せなかったためである。本タスクに残るのは記述の (3) Type チップと通常ラベルの差の強化、(4) 無効化提示の統一。
+---
+<!-- COMMENTS:END -->
