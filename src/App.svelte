@@ -64,8 +64,13 @@
   import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
   import { createSettingsWriter } from "./lib/settings-write";
   import { themeAttribute } from "./lib/theme";
-  import { DEFAULT_FILTER, collectFacets, type CardFilter } from "./lib/filter";
-  import { buildSwimlane, laneNeighbours, unreadableDetail } from "./lib/swimlane";
+  import {
+    DEFAULT_FILTER,
+    collectFacets,
+    withStorage,
+    type CardFilter,
+  } from "./lib/filter";
+  import { buildSwimlane, laneNeighbours, unreadableDetail, visibleCount } from "./lib/swimlane";
   import type {
     AppSettings,
     CliReadiness,
@@ -218,8 +223,19 @@
     ),
   );
   let facets = $derived(collectFacets(allViews));
-  let hasIndeterminateStorage = $derived(
-    allViews.some((view) => view.task.storageState === null),
+  /**
+   * 総計 for the filter bar's right end (doc-7 §5.2). Summed over the rows the grid is drawing, so it
+   * is exactly the sum of the per-row 内訳 the レーンヘッダ行 show — the two are meant to be read
+   * together, and a total counting rows that are not on screen (行非表示) would not add up to them.
+   * The 行非表示 band is where those rows are accounted for (doc-7 §5.3 ⑥).
+   */
+  let shownCards = $derived(rows.reduce((sum, row) => sum + visibleCount(row), 0));
+  let totalCards = $derived(
+    rows.reduce((sum, row) => sum + (row.state === "loaded" ? row.totalBeforeFilter : 0), 0),
+  );
+  /** 既定の保存区分 (decision-13) — the state 全解除 returns the filter to. */
+  let defaultStorage = $derived(
+    settings?.settings.default_storage_filter ?? DEFAULT_FILTER.storage,
   );
   // 保存区分印 goes on cards only once a division beyond active is in play (doc-7 §3).
   let showStorageMark = $derived(filter.storage.some((state) => state !== "active"));
@@ -478,7 +494,7 @@
     const first = settings === null;
     settings = next;
     if (first) placement = next.settings.default_detail_placement;
-    if (untouched) filter = { ...filter, storage: [...next.settings.default_storage_filter] };
+    if (untouched) filter = withStorage(filter, next.settings.default_storage_filter);
   }
 
   /**
@@ -1051,9 +1067,10 @@
     <FilterBar
       {filter}
       {facets}
-      {hasIndeterminateStorage}
+      {defaultStorage}
+      shown={shownCards}
+      total={totalCards}
       onchange={(next) => (filter = next)}
-      onreset={() => (filter = DEFAULT_FILTER)}
     />
   {/if}
 
