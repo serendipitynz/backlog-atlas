@@ -1,9 +1,10 @@
 ---
 id: TASK-49
 title: カード情報量 S/M/L を実装する
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-07-28 23:15'
+updated_date: '2026-07-30 11:51'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -20,8 +21,8 @@ doc-7 §3 は、タスクカードの固定項目表を、カード情報量（S
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 doc-7 §3 の割当表どおりに、段ごとに Type・通常ラベル・assignee の表示が増減する
-- [ ] #2 状態の印は S・M・L のいずれでも落とさない
-- [ ] #3 title の行数が段ごとに 1 行・2 行・3 行で切り詰められる
-- [ ] #4 選択した段がアプリ設定へ永続し、既定は M である
+- [x] #1 doc-7 §3 の割当表どおりに、段ごとに Type・通常ラベル・assignee の表示が増減する
+- [x] #2 状態の印は S・M・L のいずれでも落とさない
+- [x] #3 title の行数が段ごとに 1 行・2 行・3 行で切り詰められる
+- [x] #4 選択した段がアプリ設定へ永続し、既定は M である
 <!-- AC:END -->
