@@ -15,6 +15,9 @@
  * | doc-5 §3 doc create 写像 | [`DocCreateInput`] + [`buildDocCreate`] | the 文書作成 form and its operation |
  * | doc-5 §3.2 文書更新（本文全置換） | [`DocSession`] + [`buildDocUpdate`] | the 文書更新 session and its operation |
  * | doc-5 §3 milestone add 写像 | [`MilestoneAddInput`] + [`buildMilestoneAdd`] | the マイルストーン作成 form and its operation |
+ * | doc-10 §6 改称・削除・アーカイブ | [`MilestoneRenameInput`] / [`MilestoneRemoveInput`] + their builders | the three operations doc-9 §4.2 made checkable, and what each requires before it is offered |
+ * | doc-9 §4.2.2 参照タスク集合 | [`referencingTasks`] | the active tasks a 参照追随書き換え may rewrite, shown before the user commits |
+ * | doc-9 §4.2.2 参照追随書き換えを伴うか | [`followsReferences`] | which of the six operations carries the fan-out |
  * | doc-5 §3.1/§3.2 作成後の説明編集は出さない | [`MILESTONE_DESCRIPTION_NOT_EDITABLE`] | the reason shown beside every milestone's description |
  * | doc-10 §1 提供しない操作区画 | [`WithheldOperation`] + [`WITHHELD_DOCUMENT_OPERATIONS`] / [`WITHHELD_MILESTONE_OPERATIONS`] | the material for laying an operation decided against out as 名称・写像先・理由 |
  * | doc-10 §7 作成フォームを絞るのは製品判断 | [`TASK_CREATE_OMITTED_FIELDS`] | the fields with no input, each with its reason and its post-creation route |
@@ -34,7 +37,16 @@
  */
 
 import { readinessReason } from "./edit";
-import type { CliReadiness, Document, DocUpdate, UpdateOperation } from "./wire";
+import { conflictSetDetail } from "./mark";
+import type {
+  CliReadiness,
+  ConflictSet,
+  Document,
+  DocUpdate,
+  Milestone,
+  TaskView,
+  UpdateOperation,
+} from "./wire";
 
 // --- 発行できる／できない (doc-5 §5) --------------------------------------------------------
 
@@ -451,6 +463,160 @@ export function buildMilestoneAdd(input: MilestoneAddInput): IssuePlan {
   return { state: "ready", action: [operation] };
 }
 
+// --- 改称・削除・アーカイブ (doc-9 §4.2, doc-10 §6) --------------------------------------------
+
+/**
+ * 参照タスク集合 (doc-9 §4.2.2): the active tasks a 参照追随書き換え may rewrite. The same rule the
+ * boundary checks against, computed here so the screen can show *what will be rewritten* before the
+ * user commits — doc-10 §6 forbids issuing one of these without that list, because doc-9 §4.2.3
+ * treats "the user decided from what they saw" as the thing the check protects.
+ *
+ * Wider than the read layer's reference resolution on purpose: v1.47.1 treats a value as a reference
+ * when it matches the id *or* the title modulo surrounding whitespace and case — `"  M-0  "` is
+ * rewritten by a rename of `m-0` (doc-9 §4.2.1). Tasks outside `tasks/` are excluded because no
+ * operation was observed to touch them.
+ */
+export function referencingTasks(
+  milestone: Milestone,
+  tasks: readonly TaskView[],
+): TaskView[] {
+  const id = milestone.id.trim().toLowerCase();
+  const title = milestone.title.trim().toLowerCase();
+  return tasks.filter((view) => {
+    if (view.task.storageState !== "active") return false;
+    const value = view.task.milestone?.trim().toLowerCase();
+    return value !== undefined && (value === id || value === title);
+  });
+}
+
+/**
+ * Whether an operation carries a 参照追随書き換え (doc-9 §4.2.2), i.e. whether [`referencingTasks`]
+ * is part of its 書き換え対象集合. Keyed on the built operation rather than on the form, so the
+ * screen cannot describe one operation and issue another. Which three fan out comes from doc-9
+ * §4.2.1's measurement, not from the flag names.
+ */
+export function followsReferences(operation: UpdateOperation): boolean {
+  switch (operation.op) {
+    case "milestoneRename":
+      return operation.updateTasks;
+    case "milestoneRemove":
+      return operation.taskHandling.mode !== "keep";
+    default:
+      return false;
+  }
+}
+
+/** 改称の入力 (doc-10 §6). `updateTasks` false adds `--no-update-tasks`. */
+export interface MilestoneRenameInput {
+  to: string;
+  updateTasks: boolean;
+}
+
+/** 参照するタスクも更新する側を既定にする (doc-10 §6): leaving stale references behind is the
+ * exception, so it is the box the user has to clear. */
+export const EMPTY_MILESTONE_RENAME: MilestoneRenameInput = { to: "", updateTasks: true };
+
+export const MILESTONE_RENAME_REQUIRED_REASON =
+  "新しい名称は必須です（`milestone rename <from> <to>` の位置引数）";
+
+export const MILESTONE_RENAME_UNCHANGED_REASON =
+  "現在の名称と同じです（変更が無いので発行しません）";
+
+export function buildMilestoneRename(
+  milestone: Milestone,
+  input: MilestoneRenameInput,
+): IssuePlan {
+  const to = input.to.trim();
+  if (to === "") return { state: "blocked", reason: MILESTONE_RENAME_REQUIRED_REASON };
+  // The CLI compares titles ignoring case and surrounding space (doc-9 §4.2.1), so a rename that
+  // differs only there would be issued as a change and land as none.
+  if (to.toLowerCase() === milestone.title.trim().toLowerCase()) {
+    return { state: "blocked", reason: MILESTONE_RENAME_UNCHANGED_REASON };
+  }
+  return {
+    state: "ready",
+    // The id is sent as `<from>`, never the title: the operand accepts either, and the id is the one
+    // that cannot become ambiguous between two milestones sharing a title.
+    action: [
+      { op: "milestoneRename", from: milestone.id, to, updateTasks: input.updateTasks },
+    ],
+  };
+}
+
+/** How `milestone remove` treats referencing tasks (doc-5 §3). `null` は未選択 — doc-10 §6 makes it
+ * a required choice, so nothing is issued until the user has made it. */
+export interface MilestoneRemoveInput {
+  handling: "clear" | "keep" | "reassign" | null;
+  /** `--reassign-to`, required by `reassign` alone. Holds a milestone id. */
+  reassignTo: string;
+}
+
+export const EMPTY_MILESTONE_REMOVE: MilestoneRemoveInput = { handling: null, reassignTo: "" };
+
+export const MILESTONE_REMOVE_HANDLING_REQUIRED_REASON =
+  "参照するタスクの扱いを選んでください（`--task-handling <clear|keep|reassign>`）";
+
+export const MILESTONE_REASSIGN_TARGET_REQUIRED_REASON =
+  "付け替え先のマイルストーンは必須です（`--reassign-to <milestone>`）";
+
+export const MILESTONE_REASSIGN_TARGET_IS_SELF_REASON =
+  "付け替え先が削除するマイルストーン自身です";
+
+/**
+ * v1.47.1 の削除はファイルを消さない (doc-9 §4.2.1 実測): the milestone file moves to
+ * `archive/milestones/`. Stated beside the control because "削除" otherwise reads as an unlink, and
+ * doc-10 §6 asks the screen to keep the CLI's word while saying what actually happens.
+ */
+export const MILESTONE_REMOVE_MOVES_THE_FILE =
+  "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します（v1.47.1 実測）";
+
+/** `keep` leaves referencing tasks pointing at a milestone that is no longer in the root. */
+export const MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES =
+  "「そのまま保持」では、参照するタスクが解決先の無い milestone 値を持ったまま残ります";
+
+export function buildMilestoneRemove(
+  milestone: Milestone,
+  input: MilestoneRemoveInput,
+): IssuePlan {
+  if (input.handling === null) {
+    return { state: "blocked", reason: MILESTONE_REMOVE_HANDLING_REQUIRED_REASON };
+  }
+  if (input.handling !== "reassign") {
+    return {
+      state: "ready",
+      action: [
+        {
+          op: "milestoneRemove",
+          name: milestone.id,
+          taskHandling: { mode: input.handling },
+        },
+      ],
+    };
+  }
+  const to = input.reassignTo.trim();
+  if (to === "") {
+    return { state: "blocked", reason: MILESTONE_REASSIGN_TARGET_REQUIRED_REASON };
+  }
+  if (to === milestone.id) {
+    return { state: "blocked", reason: MILESTONE_REASSIGN_TARGET_IS_SELF_REASON };
+  }
+  return {
+    state: "ready",
+    action: [
+      {
+        op: "milestoneRemove",
+        name: milestone.id,
+        taskHandling: { mode: "reassign", to },
+      },
+    ],
+  };
+}
+
+/** アーカイブ (doc-10 §6). Nothing to validate: the operand is the milestone the user picked. */
+export function buildMilestoneArchive(milestone: Milestone): IssuePlan {
+  return { state: "ready", action: [{ op: "milestoneArchive", name: milestone.id }] };
+}
+
 /**
  * Why an existing milestone's description has no edit control (doc-5 §3.1/§3.2). Carried as the
  * reason of the 提供しない操作区画's `describe` entry (doc-10 §6) rather than as a hint beside the
@@ -481,57 +647,18 @@ export interface WithheldOperation {
 }
 
 /**
- * The 照合不能 sentence every withheld reason ends with. doc-9 §5 requires two things of this
- * presentation, and they are here rather than in each reason so neither can be dropped from one of
- * them: it must not read as a version divergence (nothing was observed to diverge), and it must not
- * point at an unchecked run as a way around — that would discard the very reason for the refusal.
- */
-const UNCHECKABLE_TAIL =
-  "版がずれていることを検出したわけではなく、ずれているかを確かめる方法が設計に無い状態です" +
-  "（doc-9 §4.2 の照合不能）。照合を省いた実行は代替経路として提供しません（doc-9 §5）";
-
-/**
- * 改称・削除・アーカイブ, withheld with their reasons (doc-9 §4.2). The boundary refuses all three
- * before any CLI launches, so offering them would be three controls that can only ever fail. Two
- * different causes are behind that, and they are stated apart because they resolve differently:
- * rename/remove need doc-9 の拡張 (§7 names it a 後続課題), while archive is short of a path the read
- * layer does not record for milestones — the gap `Document.source_path` closed for documents.
+ * What the マイルストーン区画 still withholds (doc-10 §6). 改称・削除・アーカイブ left this list once
+ * doc-9 §4.2 defined their 照合 (TASK-45); what remains is missing for the other family of reason —
+ * v1.47.1 has no subcommand for it — so no entry here speaks of 照合不能 any more. Kept as a list of
+ * one rather than folded into a sentence: the 区画's three points (名称・写像先・理由) are what tell
+ * "Atlas decided against this" apart from a disabled button (doc-11 §5).
  */
 export const WITHHELD_MILESTONE_OPERATIONS: WithheldOperation[] = [
   {
-    // Unlike the three 照合不能 entries, this one is missing because the CLI has no subcommand for
-    // it. Different family of reason, so it takes no `UNCHECKABLE_TAIL`: with one, it would read as
-    // "it appears once doc-9's 照合 is settled".
     kind: "describe",
     label: "作成後の説明の編集",
     mapping: "`milestone` に update/edit 相当なし（`milestone add -d` は作成時のみ）",
     reason: MILESTONE_DESCRIPTION_NOT_EDITABLE,
-  },
-  {
-    kind: "rename",
-    label: "改称",
-    mapping: "`milestone rename <from> <to>`（任意 `--no-update-tasks`）",
-    reason:
-      "改称は参照するタスクの milestone 値も併せて書き換えるため（参照追随書き換え）、" +
-      `書き換え対象集合がマイルストーンのファイル 1 件で終わらず、doc-9 §4 の実行前照合はその集合の照合方法を定めていません。${UNCHECKABLE_TAIL}`,
-  },
-  {
-    kind: "remove",
-    label: "削除",
-    mapping:
-      "`milestone remove <name> --task-handling <clear|keep|reassign>`" +
-      "（reassign では `--reassign-to <milestone>` も必須）",
-    reason:
-      "削除は `--task-handling clear|reassign` で参照するタスクの milestone 値を除去・付け替えするため（参照追随書き換え）、" +
-      `書き換え対象集合が 1 ファイルで終わらず、doc-9 §4 の実行前照合はその集合の照合方法を定めていません。${UNCHECKABLE_TAIL}`,
-  },
-  {
-    kind: "archive",
-    label: "アーカイブ",
-    mapping: "`milestone archive <name>`",
-    reason:
-      "アーカイブは読み取り層がマイルストーンのファイルパスを保持していないため、" +
-      `doc-9 §4 の実行前照合が対象ファイルを名指せません。${UNCHECKABLE_TAIL}`,
   },
 ];
 
@@ -630,7 +757,7 @@ export const TASK_CREATE_OMITTED_FIELDS: OmittedCreateField[] = [
  */
 export type IssueOutcome =
   | { state: "applied" }
-  | { state: "conflict"; path: string }
+  | ({ state: "conflict" } & ConflictSet)
   | { state: "uncheckable"; detail: string }
   | { state: "failed"; detail: string };
 
@@ -641,7 +768,7 @@ export function outcomeMessage(outcome: IssueOutcome, done: string): string {
       return done;
     case "conflict":
       return (
-        `${outcome.path} が読み取り後に外部で変更されたため、CLI を起動せずに中止しました` +
+        `${conflictSetDetail(outcome)}。CLI を起動せずに中止しました` +
         "（更新前競合。doc-9 §5）。最新を読み直したので、内容を確かめてからやり直してください"
       );
     case "uncheckable":

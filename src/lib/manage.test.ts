@@ -7,9 +7,18 @@ import {
   DOC_TYPES,
   EMPTY_DOC_CREATE,
   EMPTY_MILESTONE_ADD,
+  EMPTY_MILESTONE_REMOVE,
+  EMPTY_MILESTONE_RENAME,
   EMPTY_TASK_CREATE,
   MILESTONE_DESCRIPTION_NOT_EDITABLE,
+  MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
   MILESTONE_NAME_REQUIRED_REASON,
+  MILESTONE_REASSIGN_TARGET_IS_SELF_REASON,
+  MILESTONE_REASSIGN_TARGET_REQUIRED_REASON,
+  MILESTONE_REMOVE_HANDLING_REQUIRED_REASON,
+  MILESTONE_REMOVE_MOVES_THE_FILE,
+  MILESTONE_RENAME_REQUIRED_REASON,
+  MILESTONE_RENAME_UNCHANGED_REASON,
   TASK_CREATE_OMITTED_FIELDS,
   TASK_CREATE_SCOPE_NOTE,
   TASK_TITLE_REQUIRED_REASON,
@@ -18,7 +27,12 @@ import {
   buildDocCreate,
   buildDocUpdate,
   buildMilestoneAdd,
+  buildMilestoneArchive,
+  buildMilestoneRemove,
+  buildMilestoneRename,
   buildTaskCreate,
+  followsReferences,
+  referencingTasks,
   docDirtyFields,
   docDivergence,
   hasDocCreateInput,
@@ -35,7 +49,8 @@ import {
   type TaskCreateInput,
 } from "./manage";
 import { readinessReason } from "./edit";
-import type { CliReadiness, Document } from "./wire";
+import { taskView } from "./fixtures";
+import type { CliReadiness, Document, Milestone } from "./wire";
 
 function taskInput(overrides: Partial<TaskCreateInput> = {}): TaskCreateInput {
   return { ...EMPTY_TASK_CREATE, title: "Add OAuth", ...overrides };
@@ -295,29 +310,13 @@ describe("マイルストーンの提供範囲", () => {
     expect(MILESTONE_DESCRIPTION_NOT_EDITABLE).toContain("doc-5 §3.1");
   });
 
-  it("lists the description edit beside the three, so every withheld operation is in one 区画", () => {
-    // TASK-55 / doc-10 §6: an operation decided against is laid out as 名称・写像先・理由 rather
-    // than as a disabled button. The description edit used to be a hint sentence apart from the
-    // list; it joins it here.
-    expect(WITHHELD_MILESTONE_OPERATIONS.map((entry) => entry.kind)).toEqual([
-      "describe",
-      "rename",
-      "remove",
-      "archive",
-    ]);
+  it("keeps only the description edit withheld, now that 照合 is defined for the other three", () => {
+    // doc-10 §6 after TASK-45: 改称・削除・アーカイブ are offered, so the 区画 holds the one entry
+    // whose cause is different — v1.47.1 has no subcommand for it.
+    expect(WITHHELD_MILESTONE_OPERATIONS.map((entry) => entry.kind)).toEqual(["describe"]);
     for (const entry of WITHHELD_MILESTONE_OPERATIONS) {
       expect(entry.label).not.toBe("");
       expect(entry.mapping).not.toBe("");
-    }
-  });
-
-  it("withholds rename・remove・archive with a reason that is not a version divergence", () => {
-    const uncheckable = WITHHELD_MILESTONE_OPERATIONS.filter((entry) => entry.kind !== "describe");
-    expect(uncheckable.map((entry) => entry.kind)).toEqual(["rename", "remove", "archive"]);
-    for (const entry of uncheckable) {
-      // doc-9 §5: it must not read as 更新前競合, and no unchecked run may be offered as a way round.
-      expect(entry.reason).toContain("版がずれていることを検出したわけではなく");
-      expect(entry.reason).toContain("照合を省いた実行は代替経路として提供しません");
     }
   });
 
@@ -329,10 +328,138 @@ describe("マイルストーンの提供範囲", () => {
     expect(describe?.reason).not.toContain("照合を省いた実行は代替経路として提供しません");
   });
 
-  it("keeps the withheld operations' 操作写像 legible, including reassign's required target", () => {
-    const remove = WITHHELD_MILESTONE_OPERATIONS.find((entry) => entry.kind === "remove");
-    expect(remove?.mapping).toContain("--task-handling <clear|keep|reassign>");
-    expect(remove?.mapping).toContain("--reassign-to <milestone>");
+});
+
+// --- 改称・削除・アーカイブ (doc-9 §4.2, doc-10 §6) ---------------------------------------------
+
+const MILESTONE: Milestone = {
+  sourcePath: "/repos/atlas/backlog/milestones/m-1 - phase-one.md",
+  id: "m-1",
+  title: "Phase One",
+  description: null,
+};
+
+describe("参照タスク集合 (doc-9 §4.2.2)", () => {
+  const tasks = [
+    taskView({ id: "TASK-1", milestone: "m-1" }),
+    // v1.47.1 matches the title ignoring surrounding space and case, so this one is rewritten too
+    // even though the read layer resolves it to nothing (doc-9 §4.2.1).
+    taskView({ id: "TASK-2", milestone: "  phase ONE  " }),
+    // The id padded and upper-cased is a reference to v1.47.1 too (doc-9 §4.2.1), so an id compared
+    // exactly would leave this one out of the set — and out of what the screen shows.
+    taskView({ id: "TASK-3", milestone: "  M-1  " }),
+    taskView({ id: "TASK-8", milestone: null }),
+    taskView({ id: "TASK-4", milestone: "m-2" }),
+    taskView({ id: "TASK-5", milestone: "m-1", storageState: "draft" }),
+    taskView({ id: "TASK-6", milestone: "m-1", storageState: "archive" }),
+    taskView({ id: "TASK-7", milestone: "m-1", storageState: "completed" }),
+  ];
+
+  it("covers the active tasks matching the id or the title, and nothing else", () => {
+    expect(referencingTasks(MILESTONE, tasks).map((view) => view.task.id)).toEqual([
+      "TASK-1",
+      "TASK-2",
+      "TASK-3",
+    ]);
+  });
+
+  it("is part of the 書き換え対象集合 for exactly the three operations that fan out", () => {
+    const fans = (plan: IssuePlan) =>
+      plan.state === "ready" && followsReferences(plan.action[0]);
+    expect(fans(buildMilestoneRename(MILESTONE, { to: "Phase 1", updateTasks: true }))).toBe(true);
+    expect(fans(buildMilestoneRemove(MILESTONE, { handling: "clear", reassignTo: "" }))).toBe(true);
+    expect(
+      fans(buildMilestoneRemove(MILESTONE, { handling: "reassign", reassignTo: "m-2" })),
+    ).toBe(true);
+    // doc-9 §4.2.1 measured these three as rewriting the milestone file alone.
+    expect(fans(buildMilestoneRename(MILESTONE, { to: "Phase 1", updateTasks: false }))).toBe(
+      false,
+    );
+    expect(fans(buildMilestoneRemove(MILESTONE, { handling: "keep", reassignTo: "" }))).toBe(false);
+    expect(fans(buildMilestoneArchive(MILESTONE))).toBe(false);
+  });
+});
+
+describe("buildMilestoneRename", () => {
+  it("sends the id as <from> and carries --no-update-tasks as a flag", () => {
+    expect(buildMilestoneRename(MILESTONE, { to: " Phase 1 ", updateTasks: true })).toEqual({
+      state: "ready",
+      action: [{ op: "milestoneRename", from: "m-1", to: "Phase 1", updateTasks: true }],
+    });
+    expect(buildMilestoneRename(MILESTONE, { to: "Phase 1", updateTasks: false })).toEqual({
+      state: "ready",
+      action: [{ op: "milestoneRename", from: "m-1", to: "Phase 1", updateTasks: false }],
+    });
+  });
+
+  it("defaults to updating the referencing tasks", () => {
+    expect(EMPTY_MILESTONE_RENAME.updateTasks).toBe(true);
+  });
+
+  it("blocks an empty name, and one the CLI would treat as the current name", () => {
+    expect(buildMilestoneRename(MILESTONE, { ...EMPTY_MILESTONE_RENAME })).toEqual({
+      state: "blocked",
+      reason: MILESTONE_RENAME_REQUIRED_REASON,
+    });
+    // Case and surrounding space are what the CLI ignores (doc-9 §4.2.1), so this would be issued
+    // as a change and land as none.
+    expect(buildMilestoneRename(MILESTONE, { to: "  phase one  ", updateTasks: true })).toEqual({
+      state: "blocked",
+      reason: MILESTONE_RENAME_UNCHANGED_REASON,
+    });
+  });
+});
+
+describe("buildMilestoneRemove", () => {
+  it("requires the task handling to be chosen before anything is issued", () => {
+    expect(EMPTY_MILESTONE_REMOVE.handling).toBeNull();
+    expect(buildMilestoneRemove(MILESTONE, { ...EMPTY_MILESTONE_REMOVE })).toEqual({
+      state: "blocked",
+      reason: MILESTONE_REMOVE_HANDLING_REQUIRED_REASON,
+    });
+  });
+
+  it("maps clear and keep to --task-handling alone", () => {
+    expect(buildMilestoneRemove(MILESTONE, { handling: "clear", reassignTo: "" })).toEqual({
+      state: "ready",
+      action: [{ op: "milestoneRemove", name: "m-1", taskHandling: { mode: "clear" } }],
+    });
+    expect(buildMilestoneRemove(MILESTONE, { handling: "keep", reassignTo: "" })).toEqual({
+      state: "ready",
+      action: [{ op: "milestoneRemove", name: "m-1", taskHandling: { mode: "keep" } }],
+    });
+  });
+
+  it("requires --reassign-to for reassign, and refuses the milestone being removed", () => {
+    expect(buildMilestoneRemove(MILESTONE, { handling: "reassign", reassignTo: " " })).toEqual({
+      state: "blocked",
+      reason: MILESTONE_REASSIGN_TARGET_REQUIRED_REASON,
+    });
+    expect(buildMilestoneRemove(MILESTONE, { handling: "reassign", reassignTo: "m-1" })).toEqual({
+      state: "blocked",
+      reason: MILESTONE_REASSIGN_TARGET_IS_SELF_REASON,
+    });
+    expect(buildMilestoneRemove(MILESTONE, { handling: "reassign", reassignTo: "m-2" })).toEqual({
+      state: "ready",
+      action: [
+        { op: "milestoneRemove", name: "m-1", taskHandling: { mode: "reassign", to: "m-2" } },
+      ],
+    });
+  });
+
+  it("says what the CLI's 削除 actually does to the file and to kept references", () => {
+    // doc-10 §6: the screen keeps the CLI's word but must not let it read as an unlink.
+    expect(MILESTONE_REMOVE_MOVES_THE_FILE).toContain("archive/milestones/");
+    expect(MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES).toContain("解決先の無い");
+  });
+});
+
+describe("buildMilestoneArchive", () => {
+  it("issues the archive with the milestone's id as its operand", () => {
+    expect(buildMilestoneArchive(MILESTONE)).toEqual({
+      state: "ready",
+      action: [{ op: "milestoneArchive", name: "m-1" }],
+    });
   });
 });
 
@@ -499,7 +626,11 @@ describe("issueAvailability", () => {
 describe("outcomeMessage", () => {
   it("states 更新前競合 as a re-read to retry from, not as a failure", () => {
     const message = outcomeMessage(
-      { state: "conflict", path: "/repos/atlas/backlog/docs/doc-4.md" },
+      {
+        state: "conflict",
+        diverged: ["/repos/atlas/backlog/docs/doc-4.md"],
+        unread: [],
+      },
       "文書を更新しました",
     );
     expect(message).toContain("CLI を起動せずに中止");

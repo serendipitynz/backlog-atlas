@@ -28,7 +28,7 @@
  * Atlas cannot say whether it is.
  */
 
-import type { TaskView } from "./wire";
+import type { ConflictSet, TaskView } from "./wire";
 
 /**
  * The presentation families decision-6 keeps apart. Ordered from "normal" to "broken", which is
@@ -49,7 +49,7 @@ export type MarkKind =
  * re-read disagreed about.
  */
 export type VersionConflict =
-  | { kind: "preUpdate"; path: string }
+  | ({ kind: "preUpdate" } & ConflictSet)
   | { kind: "postWindow"; fields: string[] };
 
 /** One chip: which family it belongs to, its word, and the reason behind it. */
@@ -79,6 +79,29 @@ export function conflictKeyOf(slug: string, sourcePath: string): string {
   return JSON.stringify([slug, sourcePath]);
 }
 
+/**
+ * Which files broke 全件一致, as one sentence (doc-9 §4.2.3-3). Every member is named, never just the
+ * first: a list that stops at one entry makes the user re-read one file per retry, which is exactly
+ * what §4.2.3-3 rules out. The two lists are worded apart because they call for different acts —
+ * a diverged file is re-read, whereas an unread active task means the 書き換え対象集合 itself was
+ * computed from a model that no longer describes the root (doc-9 §4.2.3-2).
+ */
+export function conflictSetDetail(set: ConflictSet): string {
+  const parts: string[] = [];
+  if (set.diverged.length > 0) {
+    parts.push(`読み取り後に外部で変わったファイル: ${set.diverged.join("・")}`);
+  }
+  if (set.unread.length > 0) {
+    parts.push(
+      `読み取り後に増えたタスクファイル: ${set.unread.join("・")}` +
+        "（書き換え対象集合が読取時点と違いうるため、照合できません）",
+    );
+  }
+  // Neither list populated cannot happen — the boundary only reports a conflict when one of them is
+  // non-empty — but the screen must still say something rather than render an empty reason.
+  return parts.length > 0 ? parts.join(" / ") : "照合対象の版が確かめられませんでした";
+}
+
 /** 版ずれ as one chip's worth of text (doc-9 §5). Both stages are 版ずれ; the reason differs. */
 export function versionConflictMark(conflict: VersionConflict): TaskMark {
   return {
@@ -86,7 +109,7 @@ export function versionConflictMark(conflict: VersionConflict): TaskMark {
     label: "版ずれ",
     detail:
       conflict.kind === "preUpdate"
-        ? `更新前競合: ${conflict.path} が読み取り後に外部で変わったため、CLI を起動せずに保存を止めました（doc-9 §5）`
+        ? `更新前競合: ${conflictSetDetail(conflict)}。CLI を起動せずに保存を止めました（doc-9 §5）`
         : `照合後競合窓の事後通知: 再読込した内容が送信した内容と一致しません（${conflict.fields.join(
             "・",
           )}）。窓内の外部更新が上書きで失われた可能性があります（doc-9 §4.1）`,

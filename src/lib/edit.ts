@@ -42,6 +42,7 @@ import type {
   AcItem,
   CliReadiness,
   CommandError,
+  ConflictSet,
   Milestone,
   ProjectSnapshot,
   TaskEdit,
@@ -631,7 +632,7 @@ export type ApplyOutcome =
    */
   | { state: "applied"; view: TaskView | null }
   /** 更新前競合 (doc-9 §4): no CLI ran, and the screen already holds the re-read. */
-  | { state: "conflict"; path: string }
+  | ({ state: "conflict" } & ConflictSet)
   /**
    * 照合不能 (doc-9 §4.2): no CLI ran either, but for the opposite reason — no divergence was
    * observed, there is no defined way to look for one. Split from `failed` so the panel can put it
@@ -651,7 +652,7 @@ export type SaveState =
   | { state: "idle" }
   | { state: "applied" }
   | { state: "failed"; detail: string }
-  | { state: "conflict"; path: string }
+  | ({ state: "conflict" } & ConflictSet)
   | { state: "diverged"; fields: string[] }
   /** 照合不能 (doc-9 §4.2) — kept apart from the two conflict states, as doc-9 §5 requires. */
   | { state: "uncheckable"; detail: string };

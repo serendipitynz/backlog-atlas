@@ -91,6 +91,11 @@ export interface Config {
 }
 
 export interface Milestone {
+  /**
+   * Source file path. doc-9 §4.2.2 puts this file in the 書き換え対象集合 of every milestone
+   * operation, and three of them rewrite nothing else — without it they could only run unchecked.
+   */
+  sourcePath: string;
   id: string;
   title: string;
   description: string | null;
@@ -518,13 +523,24 @@ export interface UpdateFailure {
 export type UpdateOutcome = { state: "succeeded" } | ({ state: "failed" } & UpdateFailure);
 
 /**
- * What became of one `update_apply` (doc-9 §4). `conflict` is 更新前競合: a target diverged from
- * the version Atlas read, so **no CLI ran** — `project` is the ordinary re-read that surfaces the
- * external change (doc-9 §5). `ran` means the CLI answered; `project` is present exactly when
- * on-disk state moved and was re-read.
+ * Which files broke 全件一致 (doc-9 §4.2.3). Two lists rather than one, because the screen has to
+ * say two different things: a `diverged` member changed since Atlas read it, while an `unread` entry
+ * is an active task file Atlas never read — which makes a 参照追随書き換え's 書き換え対象集合 itself
+ * untrustworthy rather than any one file stale (doc-9 §4.2.3-2). A 1 対 1 操作 can only ever fill
+ * `diverged`, and with exactly one entry.
+ */
+export interface ConflictSet {
+  diverged: string[];
+  unread: string[];
+}
+
+/**
+ * What became of one `update_apply` (doc-9 §4). `conflict` is 更新前競合: 全件一致 broke, so **no CLI
+ * ran** — `project` is the ordinary re-read that surfaces the external change (doc-9 §5). `ran` means
+ * the CLI answered; `project` is present exactly when on-disk state moved and was re-read.
  */
 export type UpdateResult =
-  | { state: "conflict"; path: string; project: ProjectSnapshot }
+  | ({ state: "conflict"; project: ProjectSnapshot } & ConflictSet)
   | { state: "ran"; outcome: UpdateOutcome; project: ProjectSnapshot | null };
 
 /**
