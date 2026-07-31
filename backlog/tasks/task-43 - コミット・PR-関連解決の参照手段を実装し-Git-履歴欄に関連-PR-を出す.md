@@ -1,10 +1,10 @@
 ---
 id: TASK-43
 title: コミット・PR 関連解決の参照手段を実装し Git 履歴欄に関連 PR を出す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-25 10:26'
-updated_date: '2026-07-30 23:53'
+updated_date: '2026-07-31 02:09'
 labels:
   - 'kind:feature'
 milestone: m-1
