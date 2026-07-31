@@ -123,8 +123,12 @@ describe("帯の 1 行 (doc-11 §4 の縮約)", () => {
     expect(hiddenRowsBand(3)).toBe("非表示の行 3 件");
   });
 
-  it("points 継続検出停止 at the row's own mark for the rest", () => {
-    expect(unwatchedBand("変更監視が動いていない行があります")).toContain("継続検出停止");
+  it("states what 継続検出停止 costs, and sends the user nowhere to resolve it", () => {
+    // The 再読込 is a control in the band itself (doc-11 §4: 帯が持つ操作は縮約しても帯に残す), so the
+    // text carries the consequence rather than directions to a row's mark that may be off screen.
+    const text = unwatchedBand("変更監視が動いていない行があります");
+    expect(text).toContain("古い可能性");
+    expect(text).not.toContain("印");
   });
 
   it("asks the 破棄前確認 in the same words the other four routes use", () => {

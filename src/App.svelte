@@ -686,6 +686,17 @@
   }
 
   /**
+   * Re-read every row 継続検出 is not covering — the 上部帯 ④'s own operation (doc-11 §4: 帯が持つ操作
+   * は縮約しても帯に残し、操作へ到達するために別の場所を開かせない). Without it the band could only
+   * name the state and point at a row's mark, which is unreachable while that row is scrolled out of
+   * view. Sequential rather than parallel: with 継続検出 off every registered root is on this list, and
+   * they read the same disks.
+   */
+  async function rereadUnwatched(): Promise<void> {
+    for (const slug of unwatchedRows) await rereadRow(slug);
+  }
+
+  /**
    * Move a row past its nearest *visible* neighbour. Using the neighbour's ledger index rather
    * than `index ± 1` is what makes the button do what it looks like it does when rows in
    * between are hidden — those rows keep their ledger position, and the moved row lands on the
@@ -1183,7 +1194,22 @@
             <button type="button" onclick={() => show(slug)}>{slug} を戻す</button>
           {/each}
         </span>
-      {:else if band.closable}
+      {:else if band.kind === "unwatched"}
+        <!-- 帯が持つ操作は縮約しても帯に残す (doc-11 §4): 継続検出停止 is resolved by re-reading, so the
+             再読込 is here and not only on each row's mark — a row that may be scrolled out of view. -->
+        <button type="button" onclick={rereadUnwatched}>該当行を再読込</button>
+      {:else if band.kind === "notice"}
+        <!-- A 通知 carries whatever the backend said (a watch that would not start, a refused
+             reorder), so it is the one band whose text is not already 縮約 — the ellipsis can hide
+             the only copy of the reason. doc-11 §4 allows the one-line form only while the whole is
+             readable elsewhere, which is this disclosure: keyboard-reachable, and not hover-only.
+             Keyed on the text so a new 通知 starts closed rather than reusing the last one's state. -->
+        {#key band.text}
+          <details class="full">
+            <summary>全文</summary>
+            <p>{band.text}</p>
+          </details>
+        {/key}
         <!-- ⑤ 通知 だけが閉じられる (doc-11 §4): it reports something already finished, so dismissing
              it hides nothing that is still true. -->
         <button type="button" class="close" aria-label="通知を閉じる" onclick={() => (notice = null)}>
@@ -1423,6 +1449,38 @@
 
     .close {
       margin-left: auto;
+    }
+
+    // 全文 opens *over* the screen rather than growing the band, so the one-line ceiling
+    // 「フィルタ帯 1 行 ＋ 上部帯 6 本」 holds whether it is open or closed (doc-11 §4).
+    .full {
+      position: relative;
+      flex: none;
+      margin-left: auto;
+      font-size: 0.7rem;
+
+      summary {
+        cursor: pointer;
+      }
+
+      p {
+        position: absolute;
+        z-index: 3;
+        top: 100%;
+        right: 0;
+        width: min(40rem, 80vw);
+        margin: 0.2rem 0 0;
+        padding: 0.4rem 0.5rem;
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        background: var(--panel);
+        white-space: pre-wrap;
+      }
+    }
+
+    // With the 全文 disclosure taking the free space, the × keeps its place at the right end.
+    .full + .close {
+      margin-left: 0.3rem;
     }
 
     // ① 確認 and ⑤ 通知 are `--info`: neither is one of decision-6's 族 (青い確認は版ずれではない).

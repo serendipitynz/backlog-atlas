@@ -29,7 +29,6 @@
  */
 
 import { DISCARD_CONFIRM_QUESTION } from "./edit";
-import { UNWATCHED_MARK } from "./mark";
 import type { CliReadiness } from "./wire";
 
 /** The 6 種 doc-11 §4 allows, named after the doc's rows. Nothing else becomes a 上部帯. */
@@ -118,9 +117,14 @@ export function cliDegradedBand(readiness: CliReadiness | null): string | null {
   return `${summary}。作成・更新は発行できません（台帳エントリの更新は影響を受けません）。`;
 }
 
-/** 継続検出停止 (doc-9 §3), 縮約 — the reason, and where the affected rows say the rest. */
+/**
+ * 継続検出停止 (doc-9 §3), 縮約 — the reason and what it costs. The 再読込 itself stays *in* the band
+ * (doc-11 §4: 帯が持つ操作は縮約しても帯に残し、操作へ到達するために別の場所を開かせない), so the
+ * text does not send the user to a row's mark to resolve the state — a row that may be scrolled out
+ * of view. The per-row mark keeps `UNWATCHED_MARK.detail`, which is the rest of the explanation.
+ */
 export function unwatchedBand(reason: string): string {
-  return `${reason}。該当行の「${UNWATCHED_MARK.label}」印から再読込できます。`;
+  return `${reason}（表示が実ファイルより古い可能性があります）。`;
 }
 
 /**
