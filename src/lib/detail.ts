@@ -38,6 +38,7 @@ import type {
   Commit,
   CommitSearch,
   DegradeEvent,
+  LookupFailure,
   Milestone,
   PrRelation,
   ProjectEntry,
@@ -328,11 +329,26 @@ export function relationAccounts(history: HistoryState): RelationAccount[] {
       case "lookupFailed":
         return {
           pullRequest,
-          text: `参照不能: ${outcome.detail}。今は確かめられないだけで、関連が無いという意味ではありません。gh の認証・ネットワークが回復すれば再取得で解消できます。`,
+          // 「関連が無い」ではなく「今は確かめられない」であることは 3 つの原因に共通し、解消の
+          // 手掛かりだけが原因ごとに違う (doc-8 §5). 解消経路を payload から確定できない
+          // `queryFailed` に、確定できるかのような文言を当てない。
+          text: `参照不能: ${outcome.detail}。今は確かめられないだけで、関連が無いという意味ではありません。${lookupRemedy(outcome.reason)}`,
           kind: "failure" as const,
         };
     }
   });
+}
+
+/** その原因が解消できるかどうか (doc-8 §5), per [`LookupFailure`]. */
+function lookupRemedy(reason: LookupFailure): string {
+  switch (reason) {
+    case "toolMissing":
+      return "参照手段を起動できていないため、gh を導入すれば解消できます（decision-14）。";
+    case "invalidReference":
+      return "この参照からは照会先を決められないため、References の URL を直せば解消できます。";
+    case "queryFailed":
+      return "照会は実行され、失敗しました。認証・権限・PR の不在・ネットワークのいずれかで、どれかはこの結果からは分かりません。再取得で解消することがあります。";
+  }
 }
 
 /**

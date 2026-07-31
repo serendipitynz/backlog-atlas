@@ -208,6 +208,14 @@ export type CommitSearch =
   | { state: "unreadable"; detail: string };
 
 /**
+ * Why a Pull Request's commit set could not be fetched (doc-6 §6). Typed because the three differ in
+ * what would clear them, which doc-8 §5 asks the screen to state: `toolMissing` clears by installing
+ * the reference means, `invalidReference` by editing the task's References, and `queryFailed` is a
+ * query that ran and failed — auth, permission, a deleted PR or the network, undecidable from here.
+ */
+export type LookupFailure = "toolMissing" | "invalidReference" | "queryFailed";
+
+/**
  * What became of one Pull Request during コミット・PR 関連解決 (doc-6 §6). `resolved` with an empty
  * `commitIds` is a *resolved* state — the PR was queried and shares no commit with this task — and is
  * deliberately not the same value as a lookup that never succeeded.
@@ -215,7 +223,7 @@ export type CommitSearch =
 export type RelationOutcome =
   | { state: "resolved"; commitIds: string[] }
   | { state: "hostUnsupported" }
-  | { state: "lookupFailed"; detail: string };
+  | { state: "lookupFailed"; reason: LookupFailure; detail: string };
 
 /** One Pull Request's relation result, keyed by the verbatim URL it was extracted from (doc-6 §6). */
 export interface PrRelation {

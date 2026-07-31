@@ -185,7 +185,7 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
         relations: [
           relation(PR_URL, { state: "resolved", commitIds: ["a1"] }),
           relation(`${PR_URL}1`, { state: "resolved", commitIds: [] }),
-          relation(`${PR_URL}2`, { state: "lookupFailed", detail: "offline" }),
+          relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
           relation(`${PR_URL}3`, { state: "hostUnsupported" }),
         ],
       }),
@@ -240,7 +240,7 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
         relations: [
           relation(PR_URL, { state: "resolved", commitIds: ["a1", "b2"] }),
           relation(`${PR_URL}1`, { state: "resolved", commitIds: ["b2"] }),
-          relation(`${PR_URL}2`, { state: "lookupFailed", detail: "offline" }),
+          relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
         ],
       }),
     );
@@ -258,7 +258,7 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
           relations: [
             relation(PR_URL, { state: "resolved", commitIds: ["a1"] }),
             relation(`${PR_URL}1`, { state: "resolved", commitIds: [] }),
-            relation(`${PR_URL}2`, { state: "lookupFailed", detail: "offline" }),
+            relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
             relation(`${PR_URL}3`, { state: "hostUnsupported" }),
           ],
         }),
@@ -272,10 +272,27 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
     ]);
     expect(accounts[0].text).toContain("コミット 1 件と関連");
     expect(accounts[1].text).toContain("共有コミット無し");
-    // 参照不能 は「関連が無い」ではなく「今は確かめられない」であることと、解消できることを書く。
+    // 参照不能 は「関連が無い」ではなく「今は確かめられない」であることを、原因によらず書く。
     expect(accounts[2].text).toContain("offline");
-    expect(accounts[2].text).toContain("解消");
+    expect(accounts[2].text).toContain("今は確かめられない");
     expect(accounts[3].text).toContain("解消できません");
+  });
+
+  it("does not promise a recovery path the payload cannot establish", () => {
+    // [P2] review finding: the backend maps a missing tool, a malformed reference and a query that
+    // ran and failed to the same 参照不能, and they do not clear the same way. doc-8 §5 asks for
+    // whether a cause can be cleared, so the reason travels with it.
+    const accountFor = (reason: "toolMissing" | "invalidReference" | "queryFailed") =>
+      relationAccounts(
+        loaded(history({ relations: [relation(PR_URL, { state: "lookupFailed", reason, detail: "x" })] })),
+      )[0].text;
+
+    expect(accountFor("toolMissing")).toContain("gh を導入すれば解消できます");
+    expect(accountFor("invalidReference")).toContain("References の URL を直せば解消できます");
+    // The one case whose cause is undecidable here must not claim 認証・ネットワークが回復すれば解消.
+    const query = accountFor("queryFailed");
+    expect(query).toContain("この結果からは分かりません");
+    expect(query).not.toContain("すれば解消できます");
   });
 });
 

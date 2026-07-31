@@ -25,6 +25,7 @@
 
 use crate::ledger::ProjectEntry;
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
 
@@ -106,9 +107,30 @@ pub enum RelationOutcome {
     /// The PR's host is not a kind Atlas can reference (or its coordinates were incomplete), so it
     /// is excluded from resolution and shown independently (doc-6 §6 "判別できないホストは…対象外").
     HostUnsupported,
-    /// The reference means failed (network / auth / offline). This is 関連解決不能 — kept distinct
-    /// from a resolved-but-empty result and from the PR's target not existing (doc-6 §6 "参照不能").
-    LookupFailed { detail: String },
+    /// The reference means failed. This is 関連解決不能 — kept distinct from a resolved-but-empty
+    /// result and from the PR's target not existing (doc-6 §6 "参照不能"). `reason` travels beside
+    /// `detail` because doc-8 §5 asks the screen to say whether a cause can be cleared, and that is
+    /// not one answer for every failure.
+    LookupFailed {
+        reason: LookupFailure,
+        detail: String,
+    },
+}
+
+/// Why a Pull Request's commit set could not be fetched (doc-6 §6). Typed rather than folded into the
+/// message, because the three differ in what would clear them: a missing tool is cleared by installing
+/// it, a malformed reference by editing the task's References, while a query that ran and failed could
+/// be authentication, permission, a deleted Pull Request or the network — which its exit status does
+/// not tell apart, and which the screen must therefore not promise a recovery path for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LookupFailure {
+    /// The reference means could not be started at all (e.g. `gh` is not on PATH).
+    ToolMissing,
+    /// The Pull Request URL does not yield coordinates that can be queried.
+    InvalidReference,
+    /// The query ran and did not succeed. Its cause is not decidable here.
+    QueryFailed,
 }
 
 /// Why a Git read could not produce a commit list. Kept distinct from an *empty* list because
@@ -435,14 +457,41 @@ fn parse_remote_url(url: &str) -> Option<RemoteHost> {
 
 // --- コミット・PR 関連解決 (doc-6 §6) -----------------------------------------------------------
 
-/// Errors from fetching a PR's commit set from a remote host. The concrete source (network,
-/// auth, offline) is per-host and injected, so this is deliberately opaque here.
+/// An error from fetching a PR's commit set from a remote host: which kind of failure it was, and the
+/// host's own words for it. The kinds are the ones any reference means can distinguish without
+/// knowing the host's protocol, so the classification stays the trait's contract rather than GitHub's.
 #[derive(Debug)]
-pub struct RelationError(pub String);
+pub struct RelationError {
+    pub reason: LookupFailure,
+    pub detail: String,
+}
+
+impl RelationError {
+    pub fn tool_missing(detail: impl Into<String>) -> Self {
+        RelationError {
+            reason: LookupFailure::ToolMissing,
+            detail: detail.into(),
+        }
+    }
+
+    pub fn invalid_reference(detail: impl Into<String>) -> Self {
+        RelationError {
+            reason: LookupFailure::InvalidReference,
+            detail: detail.into(),
+        }
+    }
+
+    pub fn query_failed(detail: impl Into<String>) -> Self {
+        RelationError {
+            reason: LookupFailure::QueryFailed,
+            detail: detail.into(),
+        }
+    }
+}
 
 impl std::fmt::Display for RelationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "pull request commit lookup failed: {}", self.0)
+        write!(f, "pull request commit lookup failed: {}", self.detail)
     }
 }
 
@@ -510,18 +559,38 @@ pub fn resolve_task_relations(
 ///
 /// A failing lookup yields `LookupFailed` for that PR only; the rest still resolve (doc-6 §6
 /// "参照不能時" keeps the other views). SHA matching tolerates abbreviation (prefix either way).
+///
+/// One entry per *distinct* Pull Request, not per References element. doc-6 §4 keeps every extracted
+/// URL for the Pull Request 区画, and a task may name one PR twice — the same URL repeated, or
+/// `/pull/5` beside `/pull/5/files`. Resolving each occurrence would query the same PR twice and make
+/// 関連 PR m 件 count references rather than Pull Requests (doc-8 §5), so occurrences are folded here
+/// on [`relation_key`], keeping the first URL as the one the screen shows.
 fn resolve_relations(
     commits: &[Commit],
     pull_requests: &[PullRequestRef],
     source: &dyn PrCommitSource,
 ) -> Vec<PrRelation> {
+    let mut seen = BTreeSet::new();
     pull_requests
         .iter()
+        .filter(|pr| seen.insert(relation_key(pr)))
         .map(|pr| PrRelation {
             pull_request: pr.url.clone(),
             outcome: resolve_one(commits, pr, source),
         })
         .collect()
+}
+
+/// The identity a Pull Request is resolved under. Its coordinates when they are all known — that is
+/// what a lookup is keyed on, so two URLs with the same coordinates are the same PR — and otherwise
+/// the verbatim URL, since without coordinates there is nothing else to tell two references apart.
+fn relation_key(pr: &PullRequestRef) -> String {
+    match (pr.host, &pr.owner, &pr.repo, pr.number) {
+        (Some(host), Some(owner), Some(repo), Some(number)) => {
+            format!("{host:?}{FIELD_SEP}{owner}{FIELD_SEP}{repo}{FIELD_SEP}{number}")
+        }
+        _ => pr.url.clone(),
+    }
 }
 
 /// Resolve a single PR against the local commits (doc-6 §6). Split out so the per-PR outcome —
@@ -554,7 +623,10 @@ fn resolve_one(
                 .collect();
             RelationOutcome::Resolved { commit_ids }
         }
-        Err(e) => RelationOutcome::LookupFailed { detail: e.0 },
+        Err(e) => RelationOutcome::LookupFailed {
+            reason: e.reason,
+            detail: e.detail,
+        },
     }
 }
 
@@ -624,10 +696,10 @@ fn github_pull_request_commits(target: &PullRequestTarget) -> Result<Vec<String>
         .env("GH_PROMPT_DISABLED", "1")
         .env("GH_NO_UPDATE_NOTIFIER", "1")
         .output()
-        .map_err(|e| RelationError(format!("gh を起動できません（{e}）")))?;
+        .map_err(|e| RelationError::tool_missing(format!("gh を起動できません（{e}）")))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
-        return Err(RelationError(first_line(&stderr)));
+        return Err(RelationError::query_failed(first_line(&stderr)));
     }
     Ok(String::from_utf8_lossy(&out.stdout)
         .lines()
@@ -650,7 +722,7 @@ fn api_path_segment(value: &str) -> Result<&str, RelationError> {
     if ok {
         Ok(value)
     } else {
-        Err(RelationError(format!(
+        Err(RelationError::invalid_reference(format!(
             "Pull Request URL の owner/repo が GitHub の名前として扱えません（{value}）"
         )))
     }
@@ -730,6 +802,7 @@ fn host_kind_of(host: &str) -> Option<RemoteHostKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -837,6 +910,8 @@ mod tests {
     struct FakeSource {
         by_target: BTreeMap<(RemoteHostKind, String, String, u64), Vec<String>>,
         fail: bool,
+        /// Every lookup, in order — so a test can assert what was *not* queried as well as what was.
+        queried: RefCell<Vec<(RemoteHostKind, String, String, u64)>>,
     }
 
     impl FakeSource {
@@ -856,6 +931,7 @@ mod tests {
             FakeSource {
                 by_target,
                 fail: false,
+                queried: RefCell::new(Vec::new()),
             }
         }
     }
@@ -866,7 +942,7 @@ mod tests {
             target: &PullRequestTarget,
         ) -> Result<Vec<String>, RelationError> {
             if self.fail {
-                return Err(RelationError("offline".into()));
+                return Err(RelationError::query_failed("offline"));
             }
             let key = (
                 target.host,
@@ -874,6 +950,7 @@ mod tests {
                 target.repo.clone(),
                 target.number,
             );
+            self.queried.borrow_mut().push(key.clone());
             Ok(self.by_target.get(&key).cloned().unwrap_or_default())
         }
     }
@@ -964,15 +1041,63 @@ mod tests {
             RelationOutcome::Resolved { commit_ids: vec![] }
         );
 
-        // Lookup error → LookupFailed, carrying the reason.
+        // Lookup error → LookupFailed, carrying both which kind of failure and the host's words.
         let mut down = FakeSource::with(&[]);
         down.fail = true;
         assert_eq!(
             resolve_relations(&commits, &prs, &down)[0].outcome,
             RelationOutcome::LookupFailed {
+                reason: LookupFailure::QueryFailed,
                 detail: "offline".into()
             }
         );
+    }
+
+    #[test]
+    fn one_pull_request_named_twice_is_queried_and_counted_once() {
+        // [P2] review finding: References keeps duplicates (doc-6 §4), and one PR can also be written
+        // two ways. Resolving each occurrence would query the same PR twice and make 関連 PR m 件
+        // count References elements rather than Pull Requests (doc-8 §5).
+        let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
+        let prs = vec![
+            github_pr("https://github.com/o/r/pull/5", "o", "r", 5),
+            // The same URL a second time, and the same PR reached by a different path.
+            github_pr("https://github.com/o/r/pull/5", "o", "r", 5),
+            github_pr("https://github.com/o/r/pull/5/files", "o", "r", 5),
+            // A different PR is not folded in with them.
+            github_pr("https://github.com/o/r/pull/6", "o", "r", 6),
+        ];
+        let source = FakeSource::with(&[("o", "r", 5, &["aaaaaaa"]), ("o", "r", 6, &[])]);
+
+        let relations = resolve_relations(&commits, &prs, &source);
+        assert_eq!(relations.len(), 2);
+        // The first URL of the folded group is the one the screen shows.
+        assert_eq!(relations[0].pull_request, "https://github.com/o/r/pull/5");
+        assert_eq!(relations[1].pull_request, "https://github.com/o/r/pull/6");
+        assert_eq!(source.queried.borrow().len(), 2, "each PR queried once");
+    }
+
+    #[test]
+    fn references_without_coordinates_are_folded_on_their_url_alone() {
+        // A generic-host PR has no coordinates to compare, so only an identical URL is the same
+        // reference — two different unsupported URLs must both be reported (doc-6 §6 対象外).
+        let generic = |url: &str| PullRequestRef {
+            url: url.into(),
+            host: None,
+            owner: Some("team".into()),
+            repo: Some("proj".into()),
+            number: Some(42),
+        };
+        let prs = vec![
+            generic("https://example.test/team/proj/pull-requests/42"),
+            generic("https://example.test/team/proj/pull-requests/42"),
+            generic("https://example.test/other/proj/pull-requests/42"),
+        ];
+        let relations = resolve_relations(&[], &prs, &FakeSource::with(&[]));
+        assert_eq!(relations.len(), 2);
+        assert!(relations
+            .iter()
+            .all(|r| r.outcome == RelationOutcome::HostUnsupported));
     }
 
     #[test]
@@ -1156,11 +1281,40 @@ mod tests {
         assert_eq!(unsupported["state"], "hostUnsupported");
 
         let failed = serde_json::to_value(RelationOutcome::LookupFailed {
+            reason: LookupFailure::QueryFailed,
             detail: "offline".into(),
         })
         .unwrap();
         assert_eq!(failed["state"], "lookupFailed");
         assert_eq!(failed["detail"], "offline");
+        // The reason travels beside the detail so the screen can say whether the cause clears itself
+        // (doc-8 §5) instead of promising a recovery path the payload cannot establish.
+        assert_eq!(failed["reason"], "queryFailed");
+        assert_eq!(
+            serde_json::to_value(RelationOutcome::LookupFailed {
+                reason: LookupFailure::ToolMissing,
+                detail: "gh を起動できません".into(),
+            })
+            .unwrap()["reason"],
+            "toolMissing"
+        );
+    }
+
+    #[test]
+    fn a_reference_that_cannot_be_queried_is_named_as_such() {
+        // The three failure kinds are decided where they are known: a source that will not start, a
+        // reference whose coordinates cannot go into an API path, and a query that ran and failed.
+        let target = PullRequestTarget {
+            host: RemoteHostKind::GitHub,
+            owner: "..".into(),
+            repo: "r".into(),
+            number: 1,
+        };
+        let error = HostReferences
+            .commits_for_pull_request(&target)
+            .unwrap_err();
+        assert_eq!(error.reason, LookupFailure::InvalidReference);
+        assert!(error.detail.contains(".."));
     }
 
     // --- commit search against a real repo (AC #1, #4, doc-6 §3, §6) ------------------------
