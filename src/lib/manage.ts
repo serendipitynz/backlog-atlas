@@ -1,9 +1,9 @@
 /**
- * 文書・マイルストーン管理と新規タスク作成の入口 (doc-5 §3.2, TASK-40), as pure functions. The
- * screen (`ProjectManage.svelte`) is markup over these values: what each form holds, which 更新操作
- * it turns into, and which operations are withheld with which reason. Nothing here calls the
- * boundary — the component issues the action a builder hands it — so every rule below is testable
- * without a CLI or a mounted component.
+ * 文書・マイルストーン管理と新規タスク作成 (doc-5 §3.2, TASK-40; doc-10 §5〜§7 で
+ * プロジェクト詳細画面の 3 区画になった), as pure functions. The screen (`ProjectDetail.svelte`) is
+ * markup over these values: what each form holds, which 更新操作 it turns into, and which operations
+ * are withheld with which reason. Nothing here calls the boundary — the component issues the action a
+ * builder hands it — so every rule below is testable without a CLI or a mounted component.
  *
  * ## Referent table (doc term → identifier here)
  *
@@ -16,7 +16,8 @@
  * | doc-5 §3.2 文書更新（本文全置換） | [`DocSession`] + [`buildDocUpdate`] | the 文書更新 session and its operation |
  * | doc-5 §3 milestone add 写像 | [`MilestoneAddInput`] + [`buildMilestoneAdd`] | the マイルストーン作成 form and its operation |
  * | doc-5 §3.1/§3.2 作成後の説明編集は出さない | [`MILESTONE_DESCRIPTION_NOT_EDITABLE`] | the reason shown beside every milestone's description |
- * | doc-9 §4.2 照合不能 | [`WITHHELD_MILESTONE_OPERATIONS`] | 改称・削除・アーカイブ, withheld with the reason each is withheld for |
+ * | doc-10 §1 提供しない操作区画 | [`WithheldOperation`] + [`WITHHELD_DOCUMENT_OPERATIONS`] / [`WITHHELD_MILESTONE_OPERATIONS`] | 出さないと決めた操作を、名称・写像先・理由の 3 点で並べる材料 |
+ * | doc-10 §7 作成フォームを絞るのは製品判断 | [`TASK_CREATE_OMITTED_FIELDS`] | 欄を置かない項目と、その理由・作成後の経路 |
  * | doc-5 §5 縮退 | [`issueAvailability`] via `readinessReason` | no supported CLI, so no operation is offered at all |
  * | doc-9 §5 提示の区別 | [`IssueOutcome`] + [`outcomeMessage`] | 更新前競合 / 照合不能 / CLI 失敗 stated apart |
  *
@@ -439,18 +440,26 @@ export function buildMilestoneAdd(input: MilestoneAddInput): IssuePlan {
 }
 
 /**
- * Why an existing milestone's description has no edit control (AC #3, doc-5 §3.1/§3.2). Shown beside
- * every milestone's description rather than only where a control would have been: the absence is what
- * needs explaining, and it is a CLI constraint, not a decision this screen made.
+ * Why an existing milestone's description has no edit control (doc-5 §3.1/§3.2). Carried as the
+ * reason of the 提供しない操作区画's `describe` entry (doc-10 §6) rather than as a hint beside the
+ * descriptions: doc-11 §5 puts operations Atlas has decided not to offer in that 区画, and a sentence
+ * floating beside the list would state the same absence in a second place with no 写像先 beside it.
  */
 export const MILESTONE_DESCRIPTION_NOT_EDITABLE =
   "作成後の説明の編集は提供しません。v1.47.1 の `milestone` に update/edit サブコマンドが無く、" +
   "説明は `milestone add -d` で作成時にのみ設定できます（`rename` は名称だけを変え、説明は変えません）。" +
   "CLI が提供するまで Atlas も提供しません（doc-5 §3.1・§3.2）";
 
-/** Which milestone operation is withheld, and why (doc-9 §4.2/§5). */
-export interface WithheldMilestoneOperation {
-  kind: "rename" | "remove" | "archive";
+/**
+ * 提供しない操作区画 (doc-10 §1/§6) の 1 項目。名称・CLI 上の写像先・理由の 3 点で並べるために、
+ * その 3 つをそのまま持つ。無効化されたボタンとして並べないのは doc-11 §5 の区別による: 無効化は
+ * 「今は条件が揃っていない」を意味し、ここに並ぶのは Atlas がこの版で出さないと決めたものである。
+ *
+ * `kind` は同じ一覧の中で一意であればよい（`{#each}` のキーと、テストがどの項目かを名指しする手段）。
+ * 文書とマイルストーンで別々の一覧に分かれるのは、区画ごとに置くためである（doc-10 §5/§6）。
+ */
+export interface WithheldOperation {
+  kind: string;
   label: string;
   /** 操作写像 (doc-5 §3): what the entry *would* issue, so the withheld operation is still legible. */
   mapping: string;
@@ -474,7 +483,15 @@ const UNCHECKABLE_TAIL =
  * rename/remove need doc-9 の拡張 (§7 names it a 後続課題), while archive is short of a path the read
  * layer does not record for milestones — the gap `Document.source_path` closed for documents.
  */
-export const WITHHELD_MILESTONE_OPERATIONS: WithheldMilestoneOperation[] = [
+export const WITHHELD_MILESTONE_OPERATIONS: WithheldOperation[] = [
+  {
+    // 照合不能の 3 件と違い、これは CLI にサブコマンドが無いための欠落である。理由の族が違うので
+    // `UNCHECKABLE_TAIL` を付けない — 付けると「照合さえ定まれば出る」と読めてしまう。
+    kind: "describe",
+    label: "作成後の説明の編集",
+    mapping: "`milestone` に update/edit 相当なし（`milestone add -d` は作成時のみ）",
+    reason: MILESTONE_DESCRIPTION_NOT_EDITABLE,
+  },
   {
     kind: "rename",
     label: "改称",
@@ -500,6 +517,88 @@ export const WITHHELD_MILESTONE_OPERATIONS: WithheldMilestoneOperation[] = [
     reason:
       "アーカイブは読み取り層がマイルストーンのファイルパスを保持していないため、" +
       `doc-9 §4 の実行前照合が対象ファイルを名指せません。${UNCHECKABLE_TAIL}`,
+  },
+];
+
+// --- 文書の提供しない操作 (doc-10 §5) ---------------------------------------------------------
+
+/**
+ * 文書区画の 提供しない操作区画 (doc-10 §5). 1 件だけだが、マイルストーン側と同じ 3 点の形で置く:
+ * 「押せないボタンが無いこと」と「出さないと決めたこと」は、並べ方が同じでないと読み分けられない。
+ *
+ * 削除が無いのは 2 段の理由による。v1.47.1 の `doc` に delete/remove 相当が無く、その不在を Atlas が
+ * ファイルを直接消して埋めることは decision-2 の境界（読み取りは直接解析、書き込みは CLI 経由）の外に
+ * ある。CLI が備えるまで Atlas も出さない、というマイルストーンの説明編集と同じ立て方である。
+ */
+export const WITHHELD_DOCUMENT_OPERATIONS: WithheldOperation[] = [
+  {
+    kind: "remove",
+    label: "文書の削除",
+    mapping: "`doc` に delete/remove 相当のサブコマンドなし",
+    reason:
+      "v1.47.1 の `doc` に削除サブコマンドが無く、Atlas が管理ファイルを直接消すことは " +
+      "decision-2 の境界（更新は Backlog CLI 経由）の外にあるため提供しません（doc-10 §5）。" +
+      "文書を消す必要があるときは、対象プロジェクトで直接ファイルを操作してください。",
+  },
+];
+
+// --- 新規タスク区画で欄を置かない項目 (doc-10 §7) ----------------------------------------------
+
+/** 作成フォームに欄を置かない項目 1 件と、その理由・作成後の経路。 */
+export interface OmittedCreateField {
+  label: string;
+  /** v1.47.1 の `task create` が受け取るフラグ。欄が無いことを「CLI に無い」と読ませないために出す。 */
+  flag: string;
+  /** なぜ欄を置かないか。製品判断として書く（doc-10 §7 は「CLI に無い」と書くことを禁じている）。 */
+  reason: string;
+  /** 作成後にどこで足せるか。項目ごとに違う（doc-10 §7）。 */
+  after: string;
+}
+
+/**
+ * `task create` が受け取れるのに本区画が欄を出さない項目 (doc-10 §7). 画面に理由を書くために持つ:
+ * 欄が無いことの説明を「CLI に無いから」にしてしまうと、実測では受け取れる（doc-5 §3、2026-07-29）
+ * ため事実に反し、しかも後から CLI を理由に増やす口実になる。
+ */
+export const TASK_CREATE_SCOPE_NOTE =
+  "作成フォームは、タスクを識別し分類するのに要る項目へ絞ってあります。" +
+  "以下は v1.47.1 の `task create` が受け取り、作成された管理ファイルへ保存する項目ですが" +
+  "（doc-5 §3、2026-07-29 実測）、Atlas の製品判断で欄を置いていません（doc-10 §7）。";
+
+export const TASK_CREATE_OMITTED_FIELDS: OmittedCreateField[] = [
+  {
+    label: "assignee",
+    flag: "-a",
+    reason:
+      "割当は作業の進行につれて変わるため、作成時にだけ設定できて後から変えられない経路を作らない" +
+      "（TASK-57 の決定で編集側に閉じた）。",
+    after:
+      "タスク詳細の編集（doc-8 §6）で設定・変更します。ただし解除だけは CLI に手段がありません" +
+      "（`-a \"\"` は沈黙無変更。doc-5 §3.1）。",
+  },
+  {
+    label: "実装計画",
+    flag: "--plan",
+    reason: "作業を始めてから書くものであり、作成時点で書ける内容ではない。",
+    after: "タスク詳細の編集（doc-8 §6）で足します。",
+  },
+  {
+    label: "実装ノート",
+    flag: "--notes",
+    reason: "作業中に積み上がるものであり、作成時点で書ける内容ではない。",
+    after: "タスク詳細の編集（doc-8 §6）で足します。",
+  },
+  {
+    label: "References",
+    flag: "--ref",
+    reason: "参照は作業の過程で増えるもので、作成フォームに置いても同じ入力を前倒しするだけになる。",
+    after: "タスク詳細の編集（doc-8 §6）で足します。",
+  },
+  {
+    label: "依存",
+    flag: "--depends-on",
+    reason: "依存関係は着手の前後で判明するもので、作成時点に固定すべき分類ではない。",
+    after: "タスク詳細の編集（doc-8 §6）で足します。",
   },
 ];
 
