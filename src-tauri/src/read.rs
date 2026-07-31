@@ -394,6 +394,7 @@ fn read_milestones(source: &dyn ScanSource) -> Result<Vec<Milestone>, RootError>
         };
         let (id, title) = front;
         out.push(Milestone {
+            source_path: path,
             id,
             title,
             description: section_or_heading(&body, "Description"),

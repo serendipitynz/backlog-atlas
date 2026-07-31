@@ -14,7 +14,10 @@
 //! | 読取版指標 | [`VersionStamp`] / [`VersionIndex`] | the version (mtime, size, content hash) of a file at the moment it was last read |
 //! | 外部変更 | — | any write to the root outside this Atlas's own update; observed, never assumed |
 //! | 更新前競合 | [`ConflictCheck::Conflict`] | recorded stamp ≠ current file, checked *before* an update launches |
-//! | 更新操作の対象（が属するファイル） | [`TargetResolution`] | which file an operation rewrites: checkable, none (a create), or unresolvable ⇒ refused (doc-9 §4) |
+//! | 書き換え対象集合 | [`TargetResolution`] | which files an operation rewrites: checkable, model-derived, none (a create), or unresolvable ⇒ refused (doc-9 §4/§4.2.2) |
+//! | 参照タスク集合 | [`referencing_tasks`] | the active tasks a 参照追随書き換え may rewrite, matched by id or title (doc-9 §4.2.2) |
+//! | 未読タスクファイル | [`SyncState::unread_task_files`] | an active-task file with no recorded stamp, so the set may no longer be the one that was read (doc-9 §4.2.3) |
+//! | 全件一致 | [`SyncState::guarded_update`]'s check loop | every member must match, or the CLI is not launched (doc-9 §4.2.3) |
 //! | 再読込契機 | [`ReloadReason`] + [`SyncState::reload`] | the one path every re-read funnels through (update success, external change, future branch switch — AC #6) |
 //! | 再構築単位 | root (whole-root read via [`ScanSource`]) | doc-4's reconstruction unit; file-level is a forward refinement on the same method |
 //! | ファイル監視 | [`WatchSession`] | the read-only OS-notification subscription (doc-9 §3) |
@@ -37,7 +40,8 @@ use crate::domain::ProjectModel;
 use crate::read::read_project;
 use crate::read::scan::{ScanDir, ScanSource};
 use crate::update::{
-    self, BacklogCli, CliCapability, RejectReason, UpdateOperation, UpdateOutcome,
+    self, BacklogCli, CliCapability, MilestoneTaskHandling, RejectReason, UpdateOperation,
+    UpdateOutcome,
 };
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
@@ -250,10 +254,19 @@ pub enum ReloadReason {
 /// structural guarantee, not an ordering a caller has to get right.
 #[derive(Debug)]
 pub enum GuardedUpdate {
-    /// A target diverged from its recorded version, so the CLI was never launched (AC #3). `model`
-    /// is the reload that surfaces the external change (doc-9 §5 — a normal re-read, not 縮退), and
-    /// `path` names the file that diverged.
-    Conflict { path: PathBuf, model: ProjectModel },
+    /// 全件一致 broke, so the CLI was never launched (AC #3, doc-9 §4.2.3). `model` is the reload
+    /// that surfaces the external change (doc-9 §5 — a normal re-read, not 縮退). Both lists are
+    /// reported whole rather than stopping at the first entry: doc-9 §4.2.3 asks for every member,
+    /// so the user learns in one go what to re-read instead of one file per retry.
+    Conflict {
+        /// Members of the 書き換え対象集合 whose version no longer matches the recorded one (or
+        /// that were never read, or are gone).
+        diverged: Vec<PathBuf>,
+        /// 未読タスクファイル — only ever non-empty for a 参照追随書き換え, whose set is derived
+        /// from the model and so cannot be trusted while an unread active task exists.
+        unread: Vec<PathBuf>,
+        model: ProjectModel,
+    },
     /// The action was launched. `outcome` is the adapter's verdict (doc-5 §5). `model` is `Some`
     /// exactly when on-disk state moved and was reloaded — a success, or a partial (mid-sequence)
     /// failure; it is `None` for a failure that changed nothing (doc-5 §5/§6).
@@ -367,6 +380,21 @@ impl SyncState {
         }
     }
 
+    /// 未読タスクファイル: active-task files on disk that this state's index has no stamp for
+    /// (doc-9 §4.2.3). A 参照追随書き換え's 書き換え対象集合 is derived from the model, so it only
+    /// describes what the CLI will rewrite while the model still knows every active task: a task
+    /// created after the read could reference the milestone, be rewritten by the CLI, and never
+    /// appear in the set or the check. Listing the directory is what makes that observable — the
+    /// index alone cannot show a file it has never seen. A task the read layer failed to *read* is
+    /// unstamped too and lands here for the same reason: nothing vouches for it.
+    fn unread_task_files(&self, source: &dyn ScanSource) -> io::Result<Vec<PathBuf>> {
+        Ok(source
+            .list(ScanDir::Tasks)?
+            .into_iter()
+            .filter(|path| !self.index.contains_key(path))
+            .collect())
+    }
+
     /// Run an update under the doc-9 §4 sequence as one unit: check every target's version, launch
     /// the CLI only if all are in sync, then reload. The targets are derived *inside* this boundary
     /// from `model` (which the caller holds paired with this state from [`initialize`](Self::initialize)
@@ -397,35 +425,54 @@ impl SyncState {
         source: &dyn ScanSource,
         probe: &dyn FileVersions,
     ) -> Result<GuardedUpdate, GuardError> {
-        // Pre-update check (AC #3): each operation's target is resolved from the model here, not
-        // supplied by the caller, so the check cannot be skipped. A single diverged target withholds
-        // the whole launch, matching the adapter's all-or-nothing planning (doc-5 §5).
+        // Pre-update check (AC #3): each operation's 書き換え対象集合 is resolved from the model
+        // here, not supplied by the caller, so the check cannot be skipped. 全件一致 (doc-9 §4.2.3):
+        // one diverged member withholds the whole launch, matching the adapter's all-or-nothing
+        // planning (doc-5 §5). The loop collects rather than returns early, so the conflict names
+        // every file the user has to re-read (doc-9 §4.2.3-3).
+        let mut diverged: BTreeSet<PathBuf> = BTreeSet::new();
+        let mut unread: BTreeSet<PathBuf> = BTreeSet::new();
         for op in action {
-            let path = match operation_target(op, model) {
-                TargetResolution::Checkable(path) => path,
+            let (targets, model_derived) = match operation_target(op, model) {
+                TargetResolution::Checkable(paths) => (paths, false),
+                // 参照追随書き換え: the set came from the model's contents, so it is only the set
+                // that was read while no active task file is unknown to us (doc-9 §4.2.3-2).
+                TargetResolution::ReferenceFollowing(paths) => (paths, true),
                 // A create has no version Atlas has read, so there is nothing to conflict with — the
                 // only case that may legitimately pass through unchecked.
                 TargetResolution::NoExistingFile => continue,
                 // Cannot be checked ⇒ must not run. Refused here, before any launch, so nothing ran
-                // and nothing changed (doc-9 §4).
+                // and nothing changed (doc-9 §4.2.4).
                 TargetResolution::Unresolvable { what, detail } => {
                     return Err(GuardError::UncheckableTarget { what, detail })
                 }
             };
-            if self
-                .check_conflict(&path, probe)
-                .map_err(GuardError::Probe)?
-                == ConflictCheck::Conflict
-            {
-                // The post-conflict reload is a re-read only; no CLI ran, so a retry stays safe.
-                let model = self
-                    .reload(ReloadReason::ExternalChange, source, probe)
-                    .map_err(|error| GuardError::Reload {
-                        error,
-                        applied: None,
-                    })?;
-                return Ok(GuardedUpdate::Conflict { path, model });
+            for path in targets {
+                if self
+                    .check_conflict(&path, probe)
+                    .map_err(GuardError::Probe)?
+                    == ConflictCheck::Conflict
+                {
+                    diverged.insert(path);
+                }
             }
+            if model_derived {
+                unread.extend(self.unread_task_files(source).map_err(GuardError::Probe)?);
+            }
+        }
+        if !diverged.is_empty() || !unread.is_empty() {
+            // The post-conflict reload is a re-read only; no CLI ran, so a retry stays safe.
+            let model = self
+                .reload(ReloadReason::ExternalChange, source, probe)
+                .map_err(|error| GuardError::Reload {
+                    error,
+                    applied: None,
+                })?;
+            return Ok(GuardedUpdate::Conflict {
+                diverged: diverged.into_iter().collect(),
+                unread: unread.into_iter().collect(),
+                model,
+            });
         }
 
         // Every target still matches what we read: run the action (doc-9 §4 step 2).
@@ -455,9 +502,9 @@ impl SyncState {
     }
 }
 
-/// What the pre-update check could determine about an operation's target (doc-9 §4).
+/// An operation's 書き換え対象集合 and how 全件一致 applies to it (doc-9 §4.2.2).
 ///
-/// The three cases are kept apart because two of them used to collapse into one `None`, which is what
+/// The four cases are kept apart because two of them used to collapse into one `None`, which is what
 /// let a mutating operation reach the CLI unchecked (review round 2): "a create has no file to check"
 /// and "this mutation's file cannot be checked" are opposite situations, and only the first is safe to
 /// pass through. Distinct variants are what turn "no CLI launch on conflict" into a structural
@@ -467,23 +514,27 @@ enum TargetResolution {
     /// A create: it writes a new file, so there is no version Atlas has read to conflict with (doc-9
     /// §4 governs rewrites of files already read). Safe to pass through unchecked.
     NoExistingFile,
-    /// The file this operation will rewrite. Its recorded version is checked before launch.
-    Checkable(PathBuf),
-    /// A mutation whose target cannot be version-checked here. Refused before launch rather than let
-    /// through: an unchecked read-modify-write is exactly the overwrite doc-9 §4.1 exists to prevent.
+    /// 1 対 1 照合 (doc-9 §4.2.2): the set is fixed by the operation's arguments, so checking each
+    /// member is the whole of 全件一致.
+    Checkable(Vec<PathBuf>),
+    /// 参照追随書き換え (doc-9 §4.2.2): the set is the milestone file plus the 参照タスク集合, which
+    /// is derived from the model's *contents*. That derivation is only as current as the read it came
+    /// from, so 全件一致 is joined by the 未読タスクファイル condition (doc-9 §4.2.3-2).
+    ReferenceFollowing(Vec<PathBuf>),
+    /// 照合不能 (doc-9 §4.2.4): a mutation whose set this design defines no check for. Refused before
+    /// launch rather than let through — an unchecked read-modify-write is exactly the overwrite
+    /// doc-9 §4.1 exists to prevent. No v1.47.1 milestone operation lands here any more; what remains
+    /// is an id the model does not carry, which leaves nothing to check against.
     Unresolvable { what: &'static str, detail: String },
 }
 
-/// Resolve the file an operation will rewrite, for the pre-update conflict check (doc-9 §4).
+/// Resolve the files an operation will rewrite, for the pre-update conflict check (doc-9 §4.2.2).
 ///
-/// Tasks, drafts and documents resolve to their `source_path` from the model. Milestone rename /
-/// remove / archive are deliberately *not* checkable here: `milestone rename` (without
-/// `--no-update-tasks`) and `milestone remove --task-handling clear|reassign` rewrite every task file
-/// referencing the milestone (doc-5 §3), so their real target set is the milestone file *plus* an
-/// unbounded set of task files. doc-9 §4 defines the check for 更新操作の対象 file, not for that
-/// fan-out, and inventing a rule for it here would add an undocumented decision to a contract that
-/// has none. Refusing is the safe reading — nothing is overwritten unchecked — and extending doc-9 to
-/// cover the fan-out is what would enable them.
+/// Tasks, drafts and documents resolve to their `source_path` from the model. Milestone operations
+/// resolve to the milestone's own file, plus — for the three that carry a 参照追随書き換え — the
+/// 参照タスク集合 ([`referencing_tasks`]). Which three that is comes from doc-9 §4.2.1's measurement,
+/// not from the flag names: `rename --no-update-tasks`, `remove --task-handling keep` and `archive`
+/// were observed to rewrite the milestone file alone.
 fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> TargetResolution {
     let (kind, id) = match op {
         // A create writes a file that does not exist yet: nothing read, nothing to conflict with.
@@ -500,29 +551,20 @@ fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> TargetResolut
         }
         UpdateOperation::DocUpdate { doc_id, .. } => ("document", doc_id),
 
-        UpdateOperation::MilestoneRename { from, .. } => {
-            return TargetResolution::Unresolvable {
-                what: "milestone rename",
-                detail: format!(
-                    "renaming `{from}` also rewrites every task referencing it, and doc-9 §4 does \
-                     not define the check for that fan-out"
-                ),
-            }
-        }
-        UpdateOperation::MilestoneRemove { name, .. } => {
-            return TargetResolution::Unresolvable {
-                what: "milestone remove",
-                detail: format!(
-                    "removing `{name}` also rewrites every task referencing it, and doc-9 §4 does \
-                     not define the check for that fan-out"
-                ),
-            }
+        UpdateOperation::MilestoneRename {
+            from, update_tasks, ..
+        } => return milestone_target("milestone rename", from, *update_tasks, model),
+        UpdateOperation::MilestoneRemove {
+            name,
+            task_handling,
+        } => {
+            // `keep` leaves referencing tasks untouched; `clear` and `reassign` rewrite them
+            // (doc-9 §4.2.1).
+            let follows_references = !matches!(task_handling, MilestoneTaskHandling::Keep);
+            return milestone_target("milestone remove", name, follows_references, model);
         }
         UpdateOperation::MilestoneArchive { name } => {
-            return TargetResolution::Unresolvable {
-                what: "milestone archive",
-                detail: format!("the model carries no source path for milestone `{name}`"),
-            }
+            return milestone_target("milestone archive", name, false, model)
         }
     };
 
@@ -532,7 +574,7 @@ fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> TargetResolut
         _ => model.task(id).map(|t| t.source_path.clone()),
     };
     match path {
-        Some(path) => TargetResolution::Checkable(path),
+        Some(path) => TargetResolution::Checkable(vec![path]),
         // The id is absent from the model this state was built with, so there is no recorded version
         // to compare and the operation would run unchecked. Refuse it: the CLI would probably fail on
         // the id too, but that must not be the thing upholding the guarantee.
@@ -541,6 +583,70 @@ fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> TargetResolut
             detail: format!("{kind} `{id}` is not in the model this sync state was built from"),
         },
     }
+}
+
+/// The 書き換え対象集合 of one milestone operation (doc-9 §4.2.2): the milestone's own file, plus the
+/// 参照タスク集合 when the operation follows references. `name` is what the CLI takes as its
+/// positional operand — an id or a title, so the milestone is looked up the same two ways.
+fn milestone_target(
+    what: &'static str,
+    name: &str,
+    follows_references: bool,
+    model: &ProjectModel,
+) -> TargetResolution {
+    let Some(milestone) = find_milestone(model, name) else {
+        return TargetResolution::Unresolvable {
+            what,
+            detail: format!(
+                "milestone `{name}` is not in the model this sync state was built from"
+            ),
+        };
+    };
+    let mut files = vec![milestone.source_path.clone()];
+    if follows_references {
+        files.extend(referencing_tasks(model, milestone));
+        TargetResolution::ReferenceFollowing(files)
+    } else {
+        TargetResolution::Checkable(files)
+    }
+}
+
+/// The milestone an operand names. v1.47.1 takes either the id or the title (`milestone archive
+/// <name>` is documented as "by id or title"), so both are accepted here; the title is compared the
+/// way the CLI compares it (doc-9 §4.2.1).
+fn find_milestone<'a>(model: &'a ProjectModel, name: &str) -> Option<&'a crate::domain::Milestone> {
+    model
+        .milestones
+        .iter()
+        .find(|m| m.id == name || same_title(&m.title, name))
+}
+
+/// 参照タスク集合 (doc-9 §4.2.2): the active tasks a 参照追随書き換え may rewrite. Deliberately wider
+/// than the read layer's reference resolution, which matches the id alone: the CLI also rewrites a
+/// task whose `milestone` value equals the *title* modulo surrounding whitespace and case (doc-9
+/// §4.2.1), and a set that missed those would leave them rewritten unchecked. Tasks outside `tasks/`
+/// are excluded because no operation was observed to touch them, and files the CLI does not in fact
+/// rewrite (a value already equal to the id) are kept in: that skip is v1.47.1 behaviour, not a
+/// contract, so the set is the upper bound of what may be rewritten (doc-9 §4.2.2).
+fn referencing_tasks(model: &ProjectModel, milestone: &crate::domain::Milestone) -> Vec<PathBuf> {
+    model
+        .tasks
+        .iter()
+        .filter(|task| task.storage_state == Some(crate::domain::StorageState::Active))
+        .filter(|task| {
+            task.milestone
+                .as_deref()
+                .is_some_and(|value| value == milestone.id || same_title(&milestone.title, value))
+        })
+        .map(|task| task.source_path.clone())
+        .collect()
+}
+
+/// Title comparison as v1.47.1 performs it: surrounding whitespace and case are ignored, and nothing
+/// else is (an inserted inner space was observed *not* to match — doc-9 §4.2.1). `to_lowercase` is
+/// the Unicode-aware fold, matching the CLI's JavaScript `toLowerCase`.
+fn same_title(title: &str, value: &str) -> bool {
+    title.trim().to_lowercase() == value.trim().to_lowercase()
 }
 
 // --- debounce (doc-9 §3, AC #1) -----------------------------------------------------------------
@@ -1451,8 +1557,10 @@ task_prefix: \"TASK\"\n";
             .unwrap();
 
         match result {
-            GuardedUpdate::Conflict { path, model } => {
-                assert_eq!(path, task_path(&temp));
+            GuardedUpdate::Conflict {
+                diverged, model, ..
+            } => {
+                assert_eq!(diverged, vec![task_path(&temp)]);
                 // doc-9 §5: the reload surfaces the external content, not the discarded edit.
                 assert_eq!(
                     model.task("TASK-1").unwrap().status.as_deref(),
@@ -1564,7 +1672,7 @@ task_prefix: \"TASK\"\n";
         // supply (or omit) it, so the check cannot be bypassed.
         assert_eq!(
             operation_target(&status_edit("Done"), &model),
-            TargetResolution::Checkable(task_path(&temp))
+            TargetResolution::Checkable(vec![task_path(&temp)])
         );
         assert_eq!(
             operation_target(
@@ -1573,7 +1681,7 @@ task_prefix: \"TASK\"\n";
                 },
                 &model
             ),
-            TargetResolution::Checkable(task_path(&temp))
+            TargetResolution::Checkable(vec![task_path(&temp)])
         );
         // A document update resolves too, now that the model carries its path (round-2 fix): without
         // it, `doc update --content` would full-replace an externally edited document unchecked.
@@ -1588,7 +1696,7 @@ task_prefix: \"TASK\"\n";
                 },
                 &model
             ),
-            TargetResolution::Checkable(temp.path.join("docs").join("doc-1 - d.md"))
+            TargetResolution::Checkable(vec![temp.path.join("docs").join("doc-1 - d.md")])
         );
         // A create writes a new file: nothing read, nothing to conflict with.
         assert_eq!(
@@ -1615,8 +1723,61 @@ task_prefix: \"TASK\"\n";
             ),
             TargetResolution::Unresolvable { .. }
         ));
-        // Milestone rename/remove fan out to every referencing task file, which doc-9 §4 does not
-        // define a check for — refused rather than run unchecked.
+        // A milestone the model does not carry has no file to check — refused, not waved through.
+        assert!(matches!(
+            operation_target(
+                &UpdateOperation::MilestoneArchive {
+                    name: "m-404".to_string()
+                },
+                &model
+            ),
+            TargetResolution::Unresolvable { .. }
+        ));
+    }
+
+    // --- doc-9 §4.2.2: the 書き換え対象集合 of a milestone operation ------------------------------
+
+    /// A root whose milestone `m-1` ("Phase One") is referenced four ways: by id from an active task,
+    /// by title (differing in case and surrounding space) from another active task, and by id from a
+    /// draft and an archived task — the two storage states doc-9 §4.2.1 measured as never rewritten.
+    fn milestone_root() -> TempDir {
+        let temp = TempDir::new();
+        temp.write("config.yml", CONFIG);
+        temp.write(
+            "milestones/m-1 - phase-one.md",
+            "---\nid: m-1\ntitle: Phase One\n---\n\n## Description\n\nd\n",
+        );
+        temp.write("tasks/task-1 - a.md", &milestone_task("TASK-1", "m-1"));
+        temp.write(
+            "tasks/task-2 - b.md",
+            &milestone_task("TASK-2", "  phase ONE  "),
+        );
+        temp.write("tasks/task-3 - c.md", &task_file("TASK-3", "To Do"));
+        temp.write("drafts/draft-1 - d.md", &milestone_task("DRAFT-1", "m-1"));
+        temp.write(
+            "archive/tasks/task-9 - old.md",
+            &milestone_task("TASK-9", "m-1"),
+        );
+        temp
+    }
+
+    fn milestone_task(id: &str, milestone: &str) -> String {
+        format!(
+            "---\nid: {id}\ntitle: Task {id}\nstatus: To Do\nassignee: []\nlabels: []\n\
+             milestone: {milestone}\n---\n\nbody\n"
+        )
+    }
+
+    #[test]
+    fn a_reference_following_operation_covers_the_milestone_and_its_active_referencing_tasks() {
+        let temp = milestone_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, _state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+
+        let milestone_file = temp.path.join("milestones").join("m-1 - phase-one.md");
+        let by_id = temp.path.join("tasks").join("task-1 - a.md");
+        let by_title = temp.path.join("tasks").join("task-2 - b.md");
+
         for op in [
             UpdateOperation::MilestoneRename {
                 from: "m-1".to_string(),
@@ -1625,20 +1786,198 @@ task_prefix: \"TASK\"\n";
             },
             UpdateOperation::MilestoneRemove {
                 name: "m-1".to_string(),
-                task_handling: crate::update::MilestoneTaskHandling::Clear,
+                task_handling: MilestoneTaskHandling::Clear,
+            },
+            UpdateOperation::MilestoneRemove {
+                name: "m-1".to_string(),
+                task_handling: MilestoneTaskHandling::Reassign {
+                    to: "m-2".to_string(),
+                },
+            },
+        ] {
+            match operation_target(&op, &model) {
+                TargetResolution::ReferenceFollowing(files) => {
+                    // The title-valued reference is in the set even though the read layer treats it
+                    // as dangling: the CLI rewrites it (doc-9 §4.2.1), so the check must cover it.
+                    assert_eq!(
+                        files,
+                        vec![milestone_file.clone(), by_id.clone(), by_title.clone()],
+                        "{op:?} must cover the milestone file and every active referencing task"
+                    );
+                }
+                other => panic!("expected ReferenceFollowing for {op:?}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_operations_without_a_fan_out_resolve_to_the_milestone_file_alone() {
+        // doc-9 §4.2.1 measured these three as rewriting the milestone file only, so they are 1 対 1
+        // 照合 and carry no 未読タスクファイル condition.
+        let temp = milestone_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, _state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let milestone_file = temp.path.join("milestones").join("m-1 - phase-one.md");
+
+        for op in [
+            UpdateOperation::MilestoneRename {
+                from: "m-1".to_string(),
+                to: "Phase 1".to_string(),
+                update_tasks: false,
+            },
+            UpdateOperation::MilestoneRemove {
+                name: "m-1".to_string(),
+                task_handling: MilestoneTaskHandling::Keep,
             },
             UpdateOperation::MilestoneArchive {
                 name: "m-1".to_string(),
             },
         ] {
-            assert!(
-                matches!(
-                    operation_target(&op, &model),
-                    TargetResolution::Unresolvable { .. }
-                ),
-                "{op:?} must not be treated as checkable or as a create"
+            assert_eq!(
+                operation_target(&op, &model),
+                TargetResolution::Checkable(vec![milestone_file.clone()]),
+                "{op:?} rewrites the milestone file alone"
             );
         }
+    }
+
+    #[test]
+    fn a_milestone_operand_may_name_the_title_instead_of_the_id() {
+        // v1.47.1 takes "id or title" as the operand; resolving only ids would refuse a legitimate
+        // operation as unresolvable.
+        let temp = milestone_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, _state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        assert_eq!(
+            operation_target(
+                &UpdateOperation::MilestoneArchive {
+                    name: " phase one ".to_string()
+                },
+                &model
+            ),
+            TargetResolution::Checkable(vec![temp
+                .path
+                .join("milestones")
+                .join("m-1 - phase-one.md")])
+        );
+    }
+
+    #[test]
+    fn an_unread_active_task_withholds_a_reference_following_update() {
+        // doc-9 §4.2.3-2: the 参照タスク集合 comes from the model, so a task the model never saw
+        // could be rewritten by the CLI outside the check. The update is withheld until a reload,
+        // even though the new task references nothing.
+        let temp = milestone_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+        cli.calls.borrow_mut().clear();
+
+        temp.write("tasks/task-4 - new.md", &task_file("TASK-4", "To Do"));
+
+        let result = state
+            .guarded_update(
+                &[UpdateOperation::MilestoneRename {
+                    from: "m-1".to_string(),
+                    to: "Phase 1".to_string(),
+                    update_tasks: true,
+                }],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+            )
+            .unwrap();
+
+        match result {
+            GuardedUpdate::Conflict {
+                diverged, unread, ..
+            } => {
+                assert!(diverged.is_empty(), "no member of the set changed");
+                assert_eq!(
+                    unread,
+                    vec![temp.path.join("tasks").join("task-4 - new.md")]
+                );
+            }
+            other => panic!("expected a Conflict, got {other:?}"),
+        }
+        assert!(
+            cli.calls.borrow().is_empty(),
+            "the CLI must not launch while the set cannot be trusted (doc-9 §4.2.3)"
+        );
+
+        // The same unread file does not withhold a 1 対 1 操作: its target does not depend on the
+        // model's contents (doc-9 §4.2.3-2).
+        let archive = state
+            .guarded_update(
+                &[UpdateOperation::MilestoneArchive {
+                    name: "m-1".to_string(),
+                }],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+            )
+            .unwrap();
+        assert!(matches!(archive, GuardedUpdate::Ran { .. }));
+    }
+
+    #[test]
+    fn every_diverged_member_of_the_set_is_reported_at_once() {
+        // doc-9 §4.2.3-3: stopping at the first one would make the user re-read one file per retry.
+        let temp = milestone_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+        cli.calls.borrow_mut().clear();
+
+        // Two members of the set change externally: the milestone file and one referencing task.
+        temp.write(
+            "milestones/m-1 - phase-one.md",
+            "---\nid: m-1\ntitle: Phase One\n---\n\n## Description\n\nedited elsewhere\n",
+        );
+        temp.write(
+            "tasks/task-2 - b.md",
+            &milestone_task("TASK-2", "Phase One"),
+        );
+
+        let result = state
+            .guarded_update(
+                &[UpdateOperation::MilestoneRemove {
+                    name: "m-1".to_string(),
+                    task_handling: MilestoneTaskHandling::Clear,
+                }],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+            )
+            .unwrap();
+
+        match result {
+            GuardedUpdate::Conflict {
+                diverged, unread, ..
+            } => {
+                assert_eq!(
+                    diverged,
+                    vec![
+                        temp.path.join("milestones").join("m-1 - phase-one.md"),
+                        temp.path.join("tasks").join("task-2 - b.md"),
+                    ]
+                );
+                assert!(unread.is_empty());
+            }
+            other => panic!("expected a Conflict, got {other:?}"),
+        }
+        assert!(cli.calls.borrow().is_empty(), "no CLI launch on conflict");
     }
 
     // Round-2 [P2] regression: an unresolved *mutating* target must be refused before launch, not
@@ -1720,8 +2059,9 @@ task_prefix: \"TASK\"\n";
             .unwrap();
 
         match result {
-            GuardedUpdate::Conflict { path, .. } => {
-                assert!(path.ends_with("doc-1 - d.md"), "got {path:?}");
+            GuardedUpdate::Conflict { diverged, .. } => {
+                assert_eq!(diverged.len(), 1, "got {diverged:?}");
+                assert!(diverged[0].ends_with("doc-1 - d.md"), "got {diverged:?}");
             }
             other => panic!("expected Conflict, got {other:?}"),
         }
@@ -1735,7 +2075,9 @@ task_prefix: \"TASK\"\n";
     }
 
     #[test]
-    fn a_milestone_fanout_operation_is_refused_rather_than_run_unchecked() {
+    fn a_milestone_operation_naming_an_unknown_milestone_is_refused_before_launch() {
+        // The root carries no milestone, so there is no file to check the rename against — the same
+        // refusal an unknown task id gets, and the only 照合不能 case left (doc-9 §4.2.4).
         let temp = minimal_root();
         let source = WorkingTree::new(&temp.path);
         let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
@@ -1803,8 +2145,9 @@ task_prefix: \"TASK\"\n";
             .unwrap();
 
         match result {
-            GuardedUpdate::Conflict { path, .. } => {
-                assert!(path.ends_with("task-2 - b.md"), "got {path:?}");
+            GuardedUpdate::Conflict { diverged, .. } => {
+                assert_eq!(diverged.len(), 1, "got {diverged:?}");
+                assert!(diverged[0].ends_with("task-2 - b.md"), "got {diverged:?}");
             }
             other => panic!("expected Conflict, got {other:?}"),
         }

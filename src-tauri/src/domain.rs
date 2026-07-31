@@ -59,7 +59,14 @@ pub struct Config {
 /// A milestone (`milestones/m-N`) — the resolution target of a task's `milestone` reference
 /// (doc-4 §3.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Milestone {
+    /// Source file path, the same facet [`Task::source_path`] and [`Document::source_path`] carry.
+    /// Present because doc-9 §4.2.2 puts this file in the 書き換え対象集合 of all six milestone
+    /// operations, and three of them (`rename --no-update-tasks`, `remove --task-handling keep`,
+    /// `archive`) rewrite nothing else — without the path they could only run *unchecked*. Not a
+    /// frontmatter field.
+    pub source_path: PathBuf,
     pub id: String,
     pub title: String,
     pub description: Option<String>,
@@ -366,6 +373,7 @@ mod tests {
                 TaskHealth::Ok,
             )],
             vec![Milestone {
+                source_path: PathBuf::from("milestones/m-1.md"),
                 id: "m-1".into(),
                 title: "impl".into(),
                 description: None,

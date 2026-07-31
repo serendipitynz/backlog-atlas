@@ -251,10 +251,14 @@ impl CommitSearch {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum UpdateResult {
-    /// 更新前競合: a target diverged from the version Atlas read, so the CLI was never launched
-    /// (doc-9 §4.1). `project` is the re-read root — an ordinary reload, not 縮退 (doc-9 §5).
+    /// 更新前競合: 全件一致 broke, so the CLI was never launched (doc-9 §4.1/§4.2.3). `project` is
+    /// the re-read root — an ordinary reload, not 縮退 (doc-9 §5). The two lists stay apart because
+    /// the screen has to say two different things: `diverged` members changed since Atlas read them,
+    /// while `unread` names active task files Atlas never read, which makes the 参照追随書き換え's
+    /// set itself untrustworthy rather than any one file stale (doc-9 §4.2.3-2).
     Conflict {
-        path: PathBuf,
+        diverged: Vec<PathBuf>,
+        unread: Vec<PathBuf>,
         project: ProjectSnapshot,
     },
     /// The CLI ran. `outcome` is its verdict (success, or a failure carrying stderr). `project` is
@@ -308,10 +312,11 @@ pub enum CommandError {
     /// The update adapter refused the action before launch — outside the confirmed CLI's capability,
     /// or nothing to change (doc-5 §5). Nothing ran and nothing changed.
     UpdateRejected { detail: String },
-    /// 照合不能 (doc-9 §4.2): the operation rewrites a set of files whose check doc-9 does not
-    /// define (the milestone 参照追随書き換え fan-out), so it is refused before launch. doc-9 §5
-    /// requires this to be presented *differently* from a conflict: no version divergence was
-    /// observed here — there is no defined way to look for one.
+    /// 照合不能 (doc-9 §4.2.4): the operation's 書き換え対象集合 has no check this design defines, so
+    /// it is refused before launch. doc-9 §5 requires this to be presented *differently* from a
+    /// conflict: no version divergence was observed here — there is no defined way to look for one.
+    /// Since doc-9 §4.2 settled the 参照追随書き換え rule, what reaches this variant is an operand the
+    /// open model does not carry, which leaves nothing to check the operation against.
     UncheckableTarget { what: String, detail: String },
     /// A re-read failed. `applied` is the crux (doc-5 §6): `None` means no CLI ran and a retry is
     /// safe; `Some` means the update already landed and only the refresh failed, so a blind retry
@@ -642,12 +647,14 @@ impl Workspace {
             .map_err(CommandError::guard)?;
         match guarded {
             GuardedUpdate::Conflict {
-                path,
+                diverged,
+                unread,
                 model: reloaded,
             } => {
                 *model = reloaded;
                 Ok(UpdateResult::Conflict {
-                    path,
+                    diverged,
+                    unread,
                     project: ProjectSnapshot::build(model, &entry.status_aliases),
                 })
             }
@@ -2260,10 +2267,14 @@ labels: []\n\
             )
             .unwrap();
 
-        let UpdateResult::Conflict { path, project } = result else {
+        let UpdateResult::Conflict {
+            diverged, project, ..
+        } = result
+        else {
             panic!("expected a conflict");
         };
-        assert!(path.ends_with("task-1 - a.md"));
+        assert_eq!(diverged.len(), 1, "got {diverged:?}");
+        assert!(diverged[0].ends_with("task-1 - a.md"));
         // The conflict carries the re-read root, so the screen can show what is actually there.
         assert_eq!(project.tasks[0].task.status.as_deref(), Some("Done"));
         // Only the version probe ran; no `task edit` was launched (doc-9 §4.1).
@@ -2284,9 +2295,9 @@ labels: []\n\
 
         let cli = FakeCli::default();
         let capability = capability(&cli);
-        // A milestone rename rewrites every task referencing it, and doc-9 §4 defines no check for
-        // that fan-out — refused before launch, and doc-9 §5 requires it to read differently from a
-        // conflict: no divergence was observed, there is no defined way to look for one.
+        // The root carries no milestone `m-1`, so the rename has no file to check against — refused
+        // before launch, and doc-9 §5 requires it to read differently from a conflict: no divergence
+        // was observed, there is no defined way to look for one.
         let action = vec![UpdateOperation::MilestoneRename {
             from: "m-1".to_string(),
             to: "m-2".to_string(),
@@ -2309,6 +2320,53 @@ labels: []\n\
             .borrow()
             .iter()
             .all(|args| args == &["--version".to_string()]));
+    }
+
+    #[test]
+    fn a_milestone_rename_is_checked_and_launched_now_that_doc_9_defines_its_set() {
+        // TASK-45: before doc-9 §4.2 fixed the 参照追随書き換え rule, this same action was refused at
+        // the boundary. It now resolves to the milestone file plus its 参照タスク集合, and — every
+        // member being in sync — reaches the CLI.
+        let (temp, entry) = root();
+        temp.write(
+            "backlog/milestones/m-1 - phase-one.md",
+            "---\nid: m-1\ntitle: Phase One\n---\n\n## Description\n\nd\n",
+        );
+        let mut workspace = Workspace::default();
+        workspace
+            .open(&entry, &source(&entry), &FsVersions)
+            .unwrap();
+
+        let cli = FakeCli::default();
+        let capability = capability(&cli);
+        let action = vec![UpdateOperation::MilestoneRename {
+            from: "m-1".to_string(),
+            to: "Phase 1".to_string(),
+            update_tasks: true,
+        }];
+        let result = workspace
+            .apply(
+                &entry,
+                &action,
+                &capability,
+                &cli,
+                &source(&entry),
+                &FsVersions,
+            )
+            .unwrap();
+
+        assert!(matches!(
+            result,
+            UpdateResult::Ran {
+                outcome: UpdateOutcome::Succeeded,
+                ..
+            }
+        ));
+        assert!(cli
+            .calls
+            .borrow()
+            .iter()
+            .any(|args| args.first().map(String::as_str) == Some("milestone")));
     }
 
     #[test]
