@@ -16,7 +16,8 @@
 //! | 更新前競合 | [`ConflictCheck::Conflict`] | recorded stamp ≠ current file, checked *before* an update launches |
 //! | 書き換え対象集合 | [`TargetResolution`] | which files an operation rewrites: checkable, model-derived, none (a create), or unresolvable ⇒ refused (doc-9 §4/§4.2.2) |
 //! | 参照タスク集合 | [`referencing_tasks`] | the active tasks a 参照追随書き換え may rewrite, matched by id or title (doc-9 §4.2.2) |
-//! | 未読タスクファイル | [`SyncState::unread_task_files`] | an active-task file with no recorded stamp, so the set may no longer be the one that was read (doc-9 §4.2.3) |
+//! | 走査範囲の同一性 | [`SyncState::scope_divergence`] | every active-task file on disk is one the model read, at the version it read (doc-9 §4.2.3) |
+//! | 未読タスクファイル | [`SyncState::scope_divergence`]'s first list | an active-task file with no recorded stamp — one of the two ways the scope differs (doc-9 §4.2.3) |
 //! | 全件一致 | [`SyncState::guarded_update`]'s check loop | every member must match, or the CLI is not launched (doc-9 §4.2.3) |
 //! | 再読込契機 | [`ReloadReason`] + [`SyncState::reload`] | the one path every re-read funnels through (update success, external change, future branch switch — AC #6) |
 //! | 再構築単位 | root (whole-root read via [`ScanSource`]) | doc-4's reconstruction unit; file-level is a forward refinement on the same method |
