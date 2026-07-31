@@ -10,7 +10,10 @@ import {
   EMPTY_TASK_CREATE,
   MILESTONE_DESCRIPTION_NOT_EDITABLE,
   MILESTONE_NAME_REQUIRED_REASON,
+  TASK_CREATE_OMITTED_FIELDS,
+  TASK_CREATE_SCOPE_NOTE,
   TASK_TITLE_REQUIRED_REASON,
+  WITHHELD_DOCUMENT_OPERATIONS,
   WITHHELD_MILESTONE_OPERATIONS,
   buildDocCreate,
   buildDocUpdate,
@@ -31,6 +34,7 @@ import {
   type MilestoneAddInput,
   type TaskCreateInput,
 } from "./manage";
+import { readinessReason } from "./edit";
 import type { CliReadiness, Document } from "./wire";
 
 function taskInput(overrides: Partial<TaskCreateInput> = {}): TaskCreateInput {
@@ -291,23 +295,122 @@ describe("マイルストーンの提供範囲", () => {
     expect(MILESTONE_DESCRIPTION_NOT_EDITABLE).toContain("doc-5 §3.1");
   });
 
-  it("withholds rename・remove・archive with a reason that is not a version divergence", () => {
+  it("lists the description edit beside the three, so every withheld operation is in one 区画", () => {
+    // TASK-55 / doc-10 §6: an operation decided against is laid out as 名称・写像先・理由 rather
+    // than as a disabled button. The description edit used to be a hint sentence apart from the
+    // list; it joins it here.
     expect(WITHHELD_MILESTONE_OPERATIONS.map((entry) => entry.kind)).toEqual([
+      "describe",
       "rename",
       "remove",
       "archive",
     ]);
     for (const entry of WITHHELD_MILESTONE_OPERATIONS) {
+      expect(entry.label).not.toBe("");
+      expect(entry.mapping).not.toBe("");
+    }
+  });
+
+  it("withholds rename・remove・archive with a reason that is not a version divergence", () => {
+    const uncheckable = WITHHELD_MILESTONE_OPERATIONS.filter((entry) => entry.kind !== "describe");
+    expect(uncheckable.map((entry) => entry.kind)).toEqual(["rename", "remove", "archive"]);
+    for (const entry of uncheckable) {
       // doc-9 §5: it must not read as 更新前競合, and no unchecked run may be offered as a way round.
       expect(entry.reason).toContain("版がずれていることを検出したわけではなく");
       expect(entry.reason).toContain("照合を省いた実行は代替経路として提供しません");
     }
   });
 
+  it("keeps the description edit out of the 照合不能 family, since its cause is different", () => {
+    // The description edit is missing because the CLI has no subcommand, not because 照合 is
+    // undefined. With the 照合不能 tail it would read as "it appears once 照合 is settled".
+    const describe = WITHHELD_MILESTONE_OPERATIONS.find((entry) => entry.kind === "describe");
+    expect(describe?.reason).toBe(MILESTONE_DESCRIPTION_NOT_EDITABLE);
+    expect(describe?.reason).not.toContain("照合を省いた実行は代替経路として提供しません");
+  });
+
   it("keeps the withheld operations' 操作写像 legible, including reassign's required target", () => {
     const remove = WITHHELD_MILESTONE_OPERATIONS.find((entry) => entry.kind === "remove");
     expect(remove?.mapping).toContain("--task-handling <clear|keep|reassign>");
     expect(remove?.mapping).toContain("--reassign-to <milestone>");
+  });
+});
+
+// --- 文書の提供しない操作 (doc-10 §5) ----------------------------------------------------------
+
+describe("発行の可否", () => {
+  const ready: CliReadiness = { state: "ready", version: "1.47.1" };
+  const plan: IssuePlan = { state: "ready", action: [{ op: "milestoneAdd", name: "m-2" }] };
+
+  it("lets a caller hold issuance with its own reason, ahead of the form's state", () => {
+    // プロジェクト詳細画面 holds every 区画 while a ledger write is in flight (review [P1]): if that
+    // write is a move, the ids the screen holds start naming files in another root — a different
+    // fact from `ISSUE_BUSY_REASON` (another 発行 is running). Passing a reason is what lets the two
+    // be said apart.
+    const held = issueAvailability(plan, { readiness: ready, busy: false, hold: "移動中です" });
+    expect(held).toEqual({ state: "blocked", reason: "移動中です" });
+    // The hold outranks an unfilled form: the reason is the target, not the input.
+    const blockedPlan: IssuePlan = { state: "blocked", reason: "title は必須です" };
+    expect(issueAvailability(blockedPlan, { readiness: ready, busy: false, hold: "移動中です" })).toEqual(
+      { state: "blocked", reason: "移動中です" },
+    );
+  });
+
+  it("keeps the CLI degrade ahead of the hold, and no hold as no change", () => {
+    const degraded: CliReadiness = { state: "unavailable", detail: "not on PATH" };
+    expect(
+      issueAvailability(plan, { readiness: degraded, busy: false, hold: "移動中です" }),
+    ).toEqual({ state: "blocked", reason: readinessReason(degraded) });
+    expect(issueAvailability(plan, { readiness: ready, busy: false })).toEqual({ state: "ready" });
+    expect(issueAvailability(plan, { readiness: ready, busy: false, hold: null })).toEqual({
+      state: "ready",
+    });
+  });
+});
+
+describe("文書の提供範囲", () => {
+  it("withholds the delete with the boundary reason, not with a bare absence", () => {
+    expect(WITHHELD_DOCUMENT_OPERATIONS.map((entry) => entry.kind)).toEqual(["remove"]);
+    const remove = WITHHELD_DOCUMENT_OPERATIONS[0];
+    // The reason has to be in two steps: that the CLI lacks it, and that Atlas does not fill the
+    // gap by unlinking the file itself (decision-2's boundary). With only the first, it reads as
+    // "then Atlas should just delete it".
+    expect(remove.reason).toContain("v1.47.1");
+    expect(remove.reason).toContain("decision-2");
+    expect(remove.mapping).not.toBe("");
+  });
+});
+
+// --- 新規タスク区画で欄を出さない項目 (doc-10 §7) ----------------------------------------------
+
+describe("新規タスク作成の範囲", () => {
+  it("states the narrowing as a product judgment, never as a missing CLI feature", () => {
+    // doc-10 §7 forbids writing「CLI に無い」: v1.47.1's `task create` does accept these (measured),
+    // so it would be false — and it would leave the CLI as a pretext for widening the form later.
+    expect(TASK_CREATE_SCOPE_NOTE).toContain("製品判断");
+    for (const field of TASK_CREATE_OMITTED_FIELDS) {
+      expect(field.reason).not.toContain("CLI に無い");
+      expect(field.flag).not.toBe("");
+      // Whether an omitted field has a post-creation route differs per field (doc-10 §7), so each
+      // one carries its own.
+      expect(field.after).not.toBe("");
+    }
+  });
+
+  it("covers exactly the fields v1.47.1 accepts and this form does not offer", () => {
+    expect(TASK_CREATE_OMITTED_FIELDS.map((field) => field.flag)).toEqual([
+      "-a",
+      "--plan",
+      "--notes",
+      "--ref",
+      "--depends-on",
+    ]);
+  });
+
+  it("says that assignee cannot be cleared, since that is the one gap with no route", () => {
+    const assignee = TASK_CREATE_OMITTED_FIELDS.find((field) => field.flag === "-a");
+    expect(assignee?.after).toContain("解除");
+    expect(assignee?.after).toContain("doc-5 §3.1");
   });
 });
 

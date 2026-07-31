@@ -39,11 +39,21 @@
     unwatched: readonly string[];
     /** 版ずれ (doc-9) per task, from the shell's record. */
     conflictOf: (view: TaskView) => VersionConflict | null;
+    /**
+     * The row to bring into view, or `null`. Set by プロジェクト詳細画面's 「このプロジェクトのレーンへ」
+     * (doc-10 §2): the screen it returns to is this grid, and the row it was about may be scrolled
+     * well off it. Cleared through `onfocused` once the scroll is done, so the same row can be asked
+     * for again after the user has scrolled away.
+     */
+    focusSlug: string | null;
     onselect: (view: TaskView) => void;
     onmove: (slug: string, direction: -1 | 1) => void;
     onhide: (slug: string) => void;
     onretry: (slug: string) => void;
     onreread: (slug: string) => void;
+    /** Open プロジェクト詳細画面 (doc-10); the レーンヘッダ行 is its entry point (doc-7 §2.3). */
+    onopenProject: (slug: string) => void;
+    onfocused: () => void;
   }
 
   let {
@@ -54,12 +64,34 @@
     canReorder,
     unwatched,
     conflictOf,
+    focusSlug,
     onselect,
     onmove,
     onhide,
     onretry,
     onreread,
+    onopenProject,
+    onfocused,
   }: Props = $props();
+
+  /**
+   * The レーンヘッダ行 elements, by slug, so a row can be scrolled to. Held here rather than resolved
+   * with a DOM query, because the grid is the only thing that knows which element is which row.
+   */
+  let laneHeads = $state<Record<string, HTMLElement>>({});
+
+  // 「このプロジェクトのレーンへ」の着地 (doc-10 §2). Runs after the row exists — a project detail
+  // screen can be left for a row that was scrolled out, and returning to the grid puts it back in
+  // view rather than at wherever the grid happened to be. `smooth` is deliberately not used: the
+  // point is that the row is *there* when the grid appears, not that it travels.
+  $effect(() => {
+    const slug = focusSlug;
+    if (slug === null) return;
+    const element = laneHeads[slug];
+    if (element === undefined) return;
+    element.scrollIntoView({ block: "nearest" });
+    onfocused();
+  });
 
   /**
    * 無効化の理由の置き場 (doc-11 §5). Every ↑↓ on the grid is blocked by the same one thing, so the
@@ -174,7 +206,11 @@
     {@const folded = rowFoldable(row) && foldedRows.includes(row.slug)}
     <!-- レーンヘッダ行 (doc-7 §2.3): the row's own full-width line. There is no fixed project column
          at the left edge, so the name never has to be traded against the width the four columns get. -->
-    <div class="lane-head" class:unreadable={row.state === "unreadable"}>
+    <div
+      class="lane-head"
+      class:unreadable={row.state === "unreadable"}
+      bind:this={laneHeads[row.slug]}
+    >
       {#if rowFoldable(row)}
         <button
           type="button"
@@ -188,14 +224,21 @@
         </button>
       {/if}
       <div class="names">
-        <!-- The name is the only part of the header that gives up room when the window narrows, so
-             `title` keeps the full one reachable; the slug beside it never shortens. -->
-        <span
+        <!-- The project name is the entry point to プロジェクト詳細画面 (doc-7 §2.3, doc-10 §2).
+             Kept on a 読取不能行 as well: its 台帳エントリ is readable, and fixing the root is done
+             on that screen (doc-7 §6). The name is the only part of the header that gives up room
+             when the window narrows, so `title` keeps the full one reachable; the slug beside it
+             never shortens. -->
+        <button
+          type="button"
           class="project"
-          title={row.state === "loaded" && row.projectName ? row.projectName : row.slug}
+          title="{row.state === 'loaded' && row.projectName
+            ? row.projectName
+            : row.slug} のプロジェクト詳細画面を開きます"
+          onclick={() => onopenProject(row.slug)}
         >
           {row.state === "loaded" && row.projectName ? row.projectName : row.slug}
-        </span>
+        </button>
         {#if row.state === "loaded" && row.projectName}
           <span class="slug">{row.slug}</span>
         {/if}
@@ -257,6 +300,17 @@
             onclick={() => onreread(row.slug)}>再読込</button
           >
         {/if}
+        <!-- The `›` at the row's end (doc-7 §2.3's sketch, doc-10 §2): the same destination as the
+             project name, as an entry point at the end of the row. The name is the part that gives
+             up room as the window narrows; this one keeps its width, so it stays pressable. -->
+        <button
+          type="button"
+          aria-label="{row.slug} のプロジェクト詳細画面を開く"
+          title="プロジェクト詳細画面を開きます"
+          onclick={() => onopenProject(row.slug)}
+        >
+          <span aria-hidden="true">›</span>
+        </button>
       </div>
     </div>
 
@@ -442,11 +496,30 @@
     white-space: nowrap;
   }
 
+  // The project name is an entry point (doc-7 §2.3) but also the row's identity, so it takes no
+  // border: drawn like a button, the most prominent thing on the レーンヘッダ行 would read as an
+  // operation rather than as a name. That it is pressable is carried by the cursor and by an
+  // underline on hover/focus, while the `›` at the row's end is the explicit control for the same
+  // destination.
   .project {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
     overflow: hidden;
+    font: inherit;
     font-size: 0.85rem;
     font-weight: 600;
+    text-align: left;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      text-decoration: underline;
+    }
   }
 
   // 副次 (doc-11 §2.1): the theme's own colour, not an opacity over `--fg` — an opacity lands

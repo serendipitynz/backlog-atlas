@@ -9,8 +9,8 @@
   // doc-7 §5 calls it 一時的 — so `hidden` never leaves this component.
   import { onDestroy, onMount, untrack } from "svelte";
   import FilterBar from "./components/FilterBar.svelte";
-  import ProjectLedger from "./components/ProjectLedger.svelte";
-  import ProjectManage from "./components/ProjectManage.svelte";
+  import ProjectDetail from "./components/ProjectDetail.svelte";
+  import ProjectRegister from "./components/ProjectRegister.svelte";
   import Settings from "./components/Settings.svelte";
   import Swimlane from "./components/Swimlane.svelte";
   import TaskDetail from "./components/TaskDetail.svelte";
@@ -94,18 +94,34 @@
   } from "./lib/wire";
   import type { UnlistenFn } from "@tauri-apps/api/event";
 
-  /** 利用者向け画面 (doc-7・doc-3 §4・doc-5 §3.2), one per top-level tab. */
-  type Screen = "swimlane" | "ledger" | "manage";
+  /**
+   * 利用者向け画面 (doc-7・doc-10). Two, not four: TASK-55 folded the 台帳管理画面 and the
+   * 文書・マイルストーン管理画面 into one プロジェクト詳細画面 per project, because the two used to
+   * put「全プロジェクトの台帳」and「1 プロジェクトの文書・マイルストーン」side by side at different
+   * granularities. 登録 is the one ledger-wide operation left, and it opens from the fixed header
+   * (doc-3 §4・doc-7 §2.1) rather than being a screen of its own.
+   */
+  type Screen = "swimlane" | "project";
 
   /**
    * Which screen is showing. The swimlane's own state (rows, filter, selection) lives in this shell,
    * so switching away and back keeps it; what does not survive is the other components' internal
-   * state — including the detail panel's 編集セッション and the 管理画面's 文書編集セッション, which
-   * is why leaving either while dirty asks first (doc-8 §6.3).
+   * state — including the detail panel's 編集セッション and プロジェクト詳細画面's forms, which is why
+   * leaving either while dirty asks first (doc-8 §6.3).
    */
   let screen = $state<Screen>("swimlane");
+  /** Which project プロジェクト詳細画面 is showing. `null` while the swimlane is up. */
+  let detailSlug = $state<string | null>(null);
+  /** Whether the fixed header's 「プロジェクトを登録」 panel is open (doc-7 §2.1). */
+  let registerOpen = $state(false);
+  /**
+   * A row the grid should bring into view — プロジェクト詳細画面's 「このプロジェクトのレーンへ」
+   * (doc-10 §2). Held here rather than in the grid because the request outlives the screen that made
+   * it: the grid is not even mounted at the moment the button is pressed.
+   */
+  let focusRow = $state<string | null>(null);
   let entries = $state<ProjectEntry[]>([]);
-  /** The ledger file's path (doc-3 §2.1), for the 台帳管理画面 to show. `null` until it is known. */
+  /** The ledger file's path (doc-3 §2.1), for the 登録 panel to show. `null` until it is known. */
   let ledgerPath = $state<string | null>(null);
   /**
    * アプリ設定 and why they are what they are (decision-13). `null` until the first read answers, which
@@ -177,11 +193,12 @@
   /** True while the detail panel holds 未保存入力 — what makes leaving the panel ask first. */
   let detailDirty = $state(false);
   /**
-   * True while the 文書・マイルストーン管理画面 holds 未保存入力 (its 文書編集セッション). Separate
-   * from `detailDirty` because they belong to different screens: only the one being left has input to
-   * protect, and one flag for both would ask about a panel that is not even mounted.
+   * True while プロジェクト詳細画面 holds 未保存入力 — its 台帳エントリ編集・文書編集セッション and
+   * the three create forms alike. Separate from `detailDirty` because they belong to different
+   * screens: only the one being left has input to protect, and one flag for both would ask about a
+   * panel that is not even mounted.
    */
-  let manageDirty = $state(false);
+  let projectDirty = $state(false);
   /**
    * What the user asked for while a screen held 未保存入力, held as the continuation to run once they
    * answer the 破棄前確認 (doc-8 §6.3). One pending action rather than a tagged union of destinations,
@@ -246,15 +263,12 @@
   let showStorageMark = $derived(filter.storage.some((state) => state !== "active"));
   let hiddenRows = $derived(hidden.filter((slug) => order.includes(slug)));
   /**
-   * The projects the 管理画面 can act on: those whose root is currently readable, in ledger order.
-   * A root Atlas cannot read has no document or milestone list to act on, and the boundary would
-   * refuse an update against it (the project is not open) — so it is not offered as a target.
+   * The ledger entry プロジェクト詳細画面 is about, or `null` when there is none to show. Resolved
+   * against the *current* ledger rather than captured on open, so an entry another window removed
+   * takes the screen back to the grid instead of leaving it editing a registration that is gone.
    */
-  let loadedProjects = $derived(
-    order.flatMap((slug) => {
-      const load = loadBySlug[slug];
-      return load?.state === "loaded" ? [load.project] : [];
-    }),
+  let detailEntry = $derived(
+    detailSlug === null ? null : (entries.find((entry) => entry.slug === detailSlug) ?? null),
   );
   /**
    * 継続検出の可否 (doc-9 §3.1, decision-13). Defaults to on until the settings are read, which is the
@@ -756,6 +770,15 @@
         selectedRef = null;
         detailDirty = false;
       }
+      // The プロジェクト詳細画面 of a project that is no longer registered has nothing left to name,
+      // so it is closed here rather than by the screen itself — and closed *without* the 破棄前確認,
+      // because asking "keep your input?" about a registration that has just been removed offers a
+      // choice that no longer exists.
+      if (detailSlug === slug) {
+        detailSlug = null;
+        projectDirty = false;
+        screen = "swimlane";
+      }
       return { state: "done", slug };
     } catch (error) {
       return { state: "refused", report: refusalReport(asCommandError(error)) };
@@ -790,8 +813,7 @@
 
   /** True when leaving `screen` would discard 未保存入力 held by whatever it has mounted. */
   function dirtyOn(current: Screen): boolean {
-    if (current === "swimlane") return detailDirty;
-    return current === "manage" && manageDirty;
+    return current === "swimlane" ? detailDirty : projectDirty;
   }
 
   /**
@@ -816,15 +838,40 @@
    * Go to another screen. Asks first while the one being left holds 未保存入力 (doc-8 §6.3): its
    * panel is unmounted on the way, so the input is gone as surely as if another task had been opened.
    */
-  function goToScreen(next: Screen): void {
-    if (next === screen) return;
+  function goToScreen(next: Screen, slug: string | null = null): void {
+    if (next === screen && slug === detailSlug) return;
     guardDiscard(dirtyOn(screen), () => {
       // The panel holding the input is unmounted from here, so its `ondirty` will not run again to
       // retract the flag. The task selection itself is kept: coming back reopens the task, with a
       // fresh 編集セッション.
       if (screen === "swimlane") detailDirty = false;
-      else if (screen === "manage") manageDirty = false;
+      else projectDirty = false;
+      detailSlug = slug;
       screen = next;
+    });
+  }
+
+  /** Open プロジェクト詳細画面 (doc-10). The entry point is the レーンヘッダ行 (doc-7 §2.3). */
+  function openProject(slug: string): void {
+    goToScreen("project", slug);
+  }
+
+  /**
+   * 出口 (doc-10 §2). `lane` is 「このプロジェクトのレーンへ」: the same return, plus the row asked
+   * for is brought into view — and un-hidden first, since 行非表示 would otherwise make the grid
+   * answer the request with a row that is not there (doc-7 §5.1 keeps 非表示 reversible from the 帯,
+   * but silently landing nowhere is not an answer).
+   */
+  function leaveProject(lane: boolean): void {
+    const slug = detailSlug;
+    guardDiscard(projectDirty, () => {
+      projectDirty = false;
+      detailSlug = null;
+      screen = "swimlane";
+      if (lane && slug !== null) {
+        show(slug);
+        focusRow = slug;
+      }
     });
   }
 
@@ -1043,36 +1090,38 @@
 
 <main class="screen">
   <header class="top">
-    <h1>
-      {screen === "swimlane"
-        ? "プロジェクト別スイムレーン"
-        : screen === "ledger"
-          ? "プロジェクト台帳"
-          : "文書・マイルストーン管理と新規タスク作成"}
-    </h1>
-    <!-- The 利用者向け画面 of the app so far. A switch rather than a route: there is no URL to
-         restore, and the swimlane's state lives in this shell, so coming back finds it as it was. -->
-    <nav class="screens">
-      <button
-        type="button"
-        class:current={screen === "swimlane"}
-        onclick={() => goToScreen("swimlane")}>スイムレーン</button
-      >
-      <button type="button" class:current={screen === "ledger"} onclick={() => goToScreen("ledger")}>
-        台帳（{entries.length}）
-      </button>
-      <button type="button" class:current={screen === "manage"} onclick={() => goToScreen("manage")}>
-        文書・マイルストーン・新規タスク
-      </button>
-    </nav>
-    <!-- 設定 (doc-7 §2.1): an entry point on the fixed header, opening アプリ設定 (decision-13) over the
-         screen rather than as a fourth tab — it is not a place to work, and the swimlane behind it
-         keeps its state. -->
-    <button type="button" class="settings-open" onclick={() => (settingsOpen = true)}>設定</button>
+    <h1>{screen === "swimlane" ? "プロジェクト別スイムレーン" : "プロジェクト詳細"}</h1>
+    <!-- Only entry points that apply to every project belong on the fixed header (doc-7 §2.1). What
+         is closed on one project — editing its 台帳エントリ, 登録解除, documents, milestones, the
+         detailed 新規タスク作成 — is collected in プロジェクト詳細画面 (doc-10), so operations of
+         different granularity do not share a place. Both open as a panel over the screen: neither is
+         somewhere to work, so the swimlane behind keeps its state. Making them modal, echoing them
+         in a menu and giving them shortcuts is TASK-56's. -->
+    <button type="button" class="header-entry" onclick={() => (registerOpen = true)}>
+      ＋ プロジェクトを登録
+    </button>
+    <button type="button" class="header-entry" onclick={() => (settingsOpen = true)}>設定</button>
     {#if ledgerReadOnly && screen === "swimlane"}
       <span class="badge">台帳は読み取り専用（行の並べ替えは不可）</span>
     {/if}
   </header>
+
+  {#if registerOpen}
+    <!-- 登録 (doc-3 §4.1) is the one ledger-wide operation left, so it opens from here rather than
+         from the per-project detail screen (doc-3 §4). -->
+    <div class="settings-panel">
+      <ProjectRegister
+        {entries}
+        readOnly={ledgerReadOnly}
+        busy={ledgerBusy}
+        {ledgerPath}
+        onpickDirectory={pickDirectory}
+        ondefaultSlug={ledgerDefaultSlug}
+        onregister={registerProject}
+        onclose={() => (registerOpen = false)}
+      />
+    </div>
+  {/if}
 
   {#if settingsOpen}
     <!-- Kept over the screen with the shell's state intact: an アプリ設定 change is about how the
@@ -1135,33 +1184,36 @@
     </div>
   {/if}
 
-  {#if screen === "ledger"}
-    <!-- 台帳・プロジェクト登録・管理 (doc-3 §4, TASK-39). The ledger file is the only thing any action
-         here writes; no project's Backlog root or Git repository is touched (doc-3 §2.1/§4.2). -->
-    <ProjectLedger
-      {entries}
-      readOnly={ledgerReadOnly}
-      loads={loadBySlug}
-      busy={ledgerBusy}
-      listLoading={loading}
-      listFailure={entries.length === 0 && fatal !== null ? fatal : null}
-      {ledgerPath}
-      onpickDirectory={pickDirectory}
-      ondefaultSlug={ledgerDefaultSlug}
-      onregister={registerProject}
-      onupdate={updateProject}
-      onremove={removeProject}
-    />
-  {:else if screen === "manage"}
-    <!-- 文書・マイルストーン管理と新規タスク作成の入口 (doc-5 §3.2, TASK-40). Every action is a
-         更新操作 issued through the adapter; the screen writes no managed Markdown itself (doc-2). -->
-    <ProjectManage
-      projects={loadedProjects}
-      {loading}
-      {readiness}
-      onissue={issue}
-      ondirty={(dirty) => (manageDirty = dirty)}
-    />
+  {#if screen === "project"}
+    <!-- プロジェクト詳細画面 (doc-10, TASK-55): everything that can be done to one project, in one
+         screen. 概要 writes the ledger file alone; the other three write the target project's
+         management files through the 更新アダプター. Both routes go through callbacks this shell
+         hands down. -->
+    {#if detailEntry === null}
+      <p class="status">
+        このプロジェクトは台帳にありません（別の画面で登録が外れた可能性）。
+        <button type="button" class="link" onclick={() => leaveProject(false)}>
+          スイムレーンへ戻る
+        </button>
+      </p>
+    {:else}
+      {#key detailEntry.slug}
+        <ProjectDetail
+          entry={detailEntry}
+          load={loadBySlug[detailEntry.slug]}
+          {ledgerReadOnly}
+          {ledgerBusy}
+          {readiness}
+          onpickDirectory={pickDirectory}
+          onupdate={updateProject}
+          onremove={removeProject}
+          onissue={issue}
+          ondirty={(dirty) => (projectDirty = dirty)}
+          onback={() => leaveProject(false)}
+          ontoLane={() => leaveProject(true)}
+        />
+      {/key}
+    {/if}
   {:else if fatal}
     <p class="fatal">読み込みに失敗しました: {fatal}</p>
     <button type="button" onclick={load}>再読み込み</button>
@@ -1169,9 +1221,11 @@
     <p class="status">読み込み中…</p>
   {:else if order.length === 0}
     <p class="status">
-      登録済みプロジェクトがありません。
-      <button type="button" class="link" onclick={() => goToScreen("ledger")}>台帳画面</button>
-      から登録してください。
+      登録済みプロジェクトがありません。固定ヘッダの
+      <button type="button" class="link" onclick={() => (registerOpen = true)}>
+        プロジェクトを登録
+      </button>
+      から追加してください。
     </p>
   {:else}
     <!-- The grid and the detail panel share the remaining height. Which of the three ways the panel
@@ -1190,11 +1244,14 @@
           unwatched={unwatchedRows}
           conflictOf={(view) =>
             conflicts[conflictKeyOf(view.task.project, view.task.sourcePath)] ?? null}
+          focusSlug={focusRow}
           onselect={open}
           onmove={move}
           onhide={hide}
           onretry={retry}
           onreread={rereadRow}
+          onopenProject={openProject}
+          onfocused={() => (focusRow = null)}
         />
       {/if}
 
@@ -1279,27 +1336,6 @@
     }
   }
 
-  .screens {
-    display: flex;
-    gap: 0.25rem;
-
-    button {
-      padding: 0.1rem 0.5rem;
-      border: 1px solid var(--line-strong);
-      border-radius: 4px;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      font-size: 0.72rem;
-      cursor: pointer;
-
-      &.current {
-        border-color: var(--info);
-        background: color-mix(in srgb, var(--info) 14%, transparent);
-      }
-    }
-  }
-
   // A button that reads as part of the sentence it sits in, for the one place a message hands the
   // user a screen to go to rather than an action to take.
   .link {
@@ -1320,8 +1356,9 @@
     opacity: 0.8;
   }
 
-  // The 設定 entry point sits apart from the screen tabs: it opens a panel, not another screen.
-  .settings-open {
+  // The fixed header's entry points (doc-7 §2.1): 登録 and 設定. Both open a panel rather than
+  // switching screens, so they are drawn unlike a tab that says which screen is current.
+  .header-entry {
     padding: 0.1rem 0.5rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;

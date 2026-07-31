@@ -1,0 +1,407 @@
+<script lang="ts">
+  // プロジェクトを登録 (doc-3 §4.1). A ledger-wide operation, so it opens from the swimlane's fixed
+  // header (doc-3 §4, doc-7 §2.1) rather than from プロジェクト詳細画面 (doc-10), which collects the
+  // operations closed on one project.
+  //
+  // This is TASK-39's 台帳管理画面 with only the registration form kept: listing, updating and
+  // removing entries moved to the detail screen's 概要区画 (doc-10 §4), leaving this with one job —
+  // adding something the ledger does not have yet. The checks are `lib/ledger.ts`'s, unchanged.
+  //
+  // The only thing written is the ledger file; no project's management files or Git are touched
+  // (doc-3 §2.1). Text inputs bind to local state and are never rewritten while the user is typing
+  // (a redraw mid-composition breaks the IME) — the "follow the default" conveniences are buttons
+  // the user presses.
+  import {
+    EMPTY_REGISTER_INPUT,
+    parentPath,
+    registerProblems,
+    resolvedBacklogRoot,
+    toRegisterRequest,
+    type FieldProblem,
+    type LedgerActionResult,
+    type LedgerField,
+    type RefusalReport,
+    type RegisterInput,
+  } from "../lib/ledger";
+  import type { ProjectEntry, RegisterRequest } from "../lib/wire";
+
+  interface Props {
+    /** Only to see the taken slugs: a collision visible here is said here (the Rust side decides). */
+    entries: ProjectEntry[];
+    /** A read-only ledger (doc-3 §2.2) cannot be registered into. Held back with the reason. */
+    readOnly: boolean;
+    /** True while one ledger command is in flight (the shell serializes them). */
+    busy: boolean;
+    /** Where the ledger file is (doc-3 §2.1). `null` until it is known. */
+    ledgerPath: string | null;
+    onpickDirectory: (title: string) => Promise<string | null>;
+    ondefaultSlug: (projectRoot: string) => Promise<string | null>;
+    onregister: (request: RegisterRequest) => Promise<LedgerActionResult>;
+    onclose: () => void;
+  }
+
+  let {
+    entries,
+    readOnly,
+    busy,
+    ledgerPath,
+    onpickDirectory,
+    ondefaultSlug,
+    onregister,
+    onclose,
+  }: Props = $props();
+
+  let input = $state<RegisterInput>({ ...EMPTY_REGISTER_INPUT });
+  /**
+   * The default slug derived from the project root (doc-3 §3.1). Shown beside the field rather than
+   * written into it: the field being empty is what *means*「導出させる」, so filling it in would turn
+   * the ledger's own derivation into a value this screen sent.
+   */
+  let defaultSlug = $state<string | null>(null);
+  /** Distinguishes 未取得 from「導出できない」— only the second makes a slug mandatory. */
+  let defaultSlugKnown = $state(false);
+  let report = $state<RefusalReport | null>(null);
+  let submitting = $state(false);
+  let registered = $state<string | null>(null);
+
+  let taken = $derived(entries.map((entry) => entry.slug));
+  let issues = $derived(registerProblems(input, taken));
+  let previewBacklogRoot = $derived(resolvedBacklogRoot(input));
+  let canRegister = $derived(!readOnly && !busy && !submitting && issues.length === 0);
+
+  const BLOCKED_ID = "register-blocked";
+  const READ_ONLY_ID = "register-read-only";
+  const READ_ONLY_PICK_REASON =
+    "台帳が読み取り専用のため、フォルダを選んでも登録できません（doc-3 §2.2）。";
+
+  /**
+   * Why registration is held, and only when it is (doc-11 §5). One string drives both the withheld
+   * state and the sentence under the button, so the two cannot disagree. The per-field problems are
+   * shown separately, but that they are what stops the registration is said again here — being able
+   * to read a problem is not the same as knowing why the button will not go.
+   */
+  let blocked = $derived(
+    readOnly
+      ? "台帳が読み取り専用のため、プロジェクトを登録できません（doc-3 §2.2）。"
+      : busy || submitting
+        ? "台帳の更新を実行中です。完了するまで登録は始められません。"
+        : issues.length > 0
+          ? "入力に問題があります（各欄の指摘を参照）。"
+          : null,
+  );
+
+  async function readDefaultSlug(): Promise<void> {
+    const projectRoot = input.projectRoot.trim();
+    if (projectRoot === "") {
+      defaultSlug = null;
+      defaultSlugKnown = false;
+      return;
+    }
+    defaultSlug = await ondefaultSlug(projectRoot);
+    defaultSlugKnown = true;
+  }
+
+  async function pickProjectRoot(): Promise<void> {
+    const picked = await onpickDirectory("プロジェクトルートを選択");
+    if (picked === null) return;
+    input.projectRoot = picked;
+    await readDefaultSlug();
+  }
+
+  /**
+   * doc-3 §4.1 step 1 lets the user name the Backlog root instead. The project root is still needed
+   * as the base for Git・PR 参照 (doc-3 §3), so picking a Backlog root offers its parent *in the
+   * field* for the user to accept or correct. Guessing it silently would attach the wrong repository.
+   */
+  async function pickBacklogRoot(): Promise<void> {
+    const picked = await onpickDirectory("Backlog ルートを選択");
+    if (picked === null) return;
+    input.backlogRoot = picked;
+    if (input.projectRoot.trim() === "") {
+      const parent = parentPath(picked);
+      if (parent !== null) {
+        input.projectRoot = parent;
+        await readDefaultSlug();
+      }
+    }
+  }
+
+  async function submit(): Promise<void> {
+    if (!canRegister) return;
+    submitting = true;
+    report = null;
+    try {
+      const result = await onregister(toRegisterRequest(input));
+      if (result.state === "refused") {
+        report = result.report;
+        return;
+      }
+      registered = result.slug;
+      input = { ...EMPTY_REGISTER_INPUT };
+      defaultSlug = null;
+      defaultSlugKnown = false;
+    } finally {
+      submitting = false;
+    }
+  }
+
+  function problemsFor(problems: FieldProblem[], field: LedgerField): string[] {
+    return problems.filter((problem) => problem.field === field).map((problem) => problem.message);
+  }
+</script>
+
+<section class="register">
+  <header>
+    <h2>プロジェクトを登録</h2>
+    <button type="button" class="close" onclick={onclose}>閉じる</button>
+  </header>
+
+  <p class="where">
+    台帳ファイル: <code>{ledgerPath ?? "確認中…"}</code>
+    <!-- doc-3 §2.1: the registration is Atlas's own configuration. Stated on screen because the
+         invariant is invisible otherwise — and it is what makes 登録 safe to press. -->
+    <span class="aside">
+      （Atlas 専用の設定ファイルです。いずれの Backlog ルートにも登録情報は書きません）
+    </span>
+  </p>
+
+  {#if readOnly}
+    <!-- A reason that applies to the whole screen (doc-11 §5). The 選択… buttons below point at it
+         rather than repeating the sentence. -->
+    <p class="readonly" id={READ_ONLY_ID}>
+      台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。
+      登録はできません（doc-3 §2.2）。
+    </p>
+  {/if}
+
+  {#if registered}
+    <p class="notice">{registered} を登録しました。スイムレーンに行が 1 本増えます。</p>
+  {/if}
+
+  <label>
+    <span class="caption">プロジェクトルート</span>
+    <span class="field">
+      <input
+        type="text"
+        placeholder="/Users/you/Projects/example"
+        spellcheck="false"
+        bind:value={input.projectRoot}
+        onchange={readDefaultSlug}
+      />
+      <button
+        type="button"
+        aria-disabled={readOnly}
+        aria-describedby={readOnly ? READ_ONLY_ID : undefined}
+        title={readOnly ? READ_ONLY_PICK_REASON : "フォルダを選びます"}
+        onclick={() => !readOnly && pickProjectRoot()}>選択…</button
+      >
+    </span>
+  </label>
+  {#each problemsFor(issues, "projectRoot") as message (message)}
+    <p class="problem">{message}</p>
+  {/each}
+
+  <label>
+    <span class="caption">Backlog ルート（任意）</span>
+    <span class="field">
+      <input
+        type="text"
+        placeholder={previewBacklogRoot === ""
+          ? "既定は <プロジェクトルート>/backlog"
+          : previewBacklogRoot}
+        spellcheck="false"
+        bind:value={input.backlogRoot}
+      />
+      <button
+        type="button"
+        aria-disabled={readOnly}
+        aria-describedby={readOnly ? READ_ONLY_ID : undefined}
+        title={readOnly ? READ_ONLY_PICK_REASON : "フォルダを選びます"}
+        onclick={() => !readOnly && pickBacklogRoot()}>選択…</button
+      >
+    </span>
+  </label>
+  {#if input.backlogRoot.trim() === "" && previewBacklogRoot !== ""}
+    <p class="hint">
+      指定しない場合は <code>{previewBacklogRoot}</code> を Backlog ルートとして
+      <code>config.yml</code> と <code>tasks/</code> を確認します（doc-3 §4.1）。
+    </p>
+  {/if}
+  {#each problemsFor(issues, "backlogRoot") as message (message)}
+    <p class="problem">{message}</p>
+  {/each}
+
+  <label>
+    <span class="caption">slug（任意）</span>
+    <span class="field">
+      <input
+        type="text"
+        placeholder={defaultSlug ?? "英小文字・数字・ハイフン"}
+        spellcheck="false"
+        bind:value={input.slug}
+      />
+    </span>
+  </label>
+  {#if input.slug.trim() === ""}
+    {#if defaultSlug !== null}
+      <p class="hint">
+        未指定なら <code>{defaultSlug}</code> をプロジェクトルート名から導出して使います（doc-3 §3.1）。
+        別の slug を使う場合はここに入力してください。
+      </p>
+    {:else if defaultSlugKnown}
+      <!-- doc-3 §3.1: a directory name with no usable characters yields no default, so the user
+           has to name one. -->
+      <p class="problem">
+        プロジェクトルート名から slug を導出できません。slug を指定してください。
+      </p>
+    {/if}
+  {/if}
+  {#each problemsFor(issues, "slug") as message (message)}
+    <p class="problem">{message}</p>
+  {/each}
+
+  {#if report}
+    <!-- A refused registration is shown with its reason (doc-3 §4.1); which field to go back to is
+         `refusalReport`'s decision. -->
+    <p class="problem">{report.message}</p>
+  {/if}
+
+  <div class="row">
+    <button
+      type="button"
+      class="primary"
+      aria-disabled={!canRegister}
+      aria-describedby={canRegister ? undefined : BLOCKED_ID}
+      title={blocked ?? "入力の内容で台帳へ登録します"}
+      onclick={submit}
+    >
+      {submitting ? "登録中…" : "登録"}
+    </button>
+  </div>
+  {#if blocked !== null}
+    <p class="blocked-note" id={BLOCKED_ID}>{blocked}</p>
+  {/if}
+</section>
+
+<style lang="scss">
+  .register {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-width: 42rem;
+    padding: 0.7rem 0.75rem 1rem;
+    font-size: 0.8rem;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  .close {
+    margin-left: auto;
+  }
+
+  .where {
+    margin: 0;
+    font-size: 0.72rem;
+    opacity: 0.85;
+  }
+
+  .aside {
+    opacity: 0.75;
+  }
+
+  // 読み取り専用縮退 (doc-3 §2.2) is not one of decision-6's 印の族 — nothing is degraded about the
+  // *reading* — so it takes the neutral info hue rather than borrowing a family's colour.
+  .readonly,
+  .notice {
+    margin: 0;
+    padding: 0.35rem 0.5rem;
+    background: color-mix(in srgb, var(--info) 12%, transparent);
+    font-size: 0.75rem;
+  }
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .caption {
+    font-size: 0.7rem;
+    opacity: 0.7;
+  }
+
+  .field {
+    display: flex;
+    gap: 0.25rem;
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 0.15rem 0.3rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 0.75rem;
+    }
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+
+  button {
+    padding: 0.1rem 0.45rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
+    // 無効化提示 lives in one place in app.scss (doc-11 §5); a `:disabled` rule here would outrank it.
+
+    &.primary {
+      border-color: var(--info);
+      background: color-mix(in srgb, var(--info) 14%, transparent);
+    }
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.7rem;
+    opacity: 0.75;
+  }
+
+  // A correctable input problem. decision-6's unreadable hue is deliberately not reused: this is
+  // input the user can fix, not a root Atlas failed to read.
+  .problem {
+    margin: 0;
+    color: var(--mark-degraded);
+    font-size: 0.72rem;
+  }
+
+  // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1).
+  .blocked-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.72rem;
+  }
+
+  code {
+    font-size: 0.95em;
+  }
+</style>
