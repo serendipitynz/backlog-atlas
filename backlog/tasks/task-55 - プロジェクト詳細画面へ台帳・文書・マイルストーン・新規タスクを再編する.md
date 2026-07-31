@@ -1,10 +1,10 @@
 ---
 id: TASK-55
 title: プロジェクト詳細画面へ台帳・文書・マイルストーン・新規タスクを再編する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:16'
-updated_date: '2026-07-31 03:26'
+updated_date: '2026-07-31 07:10'
 labels:
   - 'kind:feature'
 milestone: m-1
