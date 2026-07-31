@@ -1,35 +1,37 @@
 /**
- * プロジェクト詳細画面 (doc-10, TASK-55) のうち、1 プロジェクトそのものに関わる規則を純関数で持つ
- * モジュール。文書・マイルストーン・新規タスクの各フォームの規則は `manage.ts` が既に持っているので
- * 重複させず、ここが受け持つのは画面の骨格（区画切替・2 本の帯）と概要区画（台帳エントリ）である。
+ * プロジェクト詳細画面 (doc-10, TASK-55) as pure functions — the part that is about the project
+ * itself. The forms for 文書・マイルストーン・新規タスク already have their rules in `manage.ts`, so
+ * what is here is the screen's frame (区画切替 and the two 帯) and the 概要区画 (台帳エントリ).
  *
- * ## Referent table (doc-10 の語 → ここの識別子)
+ * ## Referent table (doc-10 term → identifier here)
  *
- * 命名より先に確定した表。`ledger.ts`・`manage.ts` と同じ体裁。
+ * Fixed before naming, following `ledger.ts` and `manage.ts`.
  *
  * | doc-10 | here | is |
  * |---|---|---|
- * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | 概要・文書・マイルストーン・新規タスクの 4 項目。画面遷移ではなく同一画面内の表示切替 |
- * | §3 台帳読取専用帯 | [`LEDGER_READ_ONLY_BAND`] | 台帳ファイルが読み取り専用へ縮退している旨と、影響が概要区画に閉じること |
- * | §3 CLI 縮退帯 | [`cliDegradedBand`] | 対応 CLI を検出できない旨と、影響が文書・マイルストーン・新規タスクに閉じること |
- * | §4.1 送る属性を保存の直前に列挙する | [`SubmittedAttribute`] + [`submittedAttributes`] | 保存で `ledger_update` に載る属性を、属性名・現在値・送る値で並べたもの（送信属性一覧） |
- * | §4.1 slug は編集手段を提供しない | [`SLUG_IMMUTABLE_NOTE`] | 変更したいときに何をすることになるか、そのとき何が切れるか |
- * | §4.1 ルートを変えたときは Backlog ルートも併せて送る | [`rootMoveNote`] | 欄の直下に出す、どちらの値が送られるかの断り |
- * | §4.1 移動が成立すると編集セッションは閉じる | [`movesRoot`] | この更新が移動かどうか — 閉じる契機の判定 |
- * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`OVERVIEW_READ_ONLY_NOTE`] | 入力ごと止めていることを操作の近くで述べる文 |
- * | §4.2 別名が効くかの 3 態 + `NoDeclaredSet` | [`ALIAS_EFFECT_NOTES`] | 別名表 1 行の効き方。実装は 4 状態あるので 4 態で出す（下記） |
- * | §4.3 確認は slug の入力一致とする | [`unregisterBlocked`] | slug 入力一致。一致するまで実行を止め、止めている理由を返す |
- * | §8 台帳読取専用と CLI 縮退は独立 | [`overviewBlocked`] と [`cliDegradedBand`] が別々に効くこと | 片方が立っても他方の区画は動く |
+ * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | the four items 概要・文書・マイルストーン・新規タスク — a display change within one screen, not a screen transition |
+ * | §3 台帳読取専用帯 | [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and that the effect stops at the 概要区画 |
+ * | §3 CLI 縮退帯 | [`cliDegradedBand`] | that no supported CLI was found, and that the effect stops at the other three 区画 |
+ * | §4.1 送る属性を保存の直前に列挙する | [`SubmittedAttribute`] + [`submittedAttributes`] | 送信属性一覧: the attributes a save puts on `ledger_update`, as name, current value and value to send |
+ * | §4.1 slug は編集手段を提供しない | [`SLUG_IMMUTABLE_NOTE`] | what changing it would take, and what that would break |
+ * | §4.1 ルートを変えたときは Backlog ルートも併せて送る | [`rootMoveNote`] | the note under the field saying which value will travel |
+ * | §4.1 移動が成立すると編集セッションは閉じる | [`movesRoot`] | whether this update is a move — the trigger for closing |
+ * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`OVERVIEW_READ_ONLY_NOTE`] | the sentence, near the controls, saying the inputs are stopped too |
+ * | §4.2 別名が効くかの態 | [`ALIAS_EFFECT_NOTES`] | how one 別名表 row takes effect — four states, see below |
+ * | §4.3 確認は slug の入力一致とする | [`unregisterBlocked`] | slug 入力一致: holds the action until the typed text matches, and says what is holding it |
+ * | §8 台帳読取専用と CLI 縮退は独立 | [`overviewBlocked`] and [`cliDegradedBand`] applying separately | one standing leaves the other's 区画 working |
  *
- * ## 別名表の態を 4 つにしている理由
+ * ## Why the 別名表 shows four states and not three
  *
- * doc-10 §4.2 は 3 態（宣言あり／draft 専用／宣言なし→効果なし）を挙げるが、`interpret/status.rs` の
- * `StatusDeclaration` には 4 つ目 `NoDeclaredSet` がある。`config.yml` が statuses を 1 つも宣言して
- * いないルート（decision-4 が実測した geomyth）で、この状態では `map_status` が列対応を切らないため
- * **別名は効く**。3 態へ丸めると「宣言なし → 効果なし」が効く別名に付いてしまうので、実装の状態数に
- * 合わせて 4 態で出す。doc-10 §4.2 も同じ 4 態へ改訂してある。
+ * doc-10 §4.2 used to list three (宣言あり / draft 専用 / 宣言なし → 効果なし), but
+ * `interpret/status.rs`'s `StatusDeclaration` has a fourth, `NoDeclaredSet`: a root whose
+ * `config.yml` declares no statuses at all (decision-4 measured `geomyth` in that state). There
+ * `map_status` does not cut the column mapping, so the alias *does* apply — folding it into the
+ * third would have put「効果なし」and the 縮退 colour on an alias that works. The doc was revised to
+ * name the fourth state, and this module states one per row.
  *
- * ここには書き込みが無く、出力は台帳コマンドの要求値と画面が出す文言だけである（doc-3 §2.1）。
+ * Nothing here writes anything: the outputs are request values for the ledger commands and the
+ * sentences the screen shows (doc-3 §2.1).
  */
 
 import { readinessReason } from "./edit";
@@ -40,7 +42,7 @@ import type { CliReadiness, ProjectEntry, UpdateRequest } from "./wire";
 
 export type DetailSection = "overview" | "documents" | "milestones" | "newTask";
 
-/** 左側に並べる 4 項目。順は doc-10 §3 の表の順で、書き込み先の遠い順ではない。 */
+/** The four items down the left. Ordered as doc-10 §3's table is, not by how far each writes. */
 export const DETAIL_SECTIONS: readonly { id: DetailSection; label: string }[] = [
   { id: "overview", label: "概要" },
   { id: "documents", label: "文書" },
@@ -51,8 +53,8 @@ export const DETAIL_SECTIONS: readonly { id: DetailSection; label: string }[] = 
 // --- 2 本の帯 (doc-10 §3/§8) -------------------------------------------------------------------
 
 /**
- * 台帳読取専用 (doc-3 §2.2)。影響範囲を文中で名指しするのは、CLI 縮退帯と並んで立ったときに
- * 「両方だめになった」と読まれないようにするためである（doc-10 §3 の 2 本は互いに独立）。
+ * 台帳読取専用 (doc-3 §2.2). The sentence names the 区画 it does *not* reach, because doc-10 §3's two
+ * 帯 are independent and side by side they would otherwise read as one general failure.
  */
 export const LEDGER_READ_ONLY_BAND =
   "台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。" +
@@ -60,8 +62,8 @@ export const LEDGER_READ_ONLY_BAND =
   "文書・マイルストーン・新規タスクは台帳を書かないため、この縮退の影響を受けません。";
 
 /**
- * CLI 縮退 (doc-5 §5)、または CLI の確認がまだ済んでいない旨。`null` は発行できる状態。
- * 台帳読取専用帯と同じく、影響が及ばない区画をその場で名指しする（doc-10 §3/§8）。
+ * CLI 縮退 (doc-5 §5), or that the probe has not answered yet. `null` means issuing is possible.
+ * Names the 区画 it does not reach, for the same reason the read-only band does (doc-10 §3/§8).
  */
 export function cliDegradedBand(readiness: CliReadiness | null): string | null {
   const reason = readinessReason(readiness);
@@ -74,15 +76,15 @@ export function cliDegradedBand(readiness: CliReadiness | null): string | null {
 
 // --- 概要区画: 送信属性一覧 (doc-10 §4.1) ------------------------------------------------------
 
-/** 送信属性一覧の 1 行。`from` は台帳の現在値、`to` は保存で送る値。 */
+/** One row of the 送信属性一覧. `from` is what the ledger holds, `to` is what the save sends. */
 export interface SubmittedAttribute {
-  /** 台帳の属性名 (doc-3 §3)。TOML のキー名で書き、画面の見出し語に置き換えない。 */
+  /** The ledger's attribute name (doc-3 §3): the TOML key, not a heading word the screen invented. */
   attribute: string;
   from: string;
   to: string;
 }
 
-/** 別名表を 1 行に読める形へ。空の表は「なし」であって空文字ではない（消えると差分が読めない）。 */
+/** The 別名表 on one line. An empty table is「なし」, not "" — blank would make the diff unreadable. */
 export function aliasSummary(table: Record<string, string> | undefined): string {
   const entries = Object.entries(table ?? {});
   if (entries.length === 0) return "なし";
@@ -93,9 +95,10 @@ export function aliasSummary(table: Record<string, string> | undefined): string 
 }
 
 /**
- * 保存で `ledger_update` に載る属性を並べる（doc-10 §4.1 送る属性を明示する）。要求値そのものから
- * 作るので、「画面が変えたつもりの属性」ではなく「実際に送られる属性」が並ぶ — `toUpdateRequest` が
- * 移動のときに両ルートを載せることも、ここに現れる。空配列は「変更なし」を意味する。
+ * The attributes a save puts on `ledger_update` (doc-10 §4.1 送る属性を明示する). Built from the
+ * request itself, so what is listed is what will actually travel rather than what the screen thinks
+ * it changed — `toUpdateRequest` carrying both roots on a move shows up here. An empty list is
+ * 変更なし.
  */
 export function submittedAttributes(
   entry: ProjectEntry,
@@ -117,8 +120,8 @@ export function submittedAttributes(
     });
   }
   if (request.redetect_git_remote === true) {
-    // 送るのは「再判定せよ」という要求であって値ではない (doc-3 §4.3)。判定結果は台帳側が決めるので、
-    // 送る値の欄には要求そのものを書く。
+    // What travels is the request to re-detect, not a value (doc-3 §4.3): the result is the ledger
+    // side's to decide, so the "to send" column states the request instead of a boolean.
     attributes.push({
       attribute: "git_remote_present",
       from: entry.git_remote_present ? "あり" : "なし",
@@ -136,28 +139,28 @@ export function submittedAttributes(
 }
 
 /**
- * この更新がプロジェクトの移動かどうか（doc-3 §4.3）。移動が成立すると、そのプロジェクトについて
- * 開いている編集セッションは閉じる（doc-10 §4.1）——「開いていたセッションが古い版を指している」
- * どころではなく、**別のルートのファイル**を指しているためである。文書の更新は文書 ID で送るので、
- * 新ルートに同じ ID の文書があれば、実行前照合は新ルートの最新読み取りに対して成立してしまい、旧
- * ルートの本文で（`--content` は全置換なので丸ごと）上書きできてしまう。
+ * Whether this update moves the project (doc-3 §4.3). A move closes the project's open 編集セッション
+ * (doc-10 §4.1) — not because the session would hold a stale version, but because it would name
+ * files in *another root*. A 文書更新 travels as a document id, so if the new root holds the same id
+ * the 実行前照合 succeeds against that root's own fresh read and the old root's body replaces it
+ * whole (`--content` is a full replacement).
  *
- * `toUpdateRequest` は移動のとき両ルートを載せ、backlog_root だけの変更でも読み取り先は変わるので、
- * どちらか一方でも載っていれば移動として扱う。
+ * `toUpdateRequest` carries both roots on a move, and a `backlog_root`-only change moves what is
+ * read as well, so either field being present counts.
  */
 export function movesRoot(request: UpdateRequest): boolean {
   return request.project_root !== undefined || request.backlog_root !== undefined;
 }
 
-/** slug に入力欄を置かない理由と、変えたいときに何をすることになるか（doc-10 §4.1・doc-3 §3.1）。 */
+/** Why slug has no field, and what changing it would take instead (doc-10 §4.1, doc-3 §3.1). */
 export const SLUG_IMMUTABLE_NOTE =
   "slug は横断タスクID の左辺として全タスクの参照に使われるため、変更手段を提供しません（doc-3 §3.1）。" +
   "別の slug にするには登録を解除して登録し直すことになり、そのとき Git 履歴表示の同一性は切れます。";
 
 /**
- * プロジェクトルートを変えたときに欄の直下へ出す断り（doc-10 §4.1）。既定は
- * `<新ルート>/backlog` だが、実際に送るのは欄に入っている値なので、その値を名指しする。
- * `null` は移動でないとき。
+ * The note under the project-root field once it differs (doc-10 §4.1). The default would be
+ * `<new root>/backlog`, but what travels is the value in the field, so the note names that value.
+ * `null` while this is not a move.
  */
 export function rootMoveNote(entry: ProjectEntry, edit: EntryEdit): string | null {
   const projectRoot = edit.projectRoot.trim();
@@ -173,15 +176,16 @@ export function rootMoveNote(entry: ProjectEntry, edit: EntryEdit): string | nul
 
 // --- 概要区画: status 別名表の効き方 (doc-10 §4.2) ---------------------------------------------
 
-/** `aliasKeyEffect` の返す 4 状態。`interpret::status` の `StatusDeclaration` と 1 対 1。 */
+/** The four states `aliasKeyEffect` returns — one per `interpret::status`'s `StatusDeclaration`. */
 export type AliasEffect = "declared" | "draft" | "noDeclaredSet" | "undeclared";
 
 export interface AliasEffectNote {
   label: string;
   note: string;
   /**
-   * 別名を書いても対応づかない状態か。doc-10 §4.2 が縮退の族の色で示すよう求めるのはこの 1 態だけで、
-   * 「効くが宣言で裏づけられていない」`noDeclaredSet` を巻き込まないための区別である。
+   * Whether an alias here changes nothing. doc-10 §4.2 gives the 縮退 colour to this one state only,
+   * which is what keeps `noDeclaredSet` — where the alias works, just without a declaration behind
+   * it — out of the same mark.
    */
   ineffective: boolean;
 }
@@ -217,26 +221,37 @@ export const ALIAS_EFFECT_NOTES: Record<AliasEffect, AliasEffectNote> = {
 // --- 概要区画: 登録解除 (doc-10 §4.3) ----------------------------------------------------------
 
 /**
- * 台帳読取専用のとき、概要区画の**入力ごと**止めていることを操作の近くで述べる文（doc-10 §8）。
- * 画面上部の帯とは別に置く: doc-11 §5 が `disabled` を許すのは「操作の近くに常時表示する補助文」が
- * あるときで、画面の一番上の帯はその位置にない。帯と重複してよいことも同節が定めている。
+ * Why every 区画 stops issuing while this screen's own ledger write is in flight (review [P1]).
+ * A save may be a move, and a move changes which files this screen's ids name: the boundary detaches
+ * the old session and reopens the slug against the new root, so an issue made in that window arrives
+ * after the reopen and is checked against the *new* root's read. It would pass, and `--content`
+ * replaces a document whole. Distinct from `ISSUE_BUSY_REASON`, which is about another 発行 running.
+ */
+export const LEDGER_WRITE_IN_FLIGHT_REASON =
+  "台帳エントリの更新を実行中です。ルートが変わることがあるため、完了するまで発行できません";
+
+/**
+ * The sentence that says a read-only ledger stops the 概要区画's *inputs* as well (doc-10 §8). Placed
+ * apart from the band at the top of the screen: doc-11 §5 allows `disabled` when a 常時表示する補助文
+ * sits near the control, and the top band is not near it. The same section allows the duplication.
  *
- * 入力まで止めるのは、押せない保存だけを残すと、書き換えられない値を編集でき、その入力が未保存入力
- * として数えられ、あとで「保存できなかった変更を破棄しますか」と尋ねる羽目になるためである。
+ * The inputs are stopped, and not only the save, because an unpressable save over editable fields
+ * lets the user change values that can never be written — and that input then counts as 未保存入力,
+ * so they are later asked whether to discard changes that were never saveable.
  */
 export const OVERVIEW_READ_ONLY_NOTE =
   "台帳が読み取り専用のため、この区画の入力・保存・登録解除はすべてできません（doc-3 §2.2）。" +
   "文書・マイルストーン・新規タスクは台帳を書かないので、そちらは操作できます。";
 
-/** 登録解除が何を消し、何を消さないか（doc-3 §4.2）。削除ボタンの隣に置く断りではなく本文として出す。 */
+/** What 登録解除 removes and what it leaves (doc-3 §4.2). Body text, not a note beside the button. */
 export const UNREGISTER_SCOPE_NOTE =
   "登録解除は台帳エントリを 1 件消し、スイムレーンからこの行を外します。" +
   "対象プロジェクトの Backlog ルート・管理ファイル・Git リポジトリには触れません。" +
   "タスクの正本はそのまま残ります（doc-3 §4.2）。";
 
 /**
- * 概要区画の更新を止めているものがあれば、その理由（doc-11 §5）。台帳読取専用だけが効き、CLI 縮退は
- * 効かない — 台帳操作は Backlog CLI を使わないためである（doc-10 §3/§8）。
+ * Why the 概要区画's update is held, if it is (doc-11 §5). Only 台帳読取専用 counts, never CLI 縮退:
+ * a ledger operation runs no Backlog CLI (doc-10 §3/§8).
  */
 export function overviewBlocked(context: { readOnly: boolean; busy: boolean }): string | null {
   if (context.readOnly) {
@@ -246,10 +261,11 @@ export function overviewBlocked(context: { readOnly: boolean; busy: boolean }): 
 }
 
 /**
- * 登録解除を止めているものがあれば、その理由（doc-10 §4.3・doc-11 §5）。障害の順に見る: 書けない台帳は
- * 何があっても止め、実行中の操作が次、最後が slug 入力一致。一致は前後空白を落として比べる（貼り付けに
- * 付いてくるだけの空白で拒み続けるのは、確認としての意味を持たないため）が、大文字小文字は落とさない
- * — slug の文字種は英小文字・数字・ハイフンだけで（doc-3 §3.1）、大小の違いは打ち間違いである。
+ * Why 登録解除 is held, if it is (doc-10 §4.3, doc-11 §5). Ordered as the obstacles are: a ledger
+ * that cannot be written stops it whatever else is true, an action in flight is next, and the slug
+ * match is last. The comparison trims surrounding space — refusing over whitespace that came along
+ * with a paste is not a confirmation of anything — but keeps case: a slug is lowercase letters,
+ * digits and hyphens only (doc-3 §3.1), so a case difference is a typo.
  */
 export function unregisterBlocked(
   typed: string,

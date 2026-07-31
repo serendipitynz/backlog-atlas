@@ -494,9 +494,11 @@
     white-space: nowrap;
   }
 
-  // プロジェクト名は入口でもある (doc-7 §2.3) が、行の識別でもあるので枠を与えない — ボタンらしい枠を
-  // 付けると、レーンヘッダ行で最も目立つ要素が「名前」ではなく「操作」に見えてしまう。押せることは
-  // ポインタとホバー・フォーカス時の下線で示し、行末の `›` が同じ行き先の明示的な操作を担う。
+  // The project name is an entry point (doc-7 §2.3) but also the row's identity, so it takes no
+  // border: drawn like a button, the most prominent thing on the レーンヘッダ行 would read as an
+  // operation rather than as a name. That it is pressable is carried by the cursor and by an
+  // underline on hover/focus, while the `›` at the row's end is the explicit control for the same
+  // destination.
   .project {
     min-width: 0;
     padding: 0;

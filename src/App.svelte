@@ -1091,11 +1091,12 @@
 <main class="screen">
   <header class="top">
     <h1>{screen === "swimlane" ? "プロジェクト別スイムレーン" : "プロジェクト詳細"}</h1>
-    <!-- 固定ヘッダには全プロジェクトに効く入口だけを置く (doc-7 §2.1)。1 プロジェクトに閉じた操作
-         （台帳エントリの編集・登録解除・文書・マイルストーン・詳細な新規タスク作成）はプロジェクト
-         詳細画面へ集めてある (doc-10)。粒度の違う操作を同じ場所に混ぜないためである。
-         どちらもパネルとして画面の上に開く: 作業をする場所ではないので、後ろのスイムレーンは状態を
-         保ったまま残る。モーダル化・メニューへの併置・ショートカットは TASK-56 が与える。 -->
+    <!-- Only entry points that apply to every project belong on the fixed header (doc-7 §2.1). What
+         is closed on one project — editing its 台帳エントリ, 登録解除, documents, milestones, the
+         detailed 新規タスク作成 — is collected in プロジェクト詳細画面 (doc-10), so operations of
+         different granularity do not share a place. Both open as a panel over the screen: neither is
+         somewhere to work, so the swimlane behind keeps its state. Making them modal, echoing them
+         in a menu and giving them shortcuts is TASK-56's. -->
     <button type="button" class="header-entry" onclick={() => (registerOpen = true)}>
       ＋ プロジェクトを登録
     </button>
@@ -1106,8 +1107,8 @@
   </header>
 
   {#if registerOpen}
-    <!-- 登録 (doc-3 §4.1) は台帳全体に対する唯一の操作なので、1 プロジェクト単位のプロジェクト詳細
-         画面ではなくここから開く (doc-3 §4)。 -->
+    <!-- 登録 (doc-3 §4.1) is the one ledger-wide operation left, so it opens from here rather than
+         from the per-project detail screen (doc-3 §4). -->
     <div class="settings-panel">
       <ProjectRegister
         {entries}
@@ -1184,9 +1185,10 @@
   {/if}
 
   {#if screen === "project"}
-    <!-- プロジェクト詳細画面 (doc-10, TASK-55): 1 プロジェクトについてできることを 1 画面に集める。
-         概要区画は台帳ファイルだけを書き、残る 3 区画は更新アダプター経由で対象プロジェクトの管理
-         ファイルを書く。どちらの経路も、書くのはこの shell が渡したコールバックである。 -->
+    <!-- プロジェクト詳細画面 (doc-10, TASK-55): everything that can be done to one project, in one
+         screen. 概要 writes the ledger file alone; the other three write the target project's
+         management files through the 更新アダプター. Both routes go through callbacks this shell
+         hands down. -->
     {#if detailEntry === null}
       <p class="status">
         このプロジェクトは台帳にありません（別の画面で登録が外れた可能性）。
@@ -1354,8 +1356,8 @@
     opacity: 0.8;
   }
 
-  // 固定ヘッダの入口 (doc-7 §2.1): 登録 と 設定。どちらもパネルを開くのであって画面を切り替えないので、
-  // 「いまどの画面か」を示すタブとは別の見た目にしてある。
+  // The fixed header's entry points (doc-7 §2.1): 登録 and 設定. Both open a panel rather than
+  // switching screens, so they are drawn unlike a tab that says which screen is current.
   .header-entry {
     padding: 0.1rem 0.5rem;
     border: 1px solid var(--line-strong);

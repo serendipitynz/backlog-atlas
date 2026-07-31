@@ -1,14 +1,16 @@
 <script lang="ts">
-  // プロジェクトを登録 (doc-3 §4.1). 台帳全体に対する操作なので、1 プロジェクトに閉じた操作を集めた
-  // プロジェクト詳細画面 (doc-10) ではなく、スイムレーンの固定ヘッダから開く (doc-3 §4・doc-7 §2.1)。
+  // プロジェクトを登録 (doc-3 §4.1). A ledger-wide operation, so it opens from the swimlane's fixed
+  // header (doc-3 §4, doc-7 §2.1) rather than from プロジェクト詳細画面 (doc-10), which collects the
+  // operations closed on one project.
   //
-  // TASK-39 の台帳管理画面から、この登録フォームだけを取り出したものである。台帳の一覧・更新・削除は
-  // プロジェクト詳細画面の概要区画へ移った (doc-10 §4) ので、ここに残るのは「まだ台帳に無いものを 1 件
-  // 足す」だけになる。検査規則は `lib/ledger.ts` のものをそのまま使う。
+  // This is TASK-39's 台帳管理画面 with only the registration form kept: listing, updating and
+  // removing entries moved to the detail screen's 概要区画 (doc-10 §4), leaving this with one job —
+  // adding something the ledger does not have yet. The checks are `lib/ledger.ts`'s, unchanged.
   //
-  // 書くのは台帳ファイルだけで、対象プロジェクトの管理ファイル・Git には触れない (doc-3 §2.1)。
-  // テキスト欄は局所状態に束ね、入力中に書き換えない (IME 中の再描画で変換が壊れるため) — 「既定に
-  // 合わせる」たぐいの便宜は利用者が押すボタンにしてある。
+  // The only thing written is the ledger file; no project's management files or Git are touched
+  // (doc-3 §2.1). Text inputs bind to local state and are never rewritten while the user is typing
+  // (a redraw mid-composition breaks the IME) — the "follow the default" conveniences are buttons
+  // the user presses.
   import {
     EMPTY_REGISTER_INPUT,
     parentPath,
@@ -24,13 +26,13 @@
   import type { ProjectEntry, RegisterRequest } from "../lib/wire";
 
   interface Props {
-    /** 既登録の slug を見るためだけに要る: 画面で分かる衝突はその場で言う (権威は Rust 側)。 */
+    /** Only to see the taken slugs: a collision visible here is said here (the Rust side decides). */
     entries: ProjectEntry[];
-    /** 読み取り専用の台帳 (doc-3 §2.2) では登録できない。理由付きで止める。 */
+    /** A read-only ledger (doc-3 §2.2) cannot be registered into. Held back with the reason. */
     readOnly: boolean;
-    /** 台帳コマンドが 1 本走っている間 (App.svelte が直列化している)。 */
+    /** True while one ledger command is in flight (the shell serializes them). */
     busy: boolean;
-    /** 台帳ファイルの場所 (doc-3 §2.1)。`null` は未確認。 */
+    /** Where the ledger file is (doc-3 §2.1). `null` until it is known. */
     ledgerPath: string | null;
     onpickDirectory: (title: string) => Promise<string | null>;
     ondefaultSlug: (projectRoot: string) => Promise<string | null>;
@@ -51,11 +53,12 @@
 
   let input = $state<RegisterInput>({ ...EMPTY_REGISTER_INPUT });
   /**
-   * プロジェクトルートから導出される既定の slug (doc-3 §3.1)。欄には書き込まず横に出す: 欄が空である
-   * ことが「導出させる」の意味なので、埋めると台帳側の導出が画面の送った値に化ける。
+   * The default slug derived from the project root (doc-3 §3.1). Shown beside the field rather than
+   * written into it: the field being empty is what *means*「導出させる」, so filling it in would turn
+   * the ledger's own derivation into a value this screen sent.
    */
   let defaultSlug = $state<string | null>(null);
-  /** 未取得 と 導出できない を分ける。後者だけが slug の指定を必須にする。 */
+  /** Distinguishes 未取得 from「導出できない」— only the second makes a slug mandatory. */
   let defaultSlugKnown = $state(false);
   let report = $state<RefusalReport | null>(null);
   let submitting = $state(false);
@@ -72,9 +75,10 @@
     "台帳が読み取り専用のため、フォルダを選んでも登録できません（doc-3 §2.2）。";
 
   /**
-   * なぜ登録できないか、できないときだけ (doc-11 §5). 1 本の文字列が「押せない状態」と「ボタンの下の
-   * 文」の両方を決めるので、2 つが食い違いようがない。欄ごとの指摘は別に出ているが、それが登録を
-   * 止めていることは改めて述べる — 指摘が読めることと、なぜ押せないかが分かることは別である。
+   * Why registration is held, and only when it is (doc-11 §5). One string drives both the withheld
+   * state and the sentence under the button, so the two cannot disagree. The per-field problems are
+   * shown separately, but that they are what stops the registration is said again here — being able
+   * to read a problem is not the same as knowing why the button will not go.
    */
   let blocked = $derived(
     readOnly
@@ -105,9 +109,9 @@
   }
 
   /**
-   * doc-3 §4.1 step 1 は Backlog ルートの指定も許す。プロジェクトルートは Git・PR 参照の基点として
-   * 必要なので (doc-3 §3)、Backlog ルートを選んだときはその親を**欄に**入れて利用者に直させる。
-   * 黙って推測して送ると、別のリポジトリがエントリに結び付く。
+   * doc-3 §4.1 step 1 lets the user name the Backlog root instead. The project root is still needed
+   * as the base for Git・PR 参照 (doc-3 §3), so picking a Backlog root offers its parent *in the
+   * field* for the user to accept or correct. Guessing it silently would attach the wrong repository.
    */
   async function pickBacklogRoot(): Promise<void> {
     const picked = await onpickDirectory("Backlog ルートを選択");
@@ -154,15 +158,16 @@
 
   <p class="where">
     台帳ファイル: <code>{ledgerPath ?? "確認中…"}</code>
-    <!-- doc-3 §2.1: 登録は Atlas 自身の設定である。画面に書くのは、この不変条件が見えないままだと
-         「登録＝対象プロジェクトに何か書く」と読めてしまうからで、これが登録を押して安全な根拠になる。 -->
+    <!-- doc-3 §2.1: the registration is Atlas's own configuration. Stated on screen because the
+         invariant is invisible otherwise — and it is what makes 登録 safe to press. -->
     <span class="aside">
       （Atlas 専用の設定ファイルです。いずれの Backlog ルートにも登録情報は書きません）
     </span>
   </p>
 
   {#if readOnly}
-    <!-- 画面全体に効く無効化理由 (doc-11 §5)。下の 選択… はこれを指すだけで、同じ文を繰り返さない。 -->
+    <!-- A reason that applies to the whole screen (doc-11 §5). The 選択… buttons below point at it
+         rather than repeating the sentence. -->
     <p class="readonly" id={READ_ONLY_ID}>
       台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。
       登録はできません（doc-3 §2.2）。
@@ -244,7 +249,8 @@
         別の slug を使う場合はここに入力してください。
       </p>
     {:else if defaultSlugKnown}
-      <!-- doc-3 §3.1: 使える文字が 1 つも無いディレクトリ名からは既定が出ないので、指定してもらう。 -->
+      <!-- doc-3 §3.1: a directory name with no usable characters yields no default, so the user
+           has to name one. -->
       <p class="problem">
         プロジェクトルート名から slug を導出できません。slug を指定してください。
       </p>
@@ -255,7 +261,8 @@
   {/each}
 
   {#if report}
-    <!-- 登録失敗は理由付きで出す (doc-3 §4.1)。どの欄へ戻ればよいかは `refusalReport` が決める。 -->
+    <!-- A refused registration is shown with its reason (doc-3 §4.1); which field to go back to is
+         `refusalReport`'s decision. -->
     <p class="problem">{report.message}</p>
   {/if}
 
@@ -311,8 +318,8 @@
     opacity: 0.75;
   }
 
-  // 読み取り専用縮退 (doc-3 §2.2) は decision-6 の 印の族 ではない — 読み取りが縮退したわけではない
-  // ので、族の色を借りずに中立の情報色を取る。
+  // 読み取り専用縮退 (doc-3 §2.2) is not one of decision-6's 印の族 — nothing is degraded about the
+  // *reading* — so it takes the neutral info hue rather than borrowing a family's colour.
   .readonly,
   .notice {
     margin: 0;
@@ -365,7 +372,7 @@
     font: inherit;
     font-size: 0.72rem;
     cursor: pointer;
-    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); ここに `:disabled` を書くと勝ってしまう。
+    // 無効化提示 lives in one place in app.scss (doc-11 §5); a `:disabled` rule here would outrank it.
 
     &.primary {
       border-color: var(--info);
@@ -379,15 +386,15 @@
     opacity: 0.75;
   }
 
-  // 直せる入力の指摘。decision-6 の 読取不能 の色はあえて使わない: これは利用者が直せる入力であって、
-  // Atlas が読めなかったルートではない。
+  // A correctable input problem. decision-6's unreadable hue is deliberately not reused: this is
+  // input the user can fix, not a root Atlas failed to read.
   .problem {
     margin: 0;
     color: var(--mark-degraded);
     font-size: 0.72rem;
   }
 
-  // 無効化の理由 (doc-11 §5) は副次の文なので `--muted` (doc-11 §2.1)。
+  // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1).
   .blocked-note {
     margin: 0;
     color: var(--muted);

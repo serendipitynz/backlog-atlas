@@ -34,6 +34,7 @@ import {
   type MilestoneAddInput,
   type TaskCreateInput,
 } from "./manage";
+import { readinessReason } from "./edit";
 import type { CliReadiness, Document } from "./wire";
 
 function taskInput(overrides: Partial<TaskCreateInput> = {}): TaskCreateInput {
@@ -295,8 +296,9 @@ describe("マイルストーンの提供範囲", () => {
   });
 
   it("lists the description edit beside the three, so every withheld operation is in one 区画", () => {
-    // TASK-55 / doc-10 §6: 出さないと決めた操作は、無効化されたボタンとしてではなく名称・写像先・
-    // 理由の 3 点で並べる。説明編集だけがヒント文として別扱いだったのを、同じ一覧へ入れた。
+    // TASK-55 / doc-10 §6: an operation decided against is laid out as 名称・写像先・理由 rather
+    // than as a disabled button. The description edit used to be a hint sentence apart from the
+    // list; it joins it here.
     expect(WITHHELD_MILESTONE_OPERATIONS.map((entry) => entry.kind)).toEqual([
       "describe",
       "rename",
@@ -320,8 +322,8 @@ describe("マイルストーンの提供範囲", () => {
   });
 
   it("keeps the description edit out of the 照合不能 family, since its cause is different", () => {
-    // 説明編集が無いのは CLI にサブコマンドが無いためで、照合が定まっていないためではない。
-    // 照合不能の尾を付けると「照合さえ定まれば出る」と読めてしまう。
+    // The description edit is missing because the CLI has no subcommand, not because 照合 is
+    // undefined. With the 照合不能 tail it would read as "it appears once 照合 is settled".
     const describe = WITHHELD_MILESTONE_OPERATIONS.find((entry) => entry.kind === "describe");
     expect(describe?.reason).toBe(MILESTONE_DESCRIPTION_NOT_EDITABLE);
     expect(describe?.reason).not.toContain("照合を省いた実行は代替経路として提供しません");
@@ -336,12 +338,43 @@ describe("マイルストーンの提供範囲", () => {
 
 // --- 文書の提供しない操作 (doc-10 §5) ----------------------------------------------------------
 
+describe("発行の可否", () => {
+  const ready: CliReadiness = { state: "ready", version: "1.47.1" };
+  const plan: IssuePlan = { state: "ready", action: [{ op: "milestoneAdd", name: "m-2" }] };
+
+  it("lets a caller hold issuance with its own reason, ahead of the form's state", () => {
+    // プロジェクト詳細画面 holds every 区画 while a ledger write is in flight (review [P1]): if that
+    // write is a move, the ids the screen holds start naming files in another root — a different
+    // fact from `ISSUE_BUSY_REASON` (another 発行 is running). Passing a reason is what lets the two
+    // be said apart.
+    const held = issueAvailability(plan, { readiness: ready, busy: false, hold: "移動中です" });
+    expect(held).toEqual({ state: "blocked", reason: "移動中です" });
+    // The hold outranks an unfilled form: the reason is the target, not the input.
+    const blockedPlan: IssuePlan = { state: "blocked", reason: "title は必須です" };
+    expect(issueAvailability(blockedPlan, { readiness: ready, busy: false, hold: "移動中です" })).toEqual(
+      { state: "blocked", reason: "移動中です" },
+    );
+  });
+
+  it("keeps the CLI degrade ahead of the hold, and no hold as no change", () => {
+    const degraded: CliReadiness = { state: "unavailable", detail: "not on PATH" };
+    expect(
+      issueAvailability(plan, { readiness: degraded, busy: false, hold: "移動中です" }),
+    ).toEqual({ state: "blocked", reason: readinessReason(degraded) });
+    expect(issueAvailability(plan, { readiness: ready, busy: false })).toEqual({ state: "ready" });
+    expect(issueAvailability(plan, { readiness: ready, busy: false, hold: null })).toEqual({
+      state: "ready",
+    });
+  });
+});
+
 describe("文書の提供範囲", () => {
   it("withholds the delete with the boundary reason, not with a bare absence", () => {
     expect(WITHHELD_DOCUMENT_OPERATIONS.map((entry) => entry.kind)).toEqual(["remove"]);
     const remove = WITHHELD_DOCUMENT_OPERATIONS[0];
-    // 理由は 2 段でなければならない: CLI に無いことと、その不在を Atlas がファイルを直接消して
-    // 埋めない（decision-2 の境界）こと。前者だけだと「Atlas が消せばよい」と読める。
+    // The reason has to be in two steps: that the CLI lacks it, and that Atlas does not fill the
+    // gap by unlinking the file itself (decision-2's boundary). With only the first, it reads as
+    // "then Atlas should just delete it".
     expect(remove.reason).toContain("v1.47.1");
     expect(remove.reason).toContain("decision-2");
     expect(remove.mapping).not.toBe("");
@@ -352,13 +385,14 @@ describe("文書の提供範囲", () => {
 
 describe("新規タスク作成の範囲", () => {
   it("states the narrowing as a product judgment, never as a missing CLI feature", () => {
-    // doc-10 §7 は「CLI に無い」と書くことを禁じている: v1.47.1 の `task create` は実測でこれらを
-    // 受け取るので事実に反し、しかも後から CLI を口実に欄を増やす余地を残す。
+    // doc-10 §7 forbids writing「CLI に無い」: v1.47.1's `task create` does accept these (measured),
+    // so it would be false — and it would leave the CLI as a pretext for widening the form later.
     expect(TASK_CREATE_SCOPE_NOTE).toContain("製品判断");
     for (const field of TASK_CREATE_OMITTED_FIELDS) {
       expect(field.reason).not.toContain("CLI に無い");
       expect(field.flag).not.toBe("");
-      // 省いた項目に作成後の経路があるかは項目ごとに違う (doc-10 §7) ので、どれも経路を持つ。
+      // Whether an omitted field has a post-creation route differs per field (doc-10 §7), so each
+      // one carries its own.
       expect(field.after).not.toBe("");
     }
   });

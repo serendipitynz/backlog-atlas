@@ -1,18 +1,21 @@
 <script lang="ts">
-  // プロジェクト詳細画面 (doc-10, TASK-55): 1 プロジェクトについてできることを 1 画面へ集める。
+  // プロジェクト詳細画面 (doc-10, TASK-55): everything that can be done to one project, in one screen.
   //
-  // TASK-39 の台帳管理画面（全プロジェクトの台帳）と TASK-40 のプロジェクト管理画面（1 プロジェクトの
-  // 文書・マイルストーン・新規タスク）は粒度が違うものを並べていたので、利用者は同じプロジェクトを
-  // 扱うのに 2 画面を行き来していた。ここは粒度を 1 プロジェクトへ揃えたもので、旧 2 画面は残らない。
-  // 台帳全体に対する唯一の操作である「登録」だけは固定ヘッダへ移した（doc-3 §4・doc-7 §2.1）。
+  // TASK-39's 台帳管理画面 (every project's registration) and TASK-40's プロジェクト管理画面 (one
+  // project's documents, milestones and new tasks) put two different granularities side by side, so
+  // working on a single project meant moving between them. This levels the granularity at one
+  // project; neither of the old screens remains. 登録 is the one ledger-wide operation and moved to
+  // the fixed header instead (doc-3 §4, doc-7 §2.1).
   //
-  // 書き込み先は区画で分かれる。概要区画は台帳ファイルだけを書き (doc-3 §2.1)、文書・マイルストーン・
-  // 新規タスクは Backlog 更新アダプター (doc-5) 経由で対象プロジェクトの管理ファイルを書く。この
-  // コンポーネントはファイルパスも `invoke` も持たないので、doc-2 の境界は構造として保たれる。
+  // Where each 区画 writes differs. 概要 writes the ledger file alone (doc-3 §2.1); 文書・マイル
+  // ストーン・新規タスク write the target project's management files through the Backlog 更新アダプター
+  // (doc-5). This component holds no path and no `invoke`, so doc-2's boundary is structural here
+  // rather than a rule to remember.
   //
-  // 規則は `lib/project-detail.ts`（画面の骨格・概要区画）と `lib/ledger.ts`・`lib/manage.ts`（要求値の
-  // 組み立て）が純関数で持ち、ここは配置と局所フォーム状態とコールバックである。テキスト欄は局所状態に
-  // 束ね、入力中に書き換えない（IME の変換が壊れるため）。
+  // The rules live in `lib/project-detail.ts` (the screen's frame and the 概要区画) and in
+  // `lib/ledger.ts` / `lib/manage.ts` (building the request values); this component is layout, local
+  // form state and callbacks. Text inputs bind to local state and are never rewritten while the user
+  // is typing — the same IME rule the other screens follow.
   import { untrack } from "svelte";
   import Editor from "./Editor.svelte";
   import { PRIORITIES } from "../lib/edit";
@@ -55,7 +58,9 @@
     type DocCreateInput,
     type DocDraft,
     type DocSession,
+    type IssueAvailability,
     type IssueOutcome,
+    type IssuePlan,
     type MilestoneAddInput,
     type TaskCreateInput,
     type WithheldOperation,
@@ -64,6 +69,7 @@
     ALIAS_EFFECT_NOTES,
     DETAIL_SECTIONS,
     LEDGER_READ_ONLY_BAND,
+    LEDGER_WRITE_IN_FLIGHT_REASON,
     OVERVIEW_READ_ONLY_NOTE,
     SLUG_IMMUTABLE_NOTE,
     UNREGISTER_SCOPE_NOTE,
@@ -85,24 +91,24 @@
   } from "../lib/wire";
 
   interface Props {
-    /** この画面が扱う台帳エントリ。ルートが読めなくてもこれは読めている（doc-10 §8）。 */
+    /** The 台帳エントリ this screen is about. Readable even when its root is not (doc-10 §8). */
     entry: ProjectEntry;
-    /** そのルートの読み取り結果。`undefined` はまだ読んでいない。 */
+    /** That root's read outcome. `undefined` means it has not been read yet. */
     load: ProjectLoad | undefined;
-    /** 台帳が読み取り専用 (doc-3 §2.2)。概要区画だけに効く。 */
+    /** The ledger is read-only (doc-3 §2.2). Reaches the 概要区画 only. */
     ledgerReadOnly: boolean;
-    /** 台帳コマンドが 1 本走っている間（App.svelte が直列化している）。 */
+    /** True while one ledger command is in flight (the shell serializes them). */
     ledgerBusy: boolean;
-    /** 対応 CLI があるか (doc-5 §5)。`null` は確認中。文書・マイルストーン・新規タスクだけに効く。 */
+    /** Whether a supported CLI exists (doc-5 §5); `null` is 確認中. Reaches the other three 区画 only. */
     readiness: CliReadiness | null;
     onpickDirectory: (title: string) => Promise<string | null>;
     onupdate: (request: UpdateRequest) => Promise<LedgerActionResult>;
     onremove: (slug: string) => Promise<LedgerActionResult>;
-    /** 1 件の更新操作を発行する (doc-5 §3, doc-9 §4)。再読込は shell が持つ。 */
+    /** Issue one 更新操作 (doc-5 §3, doc-9 §4). The re-read belongs to the shell. */
     onissue: (slug: string, action: UpdateOperation[]) => Promise<IssueOutcome>;
-    /** この画面が未保存入力を抱えている間。画面を離れるときに shell が確認するために要る。 */
+    /** True while this screen holds 未保存入力 — what makes leaving it ask first. */
     ondirty: (dirty: boolean) => void;
-    /** 出口 (doc-10 §2)。 */
+    /** 出口 (doc-10 §2). */
     onback: () => void;
     ontoLane: () => void;
   }
@@ -125,19 +131,65 @@
   let section = $state<DetailSection>("overview");
 
   let project = $derived(load?.state === "loaded" ? load.project : null);
-  /** ルート読取不能 (doc-10 §8)。概要区画は出し、他の 3 区画は一覧を出せない。 */
+  /** ルート読取不能 (doc-10 §8). The 概要区画 still draws; the other three have no list to show. */
   let unreadable = $derived(load?.state === "unreadable" ? load.error : null);
 
   let readOnlyBand = $derived(ledgerReadOnly ? LEDGER_READ_ONLY_BAND : null);
   let degradedBand = $derived(cliDegradedBand(readiness));
 
+  // --- 発行の可否 (doc-5 §5, doc-9 §5) ----------------------------------------------------------
+
+  /** True while one 更新操作 is in flight. Every 発行 control is withheld, not only the one pressed. */
+  let busy = $state(false);
+  /**
+   * True while a ledger write this screen issued is in flight, from before the await until its
+   * follow-up is done. Separate from `ledgerBusy` (the shell's, which only serializes ledger
+   * commands): what this one guards is *issuance*, because a save may be a move, and a move changes
+   * which files this screen's ids name (review [P1] round 2).
+   */
+  let ledgerSaving = $state(false);
+  /**
+   * Whether an 更新操作 may be issued at all. A ledger write in flight counts as busy for every
+   * 区画 — not just the one that started it — since the boundary detaches the old session and
+   * reopens the slug against the new root while it runs.
+   */
+  let issuing = $derived(busy || ledgerSaving);
+  /** Why issuance is held, for the controls that build no plan of their own (文書一覧の 編集). */
+  let issuingReason = $derived(
+    ledgerSaving ? LEDGER_WRITE_IN_FLIGHT_REASON : busy ? ISSUE_BUSY_REASON : null,
+  );
+
+  /**
+   * Whether one form's 発行 control may be pressed, and why not (doc-5 §5). Wrapped rather than
+   * called directly so the ledger-write hold reaches all four 区画 through one place — added to a
+   * single form, it would be the one the others forgot.
+   */
+  function availability(plan: IssuePlan): IssueAvailability {
+    return issueAvailability(plan, {
+      readiness,
+      busy,
+      hold: ledgerSaving ? LEDGER_WRITE_IN_FLIGHT_REASON : null,
+    });
+  }
+  /**
+   * The last action's result. Its tone follows doc-9 §5's families: an ordinary notice for a CLI
+   * failure or a 更新前競合, and 照合不能's own colour for the one that is neither — so it cannot be
+   * read as "a conflict happened".
+   */
+  let message = $state<{ tone: "ok" | "warn" | "undetectable"; text: string } | null>(null);
+
+  function tone(outcome: IssueOutcome): "ok" | "warn" | "undetectable" {
+    if (outcome.state === "applied") return "ok";
+    return outcome.state === "uncheckable" ? "undetectable" : "warn";
+  }
+
   // --- 概要区画: 台帳エントリ (doc-10 §4) ------------------------------------------------------
 
   /**
-   * 台帳エントリの編集フォーム。`entry` から一度写し、以後は利用者のものとして保つ — 保存が通った
-   * あとに写し直さないのは、`entry` が更新されれば `toUpdateRequest` が `null`（＝変更なし）を返し、
-   * フォームが自然に「送るものが無い」状態へ落ち着くからである。写し直すと、保存と同時に外部で
-   * 別の変更が入っていた場合に利用者の入力を黙って上書きすることになる。
+   * The 台帳エントリ edit form. Copied from `entry` once and then held as the user's own. It is not
+   * re-copied after a successful save because it does not need to be: `entry` moves, so
+   * `toUpdateRequest` returns `null` and the form settles at 変更なし by itself. Re-copying would
+   * instead overwrite the user's input silently whenever another change landed alongside the save.
    */
   let edit = $state<EntryEdit>(untrack(() => editOf(entry)));
   let unregisterInput = $state("");
@@ -146,7 +198,7 @@
 
   let editIssues = $derived(editProblems(edit));
   let updateRequest = $derived(toUpdateRequest(entry, edit));
-  /** 送信属性一覧 (doc-10 §4.1)。保存ボタンの直前に常時出す（ホバーに隠さない。doc-11 §5）。 */
+  /** 送信属性一覧 (doc-10 §4.1), shown above the 保存 at all times rather than on hover (doc-11 §5). */
   let submitted = $derived(updateRequest === null ? [] : submittedAttributes(entry, updateRequest));
   let moveNote = $derived(rootMoveNote(entry, edit));
 
@@ -154,8 +206,9 @@
   const UNREGISTER_BLOCKED_ID = "overview-unregister-blocked";
 
   let saveBlocked = $derived(
-    // 障害の順に見る: 書けない台帳が何より先で、走っている操作が次、最後が入力とその中身。
-    overviewBlocked({ readOnly: ledgerReadOnly, busy: ledgerBusy }) ??
+    // Ordered as the obstacles are: a ledger that cannot be written first, an action in flight
+    // next, and the input and what it amounts to last.
+    overviewBlocked({ readOnly: ledgerReadOnly, busy: ledgerBusy || issuing }) ??
       (editIssues.length > 0
         ? "入力に問題があります（各欄の指摘を参照）。"
         : updateRequest === null
@@ -165,11 +218,11 @@
   let unregisterReason = $derived(
     unregisterBlocked(unregisterInput, entry.slug, {
       readOnly: ledgerReadOnly,
-      busy: ledgerBusy,
+      busy: ledgerBusy || issuing,
     }),
   );
 
-  /** そのプロジェクトが宣言している status。ルートが読めていないときは `null`（判定できない）。 */
+  /** The statuses this project declares; `null` when the root is unreadable (nothing to judge by). */
   let declaredStatuses = $derived(project?.config.statuses ?? null);
 
   function addAliasRow(): void {
@@ -180,7 +233,7 @@
     edit.aliases.splice(index, 1);
   }
 
-  /** いま欄にあるプロジェクトルートに対する既定の Backlog ルートを入れる (doc-3 §3)。 */
+  /** Put in the default Backlog root for the project root as the field currently has it (doc-3 §3). */
   function followBacklogDefault(): void {
     edit.backlogRoot = resolvedBacklogRoot({
       projectRoot: edit.projectRoot,
@@ -202,65 +255,76 @@
     if (saveBlocked !== null || request === null) return;
     entryReport = null;
     overviewNotice = null;
-    const result = await onupdate(request);
-    if (result.state === "refused") {
-      entryReport = result.report;
-      return;
+    // Raised *before* the await, not after it (review [P1] round 2). The cleanup below cannot be the
+    // whole guard: while `onupdate` is in flight the boundary detaches the old session and reopens
+    // the slug against the new root, and an issue made from another 区画 in that window would carry
+    // this root's document id to the other one — arriving after the reopen, so the 更新前競合検出
+    // checks it against the new root's fresh read and lets it through. Dropped only in the
+    // `finally`, after the cleanup below: everything past the await is synchronous, so nothing can
+    // slip between the reopen and the session being cleared.
+    ledgerSaving = true;
+    try {
+      const result = await onupdate(request);
+      if (result.state === "refused") {
+        entryReport = result.report;
+        return;
+      }
+      // The re-detection is one request, not a stored setting (doc-3 §4.3). Left checked, every
+      // later save would carry it too, so it is dropped once one has gone through.
+      edit.redetectGitRemote = false;
+      if (movesRoot(request)) {
+        // 移動が成立すると開いている編集セッションは閉じる (doc-10 §4.1). This screen is keyed by
+        // slug alone and a move keeps the slug, so nothing else would close it. A surviving session
+        // would let this root's body be sent to the other one by document id — and with the same id
+        // present there, the 更新前競合検出 passes against the new root's own read, so `--content`
+        // replaces it whole.
+        docSession = null;
+        newTag = "";
+        pendingDocument = null;
+        // status and milestone name the old root's ID space (doc-3 §5.3), so they do not travel
+        // either. Both are selections rather than typed text, so dropping them costs no input.
+        taskInput.status = "";
+        taskInput.milestone = "";
+        overviewNotice =
+          `${result.slug} を移動しました。開いていた文書の編集セッションは、旧ルートの読み取りに` +
+          "基づくため閉じました（doc-10 §4.1）。";
+        return;
+      }
+      overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
+    } finally {
+      ledgerSaving = false;
     }
-    // 再判定は「1 回の要求」であって設定値ではない (doc-3 §4.3)。押しっぱなしにすると、以後の保存が
-    // すべて再判定を伴ってしまうので、通ったところで落とす。
-    edit.redetectGitRemote = false;
-    if (movesRoot(request)) {
-      // 移動が成立したら、開いている編集セッションは閉じる (doc-10 §4.1)。この画面は slug でしか
-      // key 付けされておらず、slug は移動しても変わらないので、閉じないとセッションは生き残る。
-      // 残ると、旧ルートで読んだ本文を文書 ID だけで新ルートへ送れてしまい、同じ ID の文書が新ルート
-      // にあれば実行前照合は新ルートの最新読み取りに対して通る — `--content` は全置換なので、旧ルート
-      // の内容で丸ごと上書きされる (review [P1])。
-      docSession = null;
-      newTag = "";
-      pendingDocument = null;
-      // status と milestone は旧ルートの ID 空間の値である (doc-3 §5.3)。同じ理由で持ち越さない:
-      // 打った文字列ではなく選択なので、落としても利用者の入力は失われない。
-      taskInput.status = "";
-      taskInput.milestone = "";
-      overviewNotice =
-        `${result.slug} を移動しました。開いていた文書の編集セッションは、旧ルートの読み取りに` +
-        "基づくため閉じました（doc-10 §4.1）。";
-      return;
-    }
-    overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
   }
 
   async function unregister(): Promise<void> {
     if (unregisterReason !== null) return;
     entryReport = null;
-    const result = await onremove(entry.slug);
-    if (result.state === "refused") entryReport = result.report;
-    // 成功時にこの画面を閉じるのは shell の役目である (`removeProject`)。ここから `onback` を呼ぶと
-    // 破棄前確認に当たり、もう存在しない登録について「入力を残しますか」と尋ねることになる。
+    // Held for the same reason a save is: the boundary closes this project's session on the way,
+    // and an issue made while that is in flight would be aimed at a project Atlas no longer reads.
+    ledgerSaving = true;
+    try {
+      const result = await onremove(entry.slug);
+      if (result.state === "refused") entryReport = result.report;
+      // Closing this screen on success is the shell's job (`removeProject`). Calling `onback` from
+      // here would meet the 破棄前確認 and ask whether to keep input for a registration that is gone.
+    } finally {
+      ledgerSaving = false;
+    }
   }
 
   function problemsFor(problems: FieldProblem[], field: LedgerField): string[] {
     return problems.filter((problem) => problem.field === field).map((problem) => problem.message);
   }
 
-  // --- 発行 (doc-5 §3, doc-9 §5) ---------------------------------------------------------------
+  // --- 更新操作の発行 (doc-5 §3, doc-9 §4) -------------------------------------------------------
 
-  /** 発行が 1 本走っている間。押されたものだけでなく、すべての発行操作を止める。 */
-  let busy = $state(false);
   /**
-   * 直前の発行結果。色は doc-9 §5 の族に従う: CLI 失敗と更新前競合は中立の通知、照合不能だけは
-   * 自分の族の色を取り、「競合が起きた」と読めないようにする。
+   * Issue one action against this project and state what became of it (doc-9 §5). Refuses while a
+   * ledger write is in flight for the same reason the controls are withheld: that write may be a
+   * move, and this action names files by the ids of the root as it was read.
    */
-  let message = $state<{ tone: "ok" | "warn" | "undetectable"; text: string } | null>(null);
-
-  function tone(outcome: IssueOutcome): "ok" | "warn" | "undetectable" {
-    if (outcome.state === "applied") return "ok";
-    return outcome.state === "uncheckable" ? "undetectable" : "warn";
-  }
-
   async function issue(action: UpdateOperation[], done: string): Promise<IssueOutcome | null> {
-    if (project === null) return null;
+    if (project === null || ledgerSaving) return null;
     busy = true;
     message = null;
     try {
@@ -278,12 +342,12 @@
   let newLabel = $state("");
   let newCriterion = $state("");
   let taskPlan = $derived(buildTaskCreate(taskInput));
-  let taskIssue = $derived(issueAvailability(taskPlan, { readiness, busy }));
+  let taskIssue = $derived(availability(taskPlan));
 
   async function createTask(): Promise<void> {
     if (taskIssue.state !== "ready" || taskPlan.state !== "ready") return;
     const outcome = await issue(taskPlan.action, "タスクを作成しました。");
-    // 成功したときだけ空にする: 失敗した入力は直して出し直せるように残す。
+    // Cleared only on success: a failed create keeps its input so it can be corrected and retried.
     if (outcome?.state === "applied") {
       taskInput = { ...EMPTY_TASK_CREATE };
       newLabel = "";
@@ -295,25 +359,25 @@
 
   let docInput = $state<DocCreateInput>({ ...EMPTY_DOC_CREATE });
   let docCreatePlan = $derived(buildDocCreate(docInput));
-  let docCreateIssue = $derived(issueAvailability(docCreatePlan, { readiness, busy }));
+  let docCreateIssue = $derived(availability(docCreatePlan));
 
-  /** 編集中の文書とそのセッション。1 度に 1 件: 2 つ開くと、どちらも発行を名乗ることになる。 */
+  /** The document being edited, with its session. One at a time: two would both claim 発行. */
   let docSession = $state<DocSession | null>(null);
   let newTag = $state("");
   let docUpdatePlan = $derived(docSession === null ? null : buildDocUpdate(docSession));
   let docUpdateIssue = $derived(
     docUpdatePlan === null
       ? ({ state: "blocked", reason: "編集する文書を選んでください" } as const)
-      : issueAvailability(docUpdatePlan, { readiness, busy }),
+      : availability(docUpdatePlan),
   );
   let docDirty = $derived(docSession !== null && isDocDirty(docSession));
   /**
-   * 文書エディタが抱えているもの。追加行のテキストはエディタとともに消えるが、「追加」を押すまで
-   * どの項目も変えないので `docDirty` だけでは守られない — 閉じたり別の文書を開いたりすると、
-   * 打ったタグが黙って消える。
+   * What the document editor holds, as opposed to what the session's fields hold. The add-row's text
+   * dies with the editor but changes no field until 追加 is pressed, so `docDirty` alone leaves it
+   * unprotected — closing or replacing the editor would clear a typed tag without asking.
    */
   let docEditorDirty = $derived(docDirty || newTag.trim() !== "");
-  /** 未保存入力を抱えたまま求められた行き先。答えるまで**適用しない**（doc-8 §6.3 と同じ形）。 */
+  /** Where the user asked to go while 未保存入力 was held — **not applied** until they answer. */
   let pendingDocument = $state<{ document: Document | null } | null>(null);
 
   async function createDoc(): Promise<void> {
@@ -330,14 +394,15 @@
     const submittedDoc = plan.submitted;
     const outcome = await issue(plan.action, "文書を更新しました。");
     if (outcome?.state !== "applied") return;
-    // 防げない喪失の事後通知 (doc-9 §5)。この時点で再読込は済んでいるので、下の文書は更新後のもの。
-    // `--content` は本文を全置換する (doc-5 §3.1) ので、この照合は文書でとりわけ効く。
+    // 防げない喪失の事後通知 (doc-9 §5): the re-read has already landed, so the document below is
+    // the post-update one. `--content` full-replaces the body (doc-5 §3.1), which is why this
+    // comparison matters more for a document than for anything else on screen.
     const diverged = docDivergence(
       submittedDoc,
       project?.documents.find((candidate) => candidate.id === session.baseline.id) ?? null,
     );
-    // 成功したら閉じる: このセッションの baseline は更新前の読み取りで、開いたままにすると次の編集を
-    // もう存在しない版と比べることになる。
+    // Closed on success: this session's baseline is the pre-update read, and keeping it open would
+    // compare the next edit against a version that no longer exists.
     docSession = null;
     newTag = "";
     if (diverged.length > 0) {
@@ -352,9 +417,9 @@
     }
   }
 
-  /** 文書の編集セッションを開く。別の入力が失われるときは先に尋ねる。 */
+  /** Open one document's 編集セッション, asking first when another one's input would be lost. */
   function editDocument(document: Document): void {
-    // 既に開いている: もう一度押すとセッションを張り直して、尋ねずに入力を落とすことになる。
+    // Already open: pressing 編集 again would restart the session and drop the input without asking.
     if (docSession?.baseline.id === document.id) return;
     if (docEditorDirty) {
       pendingDocument = { document };
@@ -399,7 +464,7 @@
 
   let milestoneInput = $state<MilestoneAddInput>({ ...EMPTY_MILESTONE_ADD });
   let milestonePlan = $derived(buildMilestoneAdd(milestoneInput));
-  let milestoneIssue = $derived(issueAvailability(milestonePlan, { readiness, busy }));
+  let milestoneIssue = $derived(availability(milestonePlan));
 
   async function addMilestone(): Promise<void> {
     if (milestoneIssue.state !== "ready" || milestonePlan.state !== "ready") return;
@@ -410,10 +475,10 @@
   // --- 未保存入力 (doc-8 §6.3) -------------------------------------------------------------------
 
   /**
-   * この画面が抱えている未保存入力。区画切替では何も失われない（この 1 コンポーネントが全区画の状態を
-   * 持っており、区画は表示の切替でしかない。doc-10 §1）が、画面を離れると全部が消える — だから
-   * shell の破棄前確認は 4 区画すべてを見る必要がある。3 つの追加行も入る: 「追加」を押していない
-   * テキストは、いちばん失いやすく、いちばん見えにくい。
+   * The 未保存入力 this screen holds. A 区画切替 loses none of it — this one component holds every
+   * 区画's state, and the switch is a display change (doc-10 §1) — but leaving the screen loses all
+   * of it, which is why the shell's 破棄前確認 has to see all four. The three add-rows count too:
+   * text typed but not yet committed with 追加 is the easiest thing to lose and the least visible.
    */
   let dirty = $derived(
     updateRequest !== null ||
@@ -432,7 +497,7 @@
 
   // --- 表示の小道具 -------------------------------------------------------------------------------
 
-  /** 一覧の 編集 が同じ理由で押せないときの理由の置き場 (doc-11 §5)。 */
+  /** Where the list's 編集 buttons send `aria-describedby` while issuance is held (doc-11 §5). */
   const DOC_EDIT_BLOCKED_ID = "detail-doc-edit-blocked";
 
   function why(availability: { state: string; reason?: string }): string {
@@ -444,7 +509,7 @@
     return trimmed === "" || values.includes(trimmed) ? values : [...values, trimmed];
   }
 
-  /** ルートが読めないと出せない一覧の代わりに出す文 (doc-10 §8)。 */
+  /** What stands in for a list the screen cannot draw because the root is unreadable (doc-10 §8). */
   let unreadableNote = $derived(
     unreadable === null
       ? null
@@ -497,9 +562,9 @@
 {/snippet}
 
 {#snippet withheld(title: string, operations: WithheldOperation[])}
-  <!-- 提供しない操作区画 (doc-10 §1/§6, doc-11 §5): 押せないボタンを並べる代わりに、名称・CLI 上の
-       写像先・理由の 3 点を並べる。無効化は「今は条件が揃っていない」を意味するが、ここに並ぶのは
-       Atlas がこの版で出さないと決めたもので、別のことを言っている。 -->
+  <!-- 提供しない操作区画 (doc-10 §1/§6, doc-11 §5): instead of unpressable buttons, the three points
+       — 名称, the CLI it maps to, and the reason. 無効化 means「今は条件が揃っていない」, while what
+       is listed here is what Atlas decided not to offer in this version: a different statement. -->
   <div class="withheld">
     <h3>{title}</h3>
     <ul>
@@ -515,7 +580,7 @@
 {/snippet}
 
 <div class="detail">
-  <!-- ヘッダ (doc-10 §3): 識別と往復だけ。ここは何も書かない。 -->
+  <!-- ヘッダ (doc-10 §3): identity and the round trip only. Nothing here writes. -->
   <header class="head">
     <div class="identity">
       <span class="name">{project?.config.projectName ?? entry.slug}</span>
@@ -537,8 +602,9 @@
     </div>
   </header>
 
-  <!-- 2 本の帯 (doc-10 §3): 互いに独立で、片方だけが立つ。どちらの文も、影響が及ばない区画を
-       名指ししてある — 並んで立ったときに「全部だめになった」と読まれないようにするため。 -->
+  <!-- The two 帯 (doc-10 §3) are independent, and one can stand without the other. Each sentence
+       names the 区画 it does *not* reach, so standing side by side they cannot read as one general
+       failure. -->
   {#if readOnlyBand !== null}
     <p class="band read-only">{readOnlyBand}</p>
   {/if}
@@ -547,8 +613,8 @@
   {/if}
 
   <div class="body">
-    <!-- 区画切替 (doc-10 §1): 画面遷移ではなく同一画面内の表示切替。全区画の入力はこの 1 コンポーネント
-         が持っているので、区画を移っても入力は消えない。 -->
+    <!-- 区画切替 (doc-10 §1): a display change within one screen, not a screen transition. Every
+         区画's input lives in this one component, so moving between them loses nothing. -->
     <nav class="sections" aria-label="区画">
       {#each DETAIL_SECTIONS as item (item.id)}
         <button
@@ -568,15 +634,17 @@
       {/if}
 
       {#if section === "overview"}
-        <!-- 概要区画 (doc-10 §4): 書く先は台帳ファイルだけ。CLI 縮退の影響を受けない。 -->
+        <!-- 概要区画 (doc-10 §4): the ledger file is the only thing it writes, so CLI 縮退 does not
+             reach it. -->
         <section>
           <h2>概要（台帳エントリ）</h2>
 
           {#if ledgerReadOnly}
-            <!-- doc-10 §8 は入力と登録解除の両方を無効化するよう求めている。押せない保存だけを残すと、
-                 書き換えられない値を編集でき、その入力が未保存入力に数えられて、あとで「保存できなかった
-                 変更を破棄しますか」と尋ねることになる (review [P2])。`disabled` を使えるのは、この文が
-                 操作の近くに常時出ているからである (doc-11 §5)。 -->
+            <!-- doc-10 §8 asks for both the inputs and 登録解除 to be disabled. With only the save
+                 held back, the user could edit values that can never be written, that input would
+                 count as 未保存入力, and they would later be asked whether to discard changes that
+                 were never saveable (review [P2]). `disabled` is allowed because this sentence is on
+                 screen near the controls at all times (doc-11 §5). -->
             <p class="blocked-note" id={OVERVIEW_BLOCKED_ID}>{OVERVIEW_READ_ONLY_NOTE}</p>
           {/if}
 
@@ -587,8 +655,8 @@
           <div class="field">
             <span class="label">slug</span>
             <p class="value-line"><code>{entry.slug}</code></p>
-            <!-- 押せない入力欄を置かない (doc-10 §4.1): 出すのは値と、変えたいときに何をすることに
-                 なるかである。 -->
+            <!-- No unpressable field for it (doc-10 §4.1): what is shown is the value, and what
+                 changing it would take instead. -->
             <p class="hint">{SLUG_IMMUTABLE_NOTE}</p>
           </div>
 
@@ -666,9 +734,10 @@
                     <option value={name}>{name}</option>
                   {/each}
                   {#if invalidValue}
-                    <!-- 不正な別名を台帳から削除しない (doc-3 §3.3, TASK-42)。選択肢に無い値を持つ行を
-                         そのまま出すのが、この画面での「削除しない」の実装である: 正準 4 列だけを
-                         並べると、開いただけで値が最初の選択肢へすり替わり、保存で消えてしまう。 -->
+                    <!-- 不正な別名を台帳から削除しない (doc-3 §3.3, TASK-42). Showing the row with its
+                         own out-of-range value *is* what「削除しない」means on this screen: listing
+                         only the canonical four would swap the value for the first option the moment
+                         the form opened, and the save would then drop it. -->
                     <option value={row.value}>{row.value}（不正: 正準列ではありません）</option>
                   {/if}
                 </select>
@@ -712,8 +781,9 @@
             {/each}
           </fieldset>
 
-          <!-- 送る属性を保存の直前に列挙する (doc-10 §4.1)。変えたつもりの属性ではなく、要求値に
-               実際に載る属性が並ぶ — 移動のときに両ルートが載ることも、ここに現れる。 -->
+          <!-- 送る属性を保存の直前に列挙する (doc-10 §4.1). What is listed is what the request
+               actually carries, not what the screen thinks it changed — a move carrying both roots
+               shows up here. -->
           <div class="submit-preview">
             <h3>保存で送る属性</h3>
             {#if submitted.length === 0}
@@ -751,7 +821,8 @@
             >
           </div>
           {#if saveBlocked !== null && !ledgerReadOnly}
-            <!-- 台帳読取専用のときは帯が理由そのものなので、同じ文を 2 度置かない (doc-11 §5)。 -->
+            <!-- On a read-only ledger the note above is already the reason, so it is not repeated
+                 a second time here (doc-11 §5). -->
             <p class="blocked-note" id="overview-save-blocked">{saveBlocked}</p>
           {/if}
 
@@ -798,7 +869,8 @@
             <p class="neutral">読み込み中…</p>
           {:else}
             {#if pendingDocument !== null}
-              <!-- 破棄前確認: 未保存入力があり、求められた操作はそれを落とす。まだ適用していない。 -->
+              <!-- 破棄前確認: 未保存入力 is held and the requested action would drop it. The action
+                   itself has not been applied. -->
               <div class="confirm">
                 <span>
                   {#if pendingDocument.document === null}
@@ -815,12 +887,13 @@
             {#if project.documents.length === 0}
               <p class="neutral">文書はありません。</p>
             {:else}
-              {#if busy}
-                <!-- 一覧の 編集 はすべて同じ理由で押せない (doc-11 §5): 理由は一覧の上に 1 度書き、
-                     各ボタンをそこへ結ぶ。ボタンは `aria-disabled` のままにして、フォーカスを受け
-                     続けられるようにする — それが結びをポインタ無しで辿れるようにする手段である。 -->
+              {#if issuingReason !== null}
+                <!-- Every 編集 in the list is held by the same one thing (doc-11 §5): the reason is
+                     written once above the list and each button is bound to it. They stay
+                     `aria-disabled` so they keep taking focus, which is what makes the binding
+                     reachable without a pointer. -->
                 <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
-                  {ISSUE_BUSY_REASON}。完了するまで文書の編集は開けません。
+                  {issuingReason}。完了するまで文書の編集は開けません。
                 </p>
               {/if}
               <ul class="records">
@@ -834,24 +907,26 @@
                         <span class="meta">tags: {document.tags.join(", ")}</span>
                       {/if}
                       {#if docSession?.baseline.id === document.id && docEditorDirty}
-                        <!-- 未保存入力のある文書には印を付ける (doc-10 §5)。編集セッションは 1 度に
-                             1 件なので印が付きうるのも 1 件だが、一覧の側に出すのは、エディタを
-                             スクロールで見失っても「まだ送っていない」ことが読めるようにするため。 -->
+                        <!-- 未保存入力のある文書には印を付ける (doc-10 §5). Only one 編集セッション
+                             exists at a time, so only one row can carry it; it is shown on the list
+                             side so that「まだ送っていない」stays readable even when the editor has
+                             scrolled out of view. -->
                         <span class="unsaved">未保存</span>
                       {/if}
                       <button
                         type="button"
                         class="mini"
-                        aria-disabled={busy}
-                        aria-describedby={busy ? DOC_EDIT_BLOCKED_ID : undefined}
-                        title={busy ? ISSUE_BUSY_REASON : "この文書を編集します"}
-                        onclick={() => !busy && editDocument(document)}
+                        aria-disabled={issuing}
+                        aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
+                        title={issuingReason ?? "この文書を編集します"}
+                        onclick={() => !issuing && editDocument(document)}
                       >
                         {docSession?.baseline.id === document.id ? "編集中" : "編集"}
                       </button>
                     </div>
-                    <!-- パス (doc-10 §5)。読み取り層が走査で得た `source_path` であって、`-p` に渡す
-                         docs 相対パスではない — 更新欄の path が現在値を持たない理由がこれである。 -->
+                    <!-- パス (doc-10 §5): the `source_path` the read layer got from its scan, not the
+                         docs-relative value `-p` takes — which is why the update form's path field
+                         holds no current value. -->
                     <p class="path"><code>{document.sourcePath}</code></p>
                   </li>
                 {/each}
@@ -1105,12 +1180,12 @@
                   value={taskInput.status}
                   onchange={(event) => (taskInput.status = event.currentTarget.value)}
                 >
-                  <!-- 未指定は最後まで選べる: `--status` を落とすことが `default_status` を効かせる
-                       手段であり、値を選ぶのとは別の要求である。 -->
+                  <!-- 未指定 stays selectable throughout: leaving `--status` off is what makes
+                       `default_status` apply, and that is a different request from setting one. -->
                   <option value="">—（config.yml の既定 status に任せる）</option>
-                  <!-- 選択肢は宣言済みの原文 status に限る (doc-10 §7): `-s` は config.yml が宣言する
-                       値だけを受け取り、未宣言の値は終了コード 1 で拒否される。正準ステータス列名を
-                       並べない。 -->
+                  <!-- 選択肢は宣言済みの原文 status に限る (doc-10 §7): `-s` takes only what
+                       `config.yml` declares, and an undeclared value is refused with exit code 1.
+                       Canonical column names are deliberately not listed. -->
                   {#each project.config.statuses as status (status)}
                     <option value={status}>{status}</option>
                   {/each}
@@ -1185,8 +1260,8 @@
             </div>
           {/if}
 
-          <!-- 出さない項目は製品判断として書く (doc-10 §7)。「CLI に無い」とは書かない — v1.47.1 の
-               `task create` は実測でこれらを受け取るので、事実に反する。 -->
+          <!-- The omissions are stated as a product judgment (doc-10 §7), never as「CLI に無い」—
+               v1.47.1's `task create` does accept these (measured), so that would be false. -->
           <div class="scope">
             <h3>この区画が欄を出さない項目</h3>
             <p>{TASK_CREATE_SCOPE_NOTE}</p>
@@ -1238,7 +1313,7 @@
     font-weight: 600;
   }
 
-  // 副次 (doc-11 §2.1): テーマ自身の色であって `--fg` に掛けた不透明度ではない。
+  // 副次 (doc-11 §2.1): the theme's own colour, not an opacity over `--fg`.
   .slug,
   .counts {
     color: var(--muted);
@@ -1255,8 +1330,8 @@
     margin-left: auto;
   }
 
-  // 上部の帯 (doc-10 §3)。台帳読取専用も CLI 縮退も decision-6 の 印の族 ではない — 読み取りが縮退した
-  // わけではないので、族の色を借りずに中立の情報色を取る。
+  // The bands at the top (doc-10 §3). Neither 台帳読取専用 nor CLI 縮退 is one of decision-6's 印の族: nothing
+  // is degraded about the *reading*, so neither borrows a family's colour.
   .band {
     margin: 0;
     padding: 0.4rem 0.75rem;
@@ -1374,7 +1449,7 @@
     font: inherit;
     font-size: 0.74rem;
     cursor: pointer;
-    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); ここに `:disabled` を書くと勝ってしまう。
+    // 無効化提示 lives in one place in app.scss (doc-11 §5); a `:disabled` rule here would outrank it.
 
     &.mini {
       padding: 0 0.3rem;
@@ -1419,8 +1494,9 @@
     }
   }
 
-  // 別名 1 行の効き方 (doc-10 §4.2)。効かない 1 態だけが縮退の族の色を取り、残りは副次の文の色に
-  // とどめる — 「効くが宣言に裏づけが無い」宣言集合なしを、効かない別名と同じ色で出さないため。
+  // How one alias row takes effect (doc-10 §4.2). Only the one ineffective state takes the 縮退
+  // family's colour; the rest stay the colour of a secondary sentence — which is what keeps
+  // 宣言集合なし, where the alias works without a declaration behind it, out of that mark.
   .alias-effect {
     color: var(--muted);
     font-size: 0.68rem;
@@ -1470,8 +1546,8 @@
     }
   }
 
-  // 危険区画 (doc-10 §4.3): 他の操作と区画を分ける。確認は slug の入力一致で、doc-11 §5 の二度押しより
-  // 強い条件になっている。
+  // 危険区画 (doc-10 §4.3): kept apart from the other operations. The confirmation is slug 入力一致,
+  // a stricter condition than doc-11 §5's two-press default.
   .danger {
     margin-top: 1rem;
     padding: 0.5rem;
@@ -1525,8 +1601,8 @@
     word-break: break-all;
   }
 
-  // 未保存入力の印 (doc-10 §5)。decision-6 の 印の族 ではない — 縮退でも版ずれでもなく、利用者が
-  // まだ送っていないだけなので、中立の情報色を取る。
+  // The 未保存入力 mark (doc-10 §5). Not one of decision-6's 印の族 — nothing is degraded and nothing
+  // diverged; the user simply has not sent it yet — so it takes the neutral info hue.
   .unsaved {
     padding: 0 0.3rem;
     border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
@@ -1569,8 +1645,8 @@
   }
 
   .hint,
-  // 無効化の理由 (doc-11 §5) は副次の文なので `--muted` (doc-11 §2.1)。不透明度にしないのは、理由が
-  // どの表示テーマでも読めていなければならないためである。
+  // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1). Not an opacity: the
+  // reason has to stay readable on every 表示テーマ, and dimming it is the opposite of its purpose.
   .reason,
   .blocked-note {
     margin: 0.2rem 0 0;
@@ -1584,15 +1660,15 @@
     font-size: 0.72rem;
   }
 
-  // 直せる入力の指摘。decision-6 の 読取不能 の色は使わない: 利用者が直せる入力であって、Atlas が
-  // 読めなかったルートではない。
+  // A correctable input problem. decision-6's unreadable hue is deliberately not reused: this is
+  // input the user can fix, not a root Atlas failed to read.
   .problem {
     margin: 0.15rem 0;
     color: var(--mark-degraded);
     font-size: 0.72rem;
   }
 
-  // ルート読取不能 (doc-7 §6, decision-6)。空の一覧と決して同じ見た目にならないようにする。
+  // ルート読取不能 (doc-7 §6, decision-6): never drawn the same way as an empty list.
   .unreadable {
     margin: 0.3rem 0;
     color: var(--mark-unreadable);
@@ -1615,8 +1691,8 @@
     font-size: 0.74rem;
   }
 
-  // 照合不能 は競合でも失敗でもない (doc-9 §4.2/§5): 自分の族の色を取り、版ずれと読み違えられない
-  // ようにする（decision-6 の「三者を同じ印へ混ぜない」）。
+  // 照合不能 is neither a conflict nor a failure (doc-9 §4.2/§5): its own family's colour, so it
+  // cannot be read as a 版ずれ (decision-6's「三者を同じ印へ混ぜない」).
   .warn,
   .undetectable,
   .withheld,
@@ -1638,9 +1714,10 @@
     background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);
   }
 
-  // 提供しない操作区画 と 出さない項目 は同じ形で並べる — 「押せないボタンが無いこと」と「出さないと
-  // 決めたこと」は、並べ方が同じでないと読み分けられない。色は分ける: 前者は照合不能・CLI 制約の族、
-  // 後者は Atlas 自身の製品判断なので中立に置く。
+  // 提供しない操作区画 and 出さない項目 are laid out alike: "there is no unpressable button here" and
+  // "this was decided against" are only told apart when the presentation matches. The colours differ,
+  // though — the first belongs to the 照合不能 / CLI-constraint family, the second is Atlas's own
+  // product judgment and stays neutral.
   .scope {
     border-left-color: var(--line-strong);
     background: var(--inset);
