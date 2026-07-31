@@ -78,6 +78,7 @@
     type OpenOutcome,
   } from "../lib/external-editor";
   import {
+    conflictSetDetail,
     taskMarks,
     versionConflictMark,
     type ConflictTarget,
@@ -399,8 +400,17 @@
         case "conflict":
           // 未保存入力を保持したまま (doc-8 §6.4): the session stays open and the two paths of
           // doc-9 §5 are offered below.
-          if (stillOpen) saveState = { state: "conflict", path: outcome.path };
-          onconflict({ kind: "preUpdate", path: outcome.path }, target);
+          if (stillOpen) {
+            saveState = {
+              state: "conflict",
+              diverged: outcome.diverged,
+              unread: outcome.unread,
+            };
+          }
+          onconflict(
+            { kind: "preUpdate", diverged: outcome.diverged, unread: outcome.unread },
+            target,
+          );
           break;
         case "uncheckable":
           // 照合不能 (doc-9 §4.2): no CLI ran and no divergence was observed, so this deliberately
@@ -465,8 +475,17 @@
           if (stillOpen) saveState = { state: "applied" };
           break;
         case "conflict":
-          if (stillOpen) saveState = { state: "conflict", path: outcome.path };
-          onconflict({ kind: "preUpdate", path: outcome.path }, target);
+          if (stillOpen) {
+            saveState = {
+              state: "conflict",
+              diverged: outcome.diverged,
+              unread: outcome.unread,
+            };
+          }
+          onconflict(
+            { kind: "preUpdate", diverged: outcome.diverged, unread: outcome.unread },
+            target,
+          );
           break;
         case "uncheckable":
           if (stillOpen) saveState = { state: "uncheckable", detail: outcome.detail };
@@ -959,8 +978,9 @@
       <!-- 防げる競合の未然提示 (doc-9 §5): the check stopped this before the CLI ran. -->
       <div class="conflict">
         <p>
-          更新前競合を検出したため、CLI を起動せずに保存を止めました（{saveState.path} が読み取り後に
-          外部で変わりました）。未保存入力は保持しています。
+          更新前競合を検出したため、CLI を起動せずに保存を止めました（{conflictSetDetail(
+            saveState,
+          )}）。未保存入力は保持しています。
         </p>
         <div class="buttons">
           <button type="button" onclick={restartFromLatest}>

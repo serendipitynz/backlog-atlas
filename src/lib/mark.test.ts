@@ -13,7 +13,8 @@ import { taskView } from "./fixtures";
 
 const PRE_UPDATE: VersionConflict = {
   kind: "preUpdate",
-  path: "backlog/tasks/task-1.md",
+  diverged: ["backlog/tasks/task-1.md"],
+  unread: [],
 };
 const POST_WINDOW: VersionConflict = { kind: "postWindow", fields: ["title"] };
 
@@ -85,7 +86,7 @@ describe("versionConflictMark", () => {
     expect(pre.kind).toBe("versionConflict");
     expect(post.kind).toBe("versionConflict");
     expect(pre.detail).toContain("更新前競合");
-    expect(pre.detail).toContain(PRE_UPDATE.path);
+    expect(pre.detail).toContain("backlog/tasks/task-1.md");
     expect(post.detail).toContain("照合後競合窓");
     expect(post.detail).toContain("title");
   });

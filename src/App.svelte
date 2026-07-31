@@ -947,7 +947,7 @@
         // 更新前競合 (doc-9 §5): an ordinary re-read, not 縮退 — the row and the panel both move to
         // the current file, while the panel keeps the 未保存入力 it was holding.
         loadBySlug[slug] = { state: "loaded", project: result.project };
-        return { state: "conflict", path: result.path };
+        return { state: "conflict", diverged: result.diverged, unread: result.unread };
       }
       // Present exactly when disk moved (doc-5 §6). A failure that changed nothing leaves the
       // display as it was, which is what lets the panel offer a retry of the same input.
@@ -1003,7 +1003,7 @@
       const result = await updateApply(slug, action);
       if (result.state === "conflict") {
         loadBySlug[slug] = { state: "loaded", project: result.project };
-        return { state: "conflict", path: result.path };
+        return { state: "conflict", diverged: result.diverged, unread: result.unread };
       }
       // Present exactly when disk moved (doc-5 §6): a failure that changed nothing leaves the
       // display as it was, which is what lets the screen offer a retry of the same input.

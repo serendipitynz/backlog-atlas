@@ -36,8 +36,12 @@
     DOC_TYPES,
     EMPTY_DOC_CREATE,
     EMPTY_MILESTONE_ADD,
+    EMPTY_MILESTONE_REMOVE,
+    EMPTY_MILESTONE_RENAME,
     EMPTY_TASK_CREATE,
     ISSUE_BUSY_REASON,
+    MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
+    MILESTONE_REMOVE_MOVES_THE_FILE,
     TASK_CREATE_OMITTED_FIELDS,
     TASK_CREATE_SCOPE_NOTE,
     WITHHELD_DOCUMENT_OPERATIONS,
@@ -45,14 +49,19 @@
     buildDocCreate,
     buildDocUpdate,
     buildMilestoneAdd,
+    buildMilestoneArchive,
+    buildMilestoneRemove,
+    buildMilestoneRename,
     buildTaskCreate,
     docDivergence,
+    followsReferences,
     hasDocCreateInput,
     hasMilestoneAddInput,
     hasTaskCreateInput,
     isDocDirty,
     issueAvailability,
     outcomeMessage,
+    referencingTasks,
     setDocField,
     startDocSession,
     type DocCreateInput,
@@ -62,6 +71,8 @@
     type IssueOutcome,
     type IssuePlan,
     type MilestoneAddInput,
+    type MilestoneRemoveInput,
+    type MilestoneRenameInput,
     type TaskCreateInput,
     type WithheldOperation,
   } from "../lib/manage";
@@ -84,8 +95,10 @@
   import type {
     CliReadiness,
     Document,
+    Milestone,
     ProjectEntry,
     ProjectLoad,
+    TaskView,
     UpdateOperation,
     UpdateRequest,
   } from "../lib/wire";
@@ -472,6 +485,72 @@
     if (outcome?.state === "applied") milestoneInput = { ...EMPTY_MILESTONE_ADD };
   }
 
+  /**
+   * Which milestone's 改称・削除・アーカイブ is open (doc-10 §6). One at a time, keyed by id: each
+   * carries input of its own, and two open at once would leave the 書き換え対象集合 shown beside one
+   * operation while another is the one about to be issued.
+   */
+  let milestoneOp = $state<{ id: string; kind: "rename" | "remove" | "archive" } | null>(null);
+  let renameInput = $state<MilestoneRenameInput>({ ...EMPTY_MILESTONE_RENAME });
+  let removeInput = $state<MilestoneRemoveInput>({ ...EMPTY_MILESTONE_REMOVE });
+
+  function openMilestoneOp(milestone: Milestone, kind: "rename" | "remove" | "archive"): void {
+    // Re-opening the same one keeps its input; moving to another operation starts from empty, so a
+    // name or a 付け替え先 typed for one milestone cannot be issued against the next.
+    if (milestoneOp?.id === milestone.id && milestoneOp.kind === kind) {
+      milestoneOp = null;
+      return;
+    }
+    milestoneOp = { id: milestone.id, kind };
+    renameInput = { ...EMPTY_MILESTONE_RENAME };
+    removeInput = { ...EMPTY_MILESTONE_REMOVE };
+    message = null;
+  }
+
+  /** The plan the open operation would issue, or `null` when none is open. */
+  function milestoneOpPlan(milestone: Milestone): IssuePlan | null {
+    if (milestoneOp?.id !== milestone.id) return null;
+    switch (milestoneOp.kind) {
+      case "rename":
+        return buildMilestoneRename(milestone, renameInput);
+      case "remove":
+        return buildMilestoneRemove(milestone, removeInput);
+      case "archive":
+        return buildMilestoneArchive(milestone);
+    }
+  }
+
+  /**
+   * 書き換え対象集合 (doc-9 §4.2.2) as the screen states it before the user commits. The milestone's
+   * own file is always in it; the 参照タスク集合 only for the operations that follow references —
+   * which is read off the built operation, so what is shown and what is issued cannot disagree.
+   */
+  function rewriteTargets(
+    milestone: Milestone,
+    plan: IssuePlan | null,
+  ): { fanOut: boolean; tasks: TaskView[] } {
+    const fanOut = plan?.state === "ready" && followsReferences(plan.action[0]);
+    return {
+      fanOut,
+      tasks: fanOut ? referencingTasks(milestone, project?.tasks ?? []) : [],
+    };
+  }
+
+  async function runMilestoneOp(milestone: Milestone, done: string): Promise<void> {
+    const plan = milestoneOpPlan(milestone);
+    if (plan === null || plan.state !== "ready") return;
+    if (availability(plan).state !== "ready") return;
+    const outcome = await issue(plan.action, done);
+    // Closed on success only: the milestone the input names is gone (removed/archived) or renamed,
+    // so keeping the form open would offer a second issue against a stale operand. A failure or a
+    // 更新前競合 keeps it, which is what lets the user reload and retry the same input.
+    if (outcome?.state === "applied") {
+      milestoneOp = null;
+      renameInput = { ...EMPTY_MILESTONE_RENAME };
+      removeInput = { ...EMPTY_MILESTONE_REMOVE };
+    }
+  }
+
   // --- 未保存入力 (doc-8 §6.3) -------------------------------------------------------------------
 
   /**
@@ -487,6 +566,10 @@
       hasTaskCreateInput(taskInput) ||
       hasDocCreateInput(docInput) ||
       hasMilestoneAddInput(milestoneInput) ||
+      // An open 改称・削除 carries input of its own — a name typed but not yet issued is exactly the
+      // kind of thing leaving the screen loses silently (doc-8 §6.3).
+      renameInput.to.trim() !== "" ||
+      removeInput.handling !== null ||
       newLabel.trim() !== "" ||
       newCriterion.trim() !== "",
   );
@@ -1089,6 +1172,10 @@
                   {@const held = project.tasks.filter(
                     (view) => view.task.milestone === milestone.id,
                   ).length}
+                  {@const plan = milestoneOpPlan(milestone)}
+                  {@const open = milestoneOp?.id === milestone.id ? milestoneOp.kind : null}
+                  {@const opIssue = plan === null ? null : availability(plan)}
+                  {@const targets = rewriteTargets(milestone, plan)}
                   <li>
                     <div class="record-head">
                       <span class="id">{milestone.id}</span>
@@ -1099,6 +1186,164 @@
                       <p class="description">{milestone.description}</p>
                     {:else}
                       <p class="neutral">説明なし</p>
+                    {/if}
+                    <!-- 改称・削除・アーカイブ (doc-10 §6). doc-9 §4.2 defines the 照合 for all
+                         three, so they are operations here rather than 提供しない操作区画 entries. -->
+                    <div class="actions">
+                      <button
+                        type="button"
+                        aria-expanded={open === "rename"}
+                        disabled={issuing}
+                        title={issuingReason ?? ""}
+                        onclick={() => openMilestoneOp(milestone, "rename")}
+                      >
+                        改称
+                      </button>
+                      <button
+                        type="button"
+                        aria-expanded={open === "remove"}
+                        disabled={issuing}
+                        title={issuingReason ?? ""}
+                        onclick={() => openMilestoneOp(milestone, "remove")}
+                      >
+                        削除
+                      </button>
+                      <button
+                        type="button"
+                        aria-expanded={open === "archive"}
+                        disabled={issuing}
+                        title={issuingReason ?? ""}
+                        onclick={() => openMilestoneOp(milestone, "archive")}
+                      >
+                        アーカイブ
+                      </button>
+                    </div>
+
+                    {#if open !== null}
+                      <div class="sub-panel">
+                        {#if open === "rename"}
+                          <h3>改称（milestone rename）</h3>
+                          <label class="field">
+                            <span class="label">新しい名称（必須）</span>
+                            <input
+                              type="text"
+                              value={renameInput.to}
+                              oninput={(event) => (renameInput.to = event.currentTarget.value)}
+                            />
+                          </label>
+                          <label class="check">
+                            <input
+                              type="checkbox"
+                              checked={renameInput.updateTasks}
+                              onchange={(event) =>
+                                (renameInput.updateTasks = event.currentTarget.checked)}
+                            />
+                            <span>参照するタスクも更新する（外すと --no-update-tasks）</span>
+                          </label>
+                          <p class="hint">
+                            v1.47.1 の改称は id（{milestone.id}）を変えないため、実際に書き換わるのは
+                            milestone 値が id 以外のタスクだけです。
+                          </p>
+                        {:else if open === "remove"}
+                          <h3>削除（milestone remove）</h3>
+                          <p class="hint">{MILESTONE_REMOVE_MOVES_THE_FILE}</p>
+                          <fieldset class="handling">
+                            <legend>参照するタスクの扱い（必須。--task-handling）</legend>
+                            {#each [{ mode: "clear", label: "milestone 値を除去する（clear）" }, { mode: "keep", label: "そのまま保持する（keep）" }, { mode: "reassign", label: "別マイルストーンへ付け替える（reassign）" }] as choice (choice.mode)}
+                              <label class="check">
+                                <input
+                                  type="radio"
+                                  name={`handling-${milestone.id}`}
+                                  checked={removeInput.handling === choice.mode}
+                                  onchange={() =>
+                                    (removeInput.handling = choice.mode as
+                                      | "clear"
+                                      | "keep"
+                                      | "reassign")}
+                                />
+                                <span>{choice.label}</span>
+                              </label>
+                            {/each}
+                          </fieldset>
+                          {#if removeInput.handling === "keep"}
+                            <p class="hint">{MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES}</p>
+                          {/if}
+                          {#if removeInput.handling === "reassign"}
+                            <label class="field">
+                              <span class="label">付け替え先（必須。--reassign-to）</span>
+                              <select
+                                value={removeInput.reassignTo}
+                                onchange={(event) =>
+                                  (removeInput.reassignTo = event.currentTarget.value)}
+                              >
+                                <option value="">選択してください</option>
+                                {#each project.milestones.filter((candidate) => candidate.id !== milestone.id) as candidate (candidate.id)}
+                                  <option value={candidate.id}>
+                                    {candidate.id}
+                                    {candidate.title}
+                                  </option>
+                                {/each}
+                              </select>
+                            </label>
+                          {/if}
+                        {:else}
+                          <h3>アーカイブ（milestone archive）</h3>
+                          <p class="hint">
+                            マイルストーンのファイルを archive/milestones/ へ移します。参照するタスクは
+                            書き換わりません。
+                          </p>
+                        {/if}
+
+                        <!-- 実行前に書き換え対象集合を示す (doc-10 §6, doc-9 §4.2.2/§4.2.3): what the
+                             user decides from has to be what the check protects. -->
+                        <div class="targets">
+                          <h4>書き換え対象（doc-9 §4.2.2）</h4>
+                          <ul class="paths">
+                            <li>{milestone.sourcePath}</li>
+                          </ul>
+                          {#if targets.fanOut}
+                            <p class="meta">
+                              参照するタスク {targets.tasks.length} 件も併せて書き換わります（参照追随書き換え）。
+                            </p>
+                            {#if targets.tasks.length > 0}
+                              <ul class="paths">
+                                {#each targets.tasks as view (view.task.sourcePath)}
+                                  <li>{view.task.id ?? view.task.sourcePath}</li>
+                                {/each}
+                              </ul>
+                            {/if}
+                          {:else}
+                            <p class="meta">参照するタスクは書き換わりません。</p>
+                          {/if}
+                        </div>
+
+                        <div class="actions">
+                          <button
+                            type="button"
+                            disabled={opIssue?.state !== "ready"}
+                            title={opIssue === null ? "" : why(opIssue)}
+                            onclick={() =>
+                              runMilestoneOp(
+                                milestone,
+                                open === "rename"
+                                  ? "マイルストーンを改称しました。"
+                                  : open === "remove"
+                                    ? "マイルストーンを削除しました。"
+                                    : "マイルストーンをアーカイブしました。",
+                              )}
+                          >
+                            {open === "rename"
+                              ? "改称を発行"
+                              : open === "remove"
+                                ? "削除を発行"
+                                : "アーカイブを発行"}
+                          </button>
+                          <button type="button" onclick={() => (milestoneOp = null)}>やめる</button>
+                          {#if opIssue?.state === "blocked"}
+                            <span class="reason">{opIssue.reason}</span>
+                          {/if}
+                        </div>
+                      </div>
                     {/if}
                   </li>
                 {/each}
@@ -1481,6 +1726,46 @@
       font-size: 0.72rem;
       opacity: 0.8;
     }
+  }
+
+  /* 参照するタスクの扱い (doc-10 §6): the same framed group the alias table uses, so a required
+     choice reads as one field rather than three loose radios. */
+  .handling {
+    margin: 0 0 0.6rem;
+    padding: 0.45rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+
+    legend {
+      font-size: 0.72rem;
+      opacity: 0.8;
+    }
+
+    .check {
+      margin-bottom: 0.25rem;
+    }
+  }
+
+  /* 書き換え対象集合 (doc-9 §4.2.2) shown before the operation is issued. */
+  .targets {
+    margin: 0 0 0.55rem;
+    padding: 0.4rem 0.45rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--inset);
+
+    h4 {
+      margin: 0 0 0.25rem;
+      font-size: 0.72rem;
+      opacity: 0.85;
+    }
+  }
+
+  .paths {
+    margin: 0 0 0.25rem;
+    padding-left: 1rem;
+    font-size: 0.72rem;
+    word-break: break-all;
   }
 
   .alias-row {
