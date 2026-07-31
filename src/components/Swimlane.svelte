@@ -51,7 +51,7 @@
     onhide: (slug: string) => void;
     onretry: (slug: string) => void;
     onreread: (slug: string) => void;
-    /** プロジェクト詳細画面 (doc-10) を開く。レーンヘッダ行がその入口 (doc-7 §2.3)。 */
+    /** Open プロジェクト詳細画面 (doc-10); the レーンヘッダ行 is its entry point (doc-7 §2.3). */
     onopenProject: (slug: string) => void;
     onfocused: () => void;
   }
@@ -224,10 +224,11 @@
         </button>
       {/if}
       <div class="names">
-        <!-- プロジェクト名がプロジェクト詳細画面への入口 (doc-7 §2.3, doc-10 §2). 読取不能行にも
-             置く: 台帳エントリ自体は読めており、ルートの修正はその画面で行うためである (doc-7 §6)。
-             The name is the only part of the header that gives up room when the window narrows, so
-             `title` keeps the full one reachable; the slug beside it never shortens. -->
+        <!-- The project name is the entry point to プロジェクト詳細画面 (doc-7 §2.3, doc-10 §2).
+             Kept on a 読取不能行 as well: its 台帳エントリ is readable, and fixing the root is done
+             on that screen (doc-7 §6). The name is the only part of the header that gives up room
+             when the window narrows, so `title` keeps the full one reachable; the slug beside it
+             never shortens. -->
         <button
           type="button"
           class="project"
@@ -299,8 +300,9 @@
             onclick={() => onreread(row.slug)}>再読込</button
           >
         {/if}
-        <!-- 行末の `›` (doc-7 §2.3 の図, doc-10 §2): プロジェクト名と同じ行き先の、行末にある入口。
-             名前がウィンドウ幅で縮む側にあるのに対し、こちらは幅を手放さないので常に押せる。 -->
+        <!-- The `›` at the row's end (doc-7 §2.3's sketch, doc-10 §2): the same destination as the
+             project name, as an entry point at the end of the row. The name is the part that gives
+             up room as the window narrows; this one keeps its width, so it stays pressable. -->
         <button
           type="button"
           aria-label="{row.slug} のプロジェクト詳細画面を開く"

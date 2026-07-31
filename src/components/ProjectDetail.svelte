@@ -273,7 +273,7 @@
       // later save would carry it too, so it is dropped once one has gone through.
       edit.redetectGitRemote = false;
       if (movesRoot(request)) {
-        // 移動が成立すると開いている編集セッションは閉じる (doc-10 §4.1). This screen is keyed by
+        // A completed move closes the open 編集セッション (doc-10 §4.1). This screen is keyed by
         // slug alone and a move keeps the slug, so nothing else would close it. A surviving session
         // would let this root's body be sent to the other one by document id — and with the same id
         // present there, the 更新前競合検出 passes against the new root's own read, so `--content`
@@ -751,7 +751,8 @@
                 </button>
                 {#if row.key.trim() !== ""}
                   {#if note !== null}
-                    <!-- 別名が実際に効くか (doc-10 §4.2)。効かない 1 態だけが縮退の族の色を取る。 -->
+                    <!-- Whether the alias actually applies (doc-10 §4.2). Only the one ineffective
+                         state takes the 縮退 family's colour. -->
                     <span class="alias-effect" class:ineffective={note.ineffective} title={note.note}>
                       {note.label}
                     </span>
@@ -826,7 +827,7 @@
             <p class="blocked-note" id="overview-save-blocked">{saveBlocked}</p>
           {/if}
 
-          <!-- 登録解除 (doc-10 §4.3): 危険区画として他の操作と分ける。 -->
+          <!-- 登録解除 (doc-10 §4.3): a 危険区画, kept apart from the other operations. -->
           <div class="danger">
             <h3>登録解除</h3>
             <p>{UNREGISTER_SCOPE_NOTE}</p>

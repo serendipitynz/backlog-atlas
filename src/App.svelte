@@ -851,7 +851,7 @@
     });
   }
 
-  /** プロジェクト詳細画面 (doc-10) を開く。入口はレーンヘッダ行 (doc-7 §2.3)。 */
+  /** Open プロジェクト詳細画面 (doc-10). The entry point is the レーンヘッダ行 (doc-7 §2.3). */
   function openProject(slug: string): void {
     goToScreen("project", slug);
   }
