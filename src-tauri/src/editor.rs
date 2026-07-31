@@ -255,8 +255,10 @@ impl Launcher for SystemLauncher {
 
         // ShellExecuteW resolves the verb through COM, so the thread needs an initialized apartment
         // before the call and must give it back after — see `ComApartment`. Held across the call and
-        // dropped at the end of this scope, which is also where `path` dies.
-        let _apartment = ComApartment::enter();
+        // dropped at the end of this scope, which is also where `path` dies. A failure here is reported
+        // rather than launched past: without an apartment the call would depend on whichever handler
+        // happens not to need COM.
+        let _apartment = ComApartment::enter()?;
 
         // SAFETY: FFI with arguments this function owns. `path` outlives the call (it is dropped after
         // this statement returns) and is NUL-terminated as `lpFile` requires. Every other pointer
@@ -292,6 +294,47 @@ impl Launcher for SystemLauncher {
     }
 }
 
+/// `RPC_E_CHANGED_MODE` — the thread already has an apartment, of the other concurrency model.
+///
+/// Written out rather than imported, so [`com_init`] can be read on a host that has no `windows_sys`;
+/// [`tests::the_changed_mode_code_matches_the_windows_binding`] holds the two equal where the binding
+/// does exist, which is the only place the literal could drift.
+#[cfg(any(target_os = "windows", test))]
+const RPC_E_CHANGED_MODE: i32 = 0x8001_0106_u32 as i32;
+
+/// What one `CoInitializeEx` return code means for the launch that follows.
+///
+/// A three-way split rather than success/failure, because the middle case is neither: the call did not
+/// succeed, yet the thread ends up in exactly the state `ShellExecuteW` needs. Kept as a pure function
+/// of the HRESULT so the split is asserted from any host — the `cfg`'d call around it cannot be, and
+/// this predicate is where both review rounds on this change found a hole.
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ComInit {
+    /// `S_OK` (the thread had no apartment) or `S_FALSE` (it had one already). Both raise the thread's
+    /// initialization count, so both owe a `CoUninitialize`.
+    Owed,
+    /// `RPC_E_CHANGED_MODE`: the thread is already initialized with the *other* model. The count did not
+    /// rise, so nothing is owed — and the launch goes ahead, because an initialized apartment is what
+    /// `ShellExecuteW` asks for and this thread has one.
+    AlreadyOtherModel,
+    /// Anything else the API can return — `E_INVALIDARG`, `E_OUTOFMEMORY`, `E_UNEXPECTED`. The thread has
+    /// **no** apartment, which is the one state this whole call exists to prevent, so the launch must not
+    /// proceed into it.
+    Failed,
+}
+
+#[cfg(any(target_os = "windows", test))]
+const fn com_init(hr: i32) -> ComInit {
+    if hr >= 0 {
+        ComInit::Owed
+    } else if hr == RPC_E_CHANGED_MODE {
+        ComInit::AlreadyOtherModel
+    } else {
+        ComInit::Failed
+    }
+}
+
 /// The COM apartment [`SystemLauncher::shell_execute`] runs in, released when dropped.
 ///
 /// `ShellExecuteW` delegates the verb to Shell extensions activated through COM, so the calling thread
@@ -304,6 +347,8 @@ impl Launcher for SystemLauncher {
 /// raises a per-thread count that only `CoUninitialize` lowers, and `commands::task_file_open` is
 /// `#[tauri::command(async)]`: it runs on a *shared* runtime worker, so an unbalanced call would leave
 /// that thread's count one higher after every launch and never let its apartment be torn down.
+///
+/// Which of the three outcomes a return code is, is [`com_init`]'s.
 #[cfg(target_os = "windows")]
 struct ComApartment {
     /// Whether this guard's own call raised the count, and so owes the matching `CoUninitialize`.
@@ -316,7 +361,11 @@ struct ComApartment {
 
 #[cfg(target_os = "windows")]
 impl ComApartment {
-    fn enter() -> ComApartment {
+    /// `Err` only for [`ComInit::Failed`] — the launch must not go on into the very state the
+    /// initialization exists to prevent. `AlreadyOtherModel` is an `Ok` that owes nothing: the thread has
+    /// an apartment, and only the Shell extensions that specifically require an STA can fail in it, so
+    /// refusing to open the file there would be the worse answer.
+    fn enter() -> std::io::Result<ComApartment> {
         use windows_sys::Win32::System::Com::{
             CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
         };
@@ -328,18 +377,19 @@ impl ComApartment {
                 (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
             )
         };
-        // `SUCCEEDED(hr)`, which is exactly the pair of codes that raise the count: `S_OK` on a thread
-        // that had no apartment, `S_FALSE` on one that already did. The failure this most often is —
-        // `RPC_E_CHANGED_MODE`, meaning the thread is already in the *other* apartment model — is a
-        // negative HRESULT and so excluded here, which is what we want: it did not raise the count, so
-        // uninitializing would lower an initialization this guard never made. The launch still goes
-        // ahead in that case. What `ShellExecuteW` needs is an initialized apartment and the thread has
-        // one; only the Shell extensions that specifically require an STA can fail, and refusing to open
-        // the file at all would be the worse answer.
-        ComApartment {
-            owed: hr >= 0,
+        let owed = match com_init(hr) {
+            ComInit::Owed => true,
+            ComInit::AlreadyOtherModel => false,
+            ComInit::Failed => {
+                return Err(std::io::Error::other(format!(
+                    "COM の初期化に失敗しました (CoInitializeEx が HRESULT 0x{hr:08X} を返しました)"
+                )))
+            }
+        };
+        Ok(ComApartment {
+            owed,
             _not_send: std::marker::PhantomData,
-        }
+        })
     }
 }
 
@@ -983,6 +1033,42 @@ mod tests {
                 "{platform:?}: the path stays one argv element; no interpreter is involved"
             );
         }
+    }
+
+    /// The three outcomes of `CoInitializeEx`, asserted from any host. Two review rounds on this change
+    /// found holes here — first no `CoUninitialize` at all, then `SUCCEEDED(hr)` treating "the thread has
+    /// no apartment" the same as "it has the other kind" — so the split is a pure function and this test
+    /// pins every arm, rather than the whole predicate living inside a `cfg` nothing here can compile.
+    #[test]
+    fn com_initialization_separates_owing_from_already_and_from_failure() {
+        const S_OK: i32 = 0;
+        const S_FALSE: i32 = 1;
+        const E_INVALIDARG: i32 = 0x8007_0057_u32 as i32;
+        const E_OUTOFMEMORY: i32 = 0x8007_000E_u32 as i32;
+        const E_UNEXPECTED: i32 = 0x8000_FFFF_u32 as i32;
+
+        // Both raise the thread's count, so both owe the matching CoUninitialize.
+        assert_eq!(com_init(S_OK), ComInit::Owed);
+        assert_eq!(com_init(S_FALSE), ComInit::Owed);
+        // The count did not rise, so there is nothing to give back — but the thread does have an
+        // apartment, which is what the launch needs, so this is not a failure either.
+        assert_eq!(com_init(RPC_E_CHANGED_MODE), ComInit::AlreadyOtherModel);
+        // No apartment at all. Giving back an initialization that was never made would lower someone
+        // else's, and launching would enter the state the call exists to prevent.
+        for hr in [E_INVALIDARG, E_OUTOFMEMORY, E_UNEXPECTED] {
+            assert_eq!(com_init(hr), ComInit::Failed, "HRESULT 0x{hr:08X}");
+        }
+    }
+
+    /// The literal above is only correct while it equals the binding. Checked where the binding exists;
+    /// on any other host the constant is the only definition there is, so nothing could disagree with it.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_changed_mode_code_matches_the_windows_binding() {
+        assert_eq!(
+            RPC_E_CHANGED_MODE,
+            windows_sys::Win32::Foundation::RPC_E_CHANGED_MODE
+        );
     }
 
     /// A `ShellExecuteW` failure names what went wrong rather than the API. `SE_ERR_NOASSOC` is the one a
