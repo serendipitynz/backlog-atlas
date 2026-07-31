@@ -54,6 +54,32 @@ notify = "8"
 # Approved as a new production dependency per the AGENTS.md introduction gate before adding.
 tauri-plugin-dialog = "2"
 
+# windows-sys binds `ShellExecuteW` for OS 関連付け起動 on Windows (doc-8 §7, TASK-44). The method has
+# to reach the shell *API* without a command interpreter: `cmd /c start` re-parses its command tail, so
+# a managed file named `a&calc.md` would run `calc` — `Command::args`' argv boundaries stop meaning
+# anything once the child is an interpreter. `ShellExecuteW` takes the path as one wide-string
+# parameter, so there is no command line for anything to re-parse.
+#
+# Windows-only, so no other platform's build changes. Adds no crate to the build: windows-sys 0.61 is
+# already in Cargo.lock through tauri's own tree, and the four features below only compile more of the
+# crate that is already there. Microsoft's own bindings, so it is not a new vendor either.
+#
+# Scope is one function — `editor::SystemLauncher::shell_execute`. Which platform uses which launcher
+# is a plain value (`editor::association_launcher_of`), not a `cfg`, so the decision is asserted from
+# any host; only the call itself is Windows-compiled. Approved as a new production dependency per the
+# AGENTS.md introduction gate before adding; the rationale and rejected alternatives are in decision-15.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  # HWND / HINSTANCE, which the Shell module's signature refers to.
+  "Win32_Foundation",
+  # CoInitializeEx — ShellExecuteW dispatches through COM (see shell_execute).
+  "Win32_System_Com",
+  # ShellExecuteW itself.
+  "Win32_UI_Shell",
+  # SW_SHOWNORMAL.
+  "Win32_UI_WindowsAndMessaging",
+] }
+
 [dev-dependencies]
 # Test-only: asserts the domain model's JSON wire contract (doc-4 §3.1 camelCase field
 # names, enum tokens). Already present transitively via tauri, so it adds no new build;
