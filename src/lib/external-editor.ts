@@ -20,8 +20,8 @@
  *
  * Two rules the module follows, the same two `edit.ts` follows:
  *
- * - **A withheld control says why** (doc-5 §5). A method with no launcher is disabled with its reason,
- *   never silently absent.
+ * - **A withheld control says why** (doc-5 §5). A method that cannot be pressed is disabled with its
+ *   reason, never silently absent.
  * - **The 未保存入力 is never taken.** Opening an editor does not end an 編集セッション or discard a
  *   draft (doc-8 §6.4); it only warns, and the save's 更新前競合検出 is what acts on the divergence.
  */
@@ -53,7 +53,9 @@ export type OpenOutcome =
 export interface EditorOffer {
   method: LaunchMethod;
   label: string;
-  /** The program and arguments this would start, with the file shown as a placeholder. */
+  /** What this would invoke and what it receives, with the file shown as a placeholder. Not always a
+   * command line: Windows' association launcher is `ShellExecuteW`, which takes the path as a
+   * parameter — and being able to read *that* off the panel is the point (TASK-44). */
   command: string;
   enabled: boolean;
   /** Why it is not active, or the extra caveat when it is. `null` when there is neither. */
@@ -123,15 +125,6 @@ export const CONFIGURED_TERMINAL_CAVEAT =
   "その場合は OS の関連付けで開いてください。";
 
 /**
- * Why the association control can be absent. The platform has no launcher this build will spawn:
- * `cmd /c start` would hand the path to a command interpreter, so on Windows the method is withheld
- * rather than shipped through a shell (see `editor::association_launcher`). `$EDITOR` still works.
- */
-export const NO_ASSOCIATION_LAUNCHER_REASON =
-  "このプラットフォームでは OS 関連付け起動を提供しません（シェルを介さない関連付け API を" +
-  "使うまで無効にしています）。$EDITOR / $VISUAL での起動は使えます";
-
-/**
  * How each 起動指定の出所 is named (doc-8 §7 の解決順). アプリ設定 is spelled as itself rather than as a
  * variable name: it is the指定手段 for users whose environment never reaches the process, and calling
  * it `$…` would send them looking for a variable that does not exist.
@@ -197,14 +190,11 @@ export function editorOffers(
     {
       method: "association",
       label: "OS の関連付けで開く",
-      command:
-        readiness?.association == null ? "—" : `${readiness.association} … ${FILE_PLACEHOLDER}`,
-      enabled: blocked === null && readiness?.association != null,
-      reason:
-        blocked ??
-        (readiness !== null && readiness.association === null
-          ? NO_ASSOCIATION_LAUNCHER_REASON
-          : null),
+      // No `null` branch for the launcher itself: every platform has one (TASK-44), so the only reason
+      // this control is ever disabled is `blocked` — a missing file or an unfinished probe.
+      command: readiness === null ? "—" : `${readiness.association} … ${FILE_PLACEHOLDER}`,
+      enabled: blocked === null,
+      reason: blocked,
     },
   ];
 }
@@ -241,9 +231,17 @@ export function launchFailureDetail(error: CommandError): string {
     case "editorUnavailable":
       return `外部エディタを起動できません: ${error.detail}`;
     case "editorLaunchFailed":
+      // 「で開けませんでした」rather than 「を起動できませんでした」, and the correction follows the method:
+      // `program` may be `ShellExecuteW` (Windows' association launcher), whose failures are things like
+      // "nothing is registered for this extension" — pointing that user at VISUAL・EDITOR would name the
+      // one thing that has no bearing on it.
       return (
-        `${error.program} を起動できませんでした: ${error.detail}。` +
-        "VISUAL・EDITOR の値（プログラム名とオプション）を確認してください。"
+        `${error.program} で開けませんでした: ${error.detail}。` +
+        (error.method === "association"
+          ? ".md に関連付けられたアプリケーションが OS に登録されているか確認してください" +
+            "（アプリ設定・$VISUAL・$EDITOR での起動は使えます）。"
+          : "アプリ設定の外部エディタ指定・VISUAL・EDITOR の値（プログラム名とオプション）を" +
+            "確認してください。")
       );
     default:
       return commandErrorDetail(error);

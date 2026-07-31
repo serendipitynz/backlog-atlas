@@ -11,7 +11,6 @@ import {
   EDITOR_PROBE_PENDING_REASON,
   FILE_MISSING_EDITOR_REASON,
   FRONTMATTER_NOTICE,
-  NO_ASSOCIATION_LAUNCHER_REASON,
   NO_CONFIGURED_EDITOR_REASON,
   UNSAVED_INPUT_WARNING,
   WRITE_BACK_NOTE,
@@ -30,10 +29,10 @@ const WITH_EDITOR: EditorReadiness = {
 
 const WITHOUT_EDITOR: EditorReadiness = { configured: null, association: "open" };
 
-/** A platform with no association launcher this build will spawn (Windows — `cmd` is a shell). */
-const WITHOUT_ASSOCIATION: EditorReadiness = {
+/** What Windows reports (TASK-44): the association launcher is a Win32 call, not a program. */
+const ON_WINDOWS: EditorReadiness = {
   configured: { source: "editor", program: "notepad", args: [] },
-  association: null,
+  association: "ShellExecuteW",
 };
 
 function offer(readiness: EditorReadiness | null, method: "configured" | "association") {
@@ -78,14 +77,16 @@ describe("editorOffers", () => {
     expect(configured.reason).toContain("設定画面");
   });
 
-  it("withholds the association method where the platform has no non-shell launcher", () => {
-    // The alternative would be `cmd /c start`, which re-parses the path (a file named `a&calc.md`
-    // would run `calc`). The control is therefore absent *with its reason*, and $EDITOR still works.
-    const association = offer(WITHOUT_ASSOCIATION, "association");
-    expect(association.enabled).toBe(false);
-    expect(association.reason).toBe(NO_ASSOCIATION_LAUNCHER_REASON);
-    expect(association.command).toBe("—");
-    expect(offer(WITHOUT_ASSOCIATION, "configured").enabled).toBe(true);
+  it("offers the association method on Windows and names ShellExecuteW as what it invokes", () => {
+    // TASK-44: the method used to be withheld here, because the only launcher available was
+    // `cmd /c start` and it re-parses the path (a file named `a&calc.md` would run `calc`). It is now a
+    // `ShellExecuteW` call, and the panel names it — reading *that* off the screen is how a user can
+    // tell "opened through a shell" from "opened through the shell API".
+    const association = offer(ON_WINDOWS, "association");
+    expect(association.enabled).toBe(true);
+    expect(association.reason).toBe(null);
+    expect(association.command).toBe("ShellExecuteW … <このタスクのファイル>");
+    expect(offer(ON_WINDOWS, "configured").enabled).toBe(true);
   });
 
   it("states the terminal-editor caveat on an offered $EDITOR", () => {
@@ -184,6 +185,18 @@ describe("launchSummary", () => {
       launchSummary({ method: "association", program: "open", args: ["/roots/p/a.md"] }),
     ).toContain("OS の関連付け");
   });
+
+  it("shows the path ShellExecuteW received, metacharacters included", () => {
+    // TASK-44 AC #3 read off the screen: the name's `&`, `^` and `%…%` are still there and still one
+    // value, which is what tells the user no command line was involved.
+    const path = String.raw`C:\roots\my backlog\tasks\task-1 - a&b^c %PATH% d.md`;
+    const summary = launchSummary({
+      method: "association",
+      program: "ShellExecuteW",
+      args: [path],
+    });
+    expect(summary).toBe(`OS の関連付け で起動しました: ShellExecuteW ${path}`);
+  });
 });
 
 describe("launchFailureDetail", () => {
@@ -197,14 +210,29 @@ describe("launchFailureDetail", () => {
     expect(detail).toContain("開き直して");
   });
 
-  it("names the program a failed spawn tried", () => {
+  it("names the program a failed spawn tried, and points at the 起動指定 to correct", () => {
     const detail = launchFailureDetail({
       kind: "editorLaunchFailed",
+      method: "configured",
       program: "definitely-not-installed",
       detail: "No such file or directory (os error 2)",
     });
     expect(detail).toContain("definitely-not-installed");
     expect(detail).toContain("EDITOR");
+  });
+
+  it("points a failed association at the OS's association, not at $EDITOR", () => {
+    // What a Windows user meets when nothing is registered for `.md` (SE_ERR_NOASSOC). The 起動指定 has
+    // no bearing on it, so naming VISUAL・EDITOR here would send them to the one place that cannot fix it.
+    const detail = launchFailureDetail({
+      kind: "editorLaunchFailed",
+      method: "association",
+      program: "ShellExecuteW",
+      detail: "この拡張子に関連付けられたアプリケーションがありません (SE_ERR_NOASSOC)",
+    });
+    expect(detail).toContain("ShellExecuteW");
+    expect(detail).toContain("関連付けられたアプリケーション");
+    expect(detail).not.toContain("値（プログラム名とオプション）");
   });
 
   it("falls back to the boundary's own wording for unrelated failures", () => {

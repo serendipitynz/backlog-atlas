@@ -11,7 +11,7 @@
 //! | doc-8 §7 起動指定 | [`EditorCommand`] | the program to start and the arguments that precede the file path |
 //! | doc-8 §7 起動指定の解決順 | [`resolve`] / [`EditorSource`] | which of アプリ設定 → `$VISUAL` → `$EDITOR` supplied the 起動指定 in effect |
 //! | doc-8 §7 `$EDITOR` 起動 | [`LaunchMethod::Configured`] / [`ConfiguredEditor`] | the 起動指定 that resolution picked, with the source it came from |
-//! | doc-8 §7 OS の関連付け起動 | [`LaunchMethod::Association`] | the platform's association launcher (`open` / `xdg-open`), where one exists that is not a shell |
+//! | doc-8 §7 OS の関連付け起動 | [`LaunchMethod::Association`] / [`AssociationLauncher`] | how the platform hands a file to whatever it associates with the extension (`open`, `xdg-open`, `ShellExecuteW`) |
 //! | 起動できる方式 | [`EditorReadiness`] | which of the two methods this environment has, so the UI offers only those |
 //! | 起動した事実 | [`EditorLaunch`] | what was actually spawned — the program and argument array, for the UI to state |
 //! | 起動できない・起動に失敗した | [`EditorError`] | no launcher for the chosen method, or the spawn itself failed |
@@ -30,7 +30,7 @@
 //!
 //! ## No shell, ever (AGENTS)
 //!
-//! Every launch is `Command::new(program).args(argv)`. A `VISUAL`/`EDITOR` value is split on ASCII
+//! Every *process* launch is `Command::new(program).args(argv)`. A `VISUAL`/`EDITOR` value is split on ASCII
 //! whitespace into a program and its leading arguments, which is the whole of the parsing: quoting,
 //! `~` expansion and variable substitution are shell features, and running the value through a shell
 //! to get them would put the file path — a value from disk — into a string a shell then re-parses.
@@ -38,6 +38,12 @@
 //! variable; such a value simply fails to spawn, and the failure names the program it tried. アプリ設定's
 //! 外部エディタ指定 does not pay it: it stores the program and the argument array as separate values
 //! ([`EditorCommand`]), so nothing has to be split and a path with spaces is expressible there.
+//!
+//! Windows' association launcher is the one launch that is not a process at all: `ShellExecuteW` takes
+//! the path as a single wide-string parameter ([`OsCall::ShellExecute`]). That is *why* it is used —
+//! there is no command line, so the metacharacters a managed file name may contain have nothing to be
+//! re-parsed by. `cmd /c start` is the alternative and is ruled out, permanently, by
+//! [`tests::no_platform_hands_a_managed_path_to_a_command_interpreter`].
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -116,39 +122,59 @@ pub struct ConfiguredEditor {
 #[serde(rename_all = "camelCase")]
 pub struct EditorReadiness {
     pub configured: Option<ConfiguredEditor>,
-    /// The association launcher's program name (`open`, `xdg-open`), for the UI to state what it would
-    /// run. `None` on a platform with no launcher this module is willing to spawn (see
-    /// [`association_launcher`]); whether a named program is actually installed is only learned by
-    /// running it, and a missing one surfaces as a spawn failure.
-    pub association: Option<String>,
+    /// What the association method invokes, for the UI to state: a program name where the platform's
+    /// launcher is a program (`open`, `xdg-open`), or `ShellExecuteW` where it is a Win32 call. Not an
+    /// `Option`: every platform this project builds for has a launcher (see
+    /// [`association_launcher_of`]), so an absent one is no longer a state to report. Whether a *named
+    /// program* is installed is still only learned by running it, and a missing one surfaces as a
+    /// launch failure.
+    pub association: String,
 }
 
-/// What one launch spawned (doc-8 §7). Returned rather than discarded because a launch that "did
+/// What one launch did (doc-8 §7). Returned rather than discarded because a launch that "did
 /// nothing visible" is the expected failure mode of a terminal-only editor started from a GUI
-/// process: with the program and argument array on screen, the user can see what ran.
+/// process: with the launcher and what it received on screen, the user can see what ran.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorLaunch {
     pub method: LaunchMethod,
+    /// What was invoked: a program, or `ShellExecuteW` for Windows' association launcher.
     pub program: String,
+    /// What it received. For a spawn this is the argument array verbatim (no shell, so no quoting to
+    /// undo); for `ShellExecuteW` it is the one path parameter, which is the whole of that call's input.
     pub args: Vec<String>,
 }
 
 /// Why no editor was started. Kept apart because they lead to different user actions: `Unavailable`
-/// means this environment has no launcher for the method (set `VISUAL`, or use the other control),
-/// `LaunchFailed` means the launcher exists and the OS refused to start it.
+/// means this environment has no 起動指定 for the method (set `VISUAL`, or use the other control),
+/// `LaunchFailed` means the launcher was reached and the OS refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorError {
-    Unavailable { detail: String },
-    LaunchFailed { program: String, detail: String },
+    Unavailable {
+        detail: String,
+    },
+    LaunchFailed {
+        /// Which method was tried. Carried because the correction differs: a failed 起動指定 means the
+        /// program named in アプリ設定/`VISUAL`/`EDITOR` is wrong, while a failed association means the OS
+        /// has nothing registered for `.md` — advising the variables there would send the user to the
+        /// one place that has no bearing on it.
+        method: LaunchMethod,
+        program: String,
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for EditorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EditorError::Unavailable { detail } => write!(f, "{detail}"),
-            EditorError::LaunchFailed { program, detail } => {
-                write!(f, "{program} を起動できません: {detail}")
+            // 「で開けません」rather than 「を起動できません」: `program` may be `ShellExecuteW`, and that
+            // call's own failures are things like "nothing is associated with this extension" — the API
+            // ran, so saying it could not be started would name the wrong thing.
+            EditorError::LaunchFailed {
+                program, detail, ..
+            } => {
+                write!(f, "{program} で開けません: {detail}")
             }
         }
     }
@@ -178,6 +204,13 @@ pub trait Launcher {
     /// command that started it (doc-8 §7 relies on the file watch, not on exit detection), so a wait
     /// here would hang the caller for as long as the user keeps the file open.
     fn spawn(&self, program: &str, args: &[String]) -> std::io::Result<()>;
+
+    /// Hand `file` to the application the OS associates with it, without starting a child process
+    /// (Windows `ShellExecuteW`). On the same trait as [`spawn`] rather than behind a `cfg`, so that
+    /// one seam still covers every way this module reaches the OS and a fake can be asked which of the
+    /// two a plan chose — the Windows branch cannot be compiled on this project's developer machine,
+    /// so "the association method must not go through `spawn`" has to be assertable from any host.
+    fn shell_execute(&self, file: &Path) -> std::io::Result<()>;
 }
 
 /// [`Launcher`] over the real OS.
@@ -204,6 +237,195 @@ impl Launcher for SystemLauncher {
         });
         Ok(())
     }
+
+    /// `ShellExecuteW` on the path (doc-8 §7 OS の関連付け起動 on Windows, TASK-44 AC #1/#3).
+    ///
+    /// The path is one `lpFile` parameter — a counted wide string, not a token in a command line — so
+    /// the `&`, `^` and `%…%` a managed file name may contain reach the shell as *characters of a file
+    /// name*. That is the entire reason this is not `cmd /c start`: an interpreter re-parses its command
+    /// tail, and `Command::args` guarantees argv boundaries *to* a child, not *through* one.
+    #[cfg(target_os = "windows")]
+    fn shell_execute(&self, file: &Path) -> std::io::Result<()> {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        // NUL-terminated, because `lpFile` is a C string. `encode_wide` does not add one.
+        let path: Vec<u16> = file.as_os_str().encode_wide().chain(Some(0)).collect();
+
+        // ShellExecuteW resolves the verb through COM, so the thread needs an initialized apartment
+        // before the call and must give it back after — see `ComApartment`. Held across the call and
+        // dropped at the end of this scope, which is also where `path` dies. A failure here is reported
+        // rather than launched past: without an apartment the call would depend on whichever handler
+        // happens not to need COM.
+        let _apartment = ComApartment::enter()?;
+
+        // SAFETY: FFI with arguments this function owns. `path` outlives the call (it is dropped after
+        // this statement returns) and is NUL-terminated as `lpFile` requires. Every other pointer
+        // parameter is null, which the documented signature accepts for each of them.
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(), // hwnd: no parent window; Atlas is not modal on this
+                std::ptr::null(),     // lpOperation: null selects the file's default verb
+                path.as_ptr(),        // lpFile
+                std::ptr::null(),     // lpParameters: none — the file is data, not a program
+                std::ptr::null(),     // lpDirectory: inherit Atlas's working directory
+                SW_SHOWNORMAL,
+            )
+        };
+        // Documented convention: the returned HINSTANCE is not a handle. Above 32 means the launch
+        // started; 32 and below *is* the error code — `GetLastError` is not the one to read here.
+        let code = result as isize;
+        if code > 32 {
+            Ok(())
+        } else {
+            Err(shell_execute_error(code as i32))
+        }
+    }
+
+    /// Only Windows' association launcher is a `ShellExecuteW` call ([`association_launcher_of`]), so
+    /// no launch on another platform reaches this. Reported rather than `panic!`ed: an unreachable state
+    /// is still better surfaced to the user than made to abort the app.
+    #[cfg(not(target_os = "windows"))]
+    fn shell_execute(&self, _file: &Path) -> std::io::Result<()> {
+        Err(std::io::Error::other(
+            "ShellExecuteW はこのプラットフォームにありません",
+        ))
+    }
+}
+
+/// `RPC_E_CHANGED_MODE` — the thread already has an apartment, of the other concurrency model.
+///
+/// Written out rather than imported, so [`com_init`] can be read on a host that has no `windows_sys`;
+/// [`tests::the_changed_mode_code_matches_the_windows_binding`] holds the two equal where the binding
+/// does exist, which is the only place the literal could drift.
+#[cfg(any(target_os = "windows", test))]
+const RPC_E_CHANGED_MODE: i32 = 0x8001_0106_u32 as i32;
+
+/// What one `CoInitializeEx` return code means for the launch that follows.
+///
+/// A three-way split rather than success/failure, because the middle case is neither: the call did not
+/// succeed, yet the thread ends up in exactly the state `ShellExecuteW` needs. Kept as a pure function
+/// of the HRESULT so the split is asserted from any host — the `cfg`'d call around it cannot be, and
+/// this predicate is where both review rounds on this change found a hole.
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ComInit {
+    /// `S_OK` (the thread had no apartment) or `S_FALSE` (it had one already). Both raise the thread's
+    /// initialization count, so both owe a `CoUninitialize`.
+    Owed,
+    /// `RPC_E_CHANGED_MODE`: the thread is already initialized with the *other* model. The count did not
+    /// rise, so nothing is owed — and the launch goes ahead, because an initialized apartment is what
+    /// `ShellExecuteW` asks for and this thread has one.
+    AlreadyOtherModel,
+    /// Anything else the API can return — `E_INVALIDARG`, `E_OUTOFMEMORY`, `E_UNEXPECTED`. The thread has
+    /// **no** apartment, which is the one state this whole call exists to prevent, so the launch must not
+    /// proceed into it.
+    Failed,
+}
+
+#[cfg(any(target_os = "windows", test))]
+const fn com_init(hr: i32) -> ComInit {
+    if hr >= 0 {
+        ComInit::Owed
+    } else if hr == RPC_E_CHANGED_MODE {
+        ComInit::AlreadyOtherModel
+    } else {
+        ComInit::Failed
+    }
+}
+
+/// The COM apartment [`SystemLauncher::shell_execute`] runs in, released when dropped.
+///
+/// `ShellExecuteW` delegates the verb to Shell extensions activated through COM, so the calling thread
+/// needs an initialized apartment; the API documents `COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE`
+/// as the mode to ask for, because some extensions require an STA and OLE1 DDE is the one path
+/// `ShellExecute` can hang on waiting for a peer that never answers.
+///
+/// A guard rather than a bare call, because **the initialization has to be given back.** Every
+/// `CoInitializeEx` that succeeds — `S_OK` on a fresh thread, `S_FALSE` on one already initialized —
+/// raises a per-thread count that only `CoUninitialize` lowers, and `commands::task_file_open` is
+/// `#[tauri::command(async)]`: it runs on a *shared* runtime worker, so an unbalanced call would leave
+/// that thread's count one higher after every launch and never let its apartment be torn down.
+///
+/// Which of the three outcomes a return code is, is [`com_init`]'s.
+#[cfg(target_os = "windows")]
+struct ComApartment {
+    /// Whether this guard's own call raised the count, and so owes the matching `CoUninitialize`.
+    owed: bool,
+    /// Makes the guard neither `Send` nor `Sync`. The count `CoUninitialize` lowers is the *calling
+    /// thread's*, so a guard that crossed threads would balance the wrong one; a raw pointer field is
+    /// what states that in the type rather than in a comment.
+    _not_send: std::marker::PhantomData<*const ()>,
+}
+
+#[cfg(target_os = "windows")]
+impl ComApartment {
+    /// `Err` only for [`ComInit::Failed`] — the launch must not go on into the very state the
+    /// initialization exists to prevent. `AlreadyOtherModel` is an `Ok` that owes nothing: the thread has
+    /// an apartment, and only the Shell extensions that specifically require an STA can fail in it, so
+    /// refusing to open the file there would be the worse answer.
+    fn enter() -> std::io::Result<ComApartment> {
+        use windows_sys::Win32::System::Com::{
+            CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+        };
+
+        // SAFETY: FFI with a null reserved pointer, which the documented signature requires.
+        let hr = unsafe {
+            CoInitializeEx(
+                std::ptr::null(),
+                (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+            )
+        };
+        let owed = match com_init(hr) {
+            ComInit::Owed => true,
+            ComInit::AlreadyOtherModel => false,
+            ComInit::Failed => {
+                return Err(std::io::Error::other(format!(
+                    "COM の初期化に失敗しました (CoInitializeEx が HRESULT 0x{hr:08X} を返しました)"
+                )))
+            }
+        };
+        Ok(ComApartment {
+            owed,
+            _not_send: std::marker::PhantomData,
+        })
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        if self.owed {
+            // SAFETY: called exactly once for a `CoInitializeEx` that succeeded, and on the thread that
+            // made it — `owed` is set only on success, `Drop` runs once, and the guard cannot have moved
+            // to another thread (`_not_send`).
+            unsafe { windows_sys::Win32::System::Com::CoUninitialize() };
+        }
+    }
+}
+
+/// What a `ShellExecuteW` failure means, in the terms the panel states it in.
+///
+/// The low half of the range is Win32 error codes, which the OS can describe itself. `SE_ERR_*`
+/// (26–32) are not — they are ShellExecute's own, and they collide with unrelated Win32 codes, so
+/// `from_raw_os_error` would name the wrong thing for exactly the failure a user is most likely to
+/// meet: 31 is "nothing is associated with this extension", not "a device attached to the system is
+/// not functioning".
+#[cfg(target_os = "windows")]
+fn shell_execute_error(code: i32) -> std::io::Error {
+    let named = match code {
+        0 => "OS のメモリ・リソースが不足しています",
+        26 => "共有違反です (SE_ERR_SHARE)",
+        27 => "関連付けが不完全です (SE_ERR_ASSOCINCOMPLETE)",
+        28 => "DDE の処理がタイムアウトしました (SE_ERR_DDETIMEOUT)",
+        29 => "DDE の処理に失敗しました (SE_ERR_DDEFAIL)",
+        30 => "他の DDE 処理が進行中です (SE_ERR_DDEBUSY)",
+        31 => "この拡張子に関連付けられたアプリケーションがありません (SE_ERR_NOASSOC)",
+        32 => "関連付け先の DLL が見つかりません (SE_ERR_DLLNOTFOUND)",
+        _ => return std::io::Error::from_raw_os_error(code),
+    };
+    std::io::Error::other(named)
 }
 
 /// The launch methods this environment has (doc-8 §7). Called per open rather than cached: a
@@ -212,9 +434,19 @@ impl Launcher for SystemLauncher {
 /// `settings` is アプリ設定's 外部エディタ指定 (decision-13), which the caller reads per call for the
 /// same reason — it can change while Atlas runs.
 pub fn probe(settings: Option<&EditorCommand>, env: &dyn Environment) -> EditorReadiness {
+    probe_on(Platform::current(), settings, env)
+}
+
+/// [`probe`] for a named platform, so the association name every platform reports is asserted from any
+/// host (see [`Platform`]).
+fn probe_on(
+    platform: Platform,
+    settings: Option<&EditorCommand>,
+    env: &dyn Environment,
+) -> EditorReadiness {
     EditorReadiness {
         configured: resolve(settings, env),
-        association: association_launcher().map(|launcher| launcher.program.to_string()),
+        association: association_launcher_of(platform).name().to_string(),
     }
 }
 
@@ -258,64 +490,144 @@ fn from_variable(
     })
 }
 
-/// The platform's association launcher: the program that hands a file to whatever the OS associates
-/// with its extension, and the arguments that precede the path.
-struct AssociationLauncher {
-    program: &'static str,
-    leading: &'static [&'static str],
+/// Which platform's association launcher to name. A value rather than `cfg` alone, so that every
+/// platform's choice can be asserted from any host: this project is developed on macOS with no Windows
+/// target installed, and a `cfg`-only table is checked by nothing until it ships. [`Platform::current`]
+/// is the only place the build's own target is read.
+// On any one target [`Platform::current`] constructs a single variant and the other two are built only
+// by the tests that walk the table — which is the point of the type, not an oversight: it is what lets a
+// macOS host assert the Windows launcher at all. Dead-code analysis sees construction, so it flags the
+// two that this build does not target.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Platform {
+    MacOs,
+    Windows,
+    /// Everything else, which for this project means the freedesktop.org platforms.
+    Freedesktop,
 }
 
-#[cfg(target_os = "macos")]
-const fn association_launcher() -> Option<AssociationLauncher> {
-    Some(AssociationLauncher {
-        program: "open",
-        leading: &[],
-    })
+impl Platform {
+    /// The platform this build targets.
+    const fn current() -> Platform {
+        #[cfg(target_os = "macos")]
+        return Platform::MacOs;
+        #[cfg(target_os = "windows")]
+        return Platform::Windows;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        return Platform::Freedesktop;
+    }
+
+    /// Every platform, for the tests that assert the table as a whole. A `match` on the way out of
+    /// [`association_launcher_of`] is what makes adding a platform force a launcher decision; this
+    /// makes adding one force the invariants to be re-checked too.
+    #[cfg(test)]
+    const ALL: [Platform; 3] = [Platform::MacOs, Platform::Windows, Platform::Freedesktop];
 }
 
-/// **No association launch on Windows.** The obvious candidate is `cmd /c start`, and it cannot be
-/// used here: `cmd.exe` re-parses the command tail, so `Command::args`' argv boundaries stop meaning
-/// anything once the child is a command interpreter. A managed file whose name contains `&`, `^` or
-/// `%…%` — the scanner accepts any `.md` under the managed directories, whatever wrote it — would then
-/// have the text after the metacharacter run as another command. That is the module's "no shell, ever"
-/// rule broken in the one place it matters most, for a value that came off disk.
-///
-/// The correct launcher is `ShellExecuteW`, which needs a Win32 binding or Tauri's opener plugin — a
-/// new production dependency, gated on confirmation (AGENTS) and not verifiable from this machine. So
-/// the method is withheld here rather than shipped through a shell: `VISUAL`/`EDITOR` still works on
-/// Windows, and the UI states why the other control is absent. Closing this gap is its own task.
-#[cfg(target_os = "windows")]
-const fn association_launcher() -> Option<AssociationLauncher> {
-    None
+/// The association launcher (doc-8 §7 OS の関連付け起動): how a platform hands a file to whatever it
+/// associates with the extension. Two shapes, because they are not two flavours of the same call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AssociationLauncher {
+    /// A program the path is passed to as its own argv element (`open`, `xdg-open`).
+    Program {
+        program: &'static str,
+        /// Arguments that precede the path.
+        leading: &'static [&'static str],
+    },
+    /// Win32 `ShellExecuteW`: not a program, so there is no command tail at all — the path is one
+    /// wide-string parameter to one call.
+    ShellExecute,
 }
 
-/// `xdg-open` is the freedesktop.org entry point. `--` keeps a path that begins with `-` from being
-/// read as an option; a system without `xdg-open` fails at spawn with the program named, which is the
-/// honest report rather than a silent no-op.
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const fn association_launcher() -> Option<AssociationLauncher> {
-    Some(AssociationLauncher {
-        program: "xdg-open",
-        leading: &["--"],
-    })
+/// The name `ShellExecuteW` appears under on screen. The Win32 call rather than a friendlier phrase,
+/// because what the panel is letting the user check is precisely *that no interpreter is involved*
+/// (TASK-44): 「シェル経由で開きます」and 「ShellExecuteW で開きます」are the two things being told apart.
+pub const SHELL_EXECUTE_NAME: &str = "ShellExecuteW";
+
+impl AssociationLauncher {
+    /// What the UI states this method invokes.
+    const fn name(self) -> &'static str {
+        match self {
+            AssociationLauncher::Program { program, .. } => program,
+            AssociationLauncher::ShellExecute => SHELL_EXECUTE_NAME,
+        }
+    }
 }
 
-/// Why the association method is not offered on this platform (doc-8 §7). Stated in full because the
-/// UI shows it: an absent control with no reason is what doc-5 §5 rules out.
-pub const NO_ASSOCIATION_LAUNCHER: &str =
-    "このプラットフォームでは OS 関連付け起動を提供しません（cmd /c start はコマンド行を \
-     cmd.exe に再解釈させ、ファイル名の & や %…% が別コマンドとして実行され得るため。\
-     シェルを介さない関連付け API を使うまで無効にしています）。VISUAL・EDITOR は使えます";
+/// Which launcher each platform uses. Exhaustive `match`, so a new [`Platform`] cannot be added without
+/// deciding — silently inheriting another platform's launcher is the failure this shape rules out.
+const fn association_launcher_of(platform: Platform) -> AssociationLauncher {
+    match platform {
+        // `open` takes the path as its own argument; no `--` is needed because `open` reads a leading
+        // `-` as a path once any option has been consumed, and there are no options here.
+        Platform::MacOs => AssociationLauncher::Program {
+            program: "open",
+            leading: &[],
+        },
+        // `ShellExecuteW`, never `cmd /c start`. `cmd.exe` re-parses its command tail, so a managed file
+        // named `a&calc.md` — the scanner accepts any `.md` under the managed directories, whatever
+        // wrote it — would run `calc`. `Command::args` guarantees argv boundaries to a child, not
+        // through one, so the guarantee ends the moment the child is an interpreter. `ShellExecuteW`
+        // has no command line for the name's characters to be read as syntax (decision-15).
+        Platform::Windows => AssociationLauncher::ShellExecute,
+        // `xdg-open` is the freedesktop.org entry point. `--` keeps a path that begins with `-` from
+        // being read as an option; a system without `xdg-open` fails at spawn with the program named,
+        // which is the honest report rather than a silent no-op.
+        Platform::Freedesktop => AssociationLauncher::Program {
+            program: "xdg-open",
+            leading: &["--"],
+        },
+    }
+}
 
-/// What a launch would run, without running it (doc-8 §7). Separate from [`open`] so the decision —
-/// which program, and the file path as its own argument array element — is asserted in tests without
-/// a process being started.
+/// How a [`Planned`] launch reaches the OS.
+enum OsCall {
+    /// Spawn [`Planned::launch`]'s program with its arguments.
+    Spawn,
+    /// `ShellExecuteW` on the file. Here `launch.program`/`args` *describe* the call for the UI rather
+    /// than being an argv — which is the point of the variant: there is no argv.
+    ShellExecute,
+}
+
+/// What one launch does: what the UI is told, and the OS call that performs it. Kept together so the
+/// choice is made once — a `plan` and an `open` that each work it out from the method is how a panel
+/// that says `ShellExecuteW` could come to spawn something.
+struct Planned {
+    launch: EditorLaunch,
+    call: OsCall,
+}
+
+/// What a launch would do, without doing it (doc-8 §7). Separate from [`open`] so the decision — which
+/// launcher, and the file path as one element rather than text in a command line — is asserted in tests
+/// without a process being started.
 pub fn plan(
     settings: Option<&EditorCommand>,
     env: &dyn Environment,
     method: LaunchMethod,
     file: &Path,
 ) -> Result<EditorLaunch, EditorError> {
+    plan_on(Platform::current(), settings, env, method, file)
+}
+
+/// [`plan`] for a named platform (see [`Platform`]).
+fn plan_on(
+    platform: Platform,
+    settings: Option<&EditorCommand>,
+    env: &dyn Environment,
+    method: LaunchMethod,
+    file: &Path,
+) -> Result<EditorLaunch, EditorError> {
+    planned(platform, settings, env, method, file).map(|planned| planned.launch)
+}
+
+fn planned(
+    platform: Platform,
+    settings: Option<&EditorCommand>,
+    env: &dyn Environment,
+    method: LaunchMethod,
+    file: &Path,
+) -> Result<Planned, EditorError> {
     let path = file.to_string_lossy().into_owned();
     match method {
         LaunchMethod::Configured => {
@@ -325,24 +637,40 @@ pub fn plan(
             })?;
             let mut args = editor.args;
             args.push(path);
-            Ok(EditorLaunch {
-                method,
-                program: editor.program,
-                args,
+            Ok(Planned {
+                launch: EditorLaunch {
+                    method,
+                    program: editor.program,
+                    args,
+                },
+                call: OsCall::Spawn,
             })
         }
-        LaunchMethod::Association => {
-            let launcher = association_launcher().ok_or_else(|| EditorError::Unavailable {
-                detail: NO_ASSOCIATION_LAUNCHER.to_string(),
-            })?;
-            let mut args: Vec<String> = launcher.leading.iter().map(|a| a.to_string()).collect();
-            args.push(path);
-            Ok(EditorLaunch {
-                method,
-                program: launcher.program.to_string(),
-                args,
-            })
-        }
+        // Infallible: every platform has an association launcher, so this method no longer has an
+        // "unavailable on this platform" outcome to report (TASK-44 AC #4).
+        LaunchMethod::Association => Ok(match association_launcher_of(platform) {
+            AssociationLauncher::Program { program, leading } => {
+                let mut args: Vec<String> = leading.iter().map(|a| a.to_string()).collect();
+                args.push(path);
+                Planned {
+                    launch: EditorLaunch {
+                        method,
+                        program: program.to_string(),
+                        args,
+                    },
+                    call: OsCall::Spawn,
+                }
+            }
+            AssociationLauncher::ShellExecute => Planned {
+                launch: EditorLaunch {
+                    method,
+                    program: SHELL_EXECUTE_NAME.to_string(),
+                    // One element and no leading arguments, because `lpFile` is the whole input.
+                    args: vec![path],
+                },
+                call: OsCall::ShellExecute,
+            },
+        }),
     }
 }
 
@@ -355,13 +683,29 @@ pub fn open(
     method: LaunchMethod,
     file: &Path,
 ) -> Result<EditorLaunch, EditorError> {
-    let launch = plan(settings, env, method, file)?;
-    launcher
-        .spawn(&launch.program, &launch.args)
-        .map_err(|error| EditorError::LaunchFailed {
-            program: launch.program.clone(),
-            detail: error.to_string(),
-        })?;
+    open_on(Platform::current(), settings, env, launcher, method, file)
+}
+
+/// [`open`] for a named platform (see [`Platform`]), so which of the two OS calls a plan chose is
+/// asserted against a fake from any host.
+fn open_on(
+    platform: Platform,
+    settings: Option<&EditorCommand>,
+    env: &dyn Environment,
+    launcher: &dyn Launcher,
+    method: LaunchMethod,
+    file: &Path,
+) -> Result<EditorLaunch, EditorError> {
+    let Planned { launch, call } = planned(platform, settings, env, method, file)?;
+    match call {
+        OsCall::Spawn => launcher.spawn(&launch.program, &launch.args),
+        OsCall::ShellExecute => launcher.shell_execute(file),
+    }
+    .map_err(|error| EditorError::LaunchFailed {
+        method,
+        program: launch.program.clone(),
+        detail: error.to_string(),
+    })?;
     Ok(launch)
 }
 
@@ -392,6 +736,9 @@ mod tests {
     #[derive(Default)]
     struct FakeLauncher {
         spawns: RefCell<Vec<(String, Vec<String>)>>,
+        /// The paths handed to `ShellExecuteW`. Recorded apart from `spawns` because the distinction is
+        /// the whole of TASK-44: a path that reached a *spawn* on Windows reached a command line.
+        shell_executes: RefCell<Vec<std::path::PathBuf>>,
         fail: Option<std::io::ErrorKind>,
     }
 
@@ -400,6 +747,14 @@ mod tests {
             self.spawns
                 .borrow_mut()
                 .push((program.to_string(), args.to_vec()));
+            match self.fail {
+                Some(kind) => Err(std::io::Error::new(kind, "no such file")),
+                None => Ok(()),
+            }
+        }
+
+        fn shell_execute(&self, file: &Path) -> std::io::Result<()> {
+            self.shell_executes.borrow_mut().push(file.to_path_buf());
             match self.fail {
                 Some(kind) => Err(std::io::Error::new(kind, "no such file")),
                 None => Ok(()),
@@ -531,34 +886,42 @@ mod tests {
         assert!(matches!(error, EditorError::Unavailable { .. }));
     }
 
-    #[cfg(not(target_os = "windows"))]
+    /// The whole point of the second method: a machine with no EDITOR can still open the file. Asserted
+    /// for every platform, so no platform can lose it (TASK-44 AC #4 removed the one that had).
     #[test]
-    fn association_launch_needs_no_editor_variable() {
-        // The whole point of the second method: a machine with no EDITOR can still open the file.
+    fn every_platform_offers_the_association_method_without_an_editor_variable() {
         let env = FakeEnv::default();
-        let launch = plan(
-            None,
-            &env,
-            LaunchMethod::Association,
-            Path::new("/roots/a.md"),
-        )
-        .expect("the association launcher needs no environment");
-        assert_eq!(launch.method, LaunchMethod::Association);
-        assert_eq!(
-            launch.args.last().map(String::as_str),
-            Some("/roots/a.md"),
-            "the file is the last argument, after the launcher's own"
-        );
-        assert_eq!(probe(None, &env).association, Some(launch.program));
+        for platform in Platform::ALL {
+            let launch = plan_on(
+                platform,
+                None,
+                &env,
+                LaunchMethod::Association,
+                Path::new("/roots/a.md"),
+            )
+            .expect("the association launcher needs no environment");
+            assert_eq!(launch.method, LaunchMethod::Association);
+            assert_eq!(
+                launch.args.last().map(String::as_str),
+                Some("/roots/a.md"),
+                "{platform:?}: the file is the last argument, after the launcher's own"
+            );
+            assert_eq!(
+                probe_on(platform, None, &env).association,
+                launch.program,
+                "{platform:?}: the panel must name the launcher a launch would use"
+            );
+        }
     }
 
-    /// The launcher is never a command interpreter, on any platform. Spawning one would hand the path
-    /// — a value read off disk — to something that re-parses the command tail, so a file named
-    /// `a&calc.md` could run `calc`: `Command::args` guarantees argv boundaries to the child, not
-    /// through it. Asserted as an invariant rather than per-platform so reintroducing `cmd /c start`,
-    /// `sh -c` or `powershell -Command` fails here instead of in the field.
+    /// No platform hands a managed path to a command interpreter. An interpreter re-parses its command
+    /// tail, so a file named `a&calc.md` could run `calc`: `Command::args` guarantees argv boundaries to
+    /// the child, not through it. Walked over every [`Platform`] rather than only the build's own,
+    /// because the Windows arm cannot be compiled on the machine this project is developed on — a
+    /// `cfg`-only check would pass here and ship the hole. Reintroducing `cmd /c start`,
+    /// `powershell -Command` or `sh -c` fails here instead of in the field.
     #[test]
-    fn the_association_launcher_is_never_a_command_interpreter() {
+    fn no_platform_hands_a_managed_path_to_a_command_interpreter() {
         const INTERPRETERS: [&str; 7] = [
             "cmd",
             "cmd.exe",
@@ -568,44 +931,162 @@ mod tests {
             "sh",
             "bash",
         ];
-        if let Some(launcher) = association_launcher() {
-            assert!(
-                !INTERPRETERS.contains(&launcher.program),
-                "{} re-parses its command tail; a managed path must not be handed to one",
-                launcher.program
+        for platform in Platform::ALL {
+            match association_launcher_of(platform) {
+                AssociationLauncher::Program { program, .. } => assert!(
+                    !INTERPRETERS.contains(&program),
+                    "{platform:?}: {program} re-parses its command tail; \
+                     a managed path must not be handed to one"
+                ),
+                // No command line exists to be re-parsed, so there is nothing to check.
+                AssociationLauncher::ShellExecute => {}
+            }
+        }
+    }
+
+    /// TASK-44 AC #1/#3, as far as a non-Windows host can assert it: Windows' association launch goes to
+    /// `ShellExecuteW` with the path as its single parameter, and **never** to `spawn`. The metacharacters
+    /// are in the fixture because they are the reason the method could not be shipped through `cmd`; here
+    /// they have to survive untouched, since `lpFile` is a parameter and not text in a command line.
+    /// (What only Windows can answer is whether the OS then opens it — AC #3's 実機確認.)
+    #[test]
+    fn windows_opens_the_association_through_shell_execute_and_never_a_spawn() {
+        let env = FakeEnv::default();
+        let launcher = FakeLauncher::default();
+        let file = Path::new(r"C:\roots\my backlog\tasks\task-1 - a&b^c %PATH% d.md");
+        let launch = open_on(
+            Platform::Windows,
+            None,
+            &env,
+            &launcher,
+            LaunchMethod::Association,
+            file,
+        )
+        .expect("launched");
+
+        assert!(
+            launcher.spawns.borrow().is_empty(),
+            "a spawn means a command line exists, which is what this method avoids"
+        );
+        assert_eq!(
+            launcher.shell_executes.borrow().as_slice(),
+            &[file.to_path_buf()],
+            "the path reaches ShellExecuteW as one value, metacharacters and spaces included"
+        );
+        assert_eq!(launch.program, SHELL_EXECUTE_NAME);
+        assert_eq!(
+            launch.args,
+            vec![file.to_string_lossy().into_owned()],
+            "what the panel states it passed: the one lpFile parameter, nothing else"
+        );
+    }
+
+    /// The other side of the same table: where the launcher *is* a program, the launch stays a spawn with
+    /// the path as its own argv element — so AC #1 did not turn the platforms that were already correct
+    /// into shell-executes.
+    #[test]
+    fn the_program_launchers_still_spawn_with_the_path_as_one_element() {
+        let env = FakeEnv::default();
+        for (platform, program, leading) in [
+            (Platform::MacOs, "open", Vec::new()),
+            (Platform::Freedesktop, "xdg-open", vec!["--".to_string()]),
+        ] {
+            let launcher = FakeLauncher::default();
+            open_on(
+                platform,
+                None,
+                &env,
+                &launcher,
+                LaunchMethod::Association,
+                Path::new("/roots/my backlog/tasks/task-1 - a&b.md"),
+            )
+            .expect("launched");
+            assert!(launcher.shell_executes.borrow().is_empty());
+            let mut expected = leading;
+            expected.push("/roots/my backlog/tasks/task-1 - a&b.md".to_string());
+            assert_eq!(
+                launcher.spawns.borrow().as_slice(),
+                &[(program.to_string(), expected)],
+                "{platform:?}"
             );
         }
     }
 
-    /// The gap the invariant above leaves on Windows: rather than launching through `cmd`, the method
-    /// is withheld with a stated reason (doc-5 §5), and `VISUAL`/`EDITOR` still works there.
+    /// The `$EDITOR` method is unaffected by the platform: it was the fallback Windows had while the
+    /// association method was withheld, and it still resolves the same way now that it is not.
+    #[test]
+    fn the_configured_method_is_the_same_on_every_platform() {
+        let env = FakeEnv::with(&[("EDITOR", "notepad")]);
+        for platform in Platform::ALL {
+            let launch = plan_on(
+                platform,
+                None,
+                &env,
+                LaunchMethod::Configured,
+                Path::new(r"C:\roots\a&calc.md"),
+            )
+            .expect("the configured editor works everywhere");
+            assert_eq!(launch.program, "notepad");
+            assert_eq!(
+                launch.args,
+                vec![r"C:\roots\a&calc.md".to_string()],
+                "{platform:?}: the path stays one argv element; no interpreter is involved"
+            );
+        }
+    }
+
+    /// The three outcomes of `CoInitializeEx`, asserted from any host. Two review rounds on this change
+    /// found holes here — first no `CoUninitialize` at all, then `SUCCEEDED(hr)` treating "the thread has
+    /// no apartment" the same as "it has the other kind" — so the split is a pure function and this test
+    /// pins every arm, rather than the whole predicate living inside a `cfg` nothing here can compile.
+    #[test]
+    fn com_initialization_separates_owing_from_already_and_from_failure() {
+        const S_OK: i32 = 0;
+        const S_FALSE: i32 = 1;
+        const E_INVALIDARG: i32 = 0x8007_0057_u32 as i32;
+        const E_OUTOFMEMORY: i32 = 0x8007_000E_u32 as i32;
+        const E_UNEXPECTED: i32 = 0x8000_FFFF_u32 as i32;
+
+        // Both raise the thread's count, so both owe the matching CoUninitialize.
+        assert_eq!(com_init(S_OK), ComInit::Owed);
+        assert_eq!(com_init(S_FALSE), ComInit::Owed);
+        // The count did not rise, so there is nothing to give back — but the thread does have an
+        // apartment, which is what the launch needs, so this is not a failure either.
+        assert_eq!(com_init(RPC_E_CHANGED_MODE), ComInit::AlreadyOtherModel);
+        // No apartment at all. Giving back an initialization that was never made would lower someone
+        // else's, and launching would enter the state the call exists to prevent.
+        for hr in [E_INVALIDARG, E_OUTOFMEMORY, E_UNEXPECTED] {
+            assert_eq!(com_init(hr), ComInit::Failed, "HRESULT 0x{hr:08X}");
+        }
+    }
+
+    /// The literal above is only correct while it equals the binding. Checked where the binding exists;
+    /// on any other host the constant is the only definition there is, so nothing could disagree with it.
     #[cfg(target_os = "windows")]
     #[test]
-    fn windows_withholds_the_association_method_instead_of_using_a_shell() {
-        let env = FakeEnv::default();
-        assert_eq!(probe(None, &env).association, None);
-        let error = plan(
-            None,
-            &env,
-            LaunchMethod::Association,
-            Path::new("C:/roots/a&calc.md"),
-        )
-        .expect_err("no association launcher on Windows");
-        assert!(matches!(error, EditorError::Unavailable { .. }));
-
-        let env = FakeEnv::with(&[("EDITOR", "notepad")]);
-        let launch = plan(
-            None,
-            &env,
-            LaunchMethod::Configured,
-            Path::new("C:/roots/a&calc.md"),
-        )
-        .expect("the configured editor still works");
-        assert_eq!(launch.program, "notepad");
+    fn the_changed_mode_code_matches_the_windows_binding() {
         assert_eq!(
-            launch.args,
-            vec!["C:/roots/a&calc.md".to_string()],
-            "the path stays one argv element: no interpreter is involved"
+            RPC_E_CHANGED_MODE,
+            windows_sys::Win32::Foundation::RPC_E_CHANGED_MODE
+        );
+    }
+
+    /// A `ShellExecuteW` failure names what went wrong rather than the API. `SE_ERR_NOASSOC` is the one a
+    /// user actually meets — a `.md` with nothing registered for it — and it must not be reported through
+    /// `from_raw_os_error`, whose text for 31 is about a malfunctioning device.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_shell_execute_failure_is_reported_in_its_own_terms() {
+        let error = shell_execute_error(31);
+        assert!(
+            error.to_string().contains("SE_ERR_NOASSOC"),
+            "expected the association failure to be named, got {error}"
+        );
+        // Below the SE_ERR_* range the OS's own text is right, so it is used.
+        assert_eq!(
+            shell_execute_error(2).kind(),
+            std::io::ErrorKind::NotFound,
+            "ERROR_FILE_NOT_FOUND is a real Win32 code and stays one"
         );
     }
 

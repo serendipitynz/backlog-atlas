@@ -347,9 +347,14 @@ pub enum CommandError {
     /// The chosen launch method has no launcher here (doc-8 §7): `VISUAL`/`EDITOR` are unset. Not a
     /// failure of the file or the project — the other method may still work.
     EditorUnavailable { detail: String },
-    /// The launcher was resolved and the OS refused to start it (a missing program, a permission
-    /// fault). Names the program so the user can see what was tried.
-    EditorLaunchFailed { program: String, detail: String },
+    /// The launcher was reached and the OS refused (a missing program, a permission fault, no
+    /// association for the extension). Names what was tried, and by which method — the correction is
+    /// the 起動指定 for one and the OS's association for the other.
+    EditorLaunchFailed {
+        method: LaunchMethod,
+        program: String,
+        detail: String,
+    },
 }
 
 /// Which ledger operation refusal happened (doc-3 §3.1/§3.3/§4). One variant per refusal
@@ -432,9 +437,15 @@ impl From<EditorError> for CommandError {
     fn from(error: EditorError) -> Self {
         match error {
             EditorError::Unavailable { detail } => CommandError::EditorUnavailable { detail },
-            EditorError::LaunchFailed { program, detail } => {
-                CommandError::EditorLaunchFailed { program, detail }
-            }
+            EditorError::LaunchFailed {
+                method,
+                program,
+                detail,
+            } => CommandError::EditorLaunchFailed {
+                method,
+                program,
+                detail,
+            },
         }
     }
 }
@@ -1715,6 +1726,12 @@ ordinal: 1000\n\
                 .push((program.to_string(), args.to_vec()));
             Ok(())
         }
+
+        /// The boundary's tests all use `LaunchMethod::Configured`, which is a spawn on every platform;
+        /// which OS call the association method takes is `editor`'s decision and is asserted there.
+        fn shell_execute(&self, _file: &Path) -> std::io::Result<()> {
+            unreachable!("the boundary's tests launch the configured editor, which is a spawn")
+        }
     }
 
     #[test]
@@ -1850,9 +1867,13 @@ ordinal: 1000\n\
         assert_eq!(json["configured"]["source"], "editor");
         assert_eq!(json["configured"]["program"], "code");
         assert_eq!(json["configured"]["args"][0], "-w");
-        // A string where a launcher exists, `null` where the platform has none (Windows — see
-        // `editor::association_launcher`): the frontend's `string | null` must match either way.
-        assert!(json["association"].is_string() || json["association"].is_null());
+        // Always a string, never `null`: every platform has an association launcher (TASK-44), and the
+        // frontend's `association: string` would read a `null` as the launcher's *name*.
+        assert!(
+            json["association"].is_string(),
+            "expected a launcher name, got {}",
+            json["association"]
+        );
 
         let launch = editor::plan(
             None,
