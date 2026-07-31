@@ -22,6 +22,8 @@
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
   import { cardIdentity, crossTaskId } from "../lib/card";
+  import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
+  import { MAC_KEYBOARD } from "../lib/platform";
   import {
     acProgress,
     degradeSummary,
@@ -924,7 +926,10 @@
           type="button"
           class="primary"
           disabled={saveGate.state !== "ready"}
-          title={saveGate.state === "ready" ? "保存 (Cmd/Ctrl+Enter)" : saveGate.reason}
+          aria-keyshortcuts={ariaKeyShortcuts("saveEditSession")}
+          title={saveGate.state === "ready"
+            ? `保存 (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`
+            : saveGate.reason}
           onclick={save}
         >
           {busy ? "保存中…" : "保存"}
@@ -933,10 +938,13 @@
       </div>
       {#if !missing}
         <!-- Withheld while the file is gone: naming the save shortcut there would advertise an
-             operation that cannot be issued (doc-5 §5). The banner above carries the reason. -->
+             operation that cannot be issued (doc-5 §5). The banner above carries the reason.
+             The chord is printed from the 割り当て一覧 (doc-7 §2.1) rather than spelled here, so this
+             sentence cannot outlive the assignment — and it names *where* the chord is answered, which
+             is the 編集部品 (its 適用範囲) and not the whole session. Enter's own meaning is stated at the
+             field itself (`Editor.svelte`), where the key is pressed. -->
         <p class="hint">
-          保存は保存ボタンか Cmd/Ctrl+Enter です。Enter は改行（IME 変換中は変換確定）で、保存には
-          割り当てません（doc-8 §6.2）。
+          保存は保存ボタン、または本文欄で {shortcutHint("saveEditSession", MAC_KEYBOARD)} です。
         </p>
       {/if}
       {#if plan !== null && plan.state === "refused"}

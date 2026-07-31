@@ -19,6 +19,8 @@
   import { untrack } from "svelte";
   import Editor from "./Editor.svelte";
   import { PRIORITIES } from "../lib/edit";
+  import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
+  import { MAC_KEYBOARD } from "../lib/platform";
   import {
     CANONICAL_STATUS_NAMES,
     aliasKeyEffect,
@@ -1085,6 +1087,7 @@
                   <button
                     type="button"
                     disabled={docUpdateIssue.state !== "ready"}
+                    aria-keyshortcuts={ariaKeyShortcuts("saveEditSession")}
                     title={why(docUpdateIssue)}
                     onclick={updateDoc}
                   >
@@ -1095,6 +1098,12 @@
                     <span class="reason">{docUpdateIssue.reason}</span>
                   {/if}
                 </div>
+                <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). The chord is answered inside the 本文欄
+                     (its 適用範囲 is 編集部品の内側), so it is named here at the 発行 it runs — printed from
+                     the 割り当て一覧, never spelled by hand. -->
+                <p class="hint">
+                  本文欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも更新を発行できます。
+                </p>
               </div>
             {/if}
 
@@ -1494,6 +1503,7 @@
               <button
                 type="button"
                 disabled={taskIssue.state !== "ready"}
+                aria-keyshortcuts={ariaKeyShortcuts("saveEditSession")}
                 title={why(taskIssue)}
                 onclick={createTask}
               >
@@ -1503,6 +1513,12 @@
                 <span class="reason">{taskIssue.reason}</span>
               {/if}
             </div>
+            <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4): the same chord, answered in the description
+                 欄. It reads「作成」here because what a 編集部品's chord confirms is its form's own 発行 —
+                 which is why the 割り当て一覧 words that row for both. -->
+            <p class="hint">
+              description 欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも作成を発行できます。
+            </p>
           {/if}
 
           <!-- The omissions are stated as a product judgment (doc-10 §7), never as「CLI に無い」—

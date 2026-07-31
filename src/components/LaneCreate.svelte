@@ -8,6 +8,8 @@
   // while a CLI 縮退 gets the control, disabled, with its reason — the first is 提供しない, the
   // second「今は条件が揃っていない」.
   import type { LaneCreate } from "../lib/lane-create";
+  import { ariaKeyShortcuts, matchShortcut, shortcutHint } from "../lib/shortcuts";
+  import { MAC_KEYBOARD } from "../lib/platform";
 
   interface Props {
     /** Whether this column offers the entry, and its 作成時 status 候補 (doc-7 §4.1). */
@@ -62,14 +64,25 @@
     if (open) titleInput?.focus();
   });
 
-  // No key binding on the title field, deliberately. doc-7 §2.1's ショートカット契約 forbids a
-  // shortcut containing a bare key from firing while focus is inside an `input` — so Enter cannot be
-  // 発行 and Escape cannot be やめる here, whatever IME guard were put in front of them (a WebKit
-  // composing keydown can arrive with `isComposing === false` and `keyCode === 229`, which is why
-  // `Editor.svelte` checks both). The same 契約 also requires every binding to be entered in one
-  // 割り当て一覧, and that list does not exist yet: TASK-56 builds the 固定ヘッダ・メニュー・ショート
-  // カット together. Both operations are on visible buttons below, which is what §2.1 asks for
-  // (ショートカットだけが入口の操作を作らない) — so nothing is unreachable in the meantime.
+  /**
+   * 発行 by key (doc-7 §2.1), through the 割り当て一覧 — which TASK-56 built, and which is what this
+   * component was waiting for: a bare Enter here would still be forbidden (§2.1 keeps 単独キー out of an
+   * `input`), so the assignment is the modifier chord ⌘/Ctrl+Enter, the same shape 編集部品 uses for
+   * 明示保存. やめる keeps no chord of its own beyond the 被せ層's Escape, which this entry is not one of.
+   *
+   * The IME guard is `matchShortcut`'s, applied to every assignment rather than re-argued here (a WebKit
+   * composing keydown can arrive with `isComposing === false` and `keyCode === 229`).
+   *
+   * The buttons below stay the entry to both operations (§2.1 ショートカットだけが入口の操作を作らない).
+   */
+  function keydown(event: KeyboardEvent): void {
+    const binding = matchShortcut(event, { scopes: ["laneCreate"], textEntry: true });
+    if (binding?.action !== "submitLaneCreate") return;
+    if (binding.preventsDefault !== null) event.preventDefault();
+    // Withheld for the same reason the button is (doc-11 §5): the chord is not a way past a 縮退 or a
+    // 発行中. The reason is already on screen below the button, so pressing it says nothing new.
+    if (blocked === null) onsubmit();
+  }
 </script>
 
 {#if entry.state === "absent"}
@@ -103,7 +116,9 @@
       value={title}
       placeholder="title（必須）"
       aria-label="{label} 列の新規タスクの title"
+      aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate")}
       oninput={(event) => ontitle(event.currentTarget.value)}
+      onkeydown={keydown}
     />
 
     <!-- 渡す値は候補の数によらず常に読める (doc-7 §4.1). One candidate is shown as text rather than as
@@ -130,9 +145,17 @@
     <div class="actions">
       <!-- 無効化提示 (doc-11 §5): the control stays, and its reason is the sentence below it rather
            than a `title` alone — the reason has to be reachable without hovering. -->
-      <button type="button" disabled={blocked !== null} title={blocked ?? "task create を発行します"}
-        onclick={onsubmit}>作成</button
+      <button
+        type="button"
+        disabled={blocked !== null}
+        aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate")}
+        title={blocked ?? "task create を発行します"}
+        onclick={onsubmit}
       >
+        作成
+        <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4); the chord is on `aria-keyshortcuts` as data. -->
+        <span class="hint" aria-hidden="true">{shortcutHint("submitLaneCreate", MAC_KEYBOARD)}</span>
+      </button>
       <button type="button" onclick={onclose}>やめる</button>
     </div>
     {#if blocked !== null}
@@ -214,11 +237,22 @@
     }
   }
 
+  // The chord beside its operation (doc-7 §2.1 / AC #4). Quiet, and outside the accessible name: the
+  // button's own label is the entry, and `aria-keyshortcuts` carries the chord for assistive tech.
+  .hint {
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-variant-numeric: tabular-nums;
+  }
+
   .actions {
     display: flex;
     gap: 0.25rem;
 
     button {
+      display: inline-flex;
+      gap: 0.25rem;
+      align-items: baseline;
       padding: 0 0.35rem;
       border: 1px solid var(--line-strong);
       border-radius: 4px;

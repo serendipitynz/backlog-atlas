@@ -11,6 +11,7 @@
   // inserts a newline otherwise; saving is Cmd/Ctrl+Enter, a different key.
   import { onMount } from "svelte";
   import { loadAce, type AceEditor } from "../lib/ace";
+  import { matchShortcut } from "../lib/shortcuts";
 
   interface Props {
     value: string;
@@ -18,7 +19,13 @@
     label: string;
     rows?: number;
     onchange: (value: string) => void;
-    /** 明示保存 (doc-8 §6.3): the Cmd/Ctrl+Enter shortcut, never Enter on its own. */
+    /**
+     * 明示保存 (doc-8 §6.3): the `saveEditSession` chord of the 割り当て一覧 (`shortcuts.ts`), never Enter
+     * on its own. What it confirms is whatever the surrounding form's 発行 is — 保存 in an 編集セッション,
+     * 作成 in a create form — so the chord is 併記 at that form's own button and not under every field:
+     * one 編集セッション mounts several of these (one per Acceptance Criterion), and a hint here would be
+     * repeated as many times.
+     */
     onsave?: () => void;
   }
 
@@ -74,14 +81,15 @@
   });
 
   function keydown(event: KeyboardEvent): void {
-    // IME の composition 中 (doc-8 §6.2): the Enter belongs to the conversion, so it is not read as
-    // anything else here. `keyCode === 229` is the same signal for WebViews that report the
-    // composing keydown without setting `isComposing`.
-    if (event.isComposing || event.keyCode === 229) return;
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      onsave?.();
-    }
+    // Through the 割り当て一覧 (doc-7 §2.1 requires every assignment to be entered in one list, TASK-56):
+    // this chord used to be recognised here, which is how it came to be the only place that knew 編集部品
+    // had taken ⌘Enter. The IME guard 明示保存 needs (doc-8 §6.2 — the Enter belongs to the conversion,
+    // and a WebView can report a composing keydown with `isComposing === false` and `keyCode === 229`)
+    // now lives in `matchShortcut` and is applied to every assignment rather than to this one.
+    const binding = matchShortcut(event, { scopes: ["editPart"], textEntry: true });
+    if (binding?.action !== "saveEditSession") return;
+    if (binding.preventsDefault !== null) event.preventDefault();
+    onsave?.();
   }
 </script>
 
