@@ -83,11 +83,19 @@ export function showAllRowsHeld(hiddenRowCount: number): string | null {
     : "非表示にしている行がありません。戻す行が無いため、この操作はできません。";
 }
 
-/** One line of the menu. `held` is the 保留理由 (doc-11 §5), or `null` when the line is pressable. */
+/**
+ * One line of the menu. `held` is the 保留理由 (doc-11 §5), or `null` when the line is pressable.
+ *
+ * `key` identifies the line for the markup that draws it. It is decided here rather than derived at the
+ * `{#each}`, because deriving it from `kind` is wrong in a way nothing catches until the menu is opened:
+ * the two 共通入口 share a `kind`, Svelte treats duplicate keys as a runtime error, and the whole menu
+ * then fails to render. Neither `svelte-check` nor a unit test of this module saw that — only opening the
+ * menu did. Keeping the key in the data makes uniqueness a property this module can be tested for.
+ */
 export type MenuItem =
-  | { kind: "entry"; entry: HeaderEntry; held: null }
-  | { kind: "showAllRows"; label: string; held: string | null }
-  | { kind: "showRow"; slug: string; label: string; held: null };
+  | { kind: "entry"; key: string; entry: HeaderEntry; held: null }
+  | { kind: "showAllRows"; key: string; label: string; held: string | null }
+  | { kind: "showRow"; key: string; slug: string; label: string; held: null };
 
 /**
  * The menu in order: the 共通入口 first (they are what the header itself offers), then 行非表示 — すべて
@@ -101,14 +109,18 @@ export type MenuItem =
  */
 export function headerMenu(hiddenRows: readonly string[]): MenuItem[] {
   return [
-    ...HEADER_ENTRIES.map((entry): MenuItem => ({ kind: "entry", entry, held: null })),
+    ...HEADER_ENTRIES.map(
+      (entry): MenuItem => ({ kind: "entry", key: `entry:${entry.id}`, entry, held: null }),
+    ),
     {
       kind: "showAllRows",
+      key: "showAllRows",
       label: SHOW_ALL_ROWS_LABEL,
       held: showAllRowsHeld(hiddenRows.length),
     },
     ...hiddenRows.map((slug): MenuItem => ({
       kind: "showRow",
+      key: `row:${slug}`,
       slug,
       label: `${slug} を戻す`,
       held: null,

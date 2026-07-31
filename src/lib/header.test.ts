@@ -60,6 +60,17 @@ describe("メニュー項目 (doc-7 §2.1, doc-11 §4 ⑥)", () => {
     const row = headerMenu(["atlas"]).find((item) => item.kind === "showRow");
     expect(row?.label).toContain("atlas");
   });
+
+  /**
+   * The menu is drawn as a keyed `{#each}`, and Svelte treats a duplicate key as a runtime error — so a
+   * key that repeats does not degrade the menu, it stops the menu rendering at all. That is how the two
+   * 共通入口 (which share a `kind`) took the whole menu down once: nothing but opening it noticed. The
+   * keys are data now, so this is the check that would have.
+   */
+  it("gives every line a key of its own", () => {
+    const keys = headerMenu(["atlas", "kanri"]).map((item) => item.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
 });
 
 describe("保留理由 (doc-11 §5)", () => {

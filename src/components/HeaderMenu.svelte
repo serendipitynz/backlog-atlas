@@ -87,7 +87,9 @@
   onkeydown={keydown}
 >
   <ul>
-    {#each items as item, index (item.kind === "showRow" ? `row:${item.slug}` : item.kind)}
+    <!-- Keyed by the item's own `key` (`header.ts`), never by `kind`: the two 共通入口 share a kind, and
+         Svelte makes duplicate keys a runtime error — which took the whole menu down. -->
+    {#each items as item, index (item.key)}
       <li>
         <button
           type="button"
