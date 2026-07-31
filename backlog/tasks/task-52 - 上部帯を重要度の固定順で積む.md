@@ -1,10 +1,10 @@
 ---
 id: TASK-52
 title: 上部帯を重要度の固定順で積む
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:16'
-updated_date: '2026-07-31 08:50'
+updated_date: '2026-07-31 09:09'
 labels:
   - 'kind:refactor'
 milestone: m-1
