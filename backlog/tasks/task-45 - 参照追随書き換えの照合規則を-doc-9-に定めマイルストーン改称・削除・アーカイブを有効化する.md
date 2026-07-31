@@ -1,10 +1,10 @@
 ---
 id: TASK-45
 title: 参照追随書き換えの照合規則を doc-9 に定めマイルストーン改称・削除・アーカイブを有効化する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-27 23:53'
-updated_date: '2026-07-31 08:21'
+updated_date: '2026-07-31 08:37'
 labels:
   - 'kind:feature'
 milestone: m-1
