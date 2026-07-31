@@ -79,12 +79,10 @@
   import {
     ALIAS_EFFECT_NOTES,
     DETAIL_SECTIONS,
-    LEDGER_READ_ONLY_BAND,
     LEDGER_WRITE_IN_FLIGHT_REASON,
     OVERVIEW_READ_ONLY_NOTE,
     SLUG_IMMUTABLE_NOTE,
     UNREGISTER_SCOPE_NOTE,
-    cliDegradedBand,
     movesRoot,
     overviewBlocked,
     rootMoveNote,
@@ -147,8 +145,11 @@
   /** ルート読取不能 (doc-10 §8). The 概要区画 still draws; the other three have no list to show. */
   let unreadable = $derived(load?.state === "unreadable" ? load.error : null);
 
-  let readOnlyBand = $derived(ledgerReadOnly ? LEDGER_READ_ONLY_BAND : null);
-  let degradedBand = $derived(cliDegradedBand(readiness));
+  // The 台帳読取専用帯 and CLI 縮退帯 (doc-10 §3) are ③ and ② of the screen-common 上部帯 stack
+  // (doc-11 §4), so the shell raises them for this screen too. Drawn from here they would sit *below*
+  // the shell's 確認帯 ① and 通知帯 ⑤, which is the 出現順 doc-11 §4 forbids. What stays here is the
+  // per-操作 reason (`overviewBlocked`・`withheld`・`OVERVIEW_READ_ONLY_NOTE`), which is where the
+  // full text lives once the band is 縮約 to one line.
 
   // --- 発行の可否 (doc-5 §5, doc-9 §5) ----------------------------------------------------------
 
@@ -692,16 +693,6 @@
       <button type="button" onclick={ontoLane}>このプロジェクトのレーンへ</button>
     </div>
   </header>
-
-  <!-- The two 帯 (doc-10 §3) are independent, and one can stand without the other. Each sentence
-       names the 区画 it does *not* reach, so standing side by side they cannot read as one general
-       failure. -->
-  {#if readOnlyBand !== null}
-    <p class="band read-only">{readOnlyBand}</p>
-  {/if}
-  {#if degradedBand !== null}
-    <p class="band degraded">{degradedBand}</p>
-  {/if}
 
   <div class="body">
     <!-- 区画切替 (doc-10 §1): a display change within one screen, not a screen transition. Every
@@ -1582,15 +1573,6 @@
     display: flex;
     gap: 0.25rem;
     margin-left: auto;
-  }
-
-  // The bands at the top (doc-10 §3). Neither 台帳読取専用 nor CLI 縮退 is one of decision-6's 印の族: nothing
-  // is degraded about the *reading*, so neither borrows a family's colour.
-  .band {
-    margin: 0;
-    padding: 0.4rem 0.75rem;
-    background: color-mix(in srgb, var(--info) 12%, transparent);
-    font-size: 0.74rem;
   }
 
   .body {

@@ -40,10 +40,10 @@
   } from "./lib/commands";
   import { refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
+  import { topBands } from "./lib/band";
   import {
     DISCARD_CONFIRM_KEEP,
     DISCARD_CONFIRM_PROCEED,
-    DISCARD_CONFIRM_QUESTION,
     commandErrorDetail,
     failureDetail,
     type ApplyOutcome,
@@ -54,12 +54,7 @@
     launchFailureDetail,
     type OpenOutcome,
   } from "./lib/external-editor";
-  import {
-    conflictKeyOf,
-    UNWATCHED_MARK,
-    type ConflictTarget,
-    type VersionConflict,
-  } from "./lib/mark";
+  import { conflictKeyOf, type ConflictTarget, type VersionConflict } from "./lib/mark";
   import { DEFAULT_CARD_DENSITY } from "./lib/card";
   import {
     createHistoryLoader,
@@ -322,6 +317,27 @@
   /** Whether the open task's root is one of those (AC #7: the 外部エディタ経路 states it before opening). */
   let selectedWatchStopped = $derived(
     selectedRef !== null && unwatchedRows.includes(selectedRef.slug),
+  );
+  /**
+   * 上部帯 (doc-11 §4) for whichever screen is up. Derived rather than drawn one `{#if}` per band,
+   * because the order is a rule and not a property of the markup: 出現順に積むと、帯が増えるほど回答
+   * 待ちの ① が通知 ⑤ の下へ押し出される。The shell owns all six for both screens — プロジェクト詳細
+   * 画面's own 2 帯 (doc-10 §3) are ② and ③ of this same stack, and letting that screen draw them
+   * itself would put them *below* the shell's ① and ⑤ and break the fixed order.
+   *
+   * ④ and ⑥ are raised on the swimlane only: both are about grid rows — the mark and the 再読込 ④
+   * points at, and the rows ⑥ hides — and neither has anything to name while the grid is not up.
+   */
+  let bands = $derived(
+    topBands({
+      confirming: pendingDiscard !== null,
+      readiness,
+      ledgerReadOnly,
+      unwatchedReason:
+        screen === "swimlane" && unwatchedRows.length > 0 ? unwatchedReason : null,
+      notice,
+      hiddenRowCount: screen === "swimlane" ? hiddenRows.length : 0,
+    }),
   );
 
   // The open task, resolved against the *current* read of its root, so a reload refreshes the
@@ -1101,9 +1117,8 @@
       ＋ プロジェクトを登録
     </button>
     <button type="button" class="header-entry" onclick={() => (settingsOpen = true)}>設定</button>
-    {#if ledgerReadOnly && screen === "swimlane"}
-      <span class="badge">台帳は読み取り専用（行の並べ替えは不可）</span>
-    {/if}
+    <!-- 台帳読取専用 is the 上部帯 ③ (doc-11 §4) and not a badge up here: as a header badge it sat
+         above the 確認帯 ①, which is the ordering doc-11 §4 forbids. -->
   </header>
 
   {#if registerOpen}
@@ -1147,42 +1162,36 @@
     />
   {/if}
 
-  {#if hiddenRows.length > 0 && screen === "swimlane"}
-    <div class="hidden-rows">
-      <span>非表示の行:</span>
-      {#each hiddenRows as slug (slug)}
-        <button type="button" onclick={() => show(slug)}>{slug} を戻す</button>
-      {/each}
+  <!-- 上部帯 (doc-11 §4), フィルタ帯の下に重要度の固定順で積む。One loop over the derived stack, so
+       there is no second place where a band's position could be decided; each band's own controls
+       hang off its kind. -->
+  {#each bands as band (band.kind)}
+    <div class="band" data-band={band.kind}>
+      <span class="band-text">{band.text}</span>
+      {#if band.kind === "confirm"}
+        <!-- 破棄前確認 (doc-8 §6.3): one band, one wording, for all five routes — キャンセル・閉じる・
+             別タスクを開く・前後移動・詳細配置の切替. It stays above the grid area, so it is readable
+             and answerable while the 中央モーダル is up. -->
+        <button type="button" onclick={discardConfirmed}>{DISCARD_CONFIRM_PROCEED}</button>
+        <button type="button" onclick={() => (pendingDiscard = null)}>{DISCARD_CONFIRM_KEEP}</button>
+      {:else if band.kind === "hiddenRows"}
+        <!-- 縮約しても帯に操作を残す (doc-11 §4): the count is the summary, and 戻す stays here rather
+             than behind something to open. The per-row chips move to the menu with TASK-56 (AC #5),
+             which is where doc-11 §4 puts the full list. -->
+        <span class="chips">
+          {#each hiddenRows as slug (slug)}
+            <button type="button" onclick={() => show(slug)}>{slug} を戻す</button>
+          {/each}
+        </span>
+      {:else if band.closable}
+        <!-- ⑤ 通知 だけが閉じられる (doc-11 §4): it reports something already finished, so dismissing
+             it hides nothing that is still true. -->
+        <button type="button" class="close" aria-label="通知を閉じる" onclick={() => (notice = null)}>
+          ×
+        </button>
+      {/if}
     </div>
-  {/if}
-
-  {#if notice}
-    <p class="notice">{notice}</p>
-  {/if}
-
-  {#if unwatchedRows.length > 0 && screen === "swimlane"}
-    <!-- 継続検出停止 (doc-9 §3): the *explanation* is here, once for the screen; the mark and the
-         manual 再読込契機 sit on each affected row, where the possibly-stale cards are. Deliberately
-         not 版ずれ's expression: nothing has been observed to diverge, Atlas simply cannot look
-         (doc-9 §5 照合不能の提示 makes the same distinction). -->
-    <div class="unwatched">
-      <span>
-        {unwatchedReason}（外部エディタ・別プロセスの保存は自動反映されません）。
-        該当行の「{UNWATCHED_MARK.label}」印と「再読込」を参照してください。
-      </span>
-    </div>
-  {/if}
-
-  {#if pendingDiscard !== null}
-    <!-- 破棄前確認 (doc-8 §6.3), as the 上部帯 ① (doc-7 §5.3): one band, one wording, for all five
-         routes — キャンセル・閉じる・別タスクを開く・前後移動・詳細配置の切替. It stays above the
-         grid area, so it is readable and answerable while the 中央モーダル is up. -->
-    <div class="confirm">
-      <span>{DISCARD_CONFIRM_QUESTION}</span>
-      <button type="button" onclick={discardConfirmed}>{DISCARD_CONFIRM_PROCEED}</button>
-      <button type="button" onclick={() => (pendingDiscard = null)}>{DISCARD_CONFIRM_KEEP}</button>
-    </div>
-  {/if}
+  {/each}
 
   {#if screen === "project"}
     <!-- プロジェクト詳細画面 (doc-10, TASK-55): everything that can be done to one project, in one
@@ -1348,14 +1357,6 @@
     cursor: pointer;
   }
 
-  .badge {
-    padding: 0 0.35rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 3px;
-    font-size: 0.7rem;
-    opacity: 0.8;
-  }
-
   // The fixed header's entry points (doc-7 §2.1): 登録 and 設定. Both open a panel rather than
   // switching screens, so they are drawn unlike a tab that says which screen is current.
   .header-entry {
@@ -1376,17 +1377,41 @@
     overflow-y: auto;
   }
 
-  .hidden-rows {
+  // 上部帯 (doc-11 §4). One rule for all six: 1 行に収め、折り返さず、族の色は左端 4px だけが持つ
+  // (doc-11 §2.3 の 問題の縁). The band names its family through `data-band` and never picks a hue,
+  // so 縮退・読取不能・継続検出停止 cannot converge on one colour here (decision-6).
+  .band {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.35rem 0.75rem;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.4rem 0.75rem;
     border-bottom: 1px solid var(--line);
-    font-size: 0.72rem;
+    border-left: 4px solid var(--family);
+    background: var(--panel);
+    font-size: 0.75rem;
+
+    // 折り返さない: a wrapping band would grow the top of the screen past「フィルタ帯 1 行 ＋ 上部帯
+    // 6 本」, which is the ceiling doc-11 §4 relies on. The text is already 縮約 (`band.ts`), so this
+    // only catches a narrow window; the full reason is at the operation itself, never hover-only.
+    .band-text {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    // The 戻す controls stay on the same line and scroll rather than wrap, for the same reason.
+    .chips {
+      display: flex;
+      flex: 1;
+      gap: 0.3rem;
+      min-width: 0;
+      overflow-x: auto;
+    }
 
     button {
-      padding: 0 0.35rem;
+      flex: none;
+      padding: 0 0.4rem;
       border: 1px solid var(--line-strong);
       border-radius: 4px;
       background: transparent;
@@ -1395,54 +1420,43 @@
       font-size: 0.7rem;
       cursor: pointer;
     }
-  }
 
-  // 継続検出停止 は縮退でも版ずれでもない (doc-9 §3/§5): its own family, so it cannot be read as
-  // either. It used to share 縮退's amber, which is what decision-6 forbids.
-  .unwatched {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.75rem;
-    background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);
-    font-size: 0.75rem;
-  }
+    .close {
+      margin-left: auto;
+    }
 
-  .confirm {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.75rem;
-    background: color-mix(in srgb, var(--info) 12%, transparent);
-    font-size: 0.75rem;
+    // ① 確認 and ⑤ 通知 are `--info`: neither is one of decision-6's 族 (青い確認は版ずれではない).
+    &[data-band="confirm"],
+    &[data-band="notice"] {
+      --family: var(--info);
+    }
 
-    button {
-      padding: 0 0.4rem;
-      border: 1px solid var(--line-strong);
-      border-radius: 4px;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      font-size: 0.72rem;
-      cursor: pointer;
+    &[data-band="cliDegraded"] {
+      --family: var(--mark-degraded);
+    }
+
+    &[data-band="ledgerReadOnly"] {
+      --family: var(--mark-unreadable);
+    }
+
+    // 継続検出停止 は縮退でも版ずれでもない (doc-9 §3/§5): its own family, so it cannot be read as
+    // either. It used to share 縮退's amber, which is what decision-6 forbids.
+    &[data-band="unwatched"] {
+      --family: var(--mark-undetectable);
+    }
+
+    // ⑥ 行非表示 takes no family colour (doc-11 §4): the user hid the row themselves, and nothing
+    // about the state is abnormal (decision-6 の中立表示).
+    &[data-band="hiddenRows"] {
+      --family: var(--line-strong);
     }
   }
 
-  .notice,
   .fatal,
   .status {
     margin: 0;
     padding: 0.4rem 0.75rem;
     font-size: 0.78rem;
-  }
-
-  // An action's own report (failed reorder, applied transition, probe trouble). Not one of the
-  // 印の族 — so it takes the neutral info hue rather than borrowing 縮退's amber, which would make
-  // every notice look like a parse degrade (decision-6).
-  .notice {
-    background: color-mix(in srgb, var(--info) 12%, transparent);
   }
 
   .fatal {
