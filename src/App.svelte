@@ -48,7 +48,13 @@
     failureDetail,
     type ApplyOutcome,
   } from "./lib/edit";
-  import type { IssueOutcome } from "./lib/manage";
+  import { issueAvailability, outcomeMessage, type IssueOutcome } from "./lib/manage";
+  import {
+    buildLaneTaskCreate,
+    laneCreate,
+    laneCreateHold,
+    laneCreateStatus,
+  } from "./lib/lane-create";
   import {
     WATCH_STOPPED_BEFORE_LAUNCH,
     launchFailureDetail,
@@ -67,10 +73,17 @@
   import {
     DEFAULT_FILTER,
     collectFacets,
+    matchesFilter,
     withStorage,
     type CardFilter,
   } from "./lib/filter";
-  import { buildSwimlane, laneNeighbours, unreadableDetail, visibleCount } from "./lib/swimlane";
+  import {
+    CANONICAL_COLUMN_LABEL,
+    buildSwimlane,
+    laneNeighbours,
+    unreadableDetail,
+    visibleCount,
+  } from "./lib/swimlane";
   import type {
     AppSettings,
     CliReadiness,
@@ -83,6 +96,7 @@
     ProjectLoad,
     ProjectSnapshot,
     RegisterRequest,
+    StatusColumn,
     TaskView,
     UpdateOperation,
     UpdateRequest,
@@ -151,6 +165,27 @@
    * several in-flight calls may store its answer.
    */
   let historyRead = $state<HistoryRead | null>(null);
+  /**
+   * The レーンセル whose 列内新規タスク入力 is open (doc-7 §4.1), or `null` while none is. One at a time
+   * across the whole grid: two open inputs would both claim 発行, and the shell runs one action at a
+   * time (`laneCreateBusy`).
+   *
+   * Held here rather than in the grid because the grid is unmounted on two ordinary routes — entering
+   * プロジェクト詳細画面, and opening a task in 全面シングルビュー (doc-8 §2.1) — and a title the user had
+   * typed would go with it. Keeping it in the shell means nothing is lost, so no route needs a
+   * 破棄前確認 for it; doc-8 §6.3's confirmation covers the 編集セッション, and extending that rule to a
+   * place doc-7 §4.1 does not name would be inventing one.
+   */
+  let laneCreateAt = $state<{ slug: string; column: StatusColumn } | null>(null);
+  let laneCreateTitle = $state("");
+  /**
+   * The candidate the user picked, as typed — not necessarily the one that will be passed. What is
+   * passed is `laneCreateStatus`'s answer against the *current* 候補, so an external `config.yml` edit
+   * cannot leave a value here that `-s` would refuse (doc-7 §4.1).
+   */
+  let laneCreateHeldStatus = $state("");
+  /** True while the lane's `task create` is in flight — the 発行中 the entry states (doc-5 §5). */
+  let laneCreateBusy = $state(false);
   /**
    * Whether a supported `backlog` exists (doc-5 §5 縮退). `null` until the probe answers, which the
    * panel shows as "確認中" rather than as "no CLI" — the two lead to different user actions.
@@ -339,6 +374,46 @@
       hiddenRowCount: screen === "swimlane" ? hiddenRows.length : 0,
     }),
   );
+
+  /**
+   * The open 列内新規タスク入力's cell as the *current* read of its root has it (doc-7 §4.1). Resolved
+   * per read rather than captured on open, so an external `config.yml` change reaches the entry: a
+   * column that lost its last candidate turns into its 置かない理由 while the input is standing there,
+   * instead of offering a `-s` value the CLI would now refuse (doc-5 §3).
+   *
+   * `null` while no entry is open, and while the row is not currently loaded — the cell is not on
+   * screen then, so there is nothing to draw the entry in.
+   */
+  let laneCreateEntry = $derived.by(() => {
+    const at = laneCreateAt;
+    if (at === null) return null;
+    const load = loadBySlug[at.slug];
+    return load?.state === "loaded"
+      ? laneCreate(load.project.createStatusCandidates, at.column)
+      : null;
+  });
+  /** The candidate that will actually be passed as `-s` — what the entry shows (doc-7 §4.1). */
+  let laneCreateStatusToPass = $derived(
+    laneCreateEntry === null ? "" : laneCreateStatus(laneCreateEntry, laneCreateHeldStatus),
+  );
+  let laneCreatePlan = $derived(buildLaneTaskCreate(laneCreateTitle, laneCreateStatusToPass));
+  /**
+   * Why the lane's 作成 is withheld, or `null` (doc-5 §5). Through the same `issueAvailability` the
+   * 新規タスク区画 uses, so CLI 縮退 (AC #4) and 発行中 read identically on both screens.
+   */
+  let laneCreateBlocked = $derived.by(() => {
+    const availability = issueAvailability(laneCreatePlan, {
+      readiness,
+      busy: laneCreateBusy,
+    });
+    return availability.state === "blocked" ? availability.reason : null;
+  });
+  /**
+   * Why every cell's entry is withheld, or `null` — CLI 縮退 (AC #4) or a create in flight. Separate
+   * from `laneCreateBlocked` because it is what the *closed* ＋新規 of every cell states: doc-7 §4.1
+   * disables the entry under 縮退, not merely its 発行.
+   */
+  let laneCreateHeld = $derived(laneCreateHold({ readiness, busy: laneCreateBusy }));
 
   // The open task, resolved against the *current* read of its root, so a reload refreshes the
   // panel instead of leaving it on the version the card was clicked from.
@@ -797,6 +872,11 @@
         selectedRef = null;
         detailDirty = false;
       }
+      // The 列内新規タスク入力 goes with the row it was in. Dropped rather than kept: the entry is held
+      // in the shell so that unmounting the grid does not lose it (see `laneCreateAt`), and a title
+      // left standing for an unregistered slug would reappear in a cell if that slug were registered
+      // again — input the user typed for a different project.
+      if (laneCreateAt?.slug === slug) closeLaneCreate();
       // The プロジェクト詳細画面 of a project that is no longer registered has nothing left to name,
       // so it is closed here rather than by the screen itself — and closed *without* the 破棄前確認,
       // because asking "keep your input?" about a registration that has just been removed offers a
@@ -931,6 +1011,12 @@
     return load.project.tasks.find((view) => view.task.sourcePath === target.sourcePath) ?? null;
   }
 
+  /** One root's tasks as the current read has them, before any filtering. Empty when it is unreadable. */
+  function tasksOf(slug: string): TaskView[] {
+    const load = loadBySlug[slug];
+    return load?.state === "loaded" ? load.project.tasks : [];
+  }
+
   function noteConflict(conflict: VersionConflict | null, target: ConflictTarget): void {
     const key = conflictKeyOf(target.slug, target.sourcePath);
     if (conflict === null) {
@@ -1045,6 +1131,61 @@
       return commandError.kind === "uncheckableTarget"
         ? { state: "uncheckable", detail: commandErrorDetail(commandError) }
         : { state: "failed", detail: commandErrorDetail(commandError) };
+    }
+  }
+
+  // --- 列内新規タスク入力 (doc-7 §4.1) --------------------------------------------------------
+
+  /** Open the entry on one cell, replacing whichever cell held it. Its input starts empty, and its
+   * status at the column's first declared candidate (resolved by `laneCreateStatusToPass`). */
+  function openLaneCreate(slug: string, column: StatusColumn): void {
+    if (laneCreateAt?.slug === slug && laneCreateAt.column === column) return;
+    laneCreateAt = { slug, column };
+    laneCreateTitle = "";
+    laneCreateHeldStatus = "";
+  }
+
+  function closeLaneCreate(): void {
+    laneCreateAt = null;
+    laneCreateTitle = "";
+    laneCreateHeldStatus = "";
+  }
+
+  /**
+   * 列内新規タスク入力の発行 (doc-7 §4.1): one `task create` into the clicked cell's column, through the
+   * same `issue` every other 更新操作 goes through — so the root is re-read and the new card appears in
+   * that column without this path having its own reload.
+   *
+   * The entry stays open on success with only the title cleared: creating several tasks into one
+   * column is the reason the entry is *in* the cell, and the column's status has not changed. A
+   * failure keeps the title too, so it can be corrected and reissued (the 新規タスク区画 does the same).
+   */
+  async function submitLaneCreate(): Promise<void> {
+    const at = laneCreateAt;
+    const plan = laneCreatePlan;
+    if (at === null || plan.state !== "ready" || laneCreateBlocked !== null) return;
+    const column = CANONICAL_COLUMN_LABEL[at.column];
+    // The row's task files as of now, so the one the create adds can be told apart afterwards.
+    const before = new Set(tasksOf(at.slug).map((view) => view.task.sourcePath));
+    laneCreateBusy = true;
+    try {
+      const outcome = await issue(at.slug, plan.action);
+      const created =
+        outcome.state === "applied"
+          ? (tasksOf(at.slug).find((view) => !before.has(view.task.sourcePath)) ?? null)
+          : null;
+      notice =
+        outcomeMessage(outcome, `${at.slug} の ${column} 列にタスクを作成しました。`) +
+        // 絞り込みはカードの取捨だけを行う (doc-7 §5.2), so a filter in force can take the new card away
+        // the moment it is read. Said here because otherwise「作成しました」and an unchanged cell are
+        // indistinguishable from a create that silently did nothing — and the filter is reversible from
+        // the フィルタ帯, so the card is one 解除 away rather than lost.
+        (created !== null && !matchesFilter(created, filter)
+          ? "（今の絞り込みでは表示されないため、カードは出ていません。フィルタ帯で条件を外すと出ます）"
+          : "");
+      if (outcome.state === "applied") laneCreateTitle = "";
+    } finally {
+      laneCreateBusy = false;
     }
   }
 
@@ -1280,6 +1421,16 @@
           conflictOf={(view) =>
             conflicts[conflictKeyOf(view.task.project, view.task.sourcePath)] ?? null}
           focusSlug={focusRow}
+          createOpen={laneCreateAt}
+          createTitle={laneCreateTitle}
+          createStatus={laneCreateStatusToPass}
+          createBlocked={laneCreateBlocked}
+          createHeld={laneCreateHeld}
+          oncreateOpen={openLaneCreate}
+          oncreateClose={closeLaneCreate}
+          oncreateTitle={(value) => (laneCreateTitle = value)}
+          oncreateStatus={(value) => (laneCreateHeldStatus = value)}
+          oncreateSubmit={submitLaneCreate}
           onselect={open}
           onmove={move}
           onhide={hide}

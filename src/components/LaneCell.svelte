@@ -3,6 +3,7 @@
   // An empty cell is drawn empty and says so — "該当タスクが無い" is a different fact from
   // "ルートが読めない", which is a row-level state (doc-7 §6).
   import TaskCard from "./TaskCard.svelte";
+  import type { Snippet } from "svelte";
   import type { VersionConflict } from "../lib/mark";
   import type { CardDensity, TaskView } from "../lib/wire";
 
@@ -25,6 +26,13 @@
     /** 版ずれ (doc-9) per task, from the shell's record — a lookup, not a copy of the map. */
     conflictOf: (view: TaskView) => VersionConflict | null;
     onselect: (view: TaskView) => void;
+    /**
+     * レーンセルの末尾 (doc-7 §4.1): where 列内新規タスク入力 goes. Handed in as a snippet rather than
+     * built here, because what belongs at the end depends on the *project* (its 作成時 status 候補) and
+     * on the shell (which cell holds the input) — neither of which a cell knows. The cell owns only
+     * the position, which is what doc-7 §4.1 fixes.
+     */
+    createEntry?: Snippet;
   }
 
   let {
@@ -37,6 +45,7 @@
     selectedPath,
     conflictOf,
     onselect,
+    createEntry,
   }: Props = $props();
 </script>
 
@@ -49,23 +58,29 @@
          was kept for. `—` stays the form of an 空セル in an open column (doc-11 §6), where the absence
          is what has to be shown rather than a number. -->
     <span class="count" aria-label="{label} {tasks.length} 件">{tasks.length}</span>
-  {:else if tasks.length === 0}
-    <!-- 空セル (doc-7 §6): 該当タスク無し is normal, so it is neutral — opacity only, no colour
-         and no symbol (decision-6 エラー提示方針). ルート読取不能 never reaches here; it replaces
-         the row's cells entirely, which is what keeps the two apart (AC #2). -->
-    <span class="empty" aria-label="該当タスクなし">—</span>
   {:else}
-    {#each tasks as view (view.task.sourcePath)}
-      <TaskCard
-        {view}
-        {density}
-        {showStorageMark}
-        showRawStatus={unmapped}
-        selected={selectedPath === view.task.sourcePath}
-        conflict={conflictOf(view)}
-        {onselect}
-      />
-    {/each}
+    {#if tasks.length === 0}
+      <!-- 空セル (doc-7 §6): 該当タスク無し is normal, so it is neutral — opacity only, no colour
+           and no symbol (decision-6 エラー提示方針). ルート読取不能 never reaches here; it replaces
+           the row's cells entirely, which is what keeps the two apart (AC #2). -->
+      <span class="empty" aria-label="該当タスクなし">—</span>
+    {:else}
+      {#each tasks as view (view.task.sourcePath)}
+        <TaskCard
+          {view}
+          {density}
+          {showStorageMark}
+          showRawStatus={unmapped}
+          selected={selectedPath === view.task.sourcePath}
+          conflict={conflictOf(view)}
+          {onselect}
+        />
+      {/each}
+    {/if}
+    <!-- After the cards, and in an empty cell too: a column with nothing in it is exactly a column a
+         task may be created into. Not under a 畳んだ列 (the branch above), where the cell *is* its
+         count (doc-7 §2.2) — the entry returns with the cards when the column is unfolded. -->
+    {@render createEntry?.()}
   {/if}
 </div>
 
