@@ -1,10 +1,10 @@
 ---
 id: TASK-56
 title: 固定ヘッダとメニュー・キーボードショートカットを実装する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:17'
-updated_date: '2026-07-31 10:45'
+updated_date: '2026-07-31 11:35'
 labels:
   - 'kind:feature'
 milestone: m-1
