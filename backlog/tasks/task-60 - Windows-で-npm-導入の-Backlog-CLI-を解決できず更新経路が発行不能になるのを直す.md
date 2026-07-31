@@ -4,6 +4,7 @@ title: Windows で npm 導入の Backlog CLI を解決できず更新経路が�
 status: To Do
 assignee: []
 created_date: '2026-07-31 20:55'
+updated_date: '2026-07-31 21:10'
 labels:
   - 'kind:bug'
 milestone: m-2
@@ -19,16 +20,27 @@ Windows で Backlog CLI が解決できず、doc-5 の更新アダプター全�
 
 原因は 2 つの事実の組み合わせで、PATH の設定とは無関係である。
 
-1. npm が Windows に作るのは backlog.ps1 / backlog.cmd で、backlog.exe を作らない。実測: Get-Command backlog の CommandType は ExternalScript、Source は …\backlog.ps1。
-2. Rust 標準ライブラリの Windows 実装は、拡張子を含まない名前に .exe のみを付けて PATH を探し、PATHEXT を歩かない（library/std/src/sys/process/windows.rs の resolve_exe。CreateProcessW の「拡張子が無ければ .exe を付ける」規則に合わせたもの）。update.rs:826 は Command::new("backlog") である。
+1. npm が Windows の bin ディレクトリへ置くのは shim 3 本（backlog / backlog.cmd / backlog.ps1）だけで、backlog.exe を置かない。実測: Get-Command backlog の CommandType は ExternalScript、Source は …\backlog.ps1。同ディレクトリの一覧も backlog・backlog.cmd・backlog.ps1 の 3 本のみ。
+2. Rust 標準ライブラリの Windows 実装は、拡張子を含まない名前に .exe のみを付けて PATH を探し、PATHEXT を歩かない（library/std/src/sys/process/windows.rs の resolve_exe。set_extension("exe") を無条件に適用するため、拡張子なしの backlog そのものも候補にならず、見つからなければ NotFound を返して終わる）。update.rs:826 は Command::new("backlog") である。
 
 対比が診断を裏づける。同じ環境で git（wslgit の git.exe）と gh（gh.exe）は解決でき、Git 履歴欄はコミットを返す。差は拡張子だけである。
 
 decision-11 は「macOS・Linux・Windows で同一に動く必要がある」と述べており、これは表明済みの要件に対する欠陥である。decision-7 は「doc-5 は実行ファイルの解決だけを差し替え可能にしてある」としており、修正はその継ぎ目（BacklogCli の実装）の内側で行える。decision-7 の前提「開発者＝利用者の PATH に backlog が既に入っている」は利用者の視点では成立しており、破れているのは実装側の解決規則である。
 
-注意: .cmd / .ps1 を起動すると cmd.exe / powershell.exe がチェーンに入り引数を再解釈する。これは AGENTS の「シェル文字列へ連結せず固定引数配列で実行する」と、TASK-44（decision-15）が ShellExecuteW を選んで避けた問題そのものである。Rust 1.77 以降は .bat / .cmd 起動時のエスケープを修正済み（CVE-2024-24576）だが、シェルを経由する位置づけは decision として明記すること。.ps1 は実行ポリシーも絡むためさらに重い。
+## シェル経由は避けられる（2026-08-01 の追加調査）
 
-候補は少なくとも 4 つあり、いずれも選定理由と導入範囲を decision に書く: (a) PATH と PATHEXT を自前で解決して実行ファイルの絶対パスを Command へ渡す (b) sidecar 同梱（decision-7 の同梱検討契機に当たる） (c) アプリ設定で実行ファイルのパスを指定させる（decision-13 の外部エディタ指定と同型） (d) npm パッケージの cli.js を node 経由で起動する。
+npm パッケージを解剖した結果、**ネイティブの実行ファイルは存在する**。backlog.md パッケージはプラットフォーム別のサブパッケージを持ち、Windows では node_modules/backlog.md/node_modules/backlog.md-windows-x64/backlog.exe が実体である（resolveBinary.cjs が require.resolve でこれを引く。binary 名は win32 のとき backlog.exe）。3 本の shim と cli.js は、いずれも最終的にこのバイナリを spawn しているだけである。macOS で実測すると、当該バイナリ（68MB）は直接実行でき --version が 1.47.1 を返す。
+
+したがって .cmd / .ps1 を起動する必要は無い。本物の PE 実行ファイルの絶対パスを Command::new へ渡せばインタプリタはチェーンに入らず、AGENTS の「シェル文字列へ連結せず固定引数配列で実行する」を新しい例外なしで満たせる。**シェル経由の位置づけを decision に書く必要は生じない見込みである。**
+
+## 候補
+
+- **(a) アプリ設定で実行ファイルのパスを指定させる** … decision-13 の外部エディタ指定と同型。npm のレイアウトを知る必要が無く、実装が最小。利用者が backlog.exe の場所を知る必要がある点が費用。
+- **(b) PATH を自前で歩き、PATHEXT ではなく実行可能な実体を探す** … bin ディレクトリに .exe が無いので、これ単体では解決しない。shim を読んで実体へ辿る実装は npm の内部構造に依存する。
+- **(c) プラットフォーム別サブパッケージの実行ファイルを解決する** … npm の global prefix から backlog.md-<platform>-<arch>/backlog(.exe) を引く。インタプリタ無しで解決できるが、パッケージの内部レイアウトという実装詳細に依存する。
+- **(d) sidecar 同梱** … decision-7 の同梱検討契機に当たる。解決問題は消えるが、版管理・プラットフォーム別バイナリ・更新追随の継続コストを decision-7 が挙げたとおり負う。
+- **却下の見込み: cli.js を node 経由で起動する** … cli.js は結局同じバイナリを spawn するだけなので、プロセスが 1 段増えるだけで (c) に劣る。
+- **却下の見込み: .cmd / .ps1 を起動する** … cmd.exe / powershell.exe が引数を再解釈する。AGENTS と、TASK-44（decision-15）が ShellExecuteW を選んで避けた問題そのもの。Rust 1.77 以降は .bat / .cmd のエスケープを修正済み（CVE-2024-24576）だが、上記のとおり避けられるので選ぶ理由が無い。.ps1 は実行ポリシーも絡む。
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
