@@ -208,15 +208,31 @@ export type CommitSearch =
   | { state: "unreadable"; detail: string };
 
 /**
- * One task's Git 履歴 (doc-6 §2) — the parts that need Git. The extracted Pull Request URLs are on
- * `TaskInterpretation` instead, since References is their only input. `remote` is the 関連解決
- * gate; relations themselves are absent until a host's reference means exists (doc-6 §6 leaves
- * that to a per-kind addition), which is why the screen states that relations were not resolved
- * instead of showing none.
+ * What became of one Pull Request during コミット・PR 関連解決 (doc-6 §6). `resolved` with an empty
+ * `commitIds` is a *resolved* state — the PR was queried and shares no commit with this task — and is
+ * deliberately not the same value as a lookup that never succeeded.
+ */
+export type RelationOutcome =
+  | { state: "resolved"; commitIds: string[] }
+  | { state: "hostUnsupported" }
+  | { state: "lookupFailed"; detail: string };
+
+/** One Pull Request's relation result, keyed by the verbatim URL it was extracted from (doc-6 §6). */
+export interface PrRelation {
+  pullRequest: string;
+  outcome: RelationOutcome;
+}
+
+/**
+ * One task's Git 履歴 (doc-6 §2) — the parts that need Git or the remote. The extracted Pull Request
+ * URLs are on `TaskInterpretation` instead, since References is their only input. `remote` is the
+ * 関連解決 gate and `relations` its result, one entry per extracted PR: with the gate shut nothing is
+ * queried and the list is empty, so the screen reads it only once `remote` is non-null.
  */
 export interface TaskHistory {
   commits: CommitSearch;
   remote: RemoteHost | null;
+  relations: PrRelation[];
 }
 
 // --- ledger (doc-3) ------------------------------------------------------------------------

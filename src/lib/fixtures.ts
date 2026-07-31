@@ -12,6 +12,7 @@ import type {
   ProjectEntry,
   ProjectLoad,
   ProjectSnapshot,
+  PrRelation,
   PullRequestRef,
   StatusColumn,
   StatusMapping,
@@ -147,6 +148,7 @@ export function pullRequest(url: string, number: number | null = null): PullRequ
 export function history(options: {
   commits?: CommitSearch;
   remote?: TaskHistory["remote"];
+  relations?: PrRelation[];
 } = {}): TaskHistory {
   return {
     commits: options.commits ?? { state: "searched", commits: [] },
@@ -155,7 +157,13 @@ export function history(options: {
       options.remote === undefined
         ? { kind: "gitHub", owner: "serendipitynz", repo: "backlog-atlas" }
         : options.remote,
+    relations: options.relations ?? [],
   };
+}
+
+/** One 関連解決 result (doc-6 §6). The outcome is spelled out by the caller — that is the fact. */
+export function relation(pullRequest: string, outcome: PrRelation["outcome"]): PrRelation {
+  return { pullRequest, outcome };
 }
 
 export function unreadable(slug: string, detail = "config.yml not found"): ProjectLoad {
