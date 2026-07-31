@@ -68,6 +68,7 @@ use crate::editor::{
     Launcher, SystemEnv, SystemLauncher,
 };
 use crate::history::{self, Commit, HistoryError, PrCommitSource, PrRelation, RemoteHost};
+use crate::interpret::status::{create_status_candidates, ColumnCreateStatuses};
 use crate::interpret::{interpret_task, TaskInterpretation};
 use crate::ledger::{
     Ledger, LedgerError, LoadedLedger, ParsedTaskRef, ProjectEntry, RegisterRequest, UpdateRequest,
@@ -117,6 +118,12 @@ pub struct ProjectSnapshot {
     pub milestones: Vec<Milestone>,
     pub documents: Vec<Document>,
     pub decisions: Vec<Decision>,
+    /// 列の作成時 status 候補 (doc-7 §4.1) — which of this project's declared statuses the 列内新規
+    /// タスク入力 may pass for each canonical column. Sent with the snapshot rather than derived on
+    /// the frontend because its inputs are exactly the pair this constructor already holds
+    /// (`config` and the 別名表), and reversing 列対応規則 a second time in TypeScript is how the
+    /// column a task is *placed* in and the column it can be *created* in would drift apart.
+    pub create_status_candidates: Vec<ColumnCreateStatuses>,
 }
 
 impl ProjectSnapshot {
@@ -135,6 +142,7 @@ impl ProjectSnapshot {
                     task: task.clone(),
                 })
                 .collect(),
+            create_status_candidates: create_status_candidates(&model.config, aliases),
             config: model.config.clone(),
             milestones: model.milestones.clone(),
             documents: model.documents.clone(),

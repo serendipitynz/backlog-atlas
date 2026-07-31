@@ -158,6 +158,16 @@ export interface TaskView {
   interpretation: TaskInterpretation;
 }
 
+/**
+ * 列の作成時 status 候補 (doc-7 §4.1) for one canonical column: the project's own declared statuses
+ * that 列対応規則 sends there, in `config.yml`'s declaration order. All four columns are always
+ * present, an empty `statuses` being 候補 0 件 rather than a missing answer.
+ */
+export interface ColumnCreateStatuses {
+  column: StatusColumn;
+  statuses: string[];
+}
+
 export interface ProjectSnapshot {
   slug: string;
   config: Config;
@@ -165,6 +175,8 @@ export interface ProjectSnapshot {
   milestones: Milestone[];
   documents: Document[];
   decisions: Decision[];
+  /** 列の作成時 status 候補, one entry per canonical column (doc-7 §4.1). */
+  createStatusCandidates: ColumnCreateStatuses[];
 }
 
 // --- Git・Pull Request 履歴 (doc-6, TASK-30) ------------------------------------------------

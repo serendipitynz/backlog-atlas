@@ -5,6 +5,7 @@
 
 import type {
   AcceptanceCriterion,
+  ColumnCreateStatuses,
   Commit,
   CommitSearch,
   Config,
@@ -116,16 +117,41 @@ export function type(value: string, known = true): TypeValue {
   return { value, known };
 }
 
+/**
+ * 列の作成時 status 候補 for [`CONFIG`] (doc-7 §4.1): its four declared statuses name-match one column
+ * each. Written out rather than derived, so a test that changes the candidates changes them here and
+ * not by re-deriving the rule the boundary owns.
+ */
+export const CREATE_STATUS_CANDIDATES: ColumnCreateStatuses[] = [
+  { column: "toDo", statuses: ["To Do"] },
+  { column: "inProgress", statuses: ["In Progress"] },
+  { column: "inReview", statuses: ["In Review"] },
+  { column: "done", statuses: ["Done"] },
+];
+
 export function snapshot(
   slug: string,
   tasks: TaskView[],
   milestones: Milestone[] = [],
+  createStatusCandidates: ColumnCreateStatuses[] = CREATE_STATUS_CANDIDATES,
 ): ProjectSnapshot {
-  return { slug, config: CONFIG, tasks, milestones, documents: [], decisions: [] };
+  return {
+    slug,
+    config: CONFIG,
+    tasks,
+    milestones,
+    documents: [],
+    decisions: [],
+    createStatusCandidates,
+  };
 }
 
-export function loaded(slug: string, tasks: TaskView[]): ProjectLoad {
-  return { state: "loaded", project: snapshot(slug, tasks) };
+export function loaded(
+  slug: string,
+  tasks: TaskView[],
+  createStatusCandidates: ColumnCreateStatuses[] = CREATE_STATUS_CANDIDATES,
+): ProjectLoad {
+  return { state: "loaded", project: snapshot(slug, tasks, [], createStatusCandidates) };
 }
 
 export function entry(slug: string, gitRemotePresent = true): ProjectEntry {

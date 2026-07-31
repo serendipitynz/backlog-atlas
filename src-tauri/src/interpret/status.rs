@@ -129,6 +129,49 @@ impl StatusMapping {
     }
 }
 
+/// 列の作成時 status 候補 (doc-7 §4.1) for one canonical column: the project's own declared
+/// statuses that 列対応規則 sends to that column.
+///
+/// A list per column rather than a map, in [`StatusColumn::ALL`] order, so the four arrive in the
+/// order the grid draws them and a column with no candidate is still present as an empty list —
+/// 候補 0 件 is a state the screen has to state (doc-7 §4.1), not an absence of information.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnCreateStatuses {
+    pub column: StatusColumn,
+    /// The candidates, verbatim and in `config.yml`'s declaration order — which is what fixes the
+    /// default when there are several (doc-7 §4.1).
+    pub statuses: Vec<String>,
+}
+
+/// Which declared statuses each canonical column could be created with (doc-7 §4.1).
+///
+/// The reverse of [`map_status`], and reversed by running it rather than by a second rule:
+/// 列対応規則 has aliases, the undeclared-value exclusion and 名称一致 in it, and a rule that only
+/// *looked* like its inverse would place a task in one column while offering to create it in another.
+///
+/// The domain is `config.statuses` alone, because that is exactly what `-s` accepts (doc-5 §3): an
+/// undeclared value is refused with exit code 1, so a status Atlas could map but the project does
+/// not declare is not a value it may create with. That also makes a root declaring nothing
+/// (`NoDeclaredSet`) yield no candidate anywhere — nothing is declared for `-s` to take.
+pub fn create_status_candidates(
+    config: &Config,
+    aliases: &BTreeMap<String, String>,
+) -> Vec<ColumnCreateStatuses> {
+    StatusColumn::ALL
+        .into_iter()
+        .map(|column| ColumnCreateStatuses {
+            column,
+            statuses: config
+                .statuses
+                .iter()
+                .filter(|raw| map_status(raw, config, aliases).column == Some(column))
+                .cloned()
+                .collect(),
+        })
+        .collect()
+}
+
 /// Apply 列対応規則 to one status value (decision-4).
 ///
 /// `aliases` is the ledger entry's status 別名表 (doc-3 §3.3); an empty map is the normal case
@@ -377,6 +420,114 @@ mod tests {
         assert_eq!(mapped.declaration, StatusDeclaration::NoDeclaredSet);
         assert!(!mapped.is_undeclared());
         assert!(mapped.is_unmapped());
+    }
+
+    fn candidates_of(
+        config: &Config,
+        aliases: &BTreeMap<String, String>,
+        column: StatusColumn,
+    ) -> Vec<String> {
+        create_status_candidates(config, aliases)
+            .into_iter()
+            .find(|entry| entry.column == column)
+            .expect("every canonical column has an entry")
+            .statuses
+    }
+
+    // doc-7 §4.1: with Backlog.md's four declared statuses, each column has exactly its own.
+    #[test]
+    fn each_column_gets_the_declared_status_that_maps_to_it() {
+        let config = default_config();
+        let none = BTreeMap::new();
+        for (column, expected) in [
+            (StatusColumn::ToDo, "To Do"),
+            (StatusColumn::InProgress, "In Progress"),
+            (StatusColumn::InReview, "In Review"),
+            (StatusColumn::Done, "Done"),
+        ] {
+            assert_eq!(candidates_of(&config, &none, column), vec![expected]);
+        }
+    }
+
+    // doc-7 §4.1 / TASK-53 AC #9: `backlog init --defaults` declares no `In Review`, so that column
+    // has no candidate at all — which is what makes the swimlane place no entry there.
+    #[test]
+    fn init_defaults_leaves_in_review_without_a_candidate() {
+        let config = config(&["To Do", "In Progress", "Done"]);
+        let none = BTreeMap::new();
+        assert!(candidates_of(&config, &none, StatusColumn::InReview).is_empty());
+        assert_eq!(
+            candidates_of(&config, &none, StatusColumn::ToDo),
+            vec!["To Do"]
+        );
+    }
+
+    // doc-7 §4.1: 正準列名をそのまま渡さない — the candidate is the project's own spelling, reached
+    // through the alias table, never the canonical column's name.
+    #[test]
+    fn aliased_project_statuses_are_the_candidates() {
+        let config = config(&["Doing", "Review", "Closed", "Cancelled"]);
+        let aliases = aliases(&[
+            ("Doing", "In Progress"),
+            ("Review", "In Review"),
+            ("Closed", "Done"),
+            ("Cancelled", "Done"),
+        ]);
+        assert_eq!(
+            candidates_of(&config, &aliases, StatusColumn::InProgress),
+            vec!["Doing"]
+        );
+        // Two statuses alias to Done, so that column has two candidates, in declaration order.
+        assert_eq!(
+            candidates_of(&config, &aliases, StatusColumn::Done),
+            vec!["Closed", "Cancelled"]
+        );
+        assert!(candidates_of(&config, &aliases, StatusColumn::ToDo).is_empty());
+    }
+
+    // Declaration order is `config.yml`'s, not the order the columns are scanned in: doc-7 §4.1
+    // makes the first declared candidate the default the input starts on.
+    #[test]
+    fn candidates_keep_config_declaration_order() {
+        let config = config(&["Cancelled", "Closed"]);
+        let aliases = aliases(&[("Closed", "Done"), ("Cancelled", "Done")]);
+        assert_eq!(
+            candidates_of(&config, &aliases, StatusColumn::Done),
+            vec!["Cancelled", "Closed"]
+        );
+    }
+
+    // A declared status that maps to no column (doc-7 §4.1 の未対応列の材料) is a candidate for
+    // nothing: it belongs to the 未対応区画, which is not a canonical column.
+    #[test]
+    fn declared_but_unmapped_status_is_nobodys_candidate() {
+        let config = config(&["To Do", "Blocked", "Done"]);
+        let none = BTreeMap::new();
+        for entry in create_status_candidates(&config, &none) {
+            assert!(!entry.statuses.contains(&"Blocked".to_string()));
+        }
+    }
+
+    // An unconfigured root declares nothing, so `-s` has no value it would accept and every column
+    // is left without a candidate — even though its tasks' statuses do name-match into columns.
+    #[test]
+    fn no_declared_set_yields_no_candidates() {
+        let config = config(&[]);
+        let none = BTreeMap::new();
+        assert!(create_status_candidates(&config, &none)
+            .iter()
+            .all(|entry| entry.statuses.is_empty()));
+    }
+
+    #[test]
+    fn candidates_serialize_with_camel_case_columns() {
+        let json = serde_json::to_value(create_status_candidates(
+            &default_config(),
+            &BTreeMap::new(),
+        ))
+        .unwrap();
+        assert_eq!(json[0]["column"], "toDo");
+        assert_eq!(json[0]["statuses"][0], "To Do");
     }
 
     #[test]
