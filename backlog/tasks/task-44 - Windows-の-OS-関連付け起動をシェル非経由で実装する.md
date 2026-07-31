@@ -1,10 +1,10 @@
 ---
 id: TASK-44
 title: Windows の OS 関連付け起動をシェル非経由で実装する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-26 08:36'
-updated_date: '2026-07-31 12:08'
+updated_date: '2026-07-31 21:28'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -24,6 +24,6 @@ TASK-37 で外部エディタ経路（doc-8 §7）を実装した際、Windows �
 <!-- AC:BEGIN -->
 - [x] #1 Windows で OS 関連付け起動をシェルを介さず実装する（ShellExecuteW 相当）
 - [x] #2 依存追加はその選定理由と導入範囲を確認してから行う（AGENTS の依存ゲート）
-- [ ] #3 & ^ %…% と空白を含むパスで、パスがそのまま単一の引数として渡ることを Windows 上で確認する
+- [x] #3 & ^ %…% と空白を含むパスで、パスがそのまま単一の引数として渡ることを Windows 上で確認する
 - [x] #4 editor::association_launcher の Windows 分岐と NO_ASSOCIATION_LAUNCHER の無効化理由を除去する
 <!-- AC:END -->
