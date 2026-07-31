@@ -1,10 +1,10 @@
 ---
 id: TASK-43
 title: コミット・PR 関連解決の参照手段を実装し Git 履歴欄に関連 PR を出す
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-07-25 10:26'
-updated_date: '2026-07-28 23:17'
+updated_date: '2026-07-30 23:53'
 labels:
   - 'kind:feature'
 milestone: m-1
@@ -24,9 +24,9 @@ doc-8 の改訂（画面設計案の反映）で、Git 履歴欄の粒度が詳�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 GitHub の PR コミット集合取得を実装し remote ホスト種別ごとの参照手段として注入する
-- [ ] #2 関連解決結果を Tauri コマンド境界の payload へ通す
-- [ ] #3 Git 履歴欄で各コミットに関連 Pull Request を紐づけて表示し、関連なし・参照不能・対象外を区別する
-- [ ] #4 新規依存の採否と範囲を decision として記録する
-- [ ] #5 関連 PR の表示粒度を doc-8 §3 の割当表に従わせ、粒度を落とした配置には全面表示への導線を添える
+- [x] #1 GitHub の PR コミット集合取得を実装し remote ホスト種別ごとの参照手段として注入する
+- [x] #2 関連解決結果を Tauri コマンド境界の payload へ通す
+- [x] #3 Git 履歴欄で各コミットに関連 Pull Request を紐づけて表示し、関連なし・参照不能・対象外を区別する
+- [x] #4 新規依存の採否と範囲を decision として記録する
+- [x] #5 関連 PR の表示粒度を doc-8 §3 の割当表に従わせ、粒度を落とした配置には全面表示への導線を添える
 <!-- AC:END -->
