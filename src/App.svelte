@@ -9,6 +9,8 @@
   // doc-7 §5 calls it 一時的 — so `hidden` never leaves this component.
   import { onDestroy, onMount, untrack } from "svelte";
   import FilterBar from "./components/FilterBar.svelte";
+  import HeaderMenu from "./components/HeaderMenu.svelte";
+  import Modal from "./components/Modal.svelte";
   import ProjectDetail from "./components/ProjectDetail.svelte";
   import ProjectRegister from "./components/ProjectRegister.svelte";
   import Settings from "./components/Settings.svelte";
@@ -41,6 +43,20 @@
   import { refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
   import { topBands } from "./lib/band";
+  import {
+    HEADER_ENTRIES,
+    headerMenu,
+    type HeaderEntryId,
+    type MenuItem,
+  } from "./lib/header";
+  import {
+    ariaKeyShortcuts,
+    matchShortcut,
+    shortcutHint,
+    textEntryFocused,
+    type ShortcutScope,
+  } from "./lib/shortcuts";
+  import { MAC_KEYBOARD } from "./lib/platform";
   import {
     DISCARD_CONFIRM_KEEP,
     DISCARD_CONFIRM_PROCEED,
@@ -77,6 +93,7 @@
     withStorage,
     type CardFilter,
   } from "./lib/filter";
+  import { lastCondition, removeLastCondition } from "./lib/token";
   import {
     CANONICAL_COLUMN_LABEL,
     buildSwimlane,
@@ -121,8 +138,23 @@
   let screen = $state<Screen>("swimlane");
   /** Which project プロジェクト詳細画面 is showing. `null` while the swimlane is up. */
   let detailSlug = $state<string | null>(null);
-  /** Whether the fixed header's 「プロジェクトを登録」 panel is open (doc-7 §2.1). */
+  /** Whether the fixed header's 「プロジェクトを登録」 modal is open (doc-7 §2.1). */
   let registerOpen = $state(false);
+  /** Whether the fixed header's メニュー is open (doc-7 §2.1). */
+  let menuOpen = $state(false);
+  /** The ☰ and the box it hangs off, so the menu can be closed back onto the control it came from. */
+  let menuAnchor = $state<HTMLDivElement | null>(null);
+  let menuButton = $state<HTMLButtonElement | null>(null);
+  /**
+   * The header's own button per 共通入口. Held so that every route into a モーダル — the button, a menu
+   * line, or the chord — leaves the same control focused for the modal to return to (`openEntry`).
+   */
+  let entryButtons = $state<Partial<Record<HeaderEntryId, HTMLButtonElement>>>({});
+  /**
+   * Whether the フィルタ帯's 値一覧 is open (doc-7 §5.2). Held by the shell rather than by the bar
+   * because a key opens it as well (`addFilter`), and a second opener would need its own way in.
+   */
+  let filterPopoverOpen = $state(false);
   /**
    * A row the grid should bring into view — プロジェクト詳細画面's 「このプロジェクトのレーンへ」
    * (doc-10 §2). Held here rather than in the grid because the request outlives the screen that made
@@ -374,6 +406,17 @@
       hiddenRowCount: screen === "swimlane" ? hiddenRows.length : 0,
     }),
   );
+  /**
+   * The メニュー's lines (doc-7 §2.1): the same 共通入口 the header shows, followed by 行非表示 — すべて
+   * 戻す and one line per hidden row, which is where doc-11 §4 puts the per-row list the 帯 ⑥ used to
+   * carry. Given the unfiltered `hiddenRows`, so a slug that left the ledger is not offered.
+   */
+  let menuItems = $derived(headerMenu(hiddenRows));
+  /**
+   * Whether a モーダル is up. While one is, the shell answers no chord at all: doc-7 §2.1 keeps a modal's
+   * focus inside itself, and the modal is what answers Escape and Tab there (`Modal.svelte`).
+   */
+  let modalOpen = $derived(registerOpen || settingsOpen);
 
   /**
    * The open 列内新規タスク入力's cell as the *current* read of its root has it (doc-7 §4.1). Resolved
@@ -1254,6 +1297,135 @@
   function show(slug: string): void {
     hidden = hidden.filter((candidate) => candidate !== slug);
   }
+
+  // --- 固定ヘッダ・メニュー・ショートカット (doc-7 §2.1, TASK-56) -------------------------------
+
+  /**
+   * Open one 共通入口 (doc-7 §2.1). Both are モーダル over the screen that is up, never a screen of their
+   * own (AC #2): the swimlane behind keeps its rows, filter and selection, and nothing is unmounted, so
+   * no route in can lose 未保存入力.
+   */
+  function openEntry(id: HeaderEntryId): void {
+    // 被せ層 は 1 枚だけ (`shortcuts.ts`): モーダル・メニュー・値一覧 all answer Escape where they are, so
+    // two open at once leaves it undecided which one a press belongs to — and this one's trap would put
+    // the other out of reach in any case.
+    menuOpen = false;
+    filterPopoverOpen = false;
+    // The header's own button for this entry takes focus *before* the modal mounts, so that whichever
+    // route was taken — that button, a menu line, or the chord — the modal captures a control that is
+    // still on screen and hands focus back to it on close (doc-7 §2.1 閉じたら開く前の操作へフォーカスを
+    // 戻す). Without this the menu line the user pressed is already unmounted by then, and a press of the
+    // chord from the grid would have nothing but `body` to go back to.
+    entryButtons[id]?.focus();
+    if (id === "register") registerOpen = true;
+    else settingsOpen = true;
+  }
+
+  function openMenu(): void {
+    menuOpen = true;
+    // 被せ層 は 1 枚だけ (see `openEntry`).
+    filterPopoverOpen = false;
+  }
+
+  function closeMenu(): void {
+    menuOpen = false;
+    // Back to the control the menu was opened from, so the next keystroke has somewhere to go
+    // (`FilterBar` returns focus to its own opener the same way).
+    menuButton?.focus();
+  }
+
+  /** Open or close the 値一覧 (doc-7 §5.2), from the フィルタ帯's button or from its chord. */
+  function setFilterPopover(open: boolean): void {
+    filterPopoverOpen = open;
+    // 被せ層 は 1 枚だけ (see `openEntry`).
+    if (open) menuOpen = false;
+  }
+
+  /** Take one line of the menu. A line with a 保留理由 is not pressable, so it never arrives here. */
+  function chooseMenuItem(item: MenuItem): void {
+    switch (item.kind) {
+      case "entry":
+        openEntry(item.entry.id);
+        break;
+      case "showAllRows":
+        showAllRows();
+        closeMenu();
+        break;
+      case "showRow":
+        show(item.slug);
+        closeMenu();
+        break;
+    }
+  }
+
+  /**
+   * 行非表示をすべて戻す (doc-7 §5.1). One function for the 帯 ⑥'s own control and the menu's line, so the
+   * two cannot come to mean different things. Every hidden slug is a registered one — `removeProject`
+   * prunes the list — so there is nothing here to keep back.
+   */
+  function showAllRows(): void {
+    hidden = [];
+  }
+
+  /** 直前の絞り込みを 1 件戻す (doc-7 §5.2) — the operation the フィルタ帯's button issues, by key. */
+  function undoFilter(): void {
+    if (lastCondition(filter) === null) return;
+    filter = removeLastCondition(filter);
+  }
+
+  /**
+   * The 割り当て一覧 (doc-7 §2.1) as the shell answers it. One listener rather than a handler per control:
+   * these operations are the screen's own (open a modal, open the menu, open or undo a 絞り込み), and a
+   * key that only worked while some particular button had focus would not be a screen-wide shortcut at
+   * all. Which rows are considered is decided per press by the 適用範囲 passed in, so nothing here has to
+   * recognise a chord — `shortcuts.ts` owns the whole contract (IME・単独キー・修飾キー).
+   *
+   * Every operation reached here also has a visible control: the two 共通入口 are in the header and in the
+   * menu, the menu has its ☰, and the 絞り込み pair are buttons on the フィルタ帯 (doc-7 §2.1
+   * ショートカットだけが入口の操作を作らない / AC #9).
+   */
+  $effect(() => {
+    function pressed(event: KeyboardEvent): void {
+      // 被せ層 answer their own keys where they are and consume the press (`Modal.svelte`,
+      // `HeaderMenu.svelte`, `FilterPopover.svelte`). A モーダル additionally keeps focus inside itself,
+      // so while one is up the shell offers no 適用範囲 and leaves the keyboard to it.
+      if (modalOpen) return;
+      const scopes: ShortcutScope[] =
+        screen === "swimlane" ? ["bothScreens", "swimlane"] : ["bothScreens"];
+      const binding = matchShortcut(event, {
+        scopes,
+        textEntry: textEntryFocused(document.activeElement),
+      });
+      if (binding === null) return;
+      // Stopped for a matched press whatever happens next: the key is Atlas's from here on, and letting
+      // the WebView act on it as well is how ⌘N would open a modal *and* a window.
+      if (binding.preventsDefault !== null) event.preventDefault();
+      switch (binding.action) {
+        case "openRegister":
+          openEntry("register");
+          break;
+        case "openSettings":
+          openEntry("settings");
+          break;
+        case "toggleMenu":
+          if (menuOpen) closeMenu();
+          else openMenu();
+          break;
+        case "addFilter":
+          setFilterPopover(true);
+          break;
+        case "undoFilter":
+          undoFilter();
+          break;
+        default:
+          // The rest of the list belongs to a 被せ層 or to one of the two input surfaces, each of which
+          // answers its own rows. Reached only if a new row is added with a 適用範囲 the shell passes.
+          break;
+      }
+    }
+    window.addEventListener("keydown", pressed);
+    return () => window.removeEventListener("keydown", pressed);
+  });
 </script>
 
 <main class="screen">
@@ -1262,21 +1434,59 @@
     <!-- Only entry points that apply to every project belong on the fixed header (doc-7 §2.1). What
          is closed on one project — editing its 台帳エントリ, 登録解除, documents, milestones, the
          detailed 新規タスク作成 — is collected in プロジェクト詳細画面 (doc-10), so operations of
-         different granularity do not share a place. Both open as a panel over the screen: neither is
-         somewhere to work, so the swimlane behind keeps its state. Making them modal, echoing them
-         in a menu and giving them shortcuts is TASK-56's. -->
-    <button type="button" class="header-entry" onclick={() => (registerOpen = true)}>
-      ＋ プロジェクトを登録
-    </button>
-    <button type="button" class="header-entry" onclick={() => (settingsOpen = true)}>設定</button>
+         different granularity do not share a place.
+         The two are drawn from `HEADER_ENTRIES` rather than written out here, because the same list is
+         what the menu draws: §2.1 requires ヘッダに出している操作はメニューにも同じものを置く, and two
+         literals would let a third entry appear in one place only. -->
+    {#each HEADER_ENTRIES as entry (entry.id)}
+      <button
+        type="button"
+        class="header-entry"
+        bind:this={entryButtons[entry.id]}
+        aria-keyshortcuts={ariaKeyShortcuts(entry.action)}
+        title={entry.note}
+        onclick={() => openEntry(entry.id)}
+      >
+        {entry.label}
+        <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). `aria-hidden` because `aria-keyshortcuts` above
+             carries the chord as data; read aloud it would rename the button. -->
+        <span class="hint" aria-hidden="true">{shortcutHint(entry.action, MAC_KEYBOARD)}</span>
+      </button>
+    {/each}
+    <!-- メニュー (doc-7 §2.1): the same two entries plus 行非表示 を戻す, for the widths where the
+         header's own buttons do not fit. -->
+    <div class="menu-anchor" bind:this={menuAnchor}>
+      <button
+        type="button"
+        class="header-entry"
+        bind:this={menuButton}
+        aria-expanded={menuOpen}
+        aria-haspopup="dialog"
+        aria-keyshortcuts={ariaKeyShortcuts("toggleMenu")}
+        title="ヘッダの入口と、行非表示を戻す操作をまとめて開きます"
+        onclick={() => (menuOpen ? closeMenu() : openMenu())}
+      >
+        <span aria-hidden="true">☰</span> メニュー
+        <span class="hint" aria-hidden="true">{shortcutHint("toggleMenu", MAC_KEYBOARD)}</span>
+      </button>
+      {#if menuOpen}
+        <HeaderMenu
+          items={menuItems}
+          boundary={menuAnchor}
+          onchoose={chooseMenuItem}
+          onclose={closeMenu}
+        />
+      {/if}
+    </div>
     <!-- 台帳読取専用 is the 上部帯 ③ (doc-11 §4) and not a badge up here: as a header badge it sat
          above the 確認帯 ①, which is the ordering doc-11 §4 forbids. -->
   </header>
 
   {#if registerOpen}
-    <!-- 登録 (doc-3 §4.1) is the one ledger-wide operation left, so it opens from here rather than
-         from the per-project detail screen (doc-3 §4). -->
-    <div class="settings-panel">
+    <!-- 登録 (doc-3 §4.1) is the one ledger-wide operation left, so it opens from the header rather
+         than from the per-project detail screen (doc-3 §4) — and as a モーダル, which is where doc-7
+         §2.1 puts it: モーダルの外に画面遷移を作らない (AC #2). -->
+    <Modal label="プロジェクトを登録" onclose={() => (registerOpen = false)}>
       <ProjectRegister
         {entries}
         readOnly={ledgerReadOnly}
@@ -1287,20 +1497,20 @@
         onregister={registerProject}
         onclose={() => (registerOpen = false)}
       />
-    </div>
+    </Modal>
   {/if}
 
   {#if settingsOpen}
-    <!-- Kept over the screen with the shell's state intact: an アプリ設定 change is about how the
-         swimlane is shown, so losing the rows, filter and selection to open it would be backwards. -->
-    <div class="settings-panel">
+    <!-- Over the screen with the shell's state intact: an アプリ設定 change is about how the swimlane is
+         shown, so losing the rows, filter and selection to open it would be backwards. -->
+    <Modal label="設定" onclose={() => (settingsOpen = false)}>
       <Settings
         loaded={settings}
         path={settingsPath}
         onsave={saveSettings}
         onclose={() => (settingsOpen = false)}
       />
-    </div>
+    </Modal>
   {/if}
 
   {#if screen === "swimlane"}
@@ -1310,6 +1520,8 @@
       {defaultStorage}
       shown={shownCards}
       total={totalCards}
+      popoverOpen={filterPopoverOpen}
+      onpopover={setFilterPopover}
       onchange={(next) => (filter = next)}
     />
   {/if}
@@ -1327,14 +1539,11 @@
         <button type="button" onclick={discardConfirmed}>{DISCARD_CONFIRM_PROCEED}</button>
         <button type="button" onclick={() => (pendingDiscard = null)}>{DISCARD_CONFIRM_KEEP}</button>
       {:else if band.kind === "hiddenRows"}
-        <!-- 縮約しても帯に操作を残す (doc-11 §4): the count is the summary, and 戻す stays here rather
-             than behind something to open. The per-row chips move to the menu with TASK-56 (AC #5),
-             which is where doc-11 §4 puts the full list. -->
-        <span class="chips">
-          {#each hiddenRows as slug (slug)}
-            <button type="button" onclick={() => show(slug)}>{slug} を戻す</button>
-          {/each}
-        </span>
+        <!-- 縮約しても帯に操作を残す (doc-11 §4): the count is the summary and すべて戻す is the band's own
+             操作, so undoing every hide needs nothing opened. The per-row list is the part that grew the
+             band sideways, and doc-11 §4 names its destination — 個々のレーンはメニューの一覧から戻す —
+             which is `headerMenu`'s `showRow` lines. -->
+        <button type="button" onclick={showAllRows}>すべて戻す</button>
       {:else if band.kind === "unwatched"}
         <!-- 帯が持つ操作は縮約しても帯に残す (doc-11 §4): 継続検出停止 is resolved by re-reading, so the
              再読込 is here and not only on each row's mark — a row that may be scrolled out of view. -->
@@ -1398,7 +1607,7 @@
   {:else if order.length === 0}
     <p class="status">
       登録済みプロジェクトがありません。固定ヘッダの
-      <button type="button" class="link" onclick={() => (registerOpen = true)}>
+      <button type="button" class="link" onclick={() => openEntry("register")}>
         プロジェクトを登録
       </button>
       から追加してください。
@@ -1534,9 +1743,13 @@
     cursor: pointer;
   }
 
-  // The fixed header's entry points (doc-7 §2.1): 登録 and 設定. Both open a panel rather than
-  // switching screens, so they are drawn unlike a tab that says which screen is current.
+  // The fixed header's entry points (doc-7 §2.1): 登録・設定・メニュー. All three open a layer over the
+  // screen rather than switching to one, so they are drawn unlike a tab that says which screen is
+  // current.
   .header-entry {
+    display: inline-flex;
+    gap: 0.3rem;
+    align-items: baseline;
     padding: 0.1rem 0.5rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
@@ -1547,11 +1760,19 @@
     cursor: pointer;
   }
 
-  .settings-panel {
-    max-height: 60vh;
-    border-bottom: 1px solid var(--line);
-    background: var(--panel);
-    overflow-y: auto;
+  // The chord beside its operation (doc-7 §2.1 / AC #4), quiet: it is a reminder, and the label it sits
+  // next to is the entry itself (§2.1 ショートカットだけが入口の操作を作らない).
+  .hint {
+    color: var(--muted);
+    font-size: 0.65rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  // The menu hangs off this box, so its own absolute position is against the ☰ and not the window — and
+  // a press on the ☰ counts as inside, which is what keeps opening from closing it again.
+  .menu-anchor {
+    position: relative;
+    margin-left: auto;
   }
 
   // 上部帯 (doc-11 §4). One rule for all six: 1 行に収め、折り返さず、族の色は左端 4px だけが持つ
@@ -1575,15 +1796,6 @@
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
-    }
-
-    // The 戻す controls stay on the same line and scroll rather than wrap, for the same reason.
-    .chips {
-      display: flex;
-      flex: 1;
-      gap: 0.3rem;
-      min-width: 0;
-      overflow-x: auto;
     }
 
     button {
