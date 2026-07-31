@@ -61,7 +61,12 @@
     type VersionConflict,
   } from "./lib/mark";
   import { DEFAULT_CARD_DENSITY } from "./lib/card";
-  import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./lib/history-read";
+  import {
+    createHistoryLoader,
+    historyKeyOf,
+    type HistoryInputs,
+    type HistoryRead,
+  } from "./lib/history-read";
   import { createSettingsWriter } from "./lib/settings-write";
   import { themeAttribute } from "./lib/theme";
   import {
@@ -361,15 +366,32 @@
       : null;
   });
   /**
-   * Which task a Git 履歴 read belongs to. `null` when there is nothing to read: no selection, or
-   * a task with no TASK-ID — コミット検索 keys on the id (doc-6 §3), while the References-derived
-   * PR 区画 needs no Git read at all. Serialized rather than concatenated, so no two (slug, id)
-   * pairs can collide into one key — and with no separator byte that would make this file binary.
+   * The inputs the open task's Git 履歴 read is computed from (doc-6 §3/§4/§6): where the search
+   * runs, the 関連解決 gate, and the References each Pull Request is looked up at. `null` when there
+   * is nothing to read — no selection, a task with no TASK-ID (コミット検索 keys on the id, doc-6 §3),
+   * or no ledger entry for the root.
+   */
+  let historyInputs = $derived.by((): HistoryInputs | null => {
+    if (selectedView === null || selectedView.task.id === null || selectedEntry === null) {
+      return null;
+    }
+    return {
+      projectRoot: selectedEntry.project_root,
+      gitRemotePresent: selectedEntry.git_remote_present,
+      references: selectedView.task.references,
+    };
+  });
+  /**
+   * Which read the panel is showing. The task alone is not enough: the backend copies these inputs
+   * out of the open model, releases its locks and only then runs `git`/`gh` (decision-14), so an
+   * answer computed from References or a root the screen has since left is stale. Keying on the
+   * inputs makes such a change start a newer read, whose token supersedes the one in flight.
+   * Serialized rather than concatenated, so no two input sets can collide into one key.
    */
   let historyKey = $derived(
-    selectedView === null || selectedView.task.id === null
+    selectedView === null || selectedView.task.id === null || historyInputs === null
       ? null
-      : historyKeyOf(selectedView.task.project, selectedView.task.id),
+      : historyKeyOf(selectedView.task.project, selectedView.task.id, historyInputs),
   );
   /** The read belonging to the *current* selection; anything else counts as not yet read. */
   let history = $derived.by((): HistoryState => {
@@ -997,15 +1019,17 @@
     describeError: (error) => unreadableDetail(asCommandError(error)),
   });
 
-  // Read on a new selection, keyed by task alone: the PR/References separation comes with the
-  // snapshot (doc-8 §4), so References changes need no re-read, and commits are not file state —
-  // no watch reports a new one — so refreshing those is the panel's 再取得 button. `historyKey` is
+  // Read on a new selection, and again whenever the read's own inputs change — References are now an
+  // input (they decide which Pull Requests are looked up), so a References edit or a root move must
+  // not leave an answer computed from the previous ones on screen. Commits are not file state — no
+  // watch reports a new one — so refreshing those is still the panel's 再取得 button. `historyKey` is
   // the whole dependency; reading the view here would re-fetch on every unrelated root's reload.
   $effect(() => {
     if (historyKey === null) return;
     const view = untrack(() => selectedView);
-    if (view === null || view.task.id === null) return;
-    void loadHistory(view.task.project, view.task.id);
+    const inputs = untrack(() => historyInputs);
+    if (view === null || view.task.id === null || inputs === null) return;
+    void loadHistory(view.task.project, view.task.id, inputs);
   });
 
   function hide(slug: string): void {
@@ -1215,7 +1239,9 @@
       onopenExternally={openExternally}
       onselect={open}
       onreloadHistory={() =>
-        view.task.id === null ? undefined : void loadHistory(view.task.project, view.task.id)}
+        view.task.id === null || historyInputs === null
+          ? undefined
+          : void loadHistory(view.task.project, view.task.id, historyInputs)}
       ondirty={(dirty) => (detailDirty = dirty)}
       onconfirmDiscard={(proceed) => guardDiscard(true, proceed)}
       onclose={closeDetail}
