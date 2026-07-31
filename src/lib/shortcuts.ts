@@ -15,7 +15,7 @@
  * | doc-7 §2.1 割り当て一覧 | [`SHORTCUTS`] + [`ShortcutBinding`] | one row per key assignment: chord, operation, 適用範囲, whether it fires in a text field, and what default it stops |
  * | doc-7 §2.1 発火する画面 | [`ShortcutScope`] + [`SCOPE_LABEL`] | 適用範囲: the closed set of 6 places an assignment is answered in |
  * | doc-7 §2.1 入力欄・編集部品の内側では単独キーを発火させない | [`textEntryFocused`] + [`ShortcutBinding.firesInTextEntry`] | 文字入力中: focus is inside an element that takes characters, so a bare key belongs to the text |
- * | doc-7 §2.1 修飾キーは macOS で Command、Windows・Linux で Control | [`Chord.mod`] + [`modifierLabel`] | 共通修飾キー: one assignment answered by either key, spelled per OS |
+ * | doc-7 §2.1 修飾キーは macOS で Command、Windows・Linux で Control | [`Chord.mod`] + [`modifierLabel`] | 共通修飾キー: one modifier on the assignment's side, mapped to this OS's real key for matching, ARIA and spelling alike |
  * | doc-7 §2.1 preventDefault は要るキーだけに限り一覧に明記する | [`ShortcutBinding.preventsDefault`] | the default this key would otherwise take, or `null` when nothing is stopped |
  * | doc-7 §2.1 モーダルはフォーカスを内側に留め、Escape で閉じる | [`"modal"`] and [`"overlay"`] scopes | the trap is the modal's alone; Escape is shared with the menu and the value popover |
  *
@@ -75,11 +75,14 @@ export const SCOPE_LABEL: Record<ShortcutScope, string> = {
 // --- キーの組 (doc-7 §2.1 修飾キーの OS 対応) --------------------------------------------------
 
 /**
- * One chord. `mod` is the 共通修飾キー: 共通修飾キーとは、macOS の Command と Windows・Linux の
- * Control を 1 つの割り当てとして扱う修飾キーの指定を指す。Both are answered on every OS rather than
- * one being selected by a platform read, because doc-7 §2.1 forbids giving the same operation a
- * different key per OS — with one chord answered either way there is no per-OS assignment to disagree
- * about, and the only thing the OS decides is how the chord is *spelled* ([`modifierLabel`]).
+ * One chord. `mod` is the 共通修飾キー: 共通修飾キーとは、macOS では Command、Windows・Linux では
+ * Control に対応づく、割り当て側の 1 つの修飾キー指定を指す。doc-7 §2.1 asks for exactly that mapping —
+ * one assignment on this side, one real key on the running OS — so the platform reaches matching, ARIA
+ * and spelling alike, and the *other* platform's modifier is left alone.
+ *
+ * Accepting both everywhere was the first attempt and it was wrong (review [P2] on PR #34): on macOS,
+ * Control+letter is native cursor movement in a text field, and these chords fire in text fields — so a
+ * lenient match would take Control-N away from the editor while the screen only ever printed ⌘N.
  *
  * `shift` is `true` when Shift is part of the chord, absent when Shift must not be held, and
  * `"either"` for the one assignment that answers both (Tab / Shift+Tab, which differ in direction and
@@ -231,11 +234,15 @@ export function shortcutOf(action: ShortcutAction): ShortcutBinding {
 // --- 表記 (doc-7 §2.1 修飾キーの OS 対応) -------------------------------------------------------
 
 /**
- * Whether this is a macOS user agent, which decides only how a chord is *spelled* — every chord is
- * answered by both modifiers whatever this says ([`Chord`]). Read from the user agent rather than from
- * a platform API because the alternative is a new production dependency (`@tauri-apps/plugin-os`) or a
- * new boundary command for a fact that changes nothing but a label, and a wrong guess would misprint
- * "Ctrl" where "⌘" belongs instead of leaving an operation unreachable.
+ * Whether this is a macOS user agent, which decides which real modifier the 共通修飾キー maps to — for
+ * matching as well as for spelling ([`Chord`]).
+ *
+ * Read from the user agent rather than through a new production dependency (`@tauri-apps/plugin-os`) or
+ * a new boundary command: inside a WebView the string is fixed per platform (`Macintosh; Intel Mac OS X`
+ * on WKWebView, `Windows NT` on WebView2, `X11; Linux` on WebKitGTK), and AGENTS.md wants a reason
+ * before either alternative. A misread degrades consistently rather than silently: the hints then print
+ * `Ctrl`, and `Ctrl` is what the matcher answers — a Mac keyboard has that key too — so the assignment
+ * stays reachable and stays as advertised.
  */
 export function isMacUserAgent(userAgent: string): boolean {
   return /Mac OS X|Macintosh|iPhone|iPad/.test(userAgent);
@@ -284,17 +291,16 @@ export function shortcutHint(action: ShortcutAction, mac: boolean): string {
  * rather than only as the printed hint beside the control — the hint is drawn `aria-hidden`, since read
  * aloud as part of a button's name it would turn「設定」into「設定 ⌘,」.
  *
- * Both modifiers are listed (`Meta+N Control+N`), which is what the app actually answers: the attribute
- * takes a space-separated list of chords, and naming only one would advertise half the assignment.
+ * The running platform's modifier only, matching what is answered and what is printed. Listing both
+ * would advertise a chord this OS does not take (review [P2] on PR #34).
  */
-export function ariaKeyShortcuts(action: ShortcutAction): string {
+export function ariaKeyShortcuts(action: ShortcutAction, mac: boolean): string {
   const chord = ASSIGNMENTS[action].chord;
   const key = chord.key.length === 1 ? chord.key.toUpperCase() : chord.key;
   const shifted = chord.shift === true ? [`Shift+${key}`] : [key];
   const forms = chord.shift === "either" ? [key, `Shift+${key}`] : shifted;
-  return forms
-    .flatMap((form) => (chord.mod === true ? [`Meta+${form}`, `Control+${form}`] : [form]))
-    .join(" ");
+  const modifier = mac ? "Meta" : "Control";
+  return forms.map((form) => (chord.mod === true ? `${modifier}+${form}` : form)).join(" ");
 }
 
 // --- 文字入力中 (doc-7 §2.1) -------------------------------------------------------------------
@@ -349,14 +355,26 @@ export interface ShortcutContext {
   scopes: readonly ShortcutScope[];
   /** [`textEntryFocused`]'s answer for the currently focused element. */
   textEntry: boolean;
+  /**
+   * Whether the 共通修飾キー is Command here (macOS) rather than Control. Part of *matching*, not only of
+   * spelling: the other platform's modifier stays with the platform that uses it for something else —
+   * on macOS, Control+letter moves the caret in a text field (review [P2] on PR #34).
+   */
+  mac: boolean;
 }
 
-function chordMatches(chord: Chord, event: ShortcutKeyEvent): boolean {
+function chordMatches(chord: Chord, event: ShortcutKeyEvent, mac: boolean): boolean {
   if (chord.key.toLowerCase() !== event.key.toLowerCase()) return false;
-  // 共通修飾キー: either modifier answers a `mod` chord, and neither may be held for one without it —
-  // otherwise ⌘F would fire the bare-key 絞り込み as well.
-  const modDown = event.metaKey || event.ctrlKey;
-  if ((chord.mod === true) !== modDown) return false;
+  if (chord.mod === true) {
+    // 共通修飾キー: this OS's modifier alone. Not the other platform's — on macOS Control+letter moves
+    // the caret in a text field, and these chords fire in text fields — and not both at once, which is
+    // a chord of its own that this list does not take.
+    if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return false;
+  } else if (event.metaKey || event.ctrlKey) {
+    // A bare-key assignment takes no modifier at all: ⌘F and Ctrl+F belong to whatever else uses them,
+    // not to the bare-key 絞り込み.
+    return false;
+  }
   if (chord.shift !== "either" && (chord.shift === true) !== event.shiftKey) return false;
   // No assignment uses Alt, so holding it is a different chord and not this one. Checked here rather
   // than left out, because ⌥ is how macOS types characters (⌥f is ƒ) and swallowing those presses
@@ -385,7 +403,7 @@ export function matchShortcut(
   for (const binding of SHORTCUTS) {
     if (!context.scopes.includes(binding.scope)) continue;
     if (context.textEntry && !binding.firesInTextEntry) continue;
-    if (chordMatches(binding.chord, event)) return binding;
+    if (chordMatches(binding.chord, event, context.mac)) return binding;
   }
   return null;
 }

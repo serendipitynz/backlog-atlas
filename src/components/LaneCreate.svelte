@@ -76,7 +76,11 @@
    * The buttons below stay the entry to both operations (§2.1 ショートカットだけが入口の操作を作らない).
    */
   function keydown(event: KeyboardEvent): void {
-    const binding = matchShortcut(event, { scopes: ["laneCreate"], textEntry: true });
+    const binding = matchShortcut(event, {
+      scopes: ["laneCreate"],
+      textEntry: true,
+      mac: MAC_KEYBOARD,
+    });
     if (binding?.action !== "submitLaneCreate") return;
     if (binding.preventsDefault !== null) event.preventDefault();
     // Withheld for the same reason the button is (doc-11 §5): the chord is not a way past a 縮退 or a
@@ -116,7 +120,7 @@
       value={title}
       placeholder="title（必須）"
       aria-label="{label} 列の新規タスクの title"
-      aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate")}
+      aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate", MAC_KEYBOARD)}
       oninput={(event) => ontitle(event.currentTarget.value)}
       onkeydown={keydown}
     />
@@ -148,7 +152,7 @@
       <button
         type="button"
         disabled={blocked !== null}
-        aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate")}
+        aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate", MAC_KEYBOARD)}
         title={blocked ?? "task create を発行します"}
         onclick={onsubmit}
       >

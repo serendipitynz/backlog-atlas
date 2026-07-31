@@ -12,6 +12,7 @@
   import { onMount } from "svelte";
   import { loadAce, type AceEditor } from "../lib/ace";
   import { matchShortcut } from "../lib/shortcuts";
+  import { MAC_KEYBOARD } from "../lib/platform";
 
   interface Props {
     value: string;
@@ -55,11 +56,16 @@
           const next = instance.getValue();
           if (next !== value) onchange(next);
         });
-        instance.commands.addCommand({
-          name: "atlas-save",
-          bindKey: { win: "Ctrl-Enter", mac: "Command-Enter" },
-          exec: () => onsave?.(),
-        });
+        // 昇格後も同じ 1 本の handler を通す (doc-7 §2.1: 割り当て一覧を 1 箇所に持つ). Ace's own
+        // `commands.addCommand` was a second assignment table: it never saw the list's composition guard
+        // (so a chord could fire on a keydown the fallback textarea refused) and it bound its own
+        // per-platform keys, so the promoted and unpromoted forms of the same field did not agree.
+        //
+        // Listened for on the host in the **capture** phase, which is the only way to run before Ace:
+        // at the target element itself, listeners fire in registration order whatever their capture
+        // flag, and Ace registered its own during `ace.edit` above. `keydown` stops propagation when it
+        // matches, so Ace never sees the press and cannot also insert a newline.
+        host?.addEventListener("keydown", keydown, true);
         editor = instance;
         promoted = true;
       })
@@ -68,6 +74,7 @@
       });
     return () => {
       cancelled = true;
+      host?.removeEventListener("keydown", keydown, true);
       editor?.destroy();
       editor = null;
     };
@@ -80,15 +87,28 @@
     if (editor !== null && editor.getValue() !== current) editor.setValue(current, -1);
   });
 
+  /**
+   * The one key handler for this field, in **both** its forms — the fallback `textarea` binds it as
+   * `onkeydown`, and the promoted Ace instance has it in front of its own handlers (see `onMount`).
+   * There is nothing left for the two paths to disagree about, which is what the second assignment table
+   * made possible.
+   *
+   * Every clause comes from the 割り当て一覧 (doc-7 §2.1): the chord, whether it fires with the caret in
+   * text, and the default it stops. That includes the IME guard 明示保存 needs (doc-8 §6.2 — the Enter
+   * belongs to the conversion, and a WebView can report a composing keydown with `isComposing === false`
+   * and `keyCode === 229`), applied to every assignment rather than re-argued here.
+   */
   function keydown(event: KeyboardEvent): void {
-    // Through the 割り当て一覧 (doc-7 §2.1 requires every assignment to be entered in one list, TASK-56):
-    // this chord used to be recognised here, which is how it came to be the only place that knew 編集部品
-    // had taken ⌘Enter. The IME guard 明示保存 needs (doc-8 §6.2 — the Enter belongs to the conversion,
-    // and a WebView can report a composing keydown with `isComposing === false` and `keyCode === 229`)
-    // now lives in `matchShortcut` and is applied to every assignment rather than to this one.
-    const binding = matchShortcut(event, { scopes: ["editPart"], textEntry: true });
+    const binding = matchShortcut(event, {
+      scopes: ["editPart"],
+      textEntry: true,
+      mac: MAC_KEYBOARD,
+    });
     if (binding?.action !== "saveEditSession") return;
     if (binding.preventsDefault !== null) event.preventDefault();
+    // The press is spent here: Ace must not also see it (it would insert the newline), and the shell's
+    // window handler has nothing to add.
+    event.stopPropagation();
     onsave?.();
   }
 </script>

@@ -1395,6 +1395,7 @@
       const binding = matchShortcut(event, {
         scopes,
         textEntry: textEntryFocused(document.activeElement),
+        mac: MAC_KEYBOARD,
       });
       if (binding === null) return;
       // Stopped for a matched press whatever happens next: the key is Atlas's from here on, and letting
@@ -1443,7 +1444,7 @@
         type="button"
         class="header-entry"
         bind:this={entryButtons[entry.id]}
-        aria-keyshortcuts={ariaKeyShortcuts(entry.action)}
+        aria-keyshortcuts={ariaKeyShortcuts(entry.action, MAC_KEYBOARD)}
         title={entry.note}
         onclick={() => openEntry(entry.id)}
       >
@@ -1462,7 +1463,7 @@
         bind:this={menuButton}
         aria-expanded={menuOpen}
         aria-haspopup="dialog"
-        aria-keyshortcuts={ariaKeyShortcuts("toggleMenu")}
+        aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
         title="ヘッダの入口と、行非表示を戻す操作をまとめて開きます"
         onclick={() => (menuOpen ? closeMenu() : openMenu())}
       >

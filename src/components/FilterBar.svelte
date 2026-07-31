@@ -123,7 +123,7 @@
       bind:this={opener}
       aria-expanded={popoverOpen}
       aria-haspopup="dialog"
-      aria-keyshortcuts={ariaKeyShortcuts("addFilter")}
+      aria-keyshortcuts={ariaKeyShortcuts("addFilter", MAC_KEYBOARD)}
       onclick={() => (popoverOpen ? close() : onpopover(true))}
     >
       ＋ 絞り込み
@@ -166,7 +166,7 @@
       class="control"
       aria-disabled={undoBlocked}
       aria-describedby={undoBlocked ? BLOCKED_ID : undefined}
-      aria-keyshortcuts={ariaKeyShortcuts("undoFilter")}
+      aria-keyshortcuts={ariaKeyShortcuts("undoFilter", MAC_KEYBOARD)}
       title={undoBlocked ? (blockedReason ?? undefined) : "最後に足した条件を 1 件戻します"}
       onclick={() => !undoBlocked && onchange(removeLastCondition(filter))}
     >

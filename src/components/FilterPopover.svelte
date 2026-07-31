@@ -18,6 +18,7 @@
   } from "../lib/token";
   import type { CardFilter, Facets } from "../lib/filter";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
+  import { MAC_KEYBOARD } from "../lib/platform";
 
   interface Props {
     filter: CardFilter;
@@ -161,6 +162,7 @@
     const binding = matchShortcut(event, {
       scopes: ["overlay"],
       textEntry: textEntryFocused(document.activeElement),
+      mac: MAC_KEYBOARD,
     });
     if (binding?.action !== "closeOverlay") return;
     // Only this popover's Escape: it is the innermost thing open, and the press is spent closing it.

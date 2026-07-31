@@ -1087,7 +1087,7 @@
                   <button
                     type="button"
                     disabled={docUpdateIssue.state !== "ready"}
-                    aria-keyshortcuts={ariaKeyShortcuts("saveEditSession")}
+                    aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
                     title={why(docUpdateIssue)}
                     onclick={updateDoc}
                   >
@@ -1503,7 +1503,7 @@
               <button
                 type="button"
                 disabled={taskIssue.state !== "ready"}
-                aria-keyshortcuts={ariaKeyShortcuts("saveEditSession")}
+                aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
                 title={why(taskIssue)}
                 onclick={createTask}
               >

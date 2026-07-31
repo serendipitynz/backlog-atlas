@@ -3,6 +3,7 @@ import {
   SCOPE_LABEL,
   SHORTCUTS,
   SHORTCUT_ORDER,
+  ariaKeyShortcuts,
   chordLabel,
   isMacUserAgent,
   matchShortcut,
@@ -29,6 +30,14 @@ function press(part: Partial<ShortcutKeyEvent> & { key: string }): ShortcutKeyEv
 
 /** The window handler's 適用範囲 while the grid is up — the pair the shell passes (doc-7 §2.1). */
 const ON_GRID: readonly ShortcutScope[] = ["bothScreens", "swimlane"];
+
+/** A context on each platform, so every match is stated for the OS it belongs to. */
+function on(
+  scopes: readonly ShortcutScope[],
+  options: { textEntry?: boolean; mac?: boolean } = {},
+) {
+  return { scopes, textEntry: options.textEntry ?? false, mac: options.mac ?? true };
+}
 
 function spelled(chord: Chord): { mac: string; other: string } {
   return { mac: chordLabel(chord, true), other: chordLabel(chord, false) };
@@ -101,25 +110,41 @@ describe("割り当て一覧 (doc-7 §2.1)", () => {
 });
 
 describe("照合 (doc-7 §2.1 の契約)", () => {
-  it("answers 共通修飾キー with either Command or Control", () => {
-    const withMeta = matchShortcut(press({ key: "n", metaKey: true }), {
-      scopes: ON_GRID,
-      textEntry: false,
-    });
-    const withCtrl = matchShortcut(press({ key: "n", ctrlKey: true }), {
-      scopes: ON_GRID,
-      textEntry: false,
-    });
-    expect(withMeta?.action).toBe("openRegister");
-    expect(withCtrl?.action).toBe("openRegister");
+  /**
+   * doc-7 §2.1: 修飾キーは macOS で Command、Windows・Linux で Control に対応させる。The other platform's
+   * modifier is not a second way in — on macOS, Control+letter is native caret movement inside a text
+   * field, and these chords fire in text fields, so answering it would take Control-N from the editor
+   * while the screen only ever printed ⌘N (review [P2] on PR #34).
+   */
+  it("answers this OS's modifier only", () => {
+    expect(matchShortcut(press({ key: "n", metaKey: true }), on(ON_GRID))?.action).toBe(
+      "openRegister",
+    );
+    expect(matchShortcut(press({ key: "n", ctrlKey: true }), on(ON_GRID))).toBeNull();
+
+    const windows = { mac: false };
+    expect(
+      matchShortcut(press({ key: "n", ctrlKey: true }), on(ON_GRID, windows))?.action,
+    ).toBe("openRegister");
+    expect(matchShortcut(press({ key: "n", metaKey: true }), on(ON_GRID, windows))).toBeNull();
+  });
+
+  it("does not answer both modifiers held together", () => {
+    expect(
+      matchShortcut(press({ key: "n", metaKey: true, ctrlKey: true }), on(ON_GRID)),
+    ).toBeNull();
+    expect(
+      matchShortcut(press({ key: "n", metaKey: true, ctrlKey: true }), on(ON_GRID, { mac: false })),
+    ).toBeNull();
   });
 
   it("does not read a modifier chord as its bare key, or the reverse", () => {
+    expect(matchShortcut(press({ key: "n" }), on(ON_GRID))).toBeNull();
+    expect(matchShortcut(press({ key: "f", metaKey: true }), on(ON_GRID))).toBeNull();
+    // Nor via the *other* platform's modifier: ⌃F is native forward-char on macOS.
+    expect(matchShortcut(press({ key: "f", ctrlKey: true }), on(ON_GRID))).toBeNull();
     expect(
-      matchShortcut(press({ key: "n" }), { scopes: ON_GRID, textEntry: false }),
-    ).toBeNull();
-    expect(
-      matchShortcut(press({ key: "f", metaKey: true }), { scopes: ON_GRID, textEntry: false }),
+      matchShortcut(press({ key: "f", metaKey: true }), on(ON_GRID, { mac: false })),
     ).toBeNull();
   });
 
@@ -131,64 +156,55 @@ describe("照合 (doc-7 §2.1 の契約)", () => {
       press({ key: "n", metaKey: true, keyCode: 229 }),
       press({ key: "f", keyCode: 229 }),
     ]) {
-      expect(matchShortcut(event, { scopes: ON_GRID, textEntry: false })).toBeNull();
+      expect(matchShortcut(event, on(ON_GRID))).toBeNull();
     }
   });
 
   it("withholds bare keys while the caret is in a text field, and keeps modifier chords", () => {
-    expect(matchShortcut(press({ key: "f" }), { scopes: ON_GRID, textEntry: true })).toBeNull();
+    expect(matchShortcut(press({ key: "f" }), on(ON_GRID, { textEntry: true }))).toBeNull();
     expect(
-      matchShortcut(press({ key: "Backspace" }), { scopes: ON_GRID, textEntry: true }),
+      matchShortcut(press({ key: "Backspace" }), on(ON_GRID, { textEntry: true })),
     ).toBeNull();
     expect(
-      matchShortcut(press({ key: "n", metaKey: true }), { scopes: ON_GRID, textEntry: true })
-        ?.action,
+      matchShortcut(press({ key: "n", metaKey: true }), on(ON_GRID, { textEntry: true }))?.action,
     ).toBe("openRegister");
   });
 
   it("closes a 被せ層 on Escape even with the caret in one of its fields", () => {
     expect(
-      matchShortcut(press({ key: "Escape" }), { scopes: ["overlay"], textEntry: true })?.action,
+      matchShortcut(press({ key: "Escape" }), on(["overlay"], { textEntry: true }))?.action,
     ).toBe("closeOverlay");
   });
 
   it("answers only the 適用範囲 the caller names", () => {
     // The grid's bare keys are not answered from プロジェクト詳細画面, where there is no grid.
-    expect(
-      matchShortcut(press({ key: "f" }), { scopes: ["bothScreens"], textEntry: false }),
-    ).toBeNull();
+    expect(matchShortcut(press({ key: "f" }), on(["bothScreens"]))).toBeNull();
     // Nothing at all while a modal is up: the shell passes no scope, so a press falls through.
-    expect(matchShortcut(press({ key: "m" }), { scopes: [], textEntry: false })).toBeNull();
+    expect(matchShortcut(press({ key: "m" }), on([]))).toBeNull();
     expect(
-      matchShortcut(press({ key: "Enter", metaKey: true }), {
-        scopes: ["laneCreate"],
-        textEntry: true,
-      })?.action,
+      matchShortcut(
+        press({ key: "Enter", metaKey: true }),
+        on(["laneCreate"], { textEntry: true }),
+      )?.action,
     ).toBe("submitLaneCreate");
   });
 
   it("takes Tab in either direction inside a modal, and Alt as a different chord", () => {
+    expect(matchShortcut(press({ key: "Tab" }), on(["modal"], { textEntry: true }))?.action).toBe(
+      "cycleModalFocus",
+    );
     expect(
-      matchShortcut(press({ key: "Tab" }), { scopes: ["modal"], textEntry: true })?.action,
-    ).toBe("cycleModalFocus");
-    expect(
-      matchShortcut(press({ key: "Tab", shiftKey: true }), { scopes: ["modal"], textEntry: true })
+      matchShortcut(press({ key: "Tab", shiftKey: true }), on(["modal"], { textEntry: true }))
         ?.action,
     ).toBe("cycleModalFocus");
     // ⌥f types ƒ on macOS; swallowing it would take a character away from the field.
-    expect(
-      matchShortcut(press({ key: "f", altKey: true }), { scopes: ON_GRID, textEntry: false }),
-    ).toBeNull();
+    expect(matchShortcut(press({ key: "f", altKey: true }), on(ON_GRID))).toBeNull();
   });
 
   it("does not read Shift+key as the bare key", () => {
-    expect(
-      matchShortcut(press({ key: "F", shiftKey: true }), { scopes: ON_GRID, textEntry: false }),
-    ).toBeNull();
+    expect(matchShortcut(press({ key: "F", shiftKey: true }), on(ON_GRID))).toBeNull();
     // Caps Lock leaves `shiftKey` false, and the letter still means the assignment.
-    expect(
-      matchShortcut(press({ key: "F" }), { scopes: ON_GRID, textEntry: false })?.action,
-    ).toBe("addFilter");
+    expect(matchShortcut(press({ key: "F" }), on(ON_GRID))?.action).toBe("addFilter");
   });
 });
 
@@ -212,6 +228,14 @@ describe("表記 (doc-7 §2.1 修飾キーの OS 対応)", () => {
     expect(isMacUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe(true);
     expect(isMacUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).toBe(false);
     expect(isMacUserAgent("Mozilla/5.0 (X11; Linux x86_64)")).toBe(false);
+  });
+
+  /** What is advertised has to be what is answered — one modifier, this OS's (review [P2]). */
+  it("advertises this OS's chord only, and matches what it advertises", () => {
+    expect(ariaKeyShortcuts("openRegister", true)).toBe("Meta+N");
+    expect(ariaKeyShortcuts("openRegister", false)).toBe("Control+N");
+    expect(ariaKeyShortcuts("addFilter", true)).toBe("F");
+    expect(ariaKeyShortcuts("cycleModalFocus", false)).toBe("Tab Shift+Tab");
   });
 });
 

@@ -61,6 +61,7 @@
       // focus free — only a modal traps it, so the `modal` scope is not passed here.
       scopes: ["overlay"],
       textEntry: textEntryFocused(document.activeElement),
+      mac: MAC_KEYBOARD,
     });
     if (binding?.action !== "closeOverlay") return;
     // Spent on this layer: it is the innermost thing open, so the window handler behind must not read
@@ -92,7 +93,7 @@
           type="button"
           aria-disabled={item.held !== null}
           aria-describedby={item.held === null ? undefined : reasonId(index)}
-          aria-keyshortcuts={item.kind === "entry" ? ariaKeyShortcuts(item.entry.action) : undefined}
+          aria-keyshortcuts={item.kind === "entry" ? ariaKeyShortcuts(item.entry.action, MAC_KEYBOARD) : undefined}
           onclick={() => item.held === null && onchoose(item)}
         >
           <span class="label">{item.kind === "entry" ? item.entry.label : item.label}</span>

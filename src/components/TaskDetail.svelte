@@ -926,7 +926,7 @@
           type="button"
           class="primary"
           disabled={saveGate.state !== "ready"}
-          aria-keyshortcuts={ariaKeyShortcuts("saveEditSession")}
+          aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
           title={saveGate.state === "ready"
             ? `保存 (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`
             : saveGate.reason}

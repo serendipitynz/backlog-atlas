@@ -21,6 +21,7 @@
   // own, since opening them unmounts nothing that holds 未保存入力.
   import type { Snippet } from "svelte";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
+  import { MAC_KEYBOARD } from "../lib/platform";
 
   interface Props {
     /** The dialog's accessible name — what the header entry that opened it is called. */
@@ -86,6 +87,7 @@
     const binding = matchShortcut(event, {
       scopes: ["overlay", "modal"],
       textEntry: textEntryFocused(document.activeElement),
+      mac: MAC_KEYBOARD,
     });
     if (binding === null) return;
     if (binding.preventsDefault !== null) event.preventDefault();
