@@ -380,19 +380,37 @@ impl SyncState {
         }
     }
 
-    /// 未読タスクファイル: active-task files on disk that this state's index has no stamp for
-    /// (doc-9 §4.2.3). A 参照追随書き換え's 書き換え対象集合 is derived from the model, so it only
-    /// describes what the CLI will rewrite while the model still knows every active task: a task
-    /// created after the read could reference the milestone, be rewritten by the CLI, and never
-    /// appear in the set or the check. Listing the directory is what makes that observable — the
-    /// index alone cannot show a file it has never seen. A task the read layer failed to *read* is
-    /// unstamped too and lands here for the same reason: nothing vouches for it.
-    fn unread_task_files(&self, source: &dyn ScanSource) -> io::Result<Vec<PathBuf>> {
-        Ok(source
-            .list(ScanDir::Tasks)?
-            .into_iter()
-            .filter(|path| !self.index.contains_key(path))
-            .collect())
+    /// 走査範囲の同一性 (doc-9 §4.2.3): whether the active-task directory is still the one the model
+    /// was built from. Returns the two ways it breaks — (未読タスクファイル, files whose version moved).
+    ///
+    /// A 参照追随書き換え's 書き換え対象集合 is derived from the model's *contents*, so checking only
+    /// the set's members leaves out every change that moves a file *into* the set: a task created
+    /// after the read (which the index has never seen — only a listing can show it), and a task that
+    /// was read as referencing nothing and then externally edited to reference this milestone (which
+    /// is in the index, in sync with nothing that changed about the set, and yet will be rewritten).
+    /// Both are rewritten by the CLI while absent from the set Atlas checked and showed the user, so
+    /// the whole scope is verified rather than the set.
+    ///
+    /// Scanning the whole directory does mean an unrelated task's edit withholds the update. That is
+    /// not avoidable by being cleverer: whether a task belongs to the set is decided by its current
+    /// contents, so narrowing the check to "the relevant ones" means reading them anyway — at which
+    /// point their version is known too. A task the read layer failed to *read* is unstamped and
+    /// lands in the first list for the same reason as a new one: nothing vouches for it.
+    fn scope_divergence(
+        &self,
+        source: &dyn ScanSource,
+        probe: &dyn FileVersions,
+    ) -> io::Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+        let mut unread = Vec::new();
+        let mut diverged = Vec::new();
+        for path in source.list(ScanDir::Tasks)? {
+            if !self.index.contains_key(&path) {
+                unread.push(path);
+            } else if self.check_conflict(&path, probe)? == ConflictCheck::Conflict {
+                diverged.push(path);
+            }
+        }
+        Ok((unread, diverged))
     }
 
     /// Run an update under the doc-9 §4 sequence as one unit: check every target's version, launch
@@ -457,7 +475,11 @@ impl SyncState {
                 }
             }
             if model_derived {
-                unread.extend(self.unread_task_files(source).map_err(GuardError::Probe)?);
+                let (unread_now, diverged_now) = self
+                    .scope_divergence(source, probe)
+                    .map_err(GuardError::Probe)?;
+                unread.extend(unread_now);
+                diverged.extend(diverged_now);
             }
         }
         if !diverged.is_empty() || !unread.is_empty() {
@@ -612,22 +634,19 @@ fn milestone_target(
 }
 
 /// The milestone an operand names. v1.47.1 takes either the id or the title (`milestone archive
-/// <name>` is documented as "by id or title"), so both are accepted here; the title is compared the
-/// way the CLI compares it (doc-9 §4.2.1).
+/// <name>` is documented as "by id or title"), and compares both the way [`names_milestone`] does
+/// (doc-9 §4.2.1) — the same comparison, so an operand Atlas resolves is one the CLI resolves too.
 fn find_milestone<'a>(model: &'a ProjectModel, name: &str) -> Option<&'a crate::domain::Milestone> {
-    model
-        .milestones
-        .iter()
-        .find(|m| m.id == name || same_title(&m.title, name))
+    model.milestones.iter().find(|m| names_milestone(m, name))
 }
 
 /// 参照タスク集合 (doc-9 §4.2.2): the active tasks a 参照追随書き換え may rewrite. Deliberately wider
-/// than the read layer's reference resolution, which matches the id alone: the CLI also rewrites a
-/// task whose `milestone` value equals the *title* modulo surrounding whitespace and case (doc-9
-/// §4.2.1), and a set that missed those would leave them rewritten unchecked. Tasks outside `tasks/`
-/// are excluded because no operation was observed to touch them, and files the CLI does not in fact
-/// rewrite (a value already equal to the id) are kept in: that skip is v1.47.1 behaviour, not a
-/// contract, so the set is the upper bound of what may be rewritten (doc-9 §4.2.2).
+/// than the read layer's reference resolution, which matches the id exactly: the CLI treats a value
+/// as a reference when it matches the id *or* the title modulo surrounding whitespace and case
+/// (doc-9 §4.2.1), and a set that missed those would leave them rewritten unchecked. Tasks outside
+/// `tasks/` are excluded because no operation was observed to touch them, and files the CLI does not
+/// in fact rewrite (a value already equal to the id) are kept in: that skip is v1.47.1 behaviour, not
+/// a contract, so the set is the upper bound of what may be rewritten (doc-9 §4.2.2).
 fn referencing_tasks(model: &ProjectModel, milestone: &crate::domain::Milestone) -> Vec<PathBuf> {
     model
         .tasks
@@ -636,17 +655,19 @@ fn referencing_tasks(model: &ProjectModel, milestone: &crate::domain::Milestone)
         .filter(|task| {
             task.milestone
                 .as_deref()
-                .is_some_and(|value| value == milestone.id || same_title(&milestone.title, value))
+                .is_some_and(|value| names_milestone(milestone, value))
         })
         .map(|task| task.source_path.clone())
         .collect()
 }
 
-/// Title comparison as v1.47.1 performs it: surrounding whitespace and case are ignored, and nothing
-/// else is (an inserted inner space was observed *not* to match — doc-9 §4.2.1). `to_lowercase` is
-/// the Unicode-aware fold, matching the CLI's JavaScript `toLowerCase`.
-fn same_title(title: &str, value: &str) -> bool {
-    title.trim().to_lowercase() == value.trim().to_lowercase()
+/// Whether a value names this milestone, the way v1.47.1 decides it (doc-9 §4.2.1): the id and the
+/// title are both compared ignoring surrounding whitespace and case — `"  M-0  "` was observed to be
+/// rewritten by a rename of `m-0`. Nothing else is ignored (an inserted inner space did *not* match).
+fn names_milestone(milestone: &crate::domain::Milestone, value: &str) -> bool {
+    let value = value.trim().to_lowercase();
+    // `to_lowercase` is the Unicode-aware fold, matching the CLI's JavaScript `toLowerCase`.
+    value == milestone.id.trim().to_lowercase() || value == milestone.title.trim().to_lowercase()
 }
 
 // --- debounce (doc-9 §3, AC #1) -----------------------------------------------------------------
@@ -1752,7 +1773,13 @@ task_prefix: \"TASK\"\n";
             "tasks/task-2 - b.md",
             &milestone_task("TASK-2", "  phase ONE  "),
         );
-        temp.write("tasks/task-3 - c.md", &task_file("TASK-3", "To Do"));
+        // The id written with padding and in upper case: v1.47.1 rewrites this one too (doc-9
+        // §4.2.1), so an id compared exactly would leave it out of the set.
+        temp.write(
+            "tasks/task-3 - c.md",
+            &milestone_task("TASK-3", "\"  M-1  \""),
+        );
+        temp.write("tasks/task-4 - d.md", &task_file("TASK-4", "To Do"));
         temp.write("drafts/draft-1 - d.md", &milestone_task("DRAFT-1", "m-1"));
         temp.write(
             "archive/tasks/task-9 - old.md",
@@ -1777,6 +1804,7 @@ task_prefix: \"TASK\"\n";
         let milestone_file = temp.path.join("milestones").join("m-1 - phase-one.md");
         let by_id = temp.path.join("tasks").join("task-1 - a.md");
         let by_title = temp.path.join("tasks").join("task-2 - b.md");
+        let padded_id = temp.path.join("tasks").join("task-3 - c.md");
 
         for op in [
             UpdateOperation::MilestoneRename {
@@ -1801,7 +1829,12 @@ task_prefix: \"TASK\"\n";
                     // as dangling: the CLI rewrites it (doc-9 §4.2.1), so the check must cover it.
                     assert_eq!(
                         files,
-                        vec![milestone_file.clone(), by_id.clone(), by_title.clone()],
+                        vec![
+                            milestone_file.clone(),
+                            by_id.clone(),
+                            by_title.clone(),
+                            padded_id.clone()
+                        ],
                         "{op:?} must cover the milestone file and every active referencing task"
                     );
                 }
@@ -1874,7 +1907,7 @@ task_prefix: \"TASK\"\n";
         let cap = capability(&cli);
         cli.calls.borrow_mut().clear();
 
-        temp.write("tasks/task-4 - new.md", &task_file("TASK-4", "To Do"));
+        temp.write("tasks/task-5 - new.md", &task_file("TASK-5", "To Do"));
 
         let result = state
             .guarded_update(
@@ -1899,7 +1932,7 @@ task_prefix: \"TASK\"\n";
                 assert!(diverged.is_empty(), "no member of the set changed");
                 assert_eq!(
                     unread,
-                    vec![temp.path.join("tasks").join("task-4 - new.md")]
+                    vec![temp.path.join("tasks").join("task-5 - new.md")]
                 );
             }
             other => panic!("expected a Conflict, got {other:?}"),
@@ -1925,6 +1958,54 @@ task_prefix: \"TASK\"\n";
             )
             .unwrap();
         assert!(matches!(archive, GuardedUpdate::Ran { .. }));
+    }
+
+    // --- review round 1 [P1]: a task edited *into* the set must withhold the update ---------------
+
+    #[test]
+    fn an_active_task_edited_into_the_reference_set_withholds_the_update() {
+        // The task was read as referencing nothing, so it is not in the 参照タスク集合 and is not an
+        // unread file either — yet the CLI will rewrite it. Checking only the set's members would
+        // let it through unchecked and unshown, which is why 走査範囲の同一性 covers the whole
+        // active-task directory (doc-9 §4.2.3-2).
+        let temp = milestone_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+        cli.calls.borrow_mut().clear();
+
+        // TASK-4 held no milestone when the model was built; someone points it at m-1 afterwards.
+        temp.write("tasks/task-4 - d.md", &milestone_task("TASK-4", "m-1"));
+
+        let result = state
+            .guarded_update(
+                &[UpdateOperation::MilestoneRemove {
+                    name: "m-1".to_string(),
+                    task_handling: MilestoneTaskHandling::Clear,
+                }],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+            )
+            .unwrap();
+
+        match result {
+            GuardedUpdate::Conflict {
+                diverged, unread, ..
+            } => {
+                assert_eq!(
+                    diverged,
+                    vec![temp.path.join("tasks").join("task-4 - d.md")]
+                );
+                assert!(unread.is_empty(), "the file was read; its version moved");
+            }
+            other => panic!("expected a Conflict, got {other:?}"),
+        }
+        assert!(cli.calls.borrow().is_empty(), "no CLI launch on conflict");
     }
 
     #[test]

@@ -471,19 +471,21 @@ export function buildMilestoneAdd(input: MilestoneAddInput): IssuePlan {
  * user commits — doc-10 §6 forbids issuing one of these without that list, because doc-9 §4.2.3
  * treats "the user decided from what they saw" as the thing the check protects.
  *
- * Wider than the read layer's reference resolution on purpose: v1.47.1 also rewrites a task whose
- * `milestone` value equals the *title* modulo surrounding whitespace and case (doc-9 §4.2.1). Tasks
- * outside `tasks/` are excluded because no operation was observed to touch them.
+ * Wider than the read layer's reference resolution on purpose: v1.47.1 treats a value as a reference
+ * when it matches the id *or* the title modulo surrounding whitespace and case — `"  M-0  "` is
+ * rewritten by a rename of `m-0` (doc-9 §4.2.1). Tasks outside `tasks/` are excluded because no
+ * operation was observed to touch them.
  */
 export function referencingTasks(
   milestone: Milestone,
   tasks: readonly TaskView[],
 ): TaskView[] {
+  const id = milestone.id.trim().toLowerCase();
   const title = milestone.title.trim().toLowerCase();
   return tasks.filter((view) => {
     if (view.task.storageState !== "active") return false;
-    const value = view.task.milestone;
-    return value !== null && (value === milestone.id || value.trim().toLowerCase() === title);
+    const value = view.task.milestone?.trim().toLowerCase();
+    return value !== undefined && (value === id || value === title);
   });
 }
 

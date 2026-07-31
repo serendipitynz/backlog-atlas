@@ -495,16 +495,28 @@
   let removeInput = $state<MilestoneRemoveInput>({ ...EMPTY_MILESTONE_REMOVE });
 
   function openMilestoneOp(milestone: Milestone, kind: "rename" | "remove" | "archive"): void {
-    // Re-opening the same one keeps its input; moving to another operation starts from empty, so a
-    // name or a 付け替え先 typed for one milestone cannot be issued against the next.
+    // Pressing the open operation again closes it, which is a cancel like any other.
     if (milestoneOp?.id === milestone.id && milestoneOp.kind === kind) {
-      milestoneOp = null;
+      closeMilestoneOp();
       return;
     }
     milestoneOp = { id: milestone.id, kind };
+    // Moving to another operation starts from empty, so a name or a 付け替え先 typed for one
+    // milestone cannot be issued against the next.
     renameInput = { ...EMPTY_MILESTONE_RENAME };
     removeInput = { ...EMPTY_MILESTONE_REMOVE };
     message = null;
+  }
+
+  /**
+   * Close the open operation, clearing its input. The clearing is the point: `dirty` counts these
+   * inputs, so a close that left them behind would keep asking before leaving the screen — to
+   * protect input the user cancelled and can no longer see (review round 1 [P2]).
+   */
+  function closeMilestoneOp(): void {
+    milestoneOp = null;
+    renameInput = { ...EMPTY_MILESTONE_RENAME };
+    removeInput = { ...EMPTY_MILESTONE_REMOVE };
   }
 
   /** The plan the open operation would issue, or `null` when none is open. */
@@ -544,11 +556,7 @@
     // Closed on success only: the milestone the input names is gone (removed/archived) or renamed,
     // so keeping the form open would offer a second issue against a stale operand. A failure or a
     // 更新前競合 keeps it, which is what lets the user reload and retry the same input.
-    if (outcome?.state === "applied") {
-      milestoneOp = null;
-      renameInput = { ...EMPTY_MILESTONE_RENAME };
-      removeInput = { ...EMPTY_MILESTONE_REMOVE };
-    }
+    if (outcome?.state === "applied") closeMilestoneOp();
   }
 
   // --- 未保存入力 (doc-8 §6.3) -------------------------------------------------------------------
@@ -1338,7 +1346,7 @@
                                 ? "削除を発行"
                                 : "アーカイブを発行"}
                           </button>
-                          <button type="button" onclick={() => (milestoneOp = null)}>やめる</button>
+                          <button type="button" onclick={closeMilestoneOp}>やめる</button>
                           {#if opIssue?.state === "blocked"}
                             <span class="reason">{opIssue.reason}</span>
                           {/if}

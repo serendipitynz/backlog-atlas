@@ -345,7 +345,10 @@ describe("参照タスク集合 (doc-9 §4.2.2)", () => {
     // v1.47.1 matches the title ignoring surrounding space and case, so this one is rewritten too
     // even though the read layer resolves it to nothing (doc-9 §4.2.1).
     taskView({ id: "TASK-2", milestone: "  phase ONE  " }),
-    taskView({ id: "TASK-3", milestone: null }),
+    // The id padded and upper-cased is a reference to v1.47.1 too (doc-9 §4.2.1), so an id compared
+    // exactly would leave this one out of the set — and out of what the screen shows.
+    taskView({ id: "TASK-3", milestone: "  M-1  " }),
+    taskView({ id: "TASK-8", milestone: null }),
     taskView({ id: "TASK-4", milestone: "m-2" }),
     taskView({ id: "TASK-5", milestone: "m-1", storageState: "draft" }),
     taskView({ id: "TASK-6", milestone: "m-1", storageState: "archive" }),
@@ -356,6 +359,7 @@ describe("参照タスク集合 (doc-9 §4.2.2)", () => {
     expect(referencingTasks(MILESTONE, tasks).map((view) => view.task.id)).toEqual([
       "TASK-1",
       "TASK-2",
+      "TASK-3",
     ]);
   });
 
