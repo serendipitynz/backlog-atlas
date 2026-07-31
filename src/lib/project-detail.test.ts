@@ -2,12 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   ALIAS_EFFECT_NOTES,
   DETAIL_SECTIONS,
-  LEDGER_READ_ONLY_BAND,
   OVERVIEW_READ_ONLY_NOTE,
   SLUG_IMMUTABLE_NOTE,
   UNREGISTER_SCOPE_NOTE,
   aliasSummary,
-  cliDegradedBand,
   movesRoot,
   overviewBlocked,
   rootMoveNote,
@@ -16,7 +14,7 @@ import {
 } from "./project-detail";
 import { aliasKeyEffect, editOf, toUpdateRequest, type EntryEdit } from "./ledger";
 import { entry } from "./fixtures";
-import type { CliReadiness, ProjectEntry } from "./wire";
+import type { ProjectEntry } from "./wire";
 
 function registered(overrides: Partial<ProjectEntry> = {}): ProjectEntry {
   return { ...entry("atlas"), ...overrides };
@@ -46,30 +44,12 @@ describe("区画切替", () => {
 });
 
 // --- 2 本の帯 (doc-10 §3/§8) -------------------------------------------------------------------
+//
+// The 帯 themselves are ② and ③ of the screen-common 上部帯 stack, so their text and their
+// independence are `band.test.ts`'s (doc-11 §4). What stays here is the per-操作 reason this screen
+// shows beside its controls, which is where the full text lives once the band is 縮約 to one line.
 
-describe("台帳読取専用帯と CLI 縮退帯", () => {
-  it("keeps the two bands independent, each naming the 区画 it does not reach", () => {
-    // doc-10 §3: 台帳読取専用 is about where Atlas writes, CLI 縮退 about whether the Backlog CLI
-    // runs, and one can stand without the other. Side by side they must not read as one failure.
-    expect(LEDGER_READ_ONLY_BAND).toContain("文書・マイルストーン・新規タスク");
-    expect(LEDGER_READ_ONLY_BAND).toContain("影響を受けません");
-    const degraded = cliDegradedBand({ state: "unavailable", detail: "not on PATH" });
-    expect(degraded).toContain("概要区画");
-    expect(degraded).toContain("影響を受けません");
-  });
-
-  it("raises no CLI band while a supported backlog is present", () => {
-    const ready: CliReadiness = { state: "ready", version: "1.47.1" };
-    expect(cliDegradedBand(ready)).toBeNull();
-  });
-
-  it("distinguishes 確認中 from 検出できない, since the two lead to different actions", () => {
-    expect(cliDegradedBand(null)).toContain("確認中");
-    expect(cliDegradedBand({ state: "unavailable", detail: "not on PATH" })).toContain(
-      "見つからない",
-    );
-  });
-
+describe("台帳読取専用の及ぶ範囲", () => {
   it("stops the ledger edits on a read-only ledger and nothing else (doc-10 §8)", () => {
     expect(overviewBlocked({ readOnly: true, busy: false })).toContain("読み取り専用");
     expect(overviewBlocked({ readOnly: false, busy: true })).toContain("実行中");

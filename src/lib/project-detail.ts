@@ -10,8 +10,8 @@
  * | doc-10 | here | is |
  * |---|---|---|
  * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | the four items 概要・文書・マイルストーン・新規タスク — a display change within one screen, not a screen transition |
- * | §3 台帳読取専用帯 | [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and that the effect stops at the 概要区画 |
- * | §3 CLI 縮退帯 | [`cliDegradedBand`] | that no supported CLI was found, and that the effect stops at the other three 区画 |
+ * | §3 台帳読取専用帯 | `band.ts`'s [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and what still works |
+ * | §3 CLI 縮退帯 | `band.ts`'s [`cliDegradedBand`] | that no supported CLI was found, and what still works |
  * | §4.1 送る属性を保存の直前に列挙する | [`SubmittedAttribute`] + [`submittedAttributes`] | 送信属性一覧: the attributes a save puts on `ledger_update`, as name, current value and value to send |
  * | §4.1 slug は編集手段を提供しない | [`SLUG_IMMUTABLE_NOTE`] | what changing it would take, and what that would break |
  * | §4.1 ルートを変えたときは Backlog ルートも併せて送る | [`rootMoveNote`] | the note under the field saying which value will travel |
@@ -19,7 +19,7 @@
  * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`OVERVIEW_READ_ONLY_NOTE`] | the sentence, near the controls, saying the inputs are stopped too |
  * | §4.2 別名が効くかの態 | [`ALIAS_EFFECT_NOTES`] | how one 別名表 row takes effect — four states, see below |
  * | §4.3 確認は slug の入力一致とする | [`unregisterBlocked`] | slug 入力一致: holds the action until the typed text matches, and says what is holding it |
- * | §8 台帳読取専用と CLI 縮退は独立 | [`overviewBlocked`] and [`cliDegradedBand`] applying separately | one standing leaves the other's 区画 working |
+ * | §8 台帳読取専用と CLI 縮退は独立 | [`overviewBlocked`] and `manage.ts`'s `issueAvailability` applying separately | one standing leaves the other's 区画 working |
  *
  * ## Why the 別名表 shows four states and not three
  *
@@ -34,9 +34,8 @@
  * sentences the screen shows (doc-3 §2.1).
  */
 
-import { readinessReason } from "./edit";
 import type { EntryEdit } from "./ledger";
-import type { CliReadiness, ProjectEntry, UpdateRequest } from "./wire";
+import type { ProjectEntry, UpdateRequest } from "./wire";
 
 // --- 区画切替 (doc-10 §1/§3) -------------------------------------------------------------------
 
@@ -49,30 +48,6 @@ export const DETAIL_SECTIONS: readonly { id: DetailSection; label: string }[] = 
   { id: "milestones", label: "マイルストーン" },
   { id: "newTask", label: "新規タスク" },
 ] as const;
-
-// --- 2 本の帯 (doc-10 §3/§8) -------------------------------------------------------------------
-
-/**
- * 台帳読取専用 (doc-3 §2.2). The sentence names the 区画 it does *not* reach, because doc-10 §3's two
- * 帯 are independent and side by side they would otherwise read as one general failure.
- */
-export const LEDGER_READ_ONLY_BAND =
-  "台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。" +
-  "概要区画の更新と登録解除はできません（doc-3 §2.2）。" +
-  "文書・マイルストーン・新規タスクは台帳を書かないため、この縮退の影響を受けません。";
-
-/**
- * CLI 縮退 (doc-5 §5), or that the probe has not answered yet. `null` means issuing is possible.
- * Names the 区画 it does not reach, for the same reason the read-only band does (doc-10 §3/§8).
- */
-export function cliDegradedBand(readiness: CliReadiness | null): string | null {
-  const reason = readinessReason(readiness);
-  if (reason === null) return null;
-  return (
-    `${reason}。文書・マイルストーン・新規タスクの発行はできません。` +
-    "概要区画は Backlog CLI を使わないため、この縮退の影響を受けません。"
-  );
-}
 
 // --- 概要区画: 送信属性一覧 (doc-10 §4.1) ------------------------------------------------------
 
@@ -235,12 +210,16 @@ export const LEDGER_WRITE_IN_FLIGHT_REASON =
  * apart from the band at the top of the screen: doc-11 §5 allows `disabled` when a 常時表示する補助文
  * sits near the control, and the top band is not near it. The same section allows the duplication.
  *
+ * It carries the *cause* as well, because the 上部帯 ③ is 縮約 to one line (doc-11 §4) and states only
+ * the consequence — this is the 別の場所 that clause sends the user to for the rest.
+ *
  * The inputs are stopped, and not only the save, because an unpressable save over editable fields
  * lets the user change values that can never be written — and that input then counts as 未保存入力,
  * so they are later asked whether to discard changes that were never saveable.
  */
 export const OVERVIEW_READ_ONLY_NOTE =
-  "台帳が読み取り専用のため、この区画の入力・保存・登録解除はすべてできません（doc-3 §2.2）。" +
+  "台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています（doc-3 §2.2）。" +
+  "この区画の入力・保存・登録解除はすべてできません。" +
   "文書・マイルストーン・新規タスクは台帳を書かないので、そちらは操作できます。";
 
 /** What 登録解除 removes and what it leaves (doc-3 §4.2). Body text, not a note beside the button. */
