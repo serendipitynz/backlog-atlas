@@ -21,6 +21,8 @@
     removeLastCondition,
     setText,
   } from "../lib/token";
+  import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
+  import { MAC_KEYBOARD } from "../lib/platform";
   import type { StorageSelection } from "../lib/wire";
 
   interface Props {
@@ -31,10 +33,26 @@
     /** 表示 n / m 件 (doc-7 §5.2): cards the grid is showing, and cards its rows hold in all. */
     shown: number;
     total: number;
+    /**
+     * Whether the 値一覧 is open. Held by the shell, not here, because a key opens it as well
+     * (`shortcuts.ts`'s `addFilter`) — with the state in this component the chord would need a second
+     * way in, and two openers would disagree about whether it is up.
+     */
+    popoverOpen: boolean;
+    onpopover: (open: boolean) => void;
     onchange: (filter: CardFilter) => void;
   }
 
-  let { filter, facets, defaultStorage, shown, total, onchange }: Props = $props();
+  let {
+    filter,
+    facets,
+    defaultStorage,
+    shown,
+    total,
+    popoverOpen,
+    onpopover,
+    onchange,
+  }: Props = $props();
 
   // The text box keeps its own state and is bound (DOM → state), never written back on every
   // keystroke: writing the value back mid-composition is what breaks IME input, and the filter
@@ -73,13 +91,14 @@
         : null,
   );
 
-  let open = $state(false);
   let anchor = $state<HTMLDivElement | null>(null);
   let opener = $state<HTMLButtonElement | null>(null);
 
   function close(): void {
-    open = false;
+    onpopover(false);
     // Back to the control the popover was opened from, so the next keystroke has somewhere to go.
+    // Kept here rather than in the shell: this component owns the button, and the chord that opens the
+    // popover comes *from* somewhere else, so there is nothing for the shell to hand focus back to.
     opener?.focus();
   }
 </script>
@@ -102,11 +121,16 @@
       type="button"
       class="control"
       bind:this={opener}
-      aria-expanded={open}
+      aria-expanded={popoverOpen}
       aria-haspopup="dialog"
-      onclick={() => (open ? close() : (open = true))}>＋ 絞り込み</button
+      aria-keyshortcuts={ariaKeyShortcuts("addFilter", MAC_KEYBOARD)}
+      onclick={() => (popoverOpen ? close() : onpopover(true))}
     >
-    {#if open}
+      ＋ 絞り込み
+      <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4); the chord itself is on `aria-keyshortcuts`. -->
+      <span class="hint" aria-hidden="true">{shortcutHint("addFilter", MAC_KEYBOARD)}</span>
+    </button>
+    {#if popoverOpen}
       <FilterPopover {filter} {facets} boundary={anchor} {onchange} onclose={close} />
     {/if}
   </div>
@@ -142,10 +166,12 @@
       class="control"
       aria-disabled={undoBlocked}
       aria-describedby={undoBlocked ? BLOCKED_ID : undefined}
+      aria-keyshortcuts={ariaKeyShortcuts("undoFilter", MAC_KEYBOARD)}
       title={undoBlocked ? (blockedReason ?? undefined) : "最後に足した条件を 1 件戻します"}
       onclick={() => !undoBlocked && onchange(removeLastCondition(filter))}
     >
       直前の 1 つを戻す
+      <span class="hint" aria-hidden="true">{shortcutHint("undoFilter", MAC_KEYBOARD)}</span>
     </button>
     <button
       type="button"
@@ -291,6 +317,9 @@
   }
 
   .control {
+    display: inline-flex;
+    gap: 0.3rem;
+    align-items: baseline;
     padding: 0.15rem 0.5rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
@@ -299,6 +328,14 @@
     font: inherit;
     font-size: 0.7rem;
     cursor: pointer;
+  }
+
+  // The chord beside its operation (doc-7 §2.1 / AC #4). Quiet, and outside the accessible name — the
+  // control's own label is the entry, and `aria-keyshortcuts` carries the chord as data.
+  .hint {
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-variant-numeric: tabular-nums;
   }
 
   // The 理由 doc-11 §5 requires to be readable without hovering. It sits on the bar's own line

@@ -24,13 +24,10 @@ export interface AceEditor {
     setUseWorker(use: boolean): void;
     setUseWrapMode(use: boolean): void;
   };
-  commands: {
-    addCommand(command: {
-      name: string;
-      bindKey: { win: string; mac: string };
-      exec: () => void;
-    }): void;
-  };
+  // `commands.addCommand` is deliberately absent. Ace's own binding table was a second place that
+  // assigned a key, which doc-7 §2.1 rules out (割り当て一覧を 1 箇所に持つ) — and Ace's table cannot see
+  // the composition guard the list applies, so the promoted editor answered a chord under conditions the
+  // fallback textarea refused. `Editor.svelte` listens for the key instead, once, for both forms.
 }
 
 export interface AceApi {

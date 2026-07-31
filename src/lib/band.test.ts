@@ -119,8 +119,12 @@ describe("帯の 1 行 (doc-11 §4 の縮約)", () => {
     }
   });
 
-  it("counts the hidden rows rather than listing them", () => {
-    expect(hiddenRowsBand(3)).toBe("非表示の行 3 件");
+  it("counts the hidden rows rather than listing them, and names where the list is", () => {
+    // doc-11 §4's own example of 縮約: 「非表示のレーン n 件」に縮約し、個々のレーンはメニューの一覧から
+    // 戻す。The 別の場所 is said, because a one-line band is allowed only while the whole is readable
+    // somewhere — すべて戻す itself stays a control in the band (`App.svelte`).
+    expect(hiddenRowsBand(3)).toContain("非表示の行 3 件");
+    expect(hiddenRowsBand(3)).toContain("メニュー");
   });
 
   it("states what 継続検出停止 costs, and sends the user nowhere to resolve it", () => {

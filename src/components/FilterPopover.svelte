@@ -17,6 +17,8 @@
     type FilterFacet,
   } from "../lib/token";
   import type { CardFilter, Facets } from "../lib/filter";
+  import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
+  import { MAC_KEYBOARD } from "../lib/platform";
 
   interface Props {
     filter: CardFilter;
@@ -154,7 +156,15 @@
   });
 
   function keydown(event: KeyboardEvent): void {
-    if (event.key !== "Escape") return;
+    // Through the 割り当て一覧 (doc-7 §2.1 asks for every assignment in one place, TASK-56). The popover is
+    // one of the 被せ層 that row covers, so its Escape is answered here rather than recognised by key
+    // name — which is what kept this assignment out of the list before.
+    const binding = matchShortcut(event, {
+      scopes: ["overlay"],
+      textEntry: textEntryFocused(document.activeElement),
+      mac: MAC_KEYBOARD,
+    });
+    if (binding?.action !== "closeOverlay") return;
     // Only this popover's Escape: it is the innermost thing open, and the press is spent closing it.
     event.stopPropagation();
     onclose();

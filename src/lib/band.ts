@@ -128,11 +128,16 @@ export function unwatchedBand(reason: string): string {
 }
 
 /**
- * 行非表示 (doc-7 §5.1), 縮約 to a count. The 戻す controls stay in the band beside it (doc-11 §4:
- * 帯が持つ操作は縮約しても帯に残す), so nothing has to be opened to undo a hide.
+ * 行非表示 (doc-7 §5.1), 縮約 to a count. すべて戻す stays in the band beside it (doc-11 §4: 帯が持つ操作
+ * は縮約しても帯に残す), so undoing every hide opens nothing.
+ *
+ * The per-row 戻す is named as being in the menu, which is doc-11 §4's own example of 縮約: 行非表示の帯
+ * は「非表示のレーン n 件」に縮約し、個々のレーンはメニューの一覧から戻す. §4 also requires the 別の場所 to
+ * be *said* rather than left for the user to find, since the one-line form is allowed only while the
+ * whole is readable somewhere — so the sentence carries the destination.
  */
 export function hiddenRowsBand(count: number): string {
-  return `非表示の行 ${count} 件`;
+  return `非表示の行 ${count} 件（行ごとに戻すにはメニュー）`;
 }
 
 /**
