@@ -378,7 +378,7 @@ export type CommandError =
   // method you chose" from "the launcher existed and the OS refused it".
   | { kind: "unknownTaskFile"; slug: string; path: string }
   | { kind: "editorUnavailable"; detail: string }
-  | { kind: "editorLaunchFailed"; program: string; detail: string };
+  | { kind: "editorLaunchFailed"; method: LaunchMethod; program: string; detail: string };
 
 // --- 外部エディタ経路 (doc-8 §7, TASK-37) ----------------------------------------------------
 
@@ -406,18 +406,20 @@ export interface ConfiguredEditor {
 }
 
 /**
- * Which launch methods the environment has. `association` is the launcher's program name, or `null`
- * where the platform has none this build is willing to spawn (Windows: `cmd /c start` would re-parse
- * the path — see `editor::association_launcher`). Whether a named program is installed is only
- * learned by running it.
+ * Which launch methods the environment has. `association` is what that method invokes: a program name
+ * where the platform's launcher is a program (`open`, `xdg-open`), or `ShellExecuteW` where it is a
+ * Win32 call (Windows — `editor::association_launcher_of`). Never `null`: every platform this project
+ * builds for has a launcher. Whether a named *program* is installed is only learned by running it.
  */
 export interface EditorReadiness {
   configured: ConfiguredEditor | null;
-  association: string | null;
+  association: string;
 }
 
-/** What one launch spawned. Shown, because a terminal-only editor started from a GUI process is the
- * expected way for a launch to appear to have done nothing. */
+/** What one launch did. Shown, because a terminal-only editor started from a GUI process is the
+ * expected way for a launch to appear to have done nothing. `program` is the launcher (a program, or
+ * `ShellExecuteW`) and `args` is what it received — an argv for a spawn, the one path parameter for
+ * `ShellExecuteW`. */
 export interface EditorLaunch {
   method: LaunchMethod;
   program: string;
