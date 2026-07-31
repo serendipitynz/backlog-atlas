@@ -17,6 +17,8 @@
  * | doc-8 §4 Pull Request ↔ References 分離 | [`ReferenceSplit`] | the task's references cut into PR URLs and ordinary references |
  * | doc-6 §3 コミット検索の実行状態 | [`HistoryState`] | the panel's own state for the Git read: loading / read / failed / not keyable |
  * | doc-8 §5 Git 履歴欄 | [`CommitListView`] + [`RelationAvailability`] | what the commit list is showing, and whether 関連解決 could run at all |
+ * | doc-6 §6 コミット・PR 関連解決の結果 | [`RelationTally`] + [`relationAccounts`] | how many PRs landed in each outcome, and what each one's outcome was |
+ * | doc-8 §5 各コミットに関連 Pull Request を紐づけて示す | [`pullRequestsByCommit`] | the resolution read the other way round: commit id → the PRs it belongs to |
  * | doc-8 §5 配置ごとの粒度（件数のみ） | [`commitCountLine`] + [`relationLine`] | the same two facts in one line each, for the narrow placements |
  * | decision-6 コミット該当なし / Git 対象不在 | [`CommitListView`] states `noCommits` / `noRepository` | searched-and-empty (neutral) vs. the root not being a Git repository |
  * | decision-6 Git remote 不在 | [`RelationAvailability`] state `remoteAbsent` | the ledger's Git remote 有無属性 is false — a setting, not a failure |
@@ -36,7 +38,9 @@ import type {
   Commit,
   CommitSearch,
   DegradeEvent,
+  LookupFailure,
   Milestone,
+  PrRelation,
   ProjectEntry,
   PullRequestRef,
   ReferenceKind,
@@ -171,8 +175,8 @@ function fromCommitSearch(search: CommitSearch): CommitListView {
  * Whether コミット・PR 関連解決 could run for this task (doc-6 §5/§6, decision-6). The three
  * states are separated because they are undone differently: `remoteAbsent` is a ledger attribute
  * the user can fix, `hostUndetermined` is a host Atlas cannot reference, and `hostDetermined`
- * means the gate is open — the relation is still unresolved in this build (doc-6 §6 leaves each
- * host's reference means to a per-kind addition), which is a fourth fact the panel states.
+ * means the gate is open — the resolution ran, and its per-PR outcomes are in
+ * [`relationAccounts`] / [`relationTally`].
  */
 export type RelationAvailability =
   | { state: "hostDetermined"; host: string }
@@ -235,15 +239,156 @@ export function commitCountLine(view: CommitListView): HistoryLine {
 }
 
 /**
- * 関連 PR を 1 行で言う (doc-8 §5). doc-8 asks the narrow placement for 関連 PR m 件, and this build
- * has no m to give: 関連解決の参照手段は未実装 (doc-6 §6), so every count would be 0 and would read as
- * 関連が無い — the exact misreading doc-8 §5 forbids by requiring the *state* to be shown. The number
- * is therefore replaced by the state, in one line, with the full account left to 全面.
+ * How the task's Pull Requests came out of 関連解決 (doc-6 §6). Counted once and used by both
+ * granularities, so the 1 行 of a narrow placement and the per-cause account of 全面 can never
+ * disagree about how many PRs there were.
+ *
+ * `related` is doc-8 §5's *m* in 関連 PR m 件. `unrelated` is kept apart from it because a PR that
+ * was queried and shares no commit is a resolved answer, while `failed` means 今は確かめられない.
  */
-export function relationLine(availability: RelationAvailability): HistoryLine {
+export interface RelationTally {
+  related: number;
+  unrelated: number;
+  failed: number;
+  unsupported: number;
+}
+
+function relationsOf(history: HistoryState): PrRelation[] {
+  return history.state === "loaded" ? history.history.relations : [];
+}
+
+export function relationTally(history: HistoryState): RelationTally {
+  const tally: RelationTally = { related: 0, unrelated: 0, failed: 0, unsupported: 0 };
+  for (const relation of relationsOf(history)) {
+    switch (relation.outcome.state) {
+      case "resolved":
+        if (relation.outcome.commitIds.length > 0) tally.related += 1;
+        else tally.unrelated += 1;
+        break;
+      case "lookupFailed":
+        tally.failed += 1;
+        break;
+      case "hostUnsupported":
+        tally.unsupported += 1;
+        break;
+    }
+  }
+  return tally;
+}
+
+/**
+ * 各コミットに関連 Pull Request を紐づける (doc-8 §5) — the resolution read from the commit's side.
+ * Only `resolved` outcomes contribute: a PR that could not be looked up relates to nothing *yet*, and
+ * hanging it off a commit would assert a pairing that was never confirmed.
+ */
+export function pullRequestsByCommit(history: HistoryState): Map<string, string[]> {
+  const byCommit = new Map<string, string[]>();
+  for (const relation of relationsOf(history)) {
+    if (relation.outcome.state !== "resolved") continue;
+    for (const commitId of relation.outcome.commitIds) {
+      const urls = byCommit.get(commitId);
+      if (urls) urls.push(relation.pullRequest);
+      else byCommit.set(commitId, [relation.pullRequest]);
+    }
+  }
+  return byCommit;
+}
+
+/** One Pull Request's outcome written out, for 全面シングルビュー (doc-8 §5 原因ごとの書き分け). */
+export interface RelationAccount {
+  pullRequest: string;
+  text: string;
+  kind: HistoryLine["kind"];
+}
+
+/**
+ * 原因ごとに書き分けた関連解決の状態と、その原因が解消できるかどうか (doc-8 §5 全面シングルビュー).
+ * One entry per extracted Pull Request, in the order the task's References gave them.
+ */
+export function relationAccounts(history: HistoryState): RelationAccount[] {
+  return relationsOf(history).map(({ pullRequest, outcome }) => {
+    switch (outcome.state) {
+      case "resolved":
+        return outcome.commitIds.length > 0
+          ? {
+              pullRequest,
+              text: `解決済み: このタスクのコミット ${outcome.commitIds.length} 件と関連`,
+              kind: "neutral" as const,
+            }
+          : {
+              pullRequest,
+              text: "解決済み: 共有コミット無し（この PR にこのタスクのコミットは含まれません）",
+              kind: "neutral" as const,
+            };
+      case "hostUnsupported":
+        return {
+          pullRequest,
+          text: "対象外: remote ホスト種別を判別できないため照会していません。Atlas が参照できるホストではないため、この原因は解消できません。",
+          kind: "setting" as const,
+        };
+      case "lookupFailed":
+        return {
+          pullRequest,
+          // 「関連が無い」ではなく「今は確かめられない」であることは 3 つの原因に共通し、解消の
+          // 手掛かりだけが原因ごとに違う (doc-8 §5). 解消経路を payload から確定できない
+          // `queryFailed` に、確定できるかのような文言を当てない。
+          text: `参照不能: ${outcome.detail}。今は確かめられないだけで、関連が無いという意味ではありません。${lookupRemedy(outcome.reason)}`,
+          kind: "failure" as const,
+        };
+    }
+  });
+}
+
+/** その原因が解消できるかどうか (doc-8 §5), per [`LookupFailure`]. */
+function lookupRemedy(reason: LookupFailure): string {
+  switch (reason) {
+    case "toolMissing":
+      return "参照手段を起動できていないため、gh を導入すれば解消できます（decision-14）。";
+    case "invalidReference":
+      return "この参照からは照会先を決められないため、References の URL を直せば解消できます。";
+    case "queryFailed":
+      return "照会は実行され、失敗しました。認証・権限・PR の不在・ネットワークのいずれかで、どれかはこの結果からは分かりません。再取得で解消することがあります。";
+  }
+}
+
+/**
+ * 関連 PR を 1 行で言う (doc-8 §5). Now that a reference means exists (decision-14), doc-8 §5's 関連 PR
+ * m 件 is what the narrow placements show. The line still names the cause when some PR did not
+ * resolve — 関連解決の状態 means 今は確かめられない rather than 関連が無い, so a bare count would be the
+ * misreading doc-8 §5 forbids — while the per-cause account stays in 全面.
+ */
+export function relationLine(
+  availability: RelationAvailability,
+  history: HistoryState,
+): HistoryLine {
   switch (availability.state) {
-    case "hostDetermined":
-      return { text: "関連 PR: 参照手段が未実装（remote ホストは判別済み）", kind: "neutral" };
+    case "hostDetermined": {
+      // 突き合わせる相手が無ければ m は言えない: relation resolution intersects with the task's local
+      // commits (doc-6 §6), so with no commit list every count would be 0 and would read as 関連が無い.
+      const commits = commitList(history);
+      if (commits.state !== "commits" && commits.state !== "noCommits") {
+        return {
+          text: "関連 PR: 突き合わせ不能（ローカルコミット一覧を読めません）",
+          kind: commits.state === "unreadable" ? "failure" : "setting",
+        };
+      }
+      const tally = relationTally(history);
+      const total = tally.related + tally.unrelated + tally.failed + tally.unsupported;
+      if (total === 0) {
+        return { text: "関連 PR: 参照する Pull Request URL がありません", kind: "neutral" };
+      }
+      const caveats: string[] = [];
+      if (tally.failed > 0) caveats.push(`${tally.failed} 件は参照不能`);
+      if (tally.unsupported > 0) caveats.push(`${tally.unsupported} 件は対象外`);
+      const text =
+        caveats.length > 0
+          ? `関連 PR ${tally.related} 件（${caveats.join("・")}）`
+          : `関連 PR ${tally.related} 件`;
+      // 参照不能 is the only failure family here; 対象外 is a property of the host, which decision-6
+      // puts in the 中間 family beside the other things a setting explains.
+      const kind = tally.failed > 0 ? "failure" : tally.unsupported > 0 ? "setting" : "neutral";
+      return { text, kind };
+    }
     case "remoteAbsent":
       return { text: "関連 PR: 解決なし（Git remote 不在）", kind: "setting" };
     case "hostUndetermined":

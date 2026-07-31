@@ -67,7 +67,7 @@ use crate::editor::{
     self, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod,
     Launcher, SystemEnv, SystemLauncher,
 };
-use crate::history::{self, Commit, HistoryError, RemoteHost};
+use crate::history::{self, Commit, HistoryError, PrCommitSource, PrRelation, RemoteHost};
 use crate::interpret::{interpret_task, TaskInterpretation};
 use crate::ledger::{
     Ledger, LedgerError, LoadedLedger, ParsedTaskRef, ProjectEntry, RegisterRequest, UpdateRequest,
@@ -189,17 +189,22 @@ impl From<CliStatus> for CliReadiness {
 /// arrive with the snapshot. That keeps doc-8 §4's PR ↔ References separation available for a task
 /// this command cannot even be called for — a 解析不能 file has no TASK-ID to key on (doc-4 §5).
 ///
-/// `remote` is the gate doc-6 §5/§6 puts in front of commit⇄PR relation resolution. The relations
-/// themselves are absent on purpose: resolution needs a `PrCommitSource`, and doc-6 §6 fixes only its
-/// *structure*, leaving each host's concrete reference means (its API, auth, offline behaviour) to a
-/// later per-kind addition with its own dependency decision. Exposing a relation list that is always
-/// empty would report "no shared commit" (a resolved state) for a lookup that never happened, so the
-/// field arrives with the source.
+/// `remote` is the gate doc-6 §5/§6 puts in front of commit⇄PR relation resolution, and `relations`
+/// is its result — one entry per Pull Request URL the task carries, each saying whether the PR was
+/// resolved, is on a host Atlas cannot reference, or could not be looked up (doc-6 §6). The two travel
+/// together on purpose: `relations` is only meaningful when `remote` is `Some`, because with the gate
+/// shut nothing is queried and the list is empty.
+///
+/// It is also empty when `commits` is not [`CommitSearch::Searched`] — with no local commit list there
+/// is nothing to intersect (doc-6 §6). So the two fields have to be read together: an empty list is
+/// "this task has no Pull Request URL" only when the gate is open *and* the commit search produced a
+/// list; otherwise it is "not compared", which the screen must not report as 関連が無い (doc-8 §5).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskHistory {
     pub commits: CommitSearch,
     pub remote: Option<RemoteHost>,
+    pub relations: Vec<PrRelation>,
 }
 
 /// What became of コミット検索 for one task (doc-6 §3/§6). A `state`-tagged value rather than a
@@ -521,34 +526,25 @@ impl Workspace {
         self.sessions.remove(slug).is_some()
     }
 
-    /// One task's Git・Pull Request 履歴 (doc-6). The task's References come from the open model —
-    /// PR URLs are read from the task, never guessed — and the commit search runs in the owning
-    /// project's repository (doc-6 §3, AGENTS §"Git and Pull Request references").
-    pub fn history(
+    /// The only part of a Git 履歴 read that needs the open model: one task's References, doc-6 §4's
+    /// input. Split out from [`read_history`] so the caller can drop its locks before any subprocess
+    /// runs — see that function for why the split matters.
+    ///
+    /// The id is checked here, before anything is spawned, so a typo is reported as 対象不在 for the
+    /// task rather than as an empty commit list (doc-6 §6 該当なし).
+    pub fn task_references(
         &self,
         entry: &ProjectEntry,
         task_id: &str,
-    ) -> Result<TaskHistory, CommandError> {
-        // The id is checked against the open model before Git is touched, so a typo is reported as
-        // 対象不在 for the task rather than as an empty commit list (doc-6 §6 該当なし).
+    ) -> Result<Vec<String>, CommandError> {
         let session = self.session(&entry.slug)?;
-        if session.model.task(task_id).is_none() {
-            return Err(CommandError::TaskNotFound {
+        match session.model.task(task_id) {
+            Some(task) => Ok(task.references.clone()),
+            None => Err(CommandError::TaskNotFound {
                 slug: entry.slug.clone(),
                 task_id: task_id.to_string(),
-            });
+            }),
         }
-        // A Git failure is a value here, not an error: the rest of the detail screen — including the
-        // References-derived PR 区画 — must survive a root that is not a Git repository (decision-6,
-        // doc-8 §5).
-        let commits = CommitSearch::of(
-            history::search_commits(&entry.project_root, task_id),
-            &entry.project_root,
-        );
-        Ok(TaskHistory {
-            commits,
-            remote: history::detect_remote_host(entry),
-        })
     }
 
     /// 外部エディタ経路 (doc-8 §7): start the user's editor on one task's management file.
@@ -1195,8 +1191,56 @@ pub fn project_watch_stop(state: State<'_, AtlasState>, slug: String) {
     join_watch(detached);
 }
 
-/// One task's commits and Pull Request URLs (doc-6). Read-only: `git log` and `git remote` with fixed
-/// argument arrays, never a shell string (AGENTS).
+/// The subprocess half of one task's Git・Pull Request 履歴 (doc-6): the commit search, the remote
+/// host detection, and — behind that gate — the relation lookup. Takes the task's `references` (from
+/// [`Workspace::task_references`]) rather than a session, so it needs no lock and none is held while
+/// it runs.
+///
+/// That is the point of the split. `gh` is waited on without a bound (decision-14), and every ledger
+/// and workspace command takes the same lifecycle mutex for its whole body — so waiting on `gh` under
+/// the lock would stall reloads, edits, open/close and even the user's own 再取得 behind one slow
+/// network call. `#[tauri::command(async)]` keeps the WebView thread free but would not release a
+/// backend lock, so the lock has to be dropped before this runs.
+///
+/// `source` is the remote-host reference means (doc-6 §6), injected for the same reason [`ScanSource`]
+/// is: it is the one part of this read that leaves the machine, and tests must be able to exercise the
+/// read without a network.
+pub fn read_history(
+    entry: &ProjectEntry,
+    task_id: &str,
+    references: &[String],
+    source: &dyn PrCommitSource,
+) -> TaskHistory {
+    // A Git failure is a value here, not an error: the rest of the detail screen — including the
+    // References-derived PR 区画 — must survive a root that is not a Git repository (decision-6,
+    // doc-8 §5).
+    let commits = CommitSearch::of(
+        history::search_commits(&entry.project_root, task_id),
+        &entry.project_root,
+    );
+    // The same 抽出規則 the interpretation applies (doc-6 §4, defined once in `history`), re-run here
+    // rather than carried over: this command is keyed on a TASK-ID and needs the URLs of *that* task.
+    let pull_requests = history::extract_pull_requests(references);
+    let remote = history::detect_remote_host(entry);
+    // Relation resolution intersects a PR's commit set with *this task's* commits (doc-6 §6), so a
+    // commit search that did not produce a list leaves the intersection undefined rather than empty.
+    // Resolving against a stand-in empty slice would spend a network lookup to report "no shared
+    // commit" — a resolved state — for a comparison that never happened.
+    let relations = match &commits {
+        CommitSearch::Searched { commits } => {
+            history::resolve_task_relations(remote.as_ref(), commits, &pull_requests, source)
+        }
+        CommitSearch::NoRepository { .. } | CommitSearch::Unreadable { .. } => Vec::new(),
+    };
+    TaskHistory {
+        commits,
+        remote,
+        relations,
+    }
+}
+
+/// One task's commits, Pull Request URLs and their relation (doc-6). Read-only: `git log`,
+/// `git remote` and `gh api` with fixed argument arrays, never a shell string (AGENTS).
 #[tauri::command(async)]
 pub fn task_history_read(
     app: AppHandle,
@@ -1204,9 +1248,20 @@ pub fn task_history_read(
     slug: String,
     task_id: String,
 ) -> Result<TaskHistory, CommandError> {
-    let lifecycle = lifecycle(&state);
-    let entry = entry_for(&app, &lifecycle, &slug)?;
-    lock(&state.workspace).history(&entry, &task_id)
+    // Everything that needs a lock happens in this block, and both guards are dropped at its end —
+    // `read_history` below spawns `git` and `gh`, and must not do so holding them.
+    let (entry, references) = {
+        let lifecycle = lifecycle(&state);
+        let entry = entry_for(&app, &lifecycle, &slug)?;
+        let references = lock(&state.workspace).task_references(&entry, &task_id)?;
+        (entry, references)
+    };
+    Ok(read_history(
+        &entry,
+        &task_id,
+        &references,
+        &history::HostReferences,
+    ))
 }
 
 // --- commands: アプリ設定 (decision-13) ------------------------------------------------------------
@@ -1438,6 +1493,20 @@ ordinal: 1000\n\
         WorkingTree::new(&entry.backlog_root)
     }
 
+    /// A [`PrCommitSource`] that fails the test if it is ever consulted. Every history read in this
+    /// module runs behind a shut gate (`git_remote_present: false`), so reaching the network here
+    /// would be the bug (doc-6 §6).
+    struct NeverCalled;
+
+    impl PrCommitSource for NeverCalled {
+        fn commits_for_pull_request(
+            &self,
+            _target: &crate::history::PullRequestTarget,
+        ) -> Result<Vec<String>, crate::history::RelationError> {
+            panic!("the reference means must not be reached with the remote gate shut");
+        }
+    }
+
     /// A `BacklogCli` that records every argument array it is handed.
     #[derive(Default)]
     struct FakeCli {
@@ -1604,7 +1673,7 @@ ordinal: 1000\n\
         let (_temp, entry) = root();
         let workspace = Workspace::default();
         assert!(matches!(
-            workspace.history(&entry, "TASK-1").unwrap_err(),
+            workspace.task_references(&entry, "TASK-1").unwrap_err(),
             CommandError::ProjectNotOpen { .. }
         ));
     }
@@ -2386,6 +2455,48 @@ labels: []\n\
         assert_eq!(
             serde_json::to_value(&unreadable).unwrap()["state"],
             "unreadable"
+        );
+    }
+
+    #[test]
+    fn a_history_read_carries_relations_and_honors_the_remote_gate() {
+        // The payload gains the relation list (AC #2), and with the project's Git remote 有無属性
+        // false the gate stays shut — `NeverCalled` proves nothing left the machine even though the
+        // task carries a well-formed GitHub PR URL (doc-6 §6 縮退).
+        let temp = TempDir::new();
+        temp.write("backlog/config.yml", CONFIG);
+        temp.write(
+            "backlog/tasks/task-1 - a.md",
+            &format!(
+                "{}\n## References\n\n- https://github.com/o/r/pull/5\n",
+                task_file("TASK-1", "Doing", "[]")
+            ),
+        );
+        let entry = ProjectEntry {
+            slug: "atlas".to_string(),
+            project_root: temp.path.clone(),
+            backlog_root: temp.path.join("backlog"),
+            git_remote_present: false,
+            status_aliases: BTreeMap::new(),
+        };
+        let mut workspace = Workspace::default();
+        workspace
+            .open(&entry, &source(&entry), &FsVersions)
+            .unwrap();
+
+        // The split the command performs: References under the lock, subprocesses with none held.
+        let references = workspace.task_references(&entry, "TASK-1").unwrap();
+        assert_eq!(
+            references,
+            vec!["https://github.com/o/r/pull/5".to_string()]
+        );
+        let history = read_history(&entry, "TASK-1", &references, &NeverCalled);
+        assert!(history.remote.is_none());
+        assert!(history.relations.is_empty());
+        let json = serde_json::to_value(&history).unwrap();
+        assert!(
+            json.get("relations").is_some(),
+            "AC #2: relations は payload に載る"
         );
     }
 

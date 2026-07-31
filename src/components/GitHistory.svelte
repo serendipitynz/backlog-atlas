@@ -12,6 +12,8 @@
   import {
     commitCountLine,
     commitList,
+    pullRequestsByCommit,
+    relationAccounts,
     relationAvailability,
     relationLine,
     type HistoryState,
@@ -35,7 +37,19 @@
   let commits = $derived(commitList(history));
   let relation = $derived(relationAvailability(entry, history));
   let countLine = $derived(commitCountLine(commits));
-  let relationSummary = $derived(relationLine(relation));
+  let relationSummary = $derived(relationLine(relation, history));
+  /** 各コミットに関連 Pull Request を紐づけて示す (doc-8 §5). */
+  let relatedPrs = $derived(pullRequestsByCommit(history));
+  let accounts = $derived(relationAccounts(history));
+
+  /**
+   * A Pull Request's short name for a commit row. The full URL is the Pull Request 区画's (doc-8 §4);
+   * repeating it under every commit would crowd the list out of the narrow placements.
+   */
+  function prLabel(url: string): string {
+    const number = url.match(/\/(?:pull|pull-requests)\/(\d+)/)?.[1];
+    return number === undefined ? url : `#${number}`;
+  }
   /** 直近 2 件 (doc-8 §5) — and how many the placement is not showing. */
   let shown = $derived(
     commits.state === "commits" && detail === "recent"
@@ -88,6 +102,13 @@
           <li>
             <span class="sha">{commit.shortId}</span>
             <span class="summary">{commit.summary}</span>
+            <!-- 各コミットに関連 Pull Request を紐づけて示す (doc-8 §5). Only a *resolved* pairing gets a
+                 chip; 参照不能 と 対象外 は下の関連解決の状態が引き受ける。 -->
+            {#each relatedPrs.get(commit.id) ?? [] as url (url)}
+              <!-- Text, not a link: an <a href> inside the Tauri WebView would navigate the app window
+                   away from Atlas (the same rule TaskDetail's URLs follow). -->
+              <span class="pr" title={url}>{prLabel(url)}</span>
+            {/each}
             <span class="meta">{day(commit.date)} / {commit.author}</span>
           </li>
         {/each}
@@ -119,13 +140,22 @@
              pairing. -->
         <h4>関連 Pull Request</h4>
         {#if relation.state === "hostDetermined"}
-          <!-- The gate doc-6 §5/§6 puts on 関連解決 is open, but no host reference means exists in this
-               build — doc-6 §6 leaves each host's API to a per-kind addition. Saying so is required:
-               an empty relation list would read as "resolved, no shared commit". -->
-          <p class="neutral">
-            remote ホスト判別済み（{relation.host}）。関連解決の参照手段は未実装のため、コミット一覧と
-            Pull Request は各々独立に表示しています（doc-6 §6）。
+          <!-- The gate doc-6 §5/§6 puts on 関連解決 is open, so every extracted PR has an outcome.
+               全面 is where doc-8 §5 asks for those causes to be written out one by one, with whether
+               each is something the user can clear. -->
+          <p class={relationSummary.kind}>
+            {relationSummary.text}（remote ホスト判別済み: {relation.host}）
           </p>
+          {#if accounts.length > 0}
+            <ul class="accounts">
+              {#each accounts as account (account.pullRequest)}
+                <li>
+                  <span class="url">{account.pullRequest}</span>
+                  <span class={account.kind}>{account.text}</span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         {:else if relation.state === "remoteAbsent"}
           <p class="setting">
             Git remote 不在（台帳の Git remote 有無属性が偽）のため関連解決なし。ローカルコミット履歴は
@@ -203,6 +233,37 @@
 
   .sha {
     font-family: ui-monospace, monospace;
+    opacity: 0.8;
+  }
+
+  // 関連 PR の印: 輪郭ピル (doc-11 §3) — a commit row's own family, distinct from the summary text.
+  .pr {
+    padding: 0 0.3rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .accounts {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.7rem;
+    }
+  }
+
+  .url {
+    font-family: ui-monospace, monospace;
+    overflow-wrap: anywhere;
     opacity: 0.8;
   }
 

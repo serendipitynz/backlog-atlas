@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createHistoryLoader, historyKeyOf, type HistoryRead } from "./history-read";
+import {
+  createHistoryLoader,
+  historyKeyOf,
+  type HistoryInputs,
+  type HistoryRead,
+} from "./history-read";
 import { commit, history } from "./fixtures";
 import type { TaskHistory } from "./wire";
 
@@ -32,6 +37,13 @@ function loader(reads: Promise<TaskHistory>[]) {
   return { load, current: () => stored };
 }
 
+/** The read inputs a task carries when nothing about them is under test. */
+const INPUTS: HistoryInputs = {
+  projectRoot: "/repos/atlas",
+  gitRemotePresent: true,
+  references: [],
+};
+
 /** Let every already-settled promise callback run. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -51,13 +63,13 @@ describe("one task's Git history read never lands on another's panel", () => {
     const second = deferred();
     const { load, current } = loader([first.promise, second.promise]);
 
-    void load("atlas", "TASK-1");
-    void load("atlas", "TASK-2");
+    void load("atlas", "TASK-1", INPUTS);
+    void load("atlas", "TASK-2", INPUTS);
     second.resolve(historyWith("TASK-2 commit"));
     first.resolve(historyWith("TASK-1 commit"));
     await settle();
 
-    expect(current()?.key).toBe(historyKeyOf("atlas", "TASK-2"));
+    expect(current()?.key).toBe(historyKeyOf("atlas", "TASK-2", INPUTS));
     expect(summaryOf(current())).toBe("TASK-2 commit");
   });
 
@@ -68,9 +80,9 @@ describe("one task's Git history read never lands on another's panel", () => {
     const secondA = deferred();
     const { load, current } = loader([firstA.promise, b.promise, secondA.promise]);
 
-    void load("atlas", "TASK-1"); // A1
-    void load("atlas", "TASK-2"); // B
-    void load("atlas", "TASK-1"); // A2 — same key as A1
+    void load("atlas", "TASK-1", INPUTS); // A1
+    void load("atlas", "TASK-2", INPUTS); // B
+    void load("atlas", "TASK-1", INPUTS); // A2 — same key as A1
     secondA.resolve(historyWith("A2 commit"));
     await settle();
     expect(summaryOf(current())).toBe("A2 commit");
@@ -80,7 +92,7 @@ describe("one task's Git history read never lands on another's panel", () => {
     b.resolve(historyWith("B commit"));
     await settle();
 
-    expect(current()?.key).toBe(historyKeyOf("atlas", "TASK-1"));
+    expect(current()?.key).toBe(historyKeyOf("atlas", "TASK-1", INPUTS));
     expect(summaryOf(current())).toBe("A2 commit");
   });
 
@@ -89,8 +101,8 @@ describe("one task's Git history read never lands on another's panel", () => {
     const secondA = deferred();
     const { load, current } = loader([firstA.promise, secondA.promise]);
 
-    void load("atlas", "TASK-1");
-    void load("atlas", "TASK-1");
+    void load("atlas", "TASK-1", INPUTS);
+    void load("atlas", "TASK-1", INPUTS);
     secondA.resolve(historyWith("A2 commit"));
     await settle();
     firstA.reject(new Error("the project was closed"));
@@ -100,11 +112,31 @@ describe("one task's Git history read never lands on another's panel", () => {
     expect(summaryOf(current())).toBe("A2 commit");
   });
 
+  it("supersedes a read whose inputs the screen has already left", async () => {
+    // [P2] review finding: the backend copies References and the root out of the model, releases its
+    // locks, and only then runs git/gh. An answer computed from References the task no longer has
+    // would otherwise be accepted beside the new ones, because the task key never changed.
+    const withPrA = deferred();
+    const withPrB = deferred();
+    const { load, current } = loader([withPrA.promise, withPrB.promise]);
+
+    const before: HistoryInputs = { ...INPUTS, references: ["https://github.com/o/r/pull/1"] };
+    const after: HistoryInputs = { ...INPUTS, references: ["https://github.com/o/r/pull/2"] };
+    void load("atlas", "TASK-1", before);
+    void load("atlas", "TASK-1", after); // same task, edited References
+    withPrB.resolve(historyWith("PR#2 の読み"));
+    withPrA.resolve(historyWith("PR#1 の読み")); // the stale lookup finishing last
+    await settle();
+
+    expect(current()?.key).toBe(historyKeyOf("atlas", "TASK-1", after));
+    expect(summaryOf(current())).toBe("PR#2 の読み");
+  });
+
   it("reports the newest read's own failure through the error port", async () => {
     const failing = deferred();
     const { load, current } = loader([failing.promise]);
 
-    void load("atlas", "TASK-1");
+    void load("atlas", "TASK-1", INPUTS);
     expect(current()?.value.state).toBe("loading");
     failing.reject({ kind: "projectNotOpen", slug: "atlas" });
     await settle();

@@ -26,11 +26,33 @@ export interface HistoryRead {
 }
 
 /**
- * The identity of the task a read is about. Serialized rather than concatenated, so no two
- * (slug, TASK-ID) pairs can collide into one key.
+ * The inputs a Git 履歴 read is computed from, beyond the task's identity (doc-6 §3/§4/§6). The
+ * backend copies these out of the open model, releases its locks, and only then runs `git` and `gh` —
+ * so if any of them changes while a read is in flight, that read's answer describes a state the
+ * screen has already left. Naming them in the key is what makes such a change start a newer read,
+ * whose token then supersedes the stale one.
  */
-export function historyKeyOf(slug: string, taskId: string): string {
-  return JSON.stringify([slug, taskId]);
+export interface HistoryInputs {
+  /** Where コミット検索 runs (doc-6 §3). A root move must not leave the old repository's answer up. */
+  projectRoot: string;
+  /** The 関連解決 gate (doc-6 §5). */
+  gitRemotePresent: boolean;
+  /** PR URL 抽出's input (doc-6 §4) — the coordinates each Pull Request is looked up at. */
+  references: readonly string[];
+}
+
+/**
+ * The identity of one Git 履歴 read: the task it is about, and the inputs it was computed from.
+ * Serialized rather than concatenated, so no two (slug, TASK-ID) pairs can collide into one key.
+ */
+export function historyKeyOf(slug: string, taskId: string, inputs: HistoryInputs): string {
+  return JSON.stringify([
+    slug,
+    taskId,
+    inputs.projectRoot,
+    inputs.gitRemotePresent,
+    inputs.references,
+  ]);
 }
 
 export interface HistoryLoaderPorts {
@@ -48,10 +70,14 @@ export interface HistoryLoaderPorts {
  */
 export function createHistoryLoader(
   ports: HistoryLoaderPorts,
-): (slug: string, taskId: string) => Promise<void> {
+): (slug: string, taskId: string, inputs: HistoryInputs) => Promise<void> {
   let calls = 0;
-  return async function load(slug: string, taskId: string): Promise<void> {
-    const key = historyKeyOf(slug, taskId);
+  return async function load(
+    slug: string,
+    taskId: string,
+    inputs: HistoryInputs,
+  ): Promise<void> {
+    const key = historyKeyOf(slug, taskId, inputs);
     const token = ++calls;
     ports.store({ key, token, value: { state: "loading" } });
 

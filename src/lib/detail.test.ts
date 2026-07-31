@@ -6,13 +6,16 @@ import {
   degradeSummary,
   dependencyLinks,
   milestoneRef,
+  pullRequestsByCommit,
   referenceSplit,
+  relationAccounts,
   relationAvailability,
   relationLine,
+  relationTally,
   type HistoryState,
 } from "./detail";
 import { CANONICAL_COLUMN_LABEL } from "./swimlane";
-import { commit, entry, history, pullRequest, snapshot, taskView } from "./fixtures";
+import { commit, entry, history, pullRequest, relation, snapshot, taskView } from "./fixtures";
 import type { TaskHistory } from "./wire";
 
 const PR_URL = "https://github.com/serendipitynz/backlog-atlas/pull/10";
@@ -169,15 +172,127 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
     expect(commitCountLine({ state: "noTaskId" }).kind).toBe("setting");
   });
 
-  it("replaces 関連 PR の件数 with its state, since an unresolved relation has no count", () => {
-    // doc-8 §5 asks the narrow placements for 関連 PR m 件; doc-6 §6 leaves the resolution
-    // unimplemented, so every m would be 0 and would read as 関連が無い — which doc-8 §5 forbids.
-    const determined = relationLine({ state: "hostDetermined", host: "gitHub: a/b" });
-    expect(determined.text).toContain("未実装");
-    expect(relationLine({ state: "remoteAbsent" }).text).toContain("remote 不在");
-    expect(relationLine({ state: "hostUndetermined" }).kind).toBe("setting");
-    expect(relationLine({ state: "notRead", detail: "未照会" }).text).toContain("未照会");
-    expect(relationLine({ state: "loading" }).kind).toBe("neutral");
+  it("states 関連 PR m 件 in one line, and names the cause when some PR did not resolve", () => {
+    // doc-8 §5: with a reference means in place (decision-14) the narrow placements go back to
+    // 関連 PR m 件 — but a count alone would read as 関連が無い for a PR that could not be reached,
+    // so an unresolved cause is named in the same line.
+    const determined = { state: "hostDetermined", host: "gitHub: a/b" } as const;
+    const empty = loaded(history());
+    expect(relationLine(determined, empty).text).toContain("Pull Request URL がありません");
+
+    const mixedHistory = loaded(
+      history({
+        relations: [
+          relation(PR_URL, { state: "resolved", commitIds: ["a1"] }),
+          relation(`${PR_URL}1`, { state: "resolved", commitIds: [] }),
+          relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
+          relation(`${PR_URL}3`, { state: "hostUnsupported" }),
+        ],
+      }),
+    );
+    expect(relationTally(mixedHistory)).toEqual({
+      related: 1,
+      unrelated: 1,
+      failed: 1,
+      unsupported: 1,
+    });
+    const line = relationLine(determined, mixedHistory);
+    expect(line.text).toBe("関連 PR 1 件（1 件は参照不能・1 件は対象外）");
+    // 参照不能 is the only failure family; 対象外 is a property of the host (decision-6 中間).
+    expect(line.kind).toBe("failure");
+    expect(
+      relationLine(
+        determined,
+        loaded(
+          history({
+            relations: [
+              relation(PR_URL, { state: "resolved", commitIds: ["a1"] }),
+              relation(`${PR_URL}1`, { state: "resolved", commitIds: ["b2"] }),
+            ],
+          }),
+        ),
+      ),
+    ).toEqual({ text: "関連 PR 2 件", kind: "neutral" });
+
+    // 突き合わせる相手が無いときに 0 件と言い切らない: with no local commit list the intersection was
+    // never computed, and doc-8 §5 forbids presenting that as 関連が無い.
+    const noRepo = loaded(
+      history({ commits: { state: "noRepository", projectRoot: "/repos/x" } }),
+    );
+    expect(relationLine(determined, noRepo)).toEqual({
+      text: "関連 PR: 突き合わせ不能（ローカルコミット一覧を読めません）",
+      kind: "setting",
+    });
+    const unreadable = loaded(history({ commits: { state: "unreadable", detail: "git 無し" } }));
+    expect(relationLine(determined, unreadable).kind).toBe("failure");
+
+    expect(relationLine({ state: "remoteAbsent" }, empty).text).toContain("remote 不在");
+    expect(relationLine({ state: "hostUndetermined" }, empty).kind).toBe("setting");
+    expect(relationLine({ state: "notRead", detail: "未照会" }, empty).text).toContain("未照会");
+    expect(relationLine({ state: "loading" }, empty).kind).toBe("neutral");
+  });
+
+  it("hangs a resolved Pull Request off each commit it contains, and nothing else off any", () => {
+    // AC #3: 各コミットに関連 Pull Request を紐づけて表示する。An unreachable PR relates to nothing
+    // *yet*, so attaching it to a commit would assert a pairing that was never confirmed.
+    const state = loaded(
+      history({
+        relations: [
+          relation(PR_URL, { state: "resolved", commitIds: ["a1", "b2"] }),
+          relation(`${PR_URL}1`, { state: "resolved", commitIds: ["b2"] }),
+          relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
+        ],
+      }),
+    );
+    const byCommit = pullRequestsByCommit(state);
+    expect(byCommit.get("a1")).toEqual([PR_URL]);
+    expect(byCommit.get("b2")).toEqual([PR_URL, `${PR_URL}1`]);
+    expect(byCommit.has("c3")).toBe(false);
+  });
+
+  it("writes each cause out for 全面, saying whether it can be cleared", () => {
+    // doc-8 §5 全面シングルビュー: 原因ごとの書き分けと、その原因が解消できるかどうか。
+    const accounts = relationAccounts(
+      loaded(
+        history({
+          relations: [
+            relation(PR_URL, { state: "resolved", commitIds: ["a1"] }),
+            relation(`${PR_URL}1`, { state: "resolved", commitIds: [] }),
+            relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
+            relation(`${PR_URL}3`, { state: "hostUnsupported" }),
+          ],
+        }),
+      ),
+    );
+    expect(accounts.map((account) => account.kind)).toEqual([
+      "neutral",
+      "neutral",
+      "failure",
+      "setting",
+    ]);
+    expect(accounts[0].text).toContain("コミット 1 件と関連");
+    expect(accounts[1].text).toContain("共有コミット無し");
+    // 参照不能 は「関連が無い」ではなく「今は確かめられない」であることを、原因によらず書く。
+    expect(accounts[2].text).toContain("offline");
+    expect(accounts[2].text).toContain("今は確かめられない");
+    expect(accounts[3].text).toContain("解消できません");
+  });
+
+  it("does not promise a recovery path the payload cannot establish", () => {
+    // [P2] review finding: the backend maps a missing tool, a malformed reference and a query that
+    // ran and failed to the same 参照不能, and they do not clear the same way. doc-8 §5 asks for
+    // whether a cause can be cleared, so the reason travels with it.
+    const accountFor = (reason: "toolMissing" | "invalidReference" | "queryFailed") =>
+      relationAccounts(
+        loaded(history({ relations: [relation(PR_URL, { state: "lookupFailed", reason, detail: "x" })] })),
+      )[0].text;
+
+    expect(accountFor("toolMissing")).toContain("gh を導入すれば解消できます");
+    expect(accountFor("invalidReference")).toContain("References の URL を直せば解消できます");
+    // The one case whose cause is undecidable here must not claim 認証・ネットワークが回復すれば解消.
+    const query = accountFor("queryFailed");
+    expect(query).toContain("この結果からは分かりません");
+    expect(query).not.toContain("すれば解消できます");
   });
 });
 
