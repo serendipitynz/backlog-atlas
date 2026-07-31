@@ -62,20 +62,14 @@
     if (open) titleInput?.focus();
   });
 
-  /**
-   * Enter 発行 from the title field — the entry holds one required value, so the field's own submit
-   * gesture is the whole action. `isComposing` is what keeps it off an IME's confirmation Enter
-   * (doc-7 §2.1's ショートカット契約: 変換確定 must not double as 発行).
-   */
-  function onkeydown(event: KeyboardEvent): void {
-    if (event.key === "Escape") {
-      onclose();
-      return;
-    }
-    if (event.key !== "Enter" || event.isComposing) return;
-    event.preventDefault();
-    if (blocked === null) onsubmit();
-  }
+  // No key binding on the title field, deliberately. doc-7 §2.1's ショートカット契約 forbids a
+  // shortcut containing a bare key from firing while focus is inside an `input` — so Enter cannot be
+  // 発行 and Escape cannot be やめる here, whatever IME guard were put in front of them (a WebKit
+  // composing keydown can arrive with `isComposing === false` and `keyCode === 229`, which is why
+  // `Editor.svelte` checks both). The same 契約 also requires every binding to be entered in one
+  // 割り当て一覧, and that list does not exist yet: TASK-56 builds the 固定ヘッダ・メニュー・ショート
+  // カット together. Both operations are on visible buttons below, which is what §2.1 asks for
+  // (ショートカットだけが入口の操作を作らない) — so nothing is unreachable in the meantime.
 </script>
 
 {#if entry.state === "absent"}
@@ -110,7 +104,6 @@
       placeholder="title（必須）"
       aria-label="{label} 列の新規タスクの title"
       oninput={(event) => ontitle(event.currentTarget.value)}
-      {onkeydown}
     />
 
     <!-- 渡す値は候補の数によらず常に読める (doc-7 §4.1). One candidate is shown as text rather than as
