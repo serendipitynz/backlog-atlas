@@ -1,10 +1,10 @@
 ---
 id: TASK-53
 title: 列内新規タスク入力を実装する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-28 23:16'
-updated_date: '2026-07-31 09:34'
+updated_date: '2026-07-31 10:07'
 labels:
   - 'kind:feature'
 milestone: m-1
