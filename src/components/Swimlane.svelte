@@ -4,6 +4,8 @@
   // — so a column can be read top-to-bottom across projects, which is the point of the screen
   // (doc-7 §2 プロジェクト横断の縦読み).
   import LaneCell from "./LaneCell.svelte";
+  import LaneCreate from "./LaneCreate.svelte";
+  import { UNMAPPED_ABSENT_REASON, laneCreate } from "../lib/lane-create";
   import { UNWATCHED_MARK, type VersionConflict } from "../lib/mark";
   import {
     CANONICAL_COLUMNS,
@@ -46,6 +48,24 @@
      * for again after the user has scrolled away.
      */
     focusSlug: string | null;
+    /**
+     * 列内新規タスク入力 (doc-7 §4.1) の状態. Held by the shell, not here: the grid is unmounted when a
+     * task is opened in 全面シングルビュー and when プロジェクト詳細画面 is entered, and input the user
+     * typed must not vanish with it. `null` is 入力を開いていない.
+     */
+    createOpen: { slug: string; column: StatusColumn } | null;
+    createTitle: string;
+    /** The candidate that will be passed, already resolved against the open cell's 候補. */
+    createStatus: string;
+    /** Why 発行 is withheld for the open entry, or `null` (doc-5 §5). */
+    createBlocked: string | null;
+    /** Why *no* cell may take input — CLI 縮退 or an action in flight (doc-7 §4.1), or `null`. */
+    createHeld: string | null;
+    oncreateOpen: (slug: string, column: StatusColumn) => void;
+    oncreateClose: () => void;
+    oncreateTitle: (value: string) => void;
+    oncreateStatus: (value: string) => void;
+    oncreateSubmit: () => void;
     onselect: (view: TaskView) => void;
     onmove: (slug: string, direction: -1 | 1) => void;
     onhide: (slug: string) => void;
@@ -65,6 +85,16 @@
     unwatched,
     conflictOf,
     focusSlug,
+    createOpen,
+    createTitle,
+    createStatus,
+    createBlocked,
+    createHeld,
+    oncreateOpen,
+    oncreateClose,
+    oncreateTitle,
+    oncreateStatus,
+    oncreateSubmit,
     onselect,
     onmove,
     onhide,
@@ -189,6 +219,14 @@
     <div class="head unmapped">
       <span class="label">{UNMAPPED_LABEL}</span>
       <span class="withheld" title={UNMAPPED_FOLD_ABSENT_REASON}>正準列ではないため列折畳みなし</span>
+      <!-- 未対応列には列内新規タスク入力を置かない (doc-7 §4.1). In the column head, once, rather than in
+           every row's 未対応 cell: unlike a canonical column's 候補 0 件, this reason is identical for
+           every project — the 未対応区画 is not a 正準ステータス列 anywhere — so a per-cell copy would put
+           the same sentence on screen as many times as there are rows (the reason the reorder block
+           below is written once too). Abbreviated with the full sentence on the `title`, like the
+           列折畳みなし note beside it: the head is one line for the whole grid, and two full sentences
+           in a 10rem column would raise it for every row. -->
+      <span class="withheld" title={UNMAPPED_ABSENT_REASON}>候補集合を定義できないため新規入力なし</span>
     </div>
   {/if}
 
@@ -317,6 +355,11 @@
     {#if row.state === "loaded"}
       {#if !folded}
         {#each row.cells as cell (cell.column)}
+          {@const entry = laneCreate(row.createStatusCandidates, cell.column)}
+          {@const entryOpen =
+            createOpen !== null &&
+            createOpen.slug === row.slug &&
+            createOpen.column === cell.column}
           <LaneCell
             tasks={cell.tasks}
             label={CANONICAL_COLUMN_LABEL[cell.column]}
@@ -326,9 +369,33 @@
             {selectedPath}
             {conflictOf}
             {onselect}
-          />
+          >
+            {#snippet createEntry()}
+              <!-- 列内新規タスク入力 (doc-7 §4.1). The title and the chosen candidate come from the
+                   shell for the one open cell; every other cell draws only its ＋新規 or its reason,
+                   so the values cannot be shared between two entries. -->
+              <LaneCreate
+                {entry}
+                label={CANONICAL_COLUMN_LABEL[cell.column]}
+                open={entryOpen}
+                title={entryOpen ? createTitle : ""}
+                status={entryOpen ? createStatus : ""}
+                blocked={entryOpen ? createBlocked : null}
+                held={createHeld}
+                onopen={() => oncreateOpen(row.slug, cell.column)}
+                onclose={oncreateClose}
+                ontitle={oncreateTitle}
+                onstatus={oncreateStatus}
+                onsubmit={oncreateSubmit}
+              />
+            {/snippet}
+          </LaneCell>
         {/each}
         {#if hasUnmapped}
+          <!-- No `createEntry`: 未対応列には入口を置かない (doc-7 §4.1), and the 置かない理由 is in the
+               column head rather than in each row's cell (see the head above). Deliberately absent,
+               not forgotten — passing a disabled entry here is the presentation doc-11 §5 separates
+               from this one. -->
           <LaneCell
             tasks={row.unmapped}
             label={UNMAPPED_LABEL}

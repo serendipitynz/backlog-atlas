@@ -28,7 +28,13 @@
  * definition — so `hidden` stays a screen-local set and never reaches the ledger.
  */
 
-import type { CommandError, ProjectLoad, StatusColumn, TaskView } from "./wire";
+import type {
+  ColumnCreateStatuses,
+  CommandError,
+  ProjectLoad,
+  StatusColumn,
+  TaskView,
+} from "./wire";
 import { matchesFilter, type CardFilter } from "./filter";
 
 /** 正準ステータス列 in left-to-right order (decision-4, doc-7 §2). Fixed for every row. */
@@ -81,6 +87,13 @@ export type SwimlaneRow =
       unmapped: TaskView[];
       /** Cards this row holds before filtering, so "filtered to nothing" stays distinguishable. */
       totalBeforeFilter: number;
+      /**
+       * 列の作成時 status 候補 per canonical column (doc-7 §4.1), carried on the row because 列内新規
+       * タスク入力 sits in *this project's* cells: the same column has candidates in one row and none
+       * in the next, so it cannot be decided for the grid. Untouched by the filter — the entry is
+       * about what may be created, not about which cards are shown.
+       */
+      createStatusCandidates: ColumnCreateStatuses[];
     }
   | { state: "unreadable"; slug: string; detail: string }
   | { state: "pending"; slug: string };
@@ -177,6 +190,7 @@ function buildRow(
     cells,
     unmapped,
     totalBeforeFilter: load.project.tasks.length,
+    createStatusCandidates: load.project.createStatusCandidates,
   };
 }
 
