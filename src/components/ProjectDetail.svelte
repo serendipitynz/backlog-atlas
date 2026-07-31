@@ -64,9 +64,11 @@
     ALIAS_EFFECT_NOTES,
     DETAIL_SECTIONS,
     LEDGER_READ_ONLY_BAND,
+    OVERVIEW_READ_ONLY_NOTE,
     SLUG_IMMUTABLE_NOTE,
     UNREGISTER_SCOPE_NOTE,
     cliDegradedBand,
+    movesRoot,
     overviewBlocked,
     rootMoveNote,
     submittedAttributes,
@@ -208,6 +210,24 @@
     // 再判定は「1 回の要求」であって設定値ではない (doc-3 §4.3)。押しっぱなしにすると、以後の保存が
     // すべて再判定を伴ってしまうので、通ったところで落とす。
     edit.redetectGitRemote = false;
+    if (movesRoot(request)) {
+      // 移動が成立したら、開いている編集セッションは閉じる (doc-10 §4.1)。この画面は slug でしか
+      // key 付けされておらず、slug は移動しても変わらないので、閉じないとセッションは生き残る。
+      // 残ると、旧ルートで読んだ本文を文書 ID だけで新ルートへ送れてしまい、同じ ID の文書が新ルート
+      // にあれば実行前照合は新ルートの最新読み取りに対して通る — `--content` は全置換なので、旧ルート
+      // の内容で丸ごと上書きされる (review [P1])。
+      docSession = null;
+      newTag = "";
+      pendingDocument = null;
+      // status と milestone は旧ルートの ID 空間の値である (doc-3 §5.3)。同じ理由で持ち越さない:
+      // 打った文字列ではなく選択なので、落としても利用者の入力は失われない。
+      taskInput.status = "";
+      taskInput.milestone = "";
+      overviewNotice =
+        `${result.slug} を移動しました。開いていた文書の編集セッションは、旧ルートの読み取りに` +
+        "基づくため閉じました（doc-10 §4.1）。";
+      return;
+    }
     overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
   }
 
@@ -520,7 +540,7 @@
   <!-- 2 本の帯 (doc-10 §3): 互いに独立で、片方だけが立つ。どちらの文も、影響が及ばない区画を
        名指ししてある — 並んで立ったときに「全部だめになった」と読まれないようにするため。 -->
   {#if readOnlyBand !== null}
-    <p class="band read-only" id={OVERVIEW_BLOCKED_ID}>{readOnlyBand}</p>
+    <p class="band read-only">{readOnlyBand}</p>
   {/if}
   {#if degradedBand !== null}
     <p class="band degraded">{degradedBand}</p>
@@ -552,6 +572,14 @@
         <section>
           <h2>概要（台帳エントリ）</h2>
 
+          {#if ledgerReadOnly}
+            <!-- doc-10 §8 は入力と登録解除の両方を無効化するよう求めている。押せない保存だけを残すと、
+                 書き換えられない値を編集でき、その入力が未保存入力に数えられて、あとで「保存できなかった
+                 変更を破棄しますか」と尋ねることになる (review [P2])。`disabled` を使えるのは、この文が
+                 操作の近くに常時出ているからである (doc-11 §5)。 -->
+            <p class="blocked-note" id={OVERVIEW_BLOCKED_ID}>{OVERVIEW_READ_ONLY_NOTE}</p>
+          {/if}
+
           {#if overviewNotice}
             <p class="ok">{overviewNotice}</p>
           {/if}
@@ -567,8 +595,15 @@
           <label class="field">
             <span class="label">project_root</span>
             <span class="row-inline">
-              <input type="text" bind:value={edit.projectRoot} spellcheck="false" />
-              <button type="button" onclick={() => pickRoot("projectRoot")}>選択…</button>
+              <input
+                type="text"
+                bind:value={edit.projectRoot}
+                spellcheck="false"
+                disabled={ledgerReadOnly}
+              />
+              <button type="button" disabled={ledgerReadOnly} onclick={() => pickRoot("projectRoot")}>
+                選択…
+              </button>
             </span>
           </label>
           {#if moveNote !== null}
@@ -581,9 +616,18 @@
           <label class="field">
             <span class="label">backlog_root</span>
             <span class="row-inline">
-              <input type="text" bind:value={edit.backlogRoot} spellcheck="false" />
-              <button type="button" onclick={() => pickRoot("backlogRoot")}>選択…</button>
-              <button type="button" onclick={followBacklogDefault}>既定に合わせる</button>
+              <input
+                type="text"
+                bind:value={edit.backlogRoot}
+                spellcheck="false"
+                disabled={ledgerReadOnly}
+              />
+              <button type="button" disabled={ledgerReadOnly} onclick={() => pickRoot("backlogRoot")}>
+                選択…
+              </button>
+              <button type="button" disabled={ledgerReadOnly} onclick={followBacklogDefault}>
+                既定に合わせる
+              </button>
             </span>
           </label>
           {#each problemsFor(editIssues, "backlogRoot") as text (text)}
@@ -591,7 +635,7 @@
           {/each}
 
           <label class="check">
-            <input type="checkbox" bind:checked={edit.redetectGitRemote} />
+            <input type="checkbox" bind:checked={edit.redetectGitRemote} disabled={ledgerReadOnly} />
             <span>
               Git remote を再判定する（現在: {entry.git_remote_present ? "あり" : "なし"}）
             </span>
@@ -614,9 +658,10 @@
                   placeholder="プロジェクトの status"
                   list={`declared-${entry.slug}`}
                   bind:value={row.key}
+                  disabled={ledgerReadOnly}
                 />
                 <span aria-hidden="true">→</span>
-                <select bind:value={row.value}>
+                <select bind:value={row.value} disabled={ledgerReadOnly}>
                   {#each CANONICAL_STATUS_NAMES as name (name)}
                     <option value={name}>{name}</option>
                   {/each}
@@ -627,7 +672,12 @@
                     <option value={row.value}>{row.value}（不正: 正準列ではありません）</option>
                   {/if}
                 </select>
-                <button type="button" title="この行を削除" onclick={() => removeAliasRow(index)}>
+                <button
+                  type="button"
+                  title="この行を削除"
+                  disabled={ledgerReadOnly}
+                  onclick={() => removeAliasRow(index)}
+                >
                   ×
                 </button>
                 {#if row.key.trim() !== ""}
@@ -648,7 +698,7 @@
               {/if}
             {/each}
             <div class="row-inline">
-              <button type="button" onclick={addAliasRow}>別名を追加</button>
+              <button type="button" disabled={ledgerReadOnly} onclick={addAliasRow}>別名を追加</button>
               {#if declaredStatuses !== null}
                 <datalist id={`declared-${entry.slug}`}>
                   {#each declaredStatuses as status (status)}
@@ -716,6 +766,7 @@
                 placeholder={entry.slug}
                 spellcheck="false"
                 bind:value={unregisterInput}
+                disabled={ledgerReadOnly}
               />
             </label>
             <div class="actions">

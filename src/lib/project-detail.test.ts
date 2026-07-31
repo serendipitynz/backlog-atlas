@@ -3,10 +3,12 @@ import {
   ALIAS_EFFECT_NOTES,
   DETAIL_SECTIONS,
   LEDGER_READ_ONLY_BAND,
+  OVERVIEW_READ_ONLY_NOTE,
   SLUG_IMMUTABLE_NOTE,
   UNREGISTER_SCOPE_NOTE,
   aliasSummary,
   cliDegradedBand,
+  movesRoot,
   overviewBlocked,
   rootMoveNote,
   submittedAttributes,
@@ -72,6 +74,16 @@ describe("台帳読取専用帯と CLI 縮退帯", () => {
     expect(overviewBlocked({ readOnly: true, busy: false })).toContain("読み取り専用");
     expect(overviewBlocked({ readOnly: false, busy: true })).toContain("実行中");
     expect(overviewBlocked({ readOnly: false, busy: false })).toBeNull();
+  });
+
+  it("says the read-only state reaches the inputs, not only the save (review [P2])", () => {
+    // doc-10 §8 は入力と登録解除の両方の無効化を求めている。押せない保存だけを残すと、書き換え
+    // られない値を編集でき、その入力が未保存入力に数えられて、あとで「保存できなかった変更を
+    // 破棄しますか」と尋ねることになる。
+    expect(OVERVIEW_READ_ONLY_NOTE).toContain("入力");
+    expect(OVERVIEW_READ_ONLY_NOTE).toContain("登録解除");
+    // そして、止まるのがこの区画だけであることも同じ文で述べる (doc-10 §3 の独立)。
+    expect(OVERVIEW_READ_ONLY_NOTE).toContain("文書・マイルストーン・新規タスク");
   });
 });
 
@@ -150,6 +162,43 @@ describe("ルート移動の断り", () => {
   it("explains what changing the slug would cost, instead of offering a disabled field", () => {
     expect(SLUG_IMMUTABLE_NOTE).toContain("登録を解除して登録し直す");
     expect(SLUG_IMMUTABLE_NOTE).toContain("同一性は切れます");
+  });
+});
+
+// --- 移動の検出 (doc-10 §4.1 開いている編集セッションは閉じる) ---------------------------------
+
+describe("移動かどうかの判定", () => {
+  const base = registered();
+
+  it("counts either root, since a backlog_root change also moves what is read", () => {
+    expect(movesRoot({ slug: "atlas", project_root: "/moved/atlas" })).toBe(true);
+    expect(movesRoot({ slug: "atlas", backlog_root: "/repos/atlas/bl" })).toBe(true);
+  });
+
+  it("does not count a change that leaves the roots alone", () => {
+    // 別名表や remote 再判定はモデルの解釈や属性を変えるが、読む先は変わらない。ここで移動と
+    // 判定すると、閉じる必要のない編集セッションを閉じて未保存入力を捨てることになる。
+    expect(movesRoot({ slug: "atlas", status_aliases: { Doing: "In Progress" } })).toBe(false);
+    expect(movesRoot({ slug: "atlas", redetect_git_remote: true })).toBe(false);
+    expect(movesRoot({ slug: "atlas", new_index: 2 })).toBe(false);
+  });
+
+  it("sees the move in the request a project-root edit actually produces (review [P1])", () => {
+    // 移動の要求は両ルートを載せる。開いていた文書編集セッションを閉じないと、旧ルートで読んだ
+    // 本文を文書 ID だけで新ルートへ送れてしまい、同じ ID があれば照合は新ルートに対して通る。
+    // `--content` は全置換なので、そのまま丸ごと上書きになる。
+    const request = toUpdateRequest(base, edited(base, { projectRoot: "/moved/atlas" }));
+    expect(request).not.toBeNull();
+    expect(movesRoot(request!)).toBe(true);
+  });
+
+  it("leaves an alias-only save out of it, so its editing session survives", () => {
+    const request = toUpdateRequest(
+      base,
+      edited(base, { aliases: [{ key: "Doing", value: "In Progress" }] }),
+    );
+    expect(request).not.toBeNull();
+    expect(movesRoot(request!)).toBe(false);
   });
 });
 
