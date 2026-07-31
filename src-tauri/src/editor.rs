@@ -247,48 +247,37 @@ impl Launcher for SystemLauncher {
     #[cfg(target_os = "windows")]
     fn shell_execute(&self, file: &Path) -> std::io::Result<()> {
         use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::System::Com::{
-            CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
-        };
         use windows_sys::Win32::UI::Shell::ShellExecuteW;
         use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
         // NUL-terminated, because `lpFile` is a C string. `encode_wide` does not add one.
         let path: Vec<u16> = file.as_os_str().encode_wide().chain(Some(0)).collect();
 
-        // SAFETY: both calls are FFI with arguments this function owns. `path` outlives the
-        // `ShellExecuteW` call (it is dropped at the end of the function, after the call returns), and
-        // it is NUL-terminated as `lpFile` requires. Every other pointer parameter is null, which the
-        // documented signature accepts for each of them.
-        unsafe {
-            // ShellExecuteW dispatches through COM to the registered handler, which the API documents as
-            // requiring an initialized apartment. `commands::task_file_open` is
-            // `#[tauri::command(async)]`, so this runs on a runtime worker thread that has none of its
-            // own — without this the call would depend on whichever handler happens not to need COM.
-            // The result is deliberately dropped: on a thread already initialized this returns S_FALSE
-            // and changes nothing, and there is no matching CoUninitialize because the thread outlives
-            // the launch and the shell may still be using the apartment. OLE1 DDE is disabled because
-            // that legacy path is the one place ShellExecute can block on a peer that never answers.
-            let _ = CoInitializeEx(
-                std::ptr::null(),
-                (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
-            );
-            let result = ShellExecuteW(
+        // ShellExecuteW resolves the verb through COM, so the thread needs an initialized apartment
+        // before the call and must give it back after — see `ComApartment`. Held across the call and
+        // dropped at the end of this scope, which is also where `path` dies.
+        let _apartment = ComApartment::enter();
+
+        // SAFETY: FFI with arguments this function owns. `path` outlives the call (it is dropped after
+        // this statement returns) and is NUL-terminated as `lpFile` requires. Every other pointer
+        // parameter is null, which the documented signature accepts for each of them.
+        let result = unsafe {
+            ShellExecuteW(
                 std::ptr::null_mut(), // hwnd: no parent window; Atlas is not modal on this
                 std::ptr::null(),     // lpOperation: null selects the file's default verb
                 path.as_ptr(),        // lpFile
                 std::ptr::null(),     // lpParameters: none — the file is data, not a program
                 std::ptr::null(),     // lpDirectory: inherit Atlas's working directory
                 SW_SHOWNORMAL,
-            );
-            // Documented convention: the returned HINSTANCE is not a handle. Above 32 means the launch
-            // started; 32 and below *is* the error code — `GetLastError` is not the one to read here.
-            let code = result as isize;
-            if code > 32 {
-                Ok(())
-            } else {
-                Err(shell_execute_error(code as i32))
-            }
+            )
+        };
+        // Documented convention: the returned HINSTANCE is not a handle. Above 32 means the launch
+        // started; 32 and below *is* the error code — `GetLastError` is not the one to read here.
+        let code = result as isize;
+        if code > 32 {
+            Ok(())
+        } else {
+            Err(shell_execute_error(code as i32))
         }
     }
 
@@ -300,6 +289,69 @@ impl Launcher for SystemLauncher {
         Err(std::io::Error::other(
             "ShellExecuteW はこのプラットフォームにありません",
         ))
+    }
+}
+
+/// The COM apartment [`SystemLauncher::shell_execute`] runs in, released when dropped.
+///
+/// `ShellExecuteW` delegates the verb to Shell extensions activated through COM, so the calling thread
+/// needs an initialized apartment; the API documents `COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE`
+/// as the mode to ask for, because some extensions require an STA and OLE1 DDE is the one path
+/// `ShellExecute` can hang on waiting for a peer that never answers.
+///
+/// A guard rather than a bare call, because **the initialization has to be given back.** Every
+/// `CoInitializeEx` that succeeds — `S_OK` on a fresh thread, `S_FALSE` on one already initialized —
+/// raises a per-thread count that only `CoUninitialize` lowers, and `commands::task_file_open` is
+/// `#[tauri::command(async)]`: it runs on a *shared* runtime worker, so an unbalanced call would leave
+/// that thread's count one higher after every launch and never let its apartment be torn down.
+#[cfg(target_os = "windows")]
+struct ComApartment {
+    /// Whether this guard's own call raised the count, and so owes the matching `CoUninitialize`.
+    owed: bool,
+    /// Makes the guard neither `Send` nor `Sync`. The count `CoUninitialize` lowers is the *calling
+    /// thread's*, so a guard that crossed threads would balance the wrong one; a raw pointer field is
+    /// what states that in the type rather than in a comment.
+    _not_send: std::marker::PhantomData<*const ()>,
+}
+
+#[cfg(target_os = "windows")]
+impl ComApartment {
+    fn enter() -> ComApartment {
+        use windows_sys::Win32::System::Com::{
+            CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+        };
+
+        // SAFETY: FFI with a null reserved pointer, which the documented signature requires.
+        let hr = unsafe {
+            CoInitializeEx(
+                std::ptr::null(),
+                (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+            )
+        };
+        // `SUCCEEDED(hr)`, which is exactly the pair of codes that raise the count: `S_OK` on a thread
+        // that had no apartment, `S_FALSE` on one that already did. The failure this most often is —
+        // `RPC_E_CHANGED_MODE`, meaning the thread is already in the *other* apartment model — is a
+        // negative HRESULT and so excluded here, which is what we want: it did not raise the count, so
+        // uninitializing would lower an initialization this guard never made. The launch still goes
+        // ahead in that case. What `ShellExecuteW` needs is an initialized apartment and the thread has
+        // one; only the Shell extensions that specifically require an STA can fail, and refusing to open
+        // the file at all would be the worse answer.
+        ComApartment {
+            owed: hr >= 0,
+            _not_send: std::marker::PhantomData,
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        if self.owed {
+            // SAFETY: called exactly once for a `CoInitializeEx` that succeeded, and on the thread that
+            // made it — `owed` is set only on success, `Drop` runs once, and the guard cannot have moved
+            // to another thread (`_not_send`).
+            unsafe { windows_sys::Win32::System::Com::CoUninitialize() };
+        }
     }
 }
 
