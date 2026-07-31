@@ -18,10 +18,10 @@
 //!
 //! doc-6 §6 fixes only the *structure* of relation resolution — "pick the reference means by
 //! remote host kind" — and leaves each host's concrete means (its API, auth, rate, offline
-//! behavior) to be added per kind. So the network fetch of a PR's commit set is an injected
-//! [`PrCommitSource`] rather than a hardcoded HTTP client here: the gating and the local⇄remote
-//! commit matching are implemented and tested now, and a concrete GitHub source is a later,
-//! per-kind addition (and its own dependency decision).
+//! behavior) to be added per kind. The fetch of a PR's commit set is therefore an injected
+//! [`PrCommitSource`], so the gating and the local⇄remote commit matching stay testable without a
+//! network. [`HostReferences`] is the production implementation: it dispatches on the target's
+//! host kind and, for GitHub, asks the `gh` CLI (decision-14).
 
 use crate::ledger::ProjectEntry;
 use serde::Serialize;
@@ -473,21 +473,25 @@ pub trait PrCommitSource {
 }
 
 /// Entry point for commit⇄PR relation resolution with the AC #3 gate enforced (doc-6 §5, §6).
-/// Resolution runs only when the owning project's remote host is determined — `git_remote_present`
-/// is true *and* the host kind is recognized ([`detect_remote_host`] returns `Some`). When the
-/// gate fails, `source` is never consulted and an empty list is returned: the task's commits and
-/// Pull Requests stay independent (doc-6 §6 縮退, AC #3/#4). This — not [`resolve_relations`] — is
-/// the callable path, so the gate cannot be bypassed. When the gate passes, each PR is resolved at
-/// its own coordinates.
+/// Resolution runs only when the owning project's remote host is determined — `remote` is the
+/// [`detect_remote_host`] result, whose `Some` already means `git_remote_present` is true *and* the
+/// host kind is recognized. When the gate fails, `source` is never consulted and an empty list is
+/// returned: the task's commits and Pull Requests stay independent (doc-6 §6 縮退, AC #3/#4). This —
+/// not [`resolve_relations`] — is the callable path, so the gate cannot be bypassed. When the gate
+/// passes, each PR is resolved at its own coordinates.
+///
+/// The gate is taken as a value rather than re-derived from the [`ProjectEntry`] because the caller
+/// displaying the 関連解決の状態 needs the same `RemoteHost` (doc-8 §5); deriving it twice would spawn
+/// a second `git remote` read per history load and let the two answers disagree mid-read.
 pub fn resolve_task_relations(
-    entry: &ProjectEntry,
+    remote: Option<&RemoteHost>,
     commits: &[Commit],
     pull_requests: &[PullRequestRef],
     source: &dyn PrCommitSource,
 ) -> Vec<PrRelation> {
-    // The gate is the project's own remote (§5), read-only. Its `None` covers both a missing
-    // remote (git_remote_present false — no Git call is even made) and an unrecognized host kind.
-    if detect_remote_host(entry).is_none() {
+    // `None` covers both a missing remote (git_remote_present false — no Git call was even made)
+    // and an unrecognized host kind.
+    if remote.is_none() {
         return Vec::new();
     }
     resolve_relations(commits, pull_requests, source)
@@ -561,6 +565,112 @@ fn sha_relates(a: &str, b: &str) -> bool {
     !short.is_empty()
         && long.len() >= short.len()
         && long[..short.len()].eq_ignore_ascii_case(short)
+}
+
+// --- 種別ごとの参照手段 (doc-6 §6, decision-14) --------------------------------------------------
+
+/// The production [`PrCommitSource`]: doc-6 §6's "remote ホスト種別を鍵に参照手段を選ぶ" made
+/// concrete. The dispatch is an exhaustive `match` on the target's kind, so adding a
+/// [`RemoteHostKind`] forces its reference means to be decided rather than silently falling through
+/// to GitHub's.
+pub struct HostReferences;
+
+impl PrCommitSource for HostReferences {
+    fn commits_for_pull_request(
+        &self,
+        target: &PullRequestTarget,
+    ) -> Result<Vec<String>, RelationError> {
+        match target.host {
+            RemoteHostKind::GitHub => github_pull_request_commits(target),
+        }
+    }
+}
+
+/// The `gh` invocation used for GitHub (decision-14): `gh api` with a fixed subcommand and an
+/// argument array, the same rule every other external program in Atlas is run under (AGENTS).
+///
+/// Why `gh` rather than an in-process HTTP client: it carries the user's existing authentication, so
+/// private repositories resolve and the rate limit is the authenticated one, and Atlas never holds a
+/// GitHub token. It also costs no new crate — an in-process client would have added a whole TLS
+/// stack, since the `reqwest` already in the tree (via `tauri`) is built without a TLS backend.
+///
+/// `--jq` reduces the response to one SHA per line inside `gh`, so no JSON parser is needed here;
+/// `--paginate` walks every page (a PR's commit listing is paged at 100, capped by GitHub at 250);
+/// `--hostname` pins the request to github.com so a user's `GH_HOST` cannot redirect a github.com PR
+/// to an enterprise host. Read-only: `gh api` defaults to GET, and nothing here writes.
+///
+/// There is deliberately no timeout: `std` cannot wait on a child with one without a new dependency,
+/// and the caller already tolerates a slow read — the command runs off the UI thread and the panel's
+/// loader supersedes a stale answer, with 再取得 as the manual retry.
+fn github_pull_request_commits(target: &PullRequestTarget) -> Result<Vec<String>, RelationError> {
+    // owner/repo reach here from a *task's* References URL, and they are interpolated into an API
+    // path. Restricting them to GitHub's own name charset stops a crafted reference (`.`, `..`, an
+    // encoded slash) from steering the request at another endpoint.
+    let owner = api_path_segment(&target.owner)?;
+    let repo = api_path_segment(&target.repo)?;
+    let args = [
+        "api".to_string(),
+        "--hostname".to_string(),
+        "github.com".to_string(),
+        "--paginate".to_string(),
+        "--jq".to_string(),
+        ".[].sha".to_string(),
+        format!("repos/{owner}/{repo}/pulls/{}/commits", target.number),
+    ];
+    let out = Command::new("gh")
+        .args(&args)
+        // gh must never stop on a prompt here — there is no terminal to answer it — and its update
+        // notice would otherwise land in the stderr we report as the failure reason.
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("GH_NO_UPDATE_NOTIFIER", "1")
+        .output()
+        .map_err(|e| RelationError(format!("gh を起動できません（{e}）")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(RelationError(first_line(&stderr)));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| is_sha(line))
+        .map(str::to_string)
+        .collect())
+}
+
+/// Accept one owner/repo segment for interpolation into an API path. GitHub's own charset for both
+/// is ASCII alphanumerics with `-`, `_` and `.`; `.`/`..` are rejected outright because they are the
+/// only values in that charset that traverse rather than name.
+fn api_path_segment(value: &str) -> Result<&str, RelationError> {
+    let ok = !value.is_empty()
+        && value != "."
+        && value != ".."
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
+    if ok {
+        Ok(value)
+    } else {
+        Err(RelationError(format!(
+            "Pull Request URL の owner/repo が GitHub の名前として扱えません（{value}）"
+        )))
+    }
+}
+
+/// Whether a line of `gh` output is a commit SHA. Hex-only and at least abbreviation length, so a
+/// stray notice on stdout cannot be mistaken for a commit id.
+fn is_sha(line: &str) -> bool {
+    line.len() >= 7 && line.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// The first non-empty line of a program's stderr, for reporting a failure without pasting a whole
+/// help text into the screen. Kept short — the panel shows this inline.
+fn first_line(text: &str) -> String {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("gh の実行に失敗しました");
+    line.chars().take(200).collect()
 }
 
 // --- shared Git invocation + URL parsing --------------------------------------------------------
@@ -926,8 +1036,9 @@ mod tests {
     #[test]
     fn task_relations_gate_blocks_when_project_remote_absent() {
         // AC #3: the callable entry (resolve_task_relations) must not consult the source when the
-        // owning project has no determined remote — git_remote_present false here — even though the
-        // PR itself is a well-formed GitHub reference. The PR-coordinate fix must not bypass this.
+        // owning project has no determined remote — `None`, which detect_remote_host returns for both
+        // git_remote_present false and an unrecognized host — even though the PR itself is a
+        // well-formed GitHub reference. The PR-coordinate fix must not bypass this.
         struct NeverCalled;
         impl PrCommitSource for NeverCalled {
             fn commits_for_pull_request(
@@ -937,16 +1048,89 @@ mod tests {
                 panic!("source must not be queried when the project-remote gate fails");
             }
         }
-        let entry = ProjectEntry {
-            slug: "p".into(),
-            project_root: PathBuf::from("/nonexistent"),
-            backlog_root: PathBuf::from("/nonexistent/backlog"),
-            git_remote_present: false,
-            status_aliases: BTreeMap::new(),
-        };
         let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
         let prs = vec![github_pr("https://github.com/o/r/pull/5", "o", "r", 5)];
-        assert!(resolve_task_relations(&entry, &commits, &prs, &NeverCalled).is_empty());
+        assert!(resolve_task_relations(None, &commits, &prs, &NeverCalled).is_empty());
+    }
+
+    #[test]
+    fn task_relations_resolve_once_the_project_remote_is_determined() {
+        // The other side of the gate: with a determined host, the same call resolves — and returns
+        // one entry per extracted PR, which is what lets the screen read "0 relations" as "this task
+        // has no Pull Request URL" rather than "resolution did not run".
+        let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
+        let prs = vec![github_pr("https://github.com/o/r/pull/5", "o", "r", 5)];
+        let source = FakeSource::with(&[("o", "r", 5, &["aaaaaaa"])]);
+        let remote = RemoteHost {
+            kind: RemoteHostKind::GitHub,
+            owner: "o".into(),
+            repo: "r".into(),
+        };
+        let relations = resolve_task_relations(Some(&remote), &commits, &prs, &source);
+        assert_eq!(
+            relations[0].outcome,
+            RelationOutcome::Resolved {
+                commit_ids: vec!["aaaaaaaaaaaa1111".into()],
+            }
+        );
+        // No PR URL on the task → no relation, with the gate still open.
+        assert!(resolve_task_relations(Some(&remote), &commits, &[], &source).is_empty());
+    }
+
+    // --- GitHub の参照手段 (doc-6 §6, decision-14) -------------------------------------------
+
+    #[test]
+    fn api_path_segments_reject_traversal_and_foreign_characters() {
+        // owner/repo come from a task's own References URL and are interpolated into an API path,
+        // so anything that could steer the request elsewhere is refused before `gh` is spawned.
+        assert_eq!(api_path_segment("backlog-atlas").unwrap(), "backlog-atlas");
+        assert_eq!(api_path_segment("serendipitynz").unwrap(), "serendipitynz");
+        for bad in ["", ".", "..", "o/r", "o r", "o%2Fr", "o?x"] {
+            assert!(api_path_segment(bad).is_err(), "{bad} must be refused");
+        }
+    }
+
+    #[test]
+    fn only_hex_lines_are_read_as_commit_ids() {
+        assert!(is_sha("aaaaaaa"));
+        assert!(is_sha("aaaaaaaaaaaa1111bbbbbbbbbbbb2222cccc3333"));
+        // Too short, and not hex: a stray notice on stdout must not become a commit id.
+        assert!(!is_sha("abc"));
+        assert!(!is_sha("gh: not found"));
+        assert!(!is_sha(""));
+    }
+
+    /// `#[ignore]` by default for the same reason as the CLI tests in `commands.rs`: it asserts on
+    /// environment properties (an authenticated `gh` on PATH, and network reach to github.com), so a
+    /// machine without them would go red for something that is not a code defect. Everything that is
+    /// Atlas's own logic — the gate, the per-PR outcomes, the SHA matching, the argument guards — is
+    /// covered by the deterministic tests above, which need no network. Run it where `gh` is
+    /// available: `cargo test --lib -- --ignored the_gh_reference_means_returns_a_pr_commit_set`
+    #[test]
+    #[ignore = "requires an authenticated gh on PATH and network access to github.com"]
+    fn the_gh_reference_means_returns_a_pr_commit_set() {
+        // Atlas's own repository, whose PR #28 is merged and therefore fixed.
+        let target = PullRequestTarget {
+            host: RemoteHostKind::GitHub,
+            owner: "serendipitynz".into(),
+            repo: "backlog-atlas".into(),
+            number: 28,
+        };
+        let shas = HostReferences.commits_for_pull_request(&target).unwrap();
+        assert!(!shas.is_empty());
+        assert!(shas.iter().all(|sha| is_sha(sha)));
+        // One commit that is in that PR, matched the way relation resolution matches (prefix).
+        assert!(shas.iter().any(|sha| sha_relates(sha, "0057353")));
+    }
+
+    #[test]
+    fn a_failure_reason_is_one_short_line() {
+        assert_eq!(
+            first_line("\n  gh: To use GitHub CLI, run: gh auth login\nmore\n"),
+            "gh: To use GitHub CLI, run: gh auth login"
+        );
+        assert_eq!(first_line("   \n"), "gh の実行に失敗しました");
+        assert!(first_line(&"x".repeat(500)).chars().count() <= 200);
     }
 
     #[test]
