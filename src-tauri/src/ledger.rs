@@ -668,6 +668,36 @@ fn display_dir_name(project_root: &Path) -> String {
         .unwrap_or_else(|| project_root.display().to_string())
 }
 
+/// An absolute path for a root a fixture never creates, spelled the way *this* platform's
+/// `Path::is_absolute` requires: Windows wants a drive prefix or a UNC share, so a POSIX `/a` reads
+/// as relative there and `validate` returns `NonAbsoluteRoot` before the case under test is
+/// reached. The directory need not exist — `canonical_key` falls back to the path as given.
+///
+/// `is_absolute` is platform-specific, so unlike m-1 TASK-44's launcher this cannot be turned into
+/// a value both hosts check; the `cfg!` therefore picks between two literals and holds no predicate
+/// of its own, and `an_absolute_root_is_absolute_on_this_platform` is what makes the choice fail
+/// loudly on the host that got the wrong spelling.
+///
+/// Crate-visible rather than private to `tests` because `commands`'s fixtures hand-write the same
+/// ledger TOML: a second copy there would leave whichever copy the assertions below skip unchecked.
+#[cfg(test)]
+pub(crate) fn absolute_root(name: &str) -> PathBuf {
+    if cfg!(windows) {
+        PathBuf::from(format!(r"C:\{name}"))
+    } else {
+        PathBuf::from(format!("/{name}"))
+    }
+}
+
+/// `path` as a TOML string value, quoted and escaped by the same serializer `save` writes the
+/// ledger with. A fixture cannot interpolate a path into `"…"` itself: on Windows `C:\Users\…` puts
+/// `\U` inside a basic string, which is an invalid escape and fails the parse before the case under
+/// test runs.
+#[cfg(test)]
+pub(crate) fn toml_path(path: &Path) -> String {
+    toml::Value::from(path.display().to_string()).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,6 +737,26 @@ mod tests {
     impl Drop for TempDir {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn an_absolute_root_is_absolute_on_this_platform() {
+        assert!(absolute_root("a").is_absolute());
+        assert!(absolute_root("a").join("backlog").is_absolute());
+    }
+
+    #[test]
+    fn a_path_embedded_in_toml_survives_the_round_trip() {
+        // Which quoting the serializer reaches for is its business (it prefers a literal string
+        // for a backslashed path and falls back to a basic one when the path holds a `'`). Ours is
+        // that the value parses back byte-identical — asserted from any host, so the Windows
+        // fixtures' dependency on it is not first observed as a parse failure over there.
+        for path in [r"C:\Users\x", r"C:\a'b", "/a/b"] {
+            let value: toml::Value = format!("root = {}", toml_path(Path::new(path)))
+                .parse()
+                .unwrap_or_else(|e| panic!("{path} must embed as valid TOML: {e}"));
+            assert_eq!(value["root"].as_str(), Some(path));
         }
     }
 
@@ -1211,20 +1261,29 @@ mod tests {
         let tmp = TempDir::new();
         let path = tmp.path.join("projects.toml");
         // Hand-edited file with a duplicate slug — toml accepts the shape, but the semantic
-        // pass must reject it rather than silently pick the first entry.
+        // pass must reject it rather than silently pick the first entry. The roots have to be
+        // absolute on the running platform, or `validate` returns `NonAbsoluteRoot` for the first
+        // entry and the duplicate is never reached.
+        let (a, b) = (absolute_root("a"), absolute_root("b"));
         std::fs::write(
             &path,
-            "schema_version = 1\n\
-             [[project]]\n\
-             slug = \"dup\"\n\
-             project_root = \"/a\"\n\
-             backlog_root = \"/a/backlog\"\n\
-             git_remote_present = false\n\
-             [[project]]\n\
-             slug = \"dup\"\n\
-             project_root = \"/b\"\n\
-             backlog_root = \"/b/backlog\"\n\
-             git_remote_present = false\n",
+            format!(
+                "schema_version = 1\n\
+                 [[project]]\n\
+                 slug = \"dup\"\n\
+                 project_root = {a}\n\
+                 backlog_root = {a_backlog}\n\
+                 git_remote_present = false\n\
+                 [[project]]\n\
+                 slug = \"dup\"\n\
+                 project_root = {b}\n\
+                 backlog_root = {b_backlog}\n\
+                 git_remote_present = false\n",
+                a = toml_path(&a),
+                a_backlog = toml_path(&a.join("backlog")),
+                b = toml_path(&b),
+                b_backlog = toml_path(&b.join("backlog")),
+            ),
         )
         .unwrap();
         assert!(matches!(
@@ -1270,17 +1329,24 @@ mod tests {
     fn load_keeps_invalid_status_alias_for_the_interpretation_layer() {
         let tmp = TempDir::new();
         let path = tmp.path.join("projects.toml");
+        // Absolute on the running platform: `load` validates the roots first, so a POSIX `/a`
+        // would make this `unwrap` panic on Windows instead of reaching the alias assertions.
+        let a = absolute_root("a");
         std::fs::write(
             &path,
-            "schema_version = 1\n\
-             [[project]]\n\
-             slug = \"proj\"\n\
-             project_root = \"/a\"\n\
-             backlog_root = \"/a/backlog\"\n\
-             git_remote_present = false\n\
-             [project.status_aliases]\n\
-             Doing = \"In Progress\"\n\
-             Weird = \"Nonsense\"\n",
+            format!(
+                "schema_version = 1\n\
+                 [[project]]\n\
+                 slug = \"proj\"\n\
+                 project_root = {a}\n\
+                 backlog_root = {a_backlog}\n\
+                 git_remote_present = false\n\
+                 [project.status_aliases]\n\
+                 Doing = \"In Progress\"\n\
+                 Weird = \"Nonsense\"\n",
+                a = toml_path(&a),
+                a_backlog = toml_path(&a.join("backlog")),
+            ),
         )
         .unwrap();
         let loaded = LoadedLedger::load(&path).unwrap();
