@@ -12,12 +12,12 @@
 //! |---|---|---|
 //! | doc-4 ドメインモデル + doc-7 §4 列対応・Type | [`ProjectSnapshot`] | one root's model plus each task's interpretation (canonical-column status, Type) — the read commands' return value |
 //! | doc-7 §6 ルート読取不能 / 読めた行 | [`ProjectLoad`] | one ledger entry's read outcome: a model, or the reason its row shows no cards |
-//! | doc-9 §4 読取版指標を保持する単位 | [`ProjectSession`] / [`Workspace`] | one open root's model + read-version index, and the set of them keyed by slug |
+//! | doc-9 §4 読取版指標を保持する単位 | [`ProjectSession`] / [`ProjectState`] | one open root's model + read-version index, and the per-slug unit the プロジェクト単位ロック serializes (decision-18) |
 //! | doc-9 §3 継続検出の提示 | [`PROJECT_RELOADED_EVENT`] | the event carrying a watch-triggered re-read to the frontend |
 //! | doc-9 §4/§5 更新の結末 | [`UpdateResult`] | 更新前競合 (CLI never launched) vs. the CLI ran and returned a verdict |
 //! | doc-5 §5 / decision-7 縮退 | [`CliReadiness`] | whether a supported `backlog` exists, i.e. whether the UI may offer edits at all |
 //! | doc-6 §3/§6 コミット検索の結果・Git 対象不在 | [`CommitSearch`] | one task's commit search outcome: searched (possibly 該当なし) / 対象不在 / 読取不能 |
-//! | doc-8 §7 外部エディタ経路 | [`task_file_open`] / [`Workspace::open_in_editor`] | starting the user's editor on one task's management file, with the file resolved from this boundary's own model |
+//! | doc-8 §7 外部エディタ経路 | [`task_file_open`] / [`ProjectState::open_in_editor`] | starting the user's editor on one task's management file, with the file resolved from this boundary's own model |
 //! | doc-3 §4.1 登録を拒否し理由を示す | [`LedgerRefusal`] | which refusal a 登録・削除・更新 hit, as a value the screen branches on instead of a sentence it parses |
 //! | doc-3 §2.1 台帳ファイル | [`ledger_location`] | the one file Atlas reads and writes, named so the screen can show where the registration lives |
 //! | doc-3 §3.1 slug の既定値 | [`ledger_default_slug`] | the derivation from a project root, exposed so the screen previews the default instead of re-deriving it |
@@ -29,10 +29,10 @@
 //! decision-2 splits reading (file analysis) from updating (Backlog CLI). The boundary keeps that
 //! split in its *signatures*, so it cannot be lost by accident:
 //!
-//! - Read commands ([`Workspace::open`], [`Workspace::history`], the ledger and cross-task-id
+//! - Read commands ([`ProjectState::open`], [`read_history`], the ledger and cross-task-id
 //!   commands) take a [`ScanSource`] — or, for Git history, read Git directly. None of them names
 //!   [`BacklogCli`], so no read can travel through the CLI.
-//! - The update command ([`Workspace::apply`]) is the only one that takes a [`CliCapability`], which
+//! - The update command ([`ProjectState::apply`]) is the only one that takes a [`CliCapability`], which
 //!   only [`update::probe`] can produce. A missing or too-old CLI therefore cannot reach an update:
 //!   it is refused with [`CommandError::UpdatesUnavailable`] before anything runs (doc-5 §5 縮退).
 //!
@@ -49,10 +49,10 @@
 //! and none of these is cheap enough to be worth an exception.
 //!
 //! Getting off the main thread also gives up the serialization the main thread was silently
-//! providing: two invokes can now overlap. That is not a trade this boundary wants — the point was a
-//! responsive UI, not concurrent commands — so [`AtlasState`]'s lifecycle lock puts it back
-//! explicitly, and every command that touches the ledger or the workspace holds it for its whole
-//! body. Read [`AtlasState`] for what breaks without it and for the lock order.
+//! providing: two invokes can now overlap. Where that would break something, [`AtlasState`] puts the
+//! serialization back — but per project and per config file rather than over the whole boundary
+//! (decision-18), because one lock over everything meant one stalled `backlog` stalled every project.
+//! Read [`AtlasState`] for what breaks without it and for the lock order.
 //!
 //! ## Typed results, including the failures (AC #3)
 //!
@@ -489,15 +489,17 @@ struct ProjectSession {
     sync: SyncState,
 }
 
-/// Every open root, keyed by ledger slug. Holds no ledger state of its own: each method takes the
-/// [`ProjectEntry`] the caller just read, so a root moved or re-aliased through the ledger commands
-/// takes effect on the next call rather than needing the session to be invalidated.
+/// One registered root's state, and the unit the プロジェクト単位ロック serializes (decision-18):
+/// whether the root is open, and if so the session behind it. Holds no ledger state of its own —
+/// each method takes the [`ProjectEntry`] the caller just read under the same lock, so a root moved
+/// or re-aliased through the ledger commands takes effect on the next call rather than needing the
+/// session to be invalidated.
 #[derive(Debug, Default)]
-pub struct Workspace {
-    sessions: BTreeMap<String, ProjectSession>,
+pub struct ProjectState {
+    session: Option<ProjectSession>,
 }
 
-impl Workspace {
+impl ProjectState {
     /// Read a root and keep it open (doc-9 §4). Reopening an already-open root re-reads it through
     /// [`SyncState::reload`] rather than standing up a second [`SyncState`] beside the live one:
     /// TASK-32 AC #6 makes a new trigger a [`ReloadReason`] variant, not a second read path.
@@ -507,7 +509,7 @@ impl Workspace {
         source: &dyn ScanSource,
         probe: &dyn FileVersions,
     ) -> Result<ProjectSnapshot, CommandError> {
-        if let Some(session) = self.sessions.get_mut(&entry.slug) {
+        if let Some(session) = self.session.as_mut() {
             session.model = session
                 .sync
                 .reload(ReloadReason::ManualRefresh, source, probe)
@@ -520,8 +522,7 @@ impl Workspace {
         let (model, sync) = SyncState::initialize(&entry.slug, source, probe)
             .map_err(|e| CommandError::root_unreadable(&entry.slug, e))?;
         let snapshot = ProjectSnapshot::build(&model, &entry.status_aliases);
-        self.sessions
-            .insert(entry.slug.clone(), ProjectSession { model, sync });
+        self.session = Some(ProjectSession { model, sync });
         Ok(snapshot)
     }
 
@@ -546,8 +547,8 @@ impl Workspace {
     }
 
     /// Drop an open root. Returns whether one was open; closing a closed root is not an error.
-    pub fn close(&mut self, slug: &str) -> bool {
-        self.sessions.remove(slug).is_some()
+    pub fn close(&mut self) -> bool {
+        self.session.take().is_some()
     }
 
     /// The only part of a Git 履歴 read that needs the open model: one task's References, doc-6 §4's
@@ -691,16 +692,16 @@ impl Workspace {
     }
 
     fn session(&self, slug: &str) -> Result<&ProjectSession, CommandError> {
-        self.sessions
-            .get(slug)
+        self.session
+            .as_ref()
             .ok_or_else(|| CommandError::ProjectNotOpen {
                 slug: slug.to_string(),
             })
     }
 
     fn session_mut(&mut self, slug: &str) -> Result<&mut ProjectSession, CommandError> {
-        self.sessions
-            .get_mut(slug)
+        self.session
+            .as_mut()
             .ok_or_else(|| CommandError::ProjectNotOpen {
                 slug: slug.to_string(),
             })
@@ -743,38 +744,82 @@ struct WatchHandle {
 
 /// Everything the boundary keeps between commands.
 ///
-/// `lifecycle` is the outermost lock and the reason the other two can stay simple. Making the
-/// commands `(async)` took them off the main thread, and with that went the main thread's incidental
-/// serialization: two invokes can now overlap. Two things break under that. The ledger's
-/// load → mutate → save is a read-modify-write on one file, so concurrent mutations would each start
-/// from the same bytes and the last save would discard the other's change. And publishing a moved
-/// entry has to be indivisible from invalidating what the move stales: `ledger_update` writes the new
-/// roots and then closes the session, and in between, an `update_apply` reading the fresh entry would
-/// find the *old* model and read-version index still in the workspace — version-checking the old
-/// root's file and then running the CLI in the new `project_root`, which is exactly the hazard
-/// closing the session exists to prevent.
+/// Making the commands `(async)` took them off the main thread, and with that went the main thread's
+/// incidental serialization: two invokes can now overlap. Two things break under that. Atlas's own
+/// two files are each written by a load → mutate → save, so concurrent mutations would start from the
+/// same bytes and the last save would discard the other's change. And publishing a moved entry has to
+/// be indivisible from invalidating what the move stales: `ledger_update` writes the new roots and
+/// then closes the session, and in between, an `update_apply` reading the fresh entry would find the
+/// *old* model and read-version index still open — version-checking the old root's file and then
+/// running the CLI in the new `project_root`, which is exactly the hazard closing the session exists
+/// to prevent.
 ///
-/// So every command that mutates the ledger, or reads an entry and then acts on the workspace, holds
-/// `lifecycle` for its whole body. That restores the serialization the main thread used to give,
-/// without putting the work back on the UI thread — which was the only thing `(async)` was for.
+/// One lock over the whole boundary would restore both, and did — until `update_apply` held it across
+/// a `backlog` that never finished, which stalled every other project too (decision-18). So the
+/// serialization is restored per unit of the thing being protected instead:
 ///
-/// Lock order is `lifecycle` → `watches` → `workspace`, never the reverse. A watch thread takes
-/// `lifecycle` then `workspace`, which is the same order, so no cycle exists. The one rule that keeps
-/// it that way: a watch thread is never *joined* while `lifecycle` is held — see [`detach_project`].
+/// - **プロジェクト単位ロック** — `projects` holds one lock per slug. A command that reads an entry
+///   and then acts on that project's session holds its slug's lock for the whole body, the CLI run
+///   included. Another slug's lock is a different lock, so a stalled update stalls one project.
+/// - **設定ファイルロック** — `ledger_writes` and `settings_writes` serialize the load → mutate → save
+///   of Atlas's own two files, and nothing else. A *read* of either file takes neither: decision-17
+///   replaces both by rename, so a reader gets one whole version or the other and can no longer see
+///   bytes mid-write. Never held across a subprocess, and never held at the same time as each other —
+///   two locks nestable in both orders are a cycle waiting to be written, so nesting is banned rather
+///   than ordered.
+///
+/// Lock order is `projects` (the registry, to take one slug's lock) → that slug's lock → a 設定
+/// ファイルロック → `watches`, never the reverse. A watch thread takes the same order. The one rule
+/// that keeps it that way: a watch thread is never *joined* while its project's lock is held — see
+/// [`detach_project`].
 #[derive(Default)]
 pub struct AtlasState {
-    lifecycle: Mutex<()>,
-    workspace: Mutex<Workspace>,
+    projects: Mutex<BTreeMap<String, Arc<Mutex<ProjectState>>>>,
+    ledger_writes: Mutex<()>,
+    settings_writes: Mutex<()>,
     watches: Mutex<BTreeMap<String, WatchHandle>>,
 }
 
-/// Proof that the holder has the lifecycle lock. The ledger accessors take one, so reaching the
-/// ledger without serializing against a concurrent mutation is not something a caller can forget —
-/// it is a missing argument rather than a missing habit.
-struct Lifecycle<'a>(#[allow(dead_code)] MutexGuard<'a, ()>);
+/// The プロジェクト単位ロック for one slug, held (decision-18). Carries the slug it was taken for, so
+/// the ledger accessors below can read *that* project's entry and no other: pairing the wrong entry
+/// with a locked session is the hazard the lock exists for, and it is now a missing argument rather
+/// than a missing habit.
+struct Project<'a> {
+    slug: &'a str,
+    state: &'a mut ProjectState,
+}
 
-fn lifecycle(state: &AtlasState) -> Lifecycle<'_> {
-    Lifecycle(lock(&state.lifecycle))
+/// Run `body` holding `slug`'s プロジェクト単位ロック, releasing it before returning.
+///
+/// The lock is created on first use and **never removed from the registry**, not even by
+/// `ledger_remove`. Removing it would let a call that is already blocked on the old lock run
+/// alongside a later call that found nothing and created a new one — two live locks for one slug,
+/// which is no lock at all. What is retained is one empty mutex per slug seen in this run.
+fn with_project<T>(state: &AtlasState, slug: &str, body: impl FnOnce(&mut Project<'_>) -> T) -> T {
+    let handle = lock(&state.projects)
+        .entry(slug.to_string())
+        .or_default()
+        .clone();
+    let mut guard = lock(&handle);
+    body(&mut Project {
+        slug,
+        state: &mut guard,
+    })
+}
+
+/// Proof that the holder has the 設定ファイルロック for the ledger file. [`mutate_ledger`] takes one;
+/// reading the ledger takes none (see [`AtlasState`]).
+struct LedgerWrite<'a>(#[allow(dead_code)] MutexGuard<'a, ()>);
+
+fn ledger_write(state: &AtlasState) -> LedgerWrite<'_> {
+    LedgerWrite(lock(&state.ledger_writes))
+}
+
+/// Proof that the holder has the 設定ファイルロック for the settings file.
+struct SettingsWrite<'a>(#[allow(dead_code)] MutexGuard<'a, ()>);
+
+fn settings_write(state: &AtlasState) -> SettingsWrite<'_> {
+    SettingsWrite(lock(&state.settings_writes))
 }
 
 /// Lock a state mutex, recovering a poisoned one. A panic in one command must not turn every later
@@ -815,16 +860,8 @@ fn watch_loop(app: AppHandle, slug: String, session: WatchSession, stop: Arc<Ato
 /// reported on its row instead of silently ending the watch (doc-7 §6).
 fn reload_for_watch(app: &AppHandle, slug: &str) -> ProjectLoad {
     let state = app.state::<AtlasState>();
-    // Under the lifecycle lock like any other ledger reader, so a batch landing mid-move cannot read
-    // a half-written ledger or pair a fresh entry with a session about to be closed. Safe from
-    // deadlock only because nothing joins a watch thread while holding this lock (see
-    // [`detach_project`]) — that is the invariant this line depends on.
-    let lifecycle = lifecycle(&state);
-    // The ledger is re-read per batch rather than captured when the watch started: 別名表 is a ledger
-    // attribute the user may change while the watch runs (doc-3 §3.3), and the interpretation this
-    // event carries has to use the current table.
-    let entry = match entry_for(app, &lifecycle, slug) {
-        Ok(entry) => entry,
+    let files = match ConfigFiles::resolve(app) {
+        Ok(files) => files,
         Err(error) => {
             return ProjectLoad::Unreadable {
                 slug: slug.to_string(),
@@ -832,27 +869,47 @@ fn reload_for_watch(app: &AppHandle, slug: &str) -> ProjectLoad {
             }
         }
     };
-    let source = WorkingTree::new(&entry.backlog_root);
-    let mut workspace = lock(&state.workspace);
-    match workspace.reload(&entry, ReloadReason::ExternalChange, &source, &FsVersions) {
-        Ok(project) => ProjectLoad::Loaded { project },
-        Err(error) => ProjectLoad::Unreadable {
-            slug: slug.to_string(),
-            error,
-        },
-    }
+    // Under this project's プロジェクト単位ロック like any other reader of it, so a batch landing
+    // mid-move cannot pair a fresh entry with a session about to be closed. Safe from deadlock only
+    // because nothing joins a watch thread while holding that lock (see [`detach_project`]) — that
+    // is the invariant this line depends on.
+    with_project(&state, slug, |project| {
+        // The ledger is re-read per batch rather than captured when the watch started: 別名表 is a
+        // ledger attribute the user may change while the watch runs (doc-3 §3.3), and the
+        // interpretation this event carries has to use the current table.
+        let entry = match entry_for(&files, project) {
+            Ok(entry) => entry,
+            Err(error) => {
+                return ProjectLoad::Unreadable {
+                    slug: slug.to_string(),
+                    error,
+                }
+            }
+        };
+        let source = WorkingTree::new(&entry.backlog_root);
+        match project
+            .state
+            .reload(&entry, ReloadReason::ExternalChange, &source, &FsVersions)
+        {
+            Ok(project) => ProjectLoad::Loaded { project },
+            Err(error) => ProjectLoad::Unreadable {
+                slug: slug.to_string(),
+                error,
+            },
+        }
+    })
 }
 
 /// Deregister a root's watch and signal it to stop, returning its thread for the caller to join.
 ///
-/// The join deliberately does not happen here. A watch thread takes the lifecycle lock to re-read the
-/// ledger, and every caller of this function holds that lock — joining under it would wait forever
-/// for a thread that is itself waiting for the lock. So the thread is signalled and unregistered
-/// while the lock is held (which is what makes it indivisible from the ledger write that staled it),
-/// and [`join_watch`] finishes the job once the lock is released.
-#[must_use = "the detached watch thread must be joined by the caller once the lifecycle lock is released"]
-fn detach_watch(state: &AtlasState, _lifecycle: &Lifecycle<'_>, slug: &str) -> Option<WatchHandle> {
-    let handle = lock(&state.watches).remove(slug);
+/// The join deliberately does not happen here. A watch thread takes its project's プロジェクト単位
+/// ロック to re-read, and every caller of this function holds that lock — joining under it would wait
+/// forever for a thread that is itself waiting for the lock. So the thread is signalled and
+/// unregistered while the lock is held (which is what makes it indivisible from the ledger write that
+/// staled it), and [`join_watch`] finishes the job once the lock is released.
+#[must_use = "the detached watch thread must be joined by the caller once the project lock is released"]
+fn detach_watch(state: &AtlasState, project: &Project<'_>) -> Option<WatchHandle> {
+    let handle = lock(&state.watches).remove(project.slug);
     if let Some(handle) = &handle {
         handle.stop.store(true, Ordering::Relaxed);
     }
@@ -860,18 +917,14 @@ fn detach_watch(state: &AtlasState, _lifecycle: &Lifecycle<'_>, slug: &str) -> O
 }
 
 /// [`detach_watch`] plus dropping the open session, for when the root itself is going away.
-#[must_use = "the detached watch thread must be joined by the caller once the lifecycle lock is released"]
-fn detach_project(
-    state: &AtlasState,
-    lifecycle: &Lifecycle<'_>,
-    slug: &str,
-) -> Option<WatchHandle> {
-    let handle = detach_watch(state, lifecycle, slug);
-    lock(&state.workspace).close(slug);
+#[must_use = "the detached watch thread must be joined by the caller once the project lock is released"]
+fn detach_project(state: &AtlasState, project: &mut Project<'_>) -> Option<WatchHandle> {
+    let handle = detach_watch(state, project);
+    project.state.close();
     handle
 }
 
-/// Wait for a detached watch thread. Must be called with the lifecycle lock released; the command
+/// Wait for a detached watch thread. Must be called with the project's lock released; the command
 /// still waits before it returns, so by the time the frontend has its answer the thread is gone.
 fn join_watch(handle: Option<WatchHandle>) {
     if let Some(handle) = handle {
@@ -881,37 +934,52 @@ fn join_watch(handle: Option<WatchHandle>) {
 
 // --- ledger plumbing ----------------------------------------------------------------------------
 
-/// Resolve the single ledger file under the OS app-config dir (doc-3 §2.1). The ledger is Atlas's
-/// own config and never lives inside any project's Backlog root.
-fn ledger_path(app: &AppHandle) -> Result<PathBuf, CommandError> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| CommandError::Ledger {
-            detail: format!("the application config directory could not be resolved: {e}"),
-        })?;
-    Ok(dir.join("projects.toml"))
+/// Atlas's own two files: the ledger (doc-3 §2.1) and the app settings (decision-13). Both live in
+/// the OS app-config dir and in no project's Backlog root.
+///
+/// Resolved once per command into a value, rather than looked up from the [`AppHandle`] at each use.
+/// That is what lets the lock structure be exercised without a Tauri app — TASK-85 AC #4 asks for a
+/// test that one project's stalled update holds up neither another project's read nor the settings
+/// read, and a test that cannot build the state cannot make that claim.
+#[derive(Debug, Clone)]
+pub struct ConfigFiles {
+    ledger: PathBuf,
+    settings: PathBuf,
 }
 
-fn load_ledger(app: &AppHandle, _lifecycle: &Lifecycle<'_>) -> Result<LoadedLedger, CommandError> {
-    let path = ledger_path(app)?;
-    Ok(LoadedLedger::load(&path)?)
+impl ConfigFiles {
+    fn resolve(app: &AppHandle) -> Result<ConfigFiles, CommandError> {
+        let dir = app
+            .path()
+            .app_config_dir()
+            .map_err(|e| CommandError::Ledger {
+                detail: format!("the application config directory could not be resolved: {e}"),
+            })?;
+        Ok(ConfigFiles {
+            ledger: dir.join("projects.toml"),
+            settings: dir.join("settings.toml"),
+        })
+    }
 }
 
-/// The ledger entry for `slug`, cloned so no ledger borrow outlives the lookup.
-fn entry_for(
-    app: &AppHandle,
-    lifecycle: &Lifecycle<'_>,
-    slug: &str,
-) -> Result<ProjectEntry, CommandError> {
-    load_ledger(app, lifecycle)?
+/// Read the ledger. Takes no 設定ファイルロック: decision-17 replaces the file by rename, so a read
+/// concurrent with a save sees one whole version or the other (see [`AtlasState`]).
+fn load_ledger(files: &ConfigFiles) -> Result<LoadedLedger, CommandError> {
+    Ok(LoadedLedger::load(&files.ledger)?)
+}
+
+/// The ledger entry for the project whose プロジェクト単位ロック is held, cloned so no ledger borrow
+/// outlives the lookup. Taking the guard rather than a slug is what ties "the entry we act on" to
+/// "the session we hold the lock for" — the pairing doc-9 §4 checks against.
+fn entry_for(files: &ConfigFiles, project: &Project<'_>) -> Result<ProjectEntry, CommandError> {
+    load_ledger(files)?
         .ledger
         .projects
         .iter()
-        .find(|entry| entry.slug == slug)
+        .find(|entry| entry.slug == project.slug)
         .cloned()
         .ok_or_else(|| CommandError::UnknownProject {
-            slug: slug.to_string(),
+            slug: project.slug.to_string(),
         })
 }
 
@@ -942,29 +1010,24 @@ impl From<LoadedLedger> for LedgerResponse {
 /// alongside the saved state, so a command can compare the entry before and after without re-reading
 /// the file it just wrote.
 fn mutate_ledger<F, T>(
-    app: &AppHandle,
-    _lifecycle: &Lifecycle<'_>,
+    files: &ConfigFiles,
+    _write: &LedgerWrite<'_>,
     op: F,
 ) -> Result<(T, LedgerResponse), CommandError>
 where
     F: FnOnce(&mut Ledger) -> Result<T, LedgerError>,
 {
-    let path = ledger_path(app)?;
-    let mut loaded = LoadedLedger::load(&path)?;
+    let mut loaded = LoadedLedger::load(&files.ledger)?;
     let observed = op(&mut loaded.ledger)?;
-    loaded.save(&path)?;
+    loaded.save(&files.ledger)?;
     Ok((observed, loaded.into()))
 }
 
 // --- commands: ledger (doc-3) -------------------------------------------------------------------
 
 #[tauri::command(async)]
-pub fn ledger_list(
-    app: AppHandle,
-    state: State<'_, AtlasState>,
-) -> Result<LedgerResponse, CommandError> {
-    let lifecycle = lifecycle(&state);
-    Ok(load_ledger(&app, &lifecycle)?.into())
+pub fn ledger_list(app: AppHandle) -> Result<LedgerResponse, CommandError> {
+    Ok(load_ledger(&ConfigFiles::resolve(&app)?)?.into())
 }
 
 /// Where the ledger file is (doc-3 §2.1). Shown by the 台帳管理画面 rather than kept internal: the
@@ -973,7 +1036,7 @@ pub fn ledger_list(
 /// supported route. Resolving the path reads nothing, so this takes no lifecycle lock.
 #[tauri::command(async)]
 pub fn ledger_location(app: AppHandle) -> Result<PathBuf, CommandError> {
-    ledger_path(&app)
+    Ok(ConfigFiles::resolve(&app)?.ledger)
 }
 
 /// The slug a project root would get by default (doc-3 §3.1). Exposed so the registration form can
@@ -1006,8 +1069,12 @@ pub fn ledger_register(
     state: State<'_, AtlasState>,
     request: RegisterRequest,
 ) -> Result<RegisterResponse, CommandError> {
-    let lifecycle = lifecycle(&state);
-    let (entry, ledger) = mutate_ledger(&app, &lifecycle, |ledger| ledger.register(&request))?;
+    // No プロジェクト単位ロック: registration is the moment a slug starts existing, so there is no
+    // session or watch of its own to pair with — and the slug is not known until `register` derives
+    // it (doc-3 §3.1). A slug that is already taken is refused by the ledger, not by a lock.
+    let files = ConfigFiles::resolve(&app)?;
+    let write = ledger_write(&state);
+    let (entry, ledger) = mutate_ledger(&files, &write, |ledger| ledger.register(&request))?;
     Ok(RegisterResponse { entry, ledger })
 }
 
@@ -1019,14 +1086,16 @@ pub fn ledger_remove(
     state: State<'_, AtlasState>,
     slug: String,
 ) -> Result<LedgerResponse, CommandError> {
-    // The removal and the detach share one lifecycle lock, so no command can observe an entry that
-    // is gone from the ledger while its session is still open.
-    let (response, detached) = {
-        let lifecycle = lifecycle(&state);
+    // The removal and the detach happen under this project's own lock, so no command can observe an
+    // entry that is gone from the ledger while its session is still open.
+    let files = ConfigFiles::resolve(&app)?;
+    let (response, detached) = with_project(&state, &slug, |project| {
+        let write = ledger_write(&state);
         let (_, response) =
-            mutate_ledger(&app, &lifecycle, |ledger| ledger.remove(&slug).map(|_| ()))?;
-        (response, detach_project(&state, &lifecycle, &slug))
-    };
+            mutate_ledger(&files, &write, |ledger| ledger.remove(&slug).map(|_| ()))?;
+        let detached = detach_project(&state, project);
+        Ok::<_, CommandError>((response, detached))
+    })?;
     join_watch(detached);
     Ok(response)
 }
@@ -1055,30 +1124,33 @@ fn entry_roots(ledger: &Ledger, slug: &str) -> Option<(PathBuf, PathBuf)> {
 /// that never mixes the two. Only a move triggers it; an alias-only edit leaves the session alone,
 /// because the interpretation is computed per call and picks the new table up without a re-read.
 ///
-/// Writing the entry and detaching the session happen under one lifecycle lock. Splitting them would
-/// leave a window in which the new roots are already published while the stale session is still open
-/// — and an `update_apply` landing in that window is precisely the hazard above, now reachable
-/// concurrently rather than only across calls.
+/// Writing the entry and detaching the session happen under this project's own lock. Splitting them
+/// would leave a window in which the new roots are already published while the stale session is still
+/// open — and an `update_apply` landing in that window is precisely the hazard above, now reachable
+/// concurrently rather than only across calls. Taking the project's lock *before* the ledger's is
+/// what makes the pairing hold: every command that reads this entry and then acts on this session
+/// takes the same lock first (decision-18 fixes the order in that direction, not the other).
 #[tauri::command(async)]
 pub fn ledger_update(
     app: AppHandle,
     state: State<'_, AtlasState>,
     request: UpdateRequest,
 ) -> Result<LedgerResponse, CommandError> {
-    let (response, detached) = {
-        let lifecycle = lifecycle(&state);
-        let (moved, response) = mutate_ledger(&app, &lifecycle, |ledger| {
+    let files = ConfigFiles::resolve(&app)?;
+    let (response, detached) = with_project(&state, &request.slug, |project| {
+        let write = ledger_write(&state);
+        let (moved, response) = mutate_ledger(&files, &write, |ledger| {
             let before = entry_roots(ledger, &request.slug);
             let after = ledger.update(&request)?;
             Ok(before != Some((after.project_root, after.backlog_root)))
         })?;
         let detached = if moved {
-            detach_project(&state, &lifecycle, &request.slug)
+            detach_project(&state, project)
         } else {
             None
         };
-        (response, detached)
-    };
+        Ok::<_, CommandError>((response, detached))
+    })?;
     join_watch(detached);
     Ok(response)
 }
@@ -1089,13 +1161,11 @@ pub fn ledger_update(
 #[tauri::command(async)]
 pub fn cross_task_id_generate(
     app: AppHandle,
-    state: State<'_, AtlasState>,
     slug: String,
     task_id: String,
     task_prefix: String,
 ) -> Result<String, CommandError> {
-    let lifecycle = lifecycle(&state);
-    Ok(load_ledger(&app, &lifecycle)?
+    Ok(load_ledger(&ConfigFiles::resolve(&app)?)?
         .ledger
         .generate_cross_task_id(&slug, &task_id, &task_prefix)?)
 }
@@ -1105,17 +1175,13 @@ pub fn cross_task_id_generate(
 #[tauri::command(async)]
 pub fn cross_task_id_parse(
     app: AppHandle,
-    state: State<'_, AtlasState>,
     input: String,
     task_prefix: String,
     context_slug: Option<String>,
 ) -> Result<ParsedTaskRef, CommandError> {
-    let lifecycle = lifecycle(&state);
-    Ok(load_ledger(&app, &lifecycle)?.ledger.parse_cross_task_id(
-        &input,
-        &task_prefix,
-        context_slug.as_deref(),
-    )?)
+    Ok(load_ledger(&ConfigFiles::resolve(&app)?)?
+        .ledger
+        .parse_cross_task_id(&input, &task_prefix, context_slug.as_deref())?)
 }
 
 // --- commands: read path (decision-2, AC #2/#5) -------------------------------------------------
@@ -1123,26 +1189,46 @@ pub fn cross_task_id_parse(
 /// Open every registered project (doc-7 §2: rows are projects). A root that cannot be read yields
 /// [`ProjectLoad::Unreadable`] for its own row and leaves the others untouched — doc-7 §6 keeps the
 /// row, and doc-4 §5 confines ルート読取不能 to the root it happened in.
+///
+/// Each root is opened under its own プロジェクト単位ロック, taken and released one at a time
+/// (decision-18): holding all of them at once would put this command back in the position of
+/// blocking every project, and is the one shape the lock order does not cover. The entry is re-read
+/// inside each lock rather than taken from the listing, so a root moved while this loop runs is
+/// opened at the roots it has now, not the ones it had when the list was made.
 #[tauri::command(async)]
 pub fn workspace_open(
     app: AppHandle,
     state: State<'_, AtlasState>,
 ) -> Result<Vec<ProjectLoad>, CommandError> {
-    let lifecycle = lifecycle(&state);
-    let ledger = load_ledger(&app, &lifecycle)?.ledger;
-    let mut workspace = lock(&state.workspace);
-    Ok(ledger
+    let files = ConfigFiles::resolve(&app)?;
+    let slugs: Vec<String> = load_ledger(&files)?
+        .ledger
         .projects
         .iter()
-        .map(|entry| {
-            let source = WorkingTree::new(&entry.backlog_root);
-            match workspace.open(entry, &source, &FsVersions) {
-                Ok(project) => ProjectLoad::Loaded { project },
-                Err(error) => ProjectLoad::Unreadable {
-                    slug: entry.slug.clone(),
-                    error,
-                },
-            }
+        .map(|entry| entry.slug.clone())
+        .collect();
+    Ok(slugs
+        .iter()
+        .map(|slug| {
+            with_project(&state, slug, |project| {
+                let entry = match entry_for(&files, project) {
+                    Ok(entry) => entry,
+                    Err(error) => {
+                        return ProjectLoad::Unreadable {
+                            slug: slug.clone(),
+                            error,
+                        }
+                    }
+                };
+                let source = WorkingTree::new(&entry.backlog_root);
+                match project.state.open(&entry, &source, &FsVersions) {
+                    Ok(project) => ProjectLoad::Loaded { project },
+                    Err(error) => ProjectLoad::Unreadable {
+                        slug: slug.clone(),
+                        error,
+                    },
+                }
+            })
         })
         .collect())
 }
@@ -1155,21 +1241,20 @@ pub fn project_open(
     state: State<'_, AtlasState>,
     slug: String,
 ) -> Result<ProjectSnapshot, CommandError> {
-    // The lifecycle lock spans reading the entry and opening it, so the model and read-version index
+    let files = ConfigFiles::resolve(&app)?;
+    // This project's lock spans reading the entry and opening it, so the model and read-version index
     // this builds cannot come from an entry another command has already replaced.
-    let lifecycle = lifecycle(&state);
-    let entry = entry_for(&app, &lifecycle, &slug)?;
-    let source = WorkingTree::new(&entry.backlog_root);
-    lock(&state.workspace).open(&entry, &source, &FsVersions)
+    with_project(&state, &slug, |project| {
+        let entry = entry_for(&files, project)?;
+        let source = WorkingTree::new(&entry.backlog_root);
+        project.state.open(&entry, &source, &FsVersions)
+    })
 }
 
 /// Close one root: stop its watch and drop its session and read-version index.
 #[tauri::command(async)]
 pub fn project_close(state: State<'_, AtlasState>, slug: String) {
-    let detached = {
-        let lifecycle = lifecycle(&state);
-        detach_project(&state, &lifecycle, &slug)
-    };
+    let detached = with_project(&state, &slug, |project| detach_project(&state, project));
     join_watch(detached);
 }
 
@@ -1183,43 +1268,42 @@ pub fn project_watch_start(
     state: State<'_, AtlasState>,
     slug: String,
 ) -> Result<(), CommandError> {
-    let lifecycle = lifecycle(&state);
-    let entry = entry_for(&app, &lifecycle, &slug)?;
-    let mut watches = lock(&state.watches);
-    if watches.contains_key(&slug) {
-        return Ok(());
-    }
-    let session = WatchSession::start(&entry.backlog_root, WATCH_WINDOW).map_err(|e| {
-        CommandError::WatchFailed {
-            slug: slug.clone(),
-            detail: e.to_string(),
+    let files = ConfigFiles::resolve(&app)?;
+    with_project(&state, &slug, |project| {
+        let entry = entry_for(&files, project)?;
+        let mut watches = lock(&state.watches);
+        if watches.contains_key(&slug) {
+            return Ok(());
         }
-    })?;
-    let stop = Arc::new(AtomicBool::new(false));
-    let thread = std::thread::spawn({
-        let app = app.clone();
-        let slug = slug.clone();
-        let stop = Arc::clone(&stop);
-        move || watch_loop(app, slug, session, stop)
-    });
-    watches.insert(slug, WatchHandle { stop, thread });
-    Ok(())
+        let session = WatchSession::start(&entry.backlog_root, WATCH_WINDOW).map_err(|e| {
+            CommandError::WatchFailed {
+                slug: slug.clone(),
+                detail: e.to_string(),
+            }
+        })?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread = std::thread::spawn({
+            let app = app.clone();
+            let slug = slug.clone();
+            let stop = Arc::clone(&stop);
+            move || watch_loop(app, slug, session, stop)
+        });
+        watches.insert(slug.clone(), WatchHandle { stop, thread });
+        Ok(())
+    })
 }
 
-/// Stop 継続検出 for one root, leaving its session open. The thread is joined after the lifecycle lock
+/// Stop 継続検出 for one root, leaving its session open. The thread is joined after the project's lock
 /// is released (see [`detach_watch`]).
 #[tauri::command(async)]
 pub fn project_watch_stop(state: State<'_, AtlasState>, slug: String) {
-    let detached = {
-        let lifecycle = lifecycle(&state);
-        detach_watch(&state, &lifecycle, &slug)
-    };
+    let detached = with_project(&state, &slug, |project| detach_watch(&state, project));
     join_watch(detached);
 }
 
 /// The subprocess half of one task's Git・Pull Request 履歴 (doc-6): the commit search, the remote
 /// host detection, and — behind that gate — the relation lookup. Takes the task's `references` (from
-/// [`Workspace::task_references`]) rather than a session, so it needs no lock and none is held while
+/// [`ProjectState::task_references`]) rather than a session, so it needs no lock and none is held while
 /// it runs.
 ///
 /// That is the point of the split. `gh` is waited on without a bound (decision-14), and every ledger
@@ -1274,14 +1358,16 @@ pub fn task_history_read(
     slug: String,
     task_id: String,
 ) -> Result<TaskHistory, CommandError> {
-    // Everything that needs a lock happens in this block, and both guards are dropped at its end —
-    // `read_history` below spawns `git` and `gh`, and must not do so holding them.
-    let (entry, references) = {
-        let lifecycle = lifecycle(&state);
-        let entry = entry_for(&app, &lifecycle, &slug)?;
-        let references = lock(&state.workspace).task_references(&entry, &task_id)?;
-        (entry, references)
-    };
+    // Everything that needs a lock happens in this block, and the guard is dropped at its end —
+    // `read_history` below spawns `git` and `gh`, and must not do so holding it. decision-18 keeps
+    // this split after the lock was narrowed to one project: a network wait has no more reason to sit
+    // under one project's lock than under a global one.
+    let files = ConfigFiles::resolve(&app)?;
+    let (entry, references) = with_project(&state, &slug, |project| {
+        let entry = entry_for(&files, project)?;
+        let references = project.state.task_references(&entry, &task_id)?;
+        Ok::<_, CommandError>((entry, references))
+    })?;
     Ok(read_history(
         &entry,
         &task_id,
@@ -1292,25 +1378,12 @@ pub fn task_history_read(
 
 // --- commands: アプリ設定 (decision-13) ------------------------------------------------------------
 
-/// Resolve the single settings file under the OS app-config dir (decision-13). Beside the ledger, in
-/// Atlas's own config dir and in no project's Backlog root — decision-13's reason for the location is
-/// that the user can find both files, and back them up, in one place.
-fn settings_path(app: &AppHandle) -> Result<PathBuf, CommandError> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| CommandError::Settings {
-            detail: format!("the application config directory could not be resolved: {e}"),
-        })?;
-    Ok(dir.join("settings.toml"))
-}
-
 /// The settings in force, for this boundary's own use. A path that cannot be resolved is the one read
 /// failure this returns rather than degrades, because the caller needs *some* settings either way —
 /// so it is turned into the defaults here, and the screen learns of it through [`settings_read`].
 fn current_settings(app: &AppHandle) -> AppSettings {
-    match settings_path(app) {
-        Ok(path) => LoadedSettings::load(&path).settings,
+    match ConfigFiles::resolve(app) {
+        Ok(files) => LoadedSettings::load(&files.settings).settings,
         Err(_) => AppSettings::default(),
     }
 }
@@ -1318,15 +1391,20 @@ fn current_settings(app: &AppHandle) -> AppSettings {
 /// アプリ設定 and why they are what they are (decision-13, AC #2/#6). Reading never fails: a missing,
 /// unreadable or too-new file yields the defaults with a `status` the screen states — decision-13 is
 /// explicit that the screen must not stop because the settings could not be read.
+///
+/// Takes no lock at all. It used to take the boundary-wide one so that a read overlapping a save
+/// could not see half-written bytes as 破損 — a reason decision-17 removed, since the file is now
+/// replaced by rename and a reader gets one whole version or the other. Reading the settings while
+/// another project's update is stalled is therefore not merely allowed but lock-free (decision-18).
 #[tauri::command(async)]
-pub fn settings_read(
-    app: AppHandle,
-    state: State<'_, AtlasState>,
-) -> Result<LoadedSettings, CommandError> {
-    // Under the lifecycle lock like the ledger reads: `settings_save` is a read-modify-write on one
-    // file, and a read overlapping it could otherwise see the half-written bytes as 破損.
-    let _lifecycle = lifecycle(&state);
-    Ok(LoadedSettings::load(&settings_path(&app)?))
+pub fn settings_read(app: AppHandle) -> Result<LoadedSettings, CommandError> {
+    Ok(read_settings(&ConfigFiles::resolve(&app)?))
+}
+
+/// [`settings_read`] without the Tauri handle, so the claim that this read is not behind any lock a
+/// stalled update holds is testable rather than only stated (TASK-85 AC #4).
+fn read_settings(files: &ConfigFiles) -> LoadedSettings {
+    LoadedSettings::load(&files.settings)
 }
 
 /// Persist アプリ設定 (AC #2/#3). Refused when the on-disk `schema_version` is newer than this build
@@ -1338,8 +1416,18 @@ pub fn settings_save(
     state: State<'_, AtlasState>,
     settings: AppSettings,
 ) -> Result<LoadedSettings, CommandError> {
-    let _lifecycle = lifecycle(&state);
-    Ok(settings::save(&settings_path(&app)?, &settings)?)
+    save_settings(&state, &ConfigFiles::resolve(&app)?, &settings)
+}
+
+/// [`settings_save`] without the Tauri handle — the 設定ファイルロック half of what TASK-85 AC #4
+/// checks: even a settings *write* completes while another project's update is stalled.
+fn save_settings(
+    state: &AtlasState,
+    files: &ConfigFiles,
+    settings: &AppSettings,
+) -> Result<LoadedSettings, CommandError> {
+    let _write = settings_write(state);
+    Ok(settings::save(&files.settings, settings)?)
 }
 
 /// Where the settings file is (decision-13). Shown by the 設定画面 for the same reason
@@ -1347,7 +1435,7 @@ pub fn settings_save(
 /// user is meant to be able to find it. Resolving the path reads nothing, so this takes no lock.
 #[tauri::command(async)]
 pub fn settings_location(app: AppHandle) -> Result<PathBuf, CommandError> {
-    settings_path(&app)
+    Ok(ConfigFiles::resolve(&app)?.settings)
 }
 
 // --- commands: 外部エディタ経路 (doc-8 §7) --------------------------------------------------------
@@ -1370,7 +1458,7 @@ pub fn editor_probe(app: AppHandle) -> EditorReadiness {
 /// doc-9's watch picks it up and the root is re-read — so nothing here waits for or detects an exit.
 ///
 /// `source_path` must be a task file of the open project: it is checked against the model rather than
-/// used as given (see [`Workspace::open_in_editor`]), and it reaches the process as one element of an
+/// used as given (see [`ProjectState::open_in_editor`]), and it reaches the process as one element of an
 /// argument array, never as part of a string (AGENTS).
 #[tauri::command(async)]
 pub fn task_file_open(
@@ -1380,17 +1468,19 @@ pub fn task_file_open(
     source_path: PathBuf,
     method: LaunchMethod,
 ) -> Result<EditorLaunch, CommandError> {
-    let lifecycle = lifecycle(&state);
-    let entry = entry_for(&app, &lifecycle, &slug)?;
+    let files = ConfigFiles::resolve(&app)?;
     let settings = current_settings(&app);
-    lock(&state.workspace).open_in_editor(
-        &entry,
-        &source_path,
-        method,
-        settings.external_editor.as_ref(),
-        &SystemEnv,
-        &SystemLauncher,
-    )
+    with_project(&state, &slug, |project| {
+        let entry = entry_for(&files, project)?;
+        project.state.open_in_editor(
+            &entry,
+            &source_path,
+            method,
+            settings.external_editor.as_ref(),
+            &SystemEnv,
+            &SystemLauncher,
+        )
+    })
 }
 
 // --- commands: update path (decision-2, doc-5, AC #2/#4) ----------------------------------------
@@ -1420,31 +1510,37 @@ pub fn update_apply(
     slug: String,
     action: Vec<UpdateOperation>,
 ) -> Result<UpdateResult, CommandError> {
-    // Held across the whole update, not just the entry read: the pairing of "this entry's roots" with
-    // "this session's model and read-version index" is what doc-9 §4 checks against, and a ledger move
-    // landing between the two would break exactly that pairing.
-    let lifecycle = lifecycle(&state);
-    let entry = entry_for(&app, &lifecycle, &slug)?;
+    let files = ConfigFiles::resolve(&app)?;
     let cli = SystemBacklog::resolve(current_settings(&app).backlog_cli.as_deref());
-    // 縮退 (doc-5 §5): without a supported CLI there is no capability to hand `apply`, so the update
-    // is refused here — the type below cannot be constructed any other way.
-    let capability = match update::probe(&cli) {
-        CliStatus::Supported(capability) => capability,
-        other => {
-            return Err(CommandError::UpdatesUnavailable {
-                readiness: other.into(),
-            })
-        }
-    };
-    let source = WorkingTree::new(&entry.backlog_root);
-    lock(&state.workspace).apply(&entry, &action, &capability, &cli, &source, &FsVersions)
+    // This project's lock is held across the whole update, not just the entry read: the pairing of
+    // "this entry's roots" with "this session's model and read-version index" is what doc-9 §4 checks
+    // against, and a ledger move landing between the two would break exactly that pairing. It is
+    // *this* project's lock and no other — the probe and the CLI run below are the wait decision-18
+    // exists to keep off every other project (TASK-85 AC #1/#2).
+    with_project(&state, &slug, |project| {
+        let entry = entry_for(&files, project)?;
+        // 縮退 (doc-5 §5): without a supported CLI there is no capability to hand `apply`, so the
+        // update is refused here — the type below cannot be constructed any other way.
+        let capability = match update::probe(&cli) {
+            CliStatus::Supported(capability) => capability,
+            other => {
+                return Err(CommandError::UpdatesUnavailable {
+                    readiness: other.into(),
+                })
+            }
+        };
+        let source = WorkingTree::new(&entry.backlog_root);
+        project
+            .state
+            .apply(&entry, &action, &capability, &cli, &source, &FsVersions)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::interpret::status::{StatusColumn, StatusDeclaration};
-    use crate::update::{AcEdit, CliRun, NoteEdit, TaskCreate, TaskEdit};
+    use crate::update::{AcEdit, CliRun, NoteEdit, RunError, TaskCreate, TaskEdit};
     use std::cell::RefCell;
     use std::sync::atomic::AtomicU64;
     use std::time::SystemTime;
@@ -1545,7 +1641,7 @@ ordinal: 1000\n\
     }
 
     impl BacklogCli for FakeCli {
-        fn run(&self, _dir: Option<&Path>, args: &[String]) -> std::io::Result<CliRun> {
+        fn run(&self, _dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
             self.calls.borrow_mut().push(args.to_vec());
             let stdout = if args == ["--version"] { "1.48.0" } else { "" };
             Ok(CliRun {
@@ -1574,7 +1670,7 @@ ordinal: 1000\n\
         entry
             .status_aliases
             .insert("Doing".into(), "In Progress".into());
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         let snapshot = workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -1625,7 +1721,7 @@ ordinal: 1000\n\
 
         let loaded = LoadedLedger::load(&ledger_path).unwrap();
         let entry = &loaded.ledger.projects[0];
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         let snapshot = workspace.open(entry, &source(entry), &FsVersions).unwrap();
 
         let view = snapshot
@@ -1649,7 +1745,7 @@ ordinal: 1000\n\
     #[test]
     fn snapshot_reaches_the_wire_as_camel_case() {
         let (_temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         let snapshot = workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -1669,7 +1765,7 @@ ordinal: 1000\n\
     #[test]
     fn reopening_an_open_project_re_reads_it() {
         let (temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -1695,7 +1791,7 @@ ordinal: 1000\n\
             git_remote_present: false,
             status_aliases: BTreeMap::new(),
         };
-        let error = Workspace::default()
+        let error = ProjectState::default()
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap_err();
         assert!(matches!(
@@ -1707,7 +1803,7 @@ ordinal: 1000\n\
     #[test]
     fn a_closed_project_cannot_be_updated_or_read_for_history() {
         let (_temp, entry) = root();
-        let workspace = Workspace::default();
+        let workspace = ProjectState::default();
         assert!(matches!(
             workspace.task_references(&entry, "TASK-1").unwrap_err(),
             CommandError::ProjectNotOpen { .. }
@@ -1747,7 +1843,7 @@ ordinal: 1000\n\
     #[test]
     fn the_editor_receives_the_task_file_and_atlas_writes_nothing() {
         let (temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         let snapshot = workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -1785,7 +1881,7 @@ ordinal: 1000\n\
         // The frontend echoes back a path it received from a read; anything else is a stale screen or
         // a value that never came from one, and either way it must not reach a process.
         let (temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -1816,7 +1912,7 @@ ordinal: 1000\n\
             "backlog/completed/task-2 - done.md",
             &task_file("TASK-2", "Done", "[]"),
         );
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         let snapshot = workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -1847,7 +1943,7 @@ ordinal: 1000\n\
     #[test]
     fn a_closed_project_cannot_open_an_editor() {
         let (_temp, entry) = root();
-        let error = Workspace::default()
+        let error = ProjectState::default()
             .open_in_editor(
                 &entry,
                 Path::new("/anywhere/task-1 - a.md"),
@@ -1946,7 +2042,7 @@ ordinal: 1000\n\
     #[test]
     fn user_input_reaches_the_cli_as_one_argument_element() {
         let (_temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2091,7 +2187,7 @@ references:\n  - https://example.test/one\n\
         let CliStatus::Supported(capability) = update::probe(&cli) else {
             panic!("this test needs a supported backlog CLI on PATH");
         };
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2201,7 +2297,7 @@ labels: []\n\
         let CliStatus::Supported(capability) = update::probe(&cli) else {
             panic!("this test needs a supported backlog CLI on PATH");
         };
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2278,7 +2374,7 @@ labels: []\n\
     #[test]
     fn a_diverged_target_withholds_the_cli_and_returns_a_conflict() {
         let (temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2330,7 +2426,7 @@ labels: []\n\
     #[test]
     fn an_uncheckable_target_is_not_reported_as_a_conflict() {
         let (_temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2374,7 +2470,7 @@ labels: []\n\
             "backlog/milestones/m-1 - phase-one.md",
             "---\nid: m-1\ntitle: Phase One\n---\n\n## Description\n\nd\n",
         );
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2414,7 +2510,7 @@ labels: []\n\
     #[test]
     fn a_refused_operation_reports_the_refusal_not_a_failure() {
         let (_temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2452,7 +2548,7 @@ labels: []\n\
     #[test]
     fn a_successful_update_returns_the_re_read_root() {
         let (temp, entry) = root();
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2464,13 +2560,14 @@ labels: []\n\
             calls: RefCell<Vec<Vec<String>>>,
         }
         impl BacklogCli for WritingCli {
-            fn run(&self, _dir: Option<&Path>, args: &[String]) -> std::io::Result<CliRun> {
+            fn run(&self, _dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
                 self.calls.borrow_mut().push(args.to_vec());
                 if args != ["--version"] {
                     std::fs::write(
                         self.temp_path.join("backlog/tasks/task-1 - a.md"),
                         "---\nid: TASK-1\ntitle: Task TASK-1\nstatus: Done\nlabels: []\n---\n\n",
-                    )?;
+                    )
+                    .map_err(RunError::Spawn)?;
                 }
                 let stdout = if args == ["--version"] { "1.48.0" } else { "" };
                 Ok(CliRun {
@@ -2579,7 +2676,7 @@ labels: []\n\
             git_remote_present: false,
             status_aliases: BTreeMap::new(),
         };
-        let mut workspace = Workspace::default();
+        let mut workspace = ProjectState::default();
         workspace
             .open(&entry, &source(&entry), &FsVersions)
             .unwrap();
@@ -2754,56 +2851,60 @@ labels: []\n\
         assert_eq!(json["error"]["kind"], "rootUnreadable");
     }
 
-    /// A watch thread takes the lifecycle lock to re-read the ledger, so a detach that joined while
-    /// holding that lock would wait for a thread that is waiting for the lock — the deadlock the
+    /// A watch thread takes its project's プロジェクト単位ロック to re-read, so a detach that joined
+    /// while holding that lock would wait for a thread that is waiting for the lock — the deadlock the
     /// detach/join split exists to avoid. Here the thread stands in for that: it cannot finish until
     /// the lock is free, so the detach can only return promptly if it did not join.
     #[test]
-    fn detaching_a_watch_does_not_join_it_under_the_lifecycle_lock() {
+    fn detaching_a_watch_does_not_join_it_under_the_project_lock() {
         let state = Arc::new(AtlasState::default());
-        // Taken before the thread exists, so the thread is certain to find the lock held.
-        let held = lifecycle(&state);
         let stop = Arc::new(AtomicBool::new(false));
-        let thread = std::thread::spawn({
-            let state = Arc::clone(&state);
-            move || {
-                // Gives up after a bounded wait so a regression fails the assertion below instead of
-                // hanging the suite.
-                let deadline = std::time::Instant::now() + Duration::from_secs(5);
-                while std::time::Instant::now() < deadline {
-                    if state.lifecycle.try_lock().is_ok() {
-                        return;
+
+        let detached = with_project(&state, "atlas", |project| {
+            // Spawned with the lock already held, so the thread is certain to find it taken — the
+            // watch thread's own position inside `reload_for_watch`.
+            let thread = std::thread::spawn({
+                let state = Arc::clone(&state);
+                move || {
+                    // Gives up after a bounded wait so a regression fails the assertion below
+                    // instead of hanging the suite.
+                    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                    while std::time::Instant::now() < deadline {
+                        let held = lock(&state.projects).get("atlas").cloned();
+                        if held.is_some_and(|lock| lock.try_lock().is_ok()) {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
                     }
-                    std::thread::sleep(Duration::from_millis(10));
                 }
-            }
+            });
+            lock(&state.watches).insert(
+                "atlas".to_string(),
+                WatchHandle {
+                    stop: Arc::clone(&stop),
+                    thread,
+                },
+            );
+
+            let started = std::time::Instant::now();
+            let detached = detach_watch(&state, project);
+            assert!(
+                started.elapsed() < Duration::from_secs(1),
+                "detach must not block on the watch thread while holding the project lock"
+            );
+            assert!(detached.is_some(), "the handle must come back to be joined");
+            assert!(
+                stop.load(Ordering::Relaxed),
+                "the thread must be signalled while the lock is held, so the stale watch cannot \
+                 outlive the ledger write that staled it"
+            );
+            assert!(
+                lock(&state.watches).is_empty(),
+                "a detached watch must be out of the registry before the lock is released"
+            );
+            detached
         });
-        lock(&state.watches).insert(
-            "atlas".to_string(),
-            WatchHandle {
-                stop: Arc::clone(&stop),
-                thread,
-            },
-        );
 
-        let started = std::time::Instant::now();
-        let detached = detach_watch(&state, &held, "atlas");
-        assert!(
-            started.elapsed() < Duration::from_secs(1),
-            "detach must not block on the watch thread while holding the lifecycle lock"
-        );
-        assert!(detached.is_some(), "the handle must come back to be joined");
-        assert!(
-            stop.load(Ordering::Relaxed),
-            "the thread must be signalled while the lock is held, so the stale watch cannot outlive \
-             the ledger write that staled it"
-        );
-        assert!(
-            lock(&state.watches).is_empty(),
-            "a detached watch must be out of the registry before the lock is released"
-        );
-
-        drop(held);
         join_watch(detached);
     }
 
@@ -2868,5 +2969,231 @@ labels: []\n\
         assert_eq!(updated.project_root, to.path);
         assert_eq!(updated.backlog_root, to.path.join("backlog"));
         drop(from);
+    }
+
+    // --- TASK-85 AC #2/#4: one stalled update stalls one project ---------------------------------
+
+    /// A `BacklogCli` that reports it has started and then blocks until released — a `backlog` that
+    /// has not exited, without a real process to leave behind if an assertion fails.
+    struct StallingCli {
+        started: std::sync::mpsc::Sender<()>,
+        release: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+    }
+
+    impl BacklogCli for StallingCli {
+        fn run(&self, _dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
+            // The probe must answer, or the update is refused before it ever reaches the CLI and the
+            // test would measure nothing.
+            if args == ["--version"] {
+                return Ok(CliRun {
+                    success: true,
+                    code: Some(0),
+                    stdout: "1.48.0".to_string(),
+                    stderr: String::new(),
+                });
+            }
+            self.started.send(()).expect("the test is still listening");
+            if let Some(release) = self.release.lock().unwrap().take() {
+                // Bounded, so a regression fails the assertions instead of hanging the suite.
+                let _ = release.recv_timeout(Duration::from_secs(10));
+            }
+            Ok(CliRun {
+                success: true,
+                code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+    }
+
+    /// Two registered projects and the two files Atlas owns, as one temp tree.
+    fn two_projects() -> (TempDir, ConfigFiles, ProjectEntry, ProjectEntry) {
+        let temp = TempDir::new();
+        let mut entries = Vec::new();
+        for slug in ["alpha", "beta"] {
+            temp.write(&format!("{slug}/backlog/config.yml"), CONFIG);
+            temp.write(
+                &format!("{slug}/backlog/tasks/task-1 - a.md"),
+                &task_file("TASK-1", "To Do", "[]"),
+            );
+            entries.push(ProjectEntry {
+                slug: slug.to_string(),
+                project_root: temp.path.join(slug),
+                backlog_root: temp.path.join(slug).join("backlog"),
+                git_remote_present: false,
+                status_aliases: BTreeMap::new(),
+            });
+        }
+        let files = ConfigFiles {
+            ledger: temp.path.join("projects.toml"),
+            settings: temp.path.join("settings.toml"),
+        };
+        let mut toml = String::from("schema_version = 1\n");
+        for entry in &entries {
+            // Through `toml_path` rather than `"{}"` for the reason TASK-59 fixed: a Windows path's
+            // backslashes are invalid escapes inside a basic string.
+            toml.push_str(&format!(
+                "[[project]]\n\
+                 slug = \"{slug}\"\n\
+                 project_root = {root}\n\
+                 backlog_root = {backlog_root}\n\
+                 git_remote_present = false\n",
+                slug = entry.slug,
+                root = crate::ledger::toml_path(&entry.project_root),
+                backlog_root = crate::ledger::toml_path(&entry.backlog_root),
+            ));
+        }
+        std::fs::write(&files.ledger, toml).unwrap();
+        let beta = entries.pop().unwrap();
+        let alpha = entries.pop().unwrap();
+        (temp, files, alpha, beta)
+    }
+
+    /// The whole point of decision-18: while `alpha`'s update sits inside a `backlog` that has not
+    /// exited, `beta`'s read and both settings paths still complete. Under the single boundary-wide
+    /// lock this replaced, every one of them would wait for that CLI.
+    ///
+    /// The waits below are bounded rather than unbounded so a regression fails here instead of
+    /// hanging the suite, and the CLI announces itself before blocking so the measurement starts only
+    /// once the update is provably inside `alpha`'s lock.
+    #[test]
+    fn a_stalled_update_holds_up_neither_another_project_nor_the_settings() {
+        let (_temp, files, alpha, beta) = two_projects();
+        let state = Arc::new(AtlasState::default());
+        // Both open first: an update needs a session, and `beta`'s read below is then the ordinary
+        // re-read a user or a watch would trigger, not a first open.
+        for entry in [&alpha, &beta] {
+            with_project(&state, &entry.slug, |project| {
+                project.state.open(entry, &source(entry), &FsVersions)
+            })
+            .unwrap();
+        }
+
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let updating = std::thread::spawn({
+            let state = Arc::clone(&state);
+            let files = files.clone();
+            move || {
+                let cli = StallingCli {
+                    started: started_tx,
+                    release: Mutex::new(Some(release_rx)),
+                };
+                with_project(&state, "alpha", |project| {
+                    let entry = entry_for(&files, project)?;
+                    let capability = match update::probe(&cli) {
+                        CliStatus::Supported(capability) => capability,
+                        other => panic!("the stalling CLI reports a supported version: {other:?}"),
+                    };
+                    let action = vec![UpdateOperation::TaskEdit {
+                        task_id: "TASK-1".to_string(),
+                        edit: TaskEdit {
+                            status: Some("Done".to_string()),
+                            ..TaskEdit::default()
+                        },
+                    }];
+                    project.state.apply(
+                        &entry,
+                        &action,
+                        &capability,
+                        &cli,
+                        &source(&entry),
+                        &FsVersions,
+                    )
+                })
+            }
+        });
+        started_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the update reached the CLI");
+
+        // From here on `alpha`'s lock is held by a call that cannot return until this thread lets it.
+        let started = std::time::Instant::now();
+        let reopened = with_project(&state, "beta", |project| {
+            let entry = entry_for(&files, project)?;
+            project.state.open(&entry, &source(&entry), &FsVersions)
+        });
+        assert_eq!(reopened.unwrap().slug, "beta", "beta's read must complete");
+        assert!(
+            load_ledger(&files).is_ok(),
+            "the ledger read must complete while an update is stalled"
+        );
+        assert_eq!(
+            read_settings(&files).status,
+            crate::settings::SettingsStatus::Absent,
+            "the settings read must complete while an update is stalled"
+        );
+        save_settings(&state, &files, &AppSettings::default())
+            .expect("the settings save must complete while an update is stalled");
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "none of these may wait on another project's CLI, but they took {elapsed:?}"
+        );
+
+        // The positive counterpart: `alpha` really was locked all along, so the four calls above did
+        // not merely find a lock nobody was holding.
+        let alpha_lock = lock(&state.projects).get("alpha").cloned().unwrap();
+        assert!(
+            alpha_lock.try_lock().is_err(),
+            "alpha's own lock must be held by the stalled update"
+        );
+
+        release_tx.send(()).unwrap();
+        updating.join().unwrap().expect("the update finishes");
+    }
+
+    /// The other half of the split (AC #2): what the one boundary-wide lock protected for a *single*
+    /// project must still be protected. `ledger_update` writes the new roots and then closes the
+    /// stale session, and a read of the same project must not land between the two — so it takes the
+    /// same lock and waits. A read of a *different* project takes a different lock and does not.
+    #[test]
+    fn work_on_one_project_serializes_against_work_on_that_same_project_only() {
+        let (_temp, files, alpha, _beta) = two_projects();
+        let state = Arc::new(AtlasState::default());
+        let (same_tx, same_rx) = std::sync::mpsc::channel();
+        let (other_tx, other_rx) = std::sync::mpsc::channel();
+
+        let (same, other) = with_project(&state, &alpha.slug, |_holding_alpha| {
+            let same = std::thread::spawn({
+                let state = Arc::clone(&state);
+                let files = files.clone();
+                move || {
+                    with_project(&state, "alpha", |project| {
+                        same_tx.send(entry_for(&files, project).is_ok()).unwrap();
+                    });
+                }
+            });
+            let other = std::thread::spawn({
+                let state = Arc::clone(&state);
+                let files = files.clone();
+                move || {
+                    with_project(&state, "beta", |project| {
+                        other_tx.send(entry_for(&files, project).is_ok()).unwrap();
+                    });
+                }
+            });
+
+            assert_eq!(
+                other_rx.recv_timeout(Duration::from_secs(5)),
+                Ok(true),
+                "another project's work must not wait on this one"
+            );
+            assert!(
+                same_rx.recv_timeout(Duration::from_millis(300)).is_err(),
+                "the same project's work must wait while this call holds its lock — without that, a \
+                 ledger move could publish new roots while a stale session is still open"
+            );
+            (same, other)
+        });
+
+        // Released now: the same-project work must have been waiting, not refused.
+        assert_eq!(
+            same_rx.recv_timeout(Duration::from_secs(5)),
+            Ok(true),
+            "the same project's work runs once the lock is free"
+        );
+        same.join().unwrap();
+        other.join().unwrap();
     }
 }

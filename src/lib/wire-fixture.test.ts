@@ -294,7 +294,7 @@ const RELATION_STATES = unionValues<RelationOutcome["state"]>()(
 );
 const UPDATE_STATES = unionValues<UpdateResult["state"]>()("conflict", "ran");
 const OUTCOME_STATES = unionValues<UpdateOutcome["state"]>()("succeeded", "failed");
-const FAILURE_KINDS = unionValues<FailureKind["kind"]>()("spawn", "nonZero");
+const FAILURE_KINDS = unionValues<FailureKind["kind"]>()("spawn", "nonZero", "timedOut");
 const CLI_STATES = unionValues<CliReadiness["state"]>()("ready", "unavailable", "unsupported");
 const SETTINGS_STATES = unionValues<SettingsStatus["state"]>()(
   "stored",
@@ -507,6 +507,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       "task_history.json",
       "update_result_conflict.json",
       "update_result_ran_failed.json",
+      "update_result_ran_timed_out.json",
       "wire_tokens.json",
     ]);
   });
@@ -753,10 +754,28 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
         kind: { kind: "nonZero", code: 1 },
         stderr: "no such task",
         completedBefore: 1,
-        partial: true,
+        reloadRequired: true,
       },
       project: null,
     } satisfies UpdateResult);
+    // 期限到達 gets its own recording because `afterMs` appears in no other payload — without it the
+    // field's type is anchored to `wire.ts` alone and a Rust-side change to it would pass (TASK-85).
+    sameValueTypes(
+      "update_result_ran_timed_out",
+      fixture<UpdateResult>("update_result_ran_timed_out.json"),
+      {
+        state: "ran",
+        outcome: {
+          state: "failed",
+          command: "task edit",
+          kind: { kind: "timedOut", afterMs: 30000 },
+          stderr: "the backlog CLI did not finish within 30 seconds and was terminated",
+          completedBefore: 0,
+          reloadRequired: true,
+        },
+        project: null,
+      } satisfies UpdateResult,
+    );
   });
 
   it("CliReadiness と外部エディタ経路", () => {
