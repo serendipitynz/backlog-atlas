@@ -1,10 +1,10 @@
 ---
 id: TASK-91
 title: 画面横断契約の Svelte コンポーネントテスト基盤を入れる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-01 04:03'
+updated_date: '2026-08-01 07:13'
 labels:
   - test
   - 'kind:chore'
