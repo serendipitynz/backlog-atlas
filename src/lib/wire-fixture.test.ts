@@ -36,6 +36,7 @@ import type {
   CommitSearch,
   Config,
   Decision,
+  DegradeEvent,
   Document,
   EditorLaunch,
   EditorReadiness,
@@ -50,8 +51,26 @@ import type {
   PullRequestRef,
   RegisterResponse,
   ReloadEvent,
+  CardDensity,
+  DetailPlacement,
+  EditorSource,
+  FailureKind,
+  LaunchMethod,
+  LedgerRefusal,
+  LookupFailure,
+  ReferenceKind,
+  RelationOutcome,
   RemoteHost,
+  RemoteHostKind,
+  RequiredField,
+  SettingsStatus,
+  StatusColumn,
+  StatusDeclaration,
   StatusMapping,
+  StorageSelection,
+  StorageState,
+  TaskHealth,
+  UpdateOutcome,
   Task,
   TaskHistory,
   TaskInterpretation,
@@ -179,6 +198,118 @@ function shapeMismatches(recorded: Shape, expected: Shape, at = ""): string[] {
 function sameValueTypes(name: string, recorded: unknown, exemplar: unknown): void {
   expect(shapeMismatches(shapeOf(recorded), shapeOf(exemplar)), name).toEqual([]);
 }
+
+/**
+ * A string-literal union's members, listed exhaustively — the same bargain `keysOfType` strikes, for
+ * values instead of keys.
+ *
+ * `shapeOf` folds every string down to `"string"`, which is what a value-type comparison has to do
+ * for a free-form field like `title`. But a serde enum token and a variant tag are *not* free-form:
+ * `"declaration": "bogus"` has the right shape and is still not a value `wire.ts` admits, so the
+ * shape comparison cannot see a renamed or moved variant. This closes that.
+ *
+ * Locked to `wire.ts` in both directions by tsc, like the key lists: a value outside the union is
+ * rejected, and a member missing from the list makes the call unassignable. So the admissible set
+ * cannot be edited into agreement with a recording on its own.
+ */
+function unionValues<T extends string>() {
+  return <V extends readonly T[]>(
+    ...values: [T] extends [V[number]]
+      ? V
+      : readonly ["a member of the union is missing from this list", Exclude<T, V[number]>]
+  ): readonly string[] => values as readonly string[];
+}
+
+/** Assert that a recorded value is one the union admits. `null` is a value in its own right. */
+function admits(values: readonly string[], recorded: string | null, at: string): void {
+  expect(recorded === null || values.includes(recorded), `${at}: ${String(recorded)}`).toBe(true);
+}
+
+const STORAGE_STATES = unionValues<StorageState>()("active", "draft", "completed", "archive");
+const STORAGE_SELECTIONS = unionValues<StorageSelection>()(
+  "active",
+  "draft",
+  "completed",
+  "archive",
+  "indeterminate",
+);
+const STATUS_COLUMNS = unionValues<StatusColumn>()("toDo", "inProgress", "inReview", "done");
+const STATUS_DECLARATIONS = unionValues<StatusDeclaration>()(
+  "declared",
+  "draft",
+  "undeclared",
+  "noDeclaredSet",
+);
+const REFERENCE_KINDS = unionValues<ReferenceKind>()("milestone", "documentation", "reference");
+const REQUIRED_FIELDS = unionValues<RequiredField>()("id", "title", "status");
+const REMOTE_HOST_KINDS = unionValues<RemoteHostKind>()("gitHub");
+const LAUNCH_METHODS = unionValues<LaunchMethod>()("configured", "association");
+const EDITOR_SOURCES = unionValues<EditorSource>()("appSettings", "visual", "editor");
+const CARD_DENSITIES = unionValues<CardDensity>()("s", "m", "l");
+const DETAIL_PLACEMENTS = unionValues<DetailPlacement>()("sidebar", "modal", "full");
+const LOOKUP_FAILURES = unionValues<LookupFailure>()(
+  "toolMissing",
+  "invalidReference",
+  "queryFailed",
+);
+
+// The variant tags. A tag is the field every consumer switches on, so a moved one is the change that
+// silently sends a payload down the wrong branch — `wire.ts`'s unions are what these are locked to.
+const HEALTH_STATES = unionValues<TaskHealth["state"]>()("ok", "degraded");
+const DEGRADE_EVENTS = unionValues<DegradeEvent["event"]>()(
+  "unparseable",
+  "unexpectedSchema",
+  "danglingReference",
+);
+const LOAD_STATES = unionValues<ProjectLoad["state"]>()("loaded", "unreadable");
+const COMMIT_SEARCH_STATES = unionValues<CommitSearch["state"]>()(
+  "searched",
+  "noRepository",
+  "unreadable",
+);
+const RELATION_STATES = unionValues<RelationOutcome["state"]>()(
+  "resolved",
+  "hostUnsupported",
+  "lookupFailed",
+);
+const UPDATE_STATES = unionValues<UpdateResult["state"]>()("conflict", "ran");
+const OUTCOME_STATES = unionValues<UpdateOutcome["state"]>()("succeeded", "failed");
+const FAILURE_KINDS = unionValues<FailureKind["kind"]>()("spawn", "nonZero");
+const CLI_STATES = unionValues<CliReadiness["state"]>()("ready", "unavailable", "unsupported");
+const SETTINGS_STATES = unionValues<SettingsStatus["state"]>()(
+  "stored",
+  "absent",
+  "unreadable",
+  "readOnly",
+);
+const ERROR_KINDS = unionValues<CommandError["kind"]>()(
+  "ledger",
+  "ledgerRefused",
+  "settings",
+  "rootUnreadable",
+  "unknownProject",
+  "projectNotOpen",
+  "taskNotFound",
+  "updatesUnavailable",
+  "updateRejected",
+  "uncheckableTarget",
+  "reloadFailed",
+  "versionProbeFailed",
+  "watchFailed",
+  "unknownTaskFile",
+  "editorUnavailable",
+  "editorLaunchFailed",
+);
+const REFUSAL_REASONS = unionValues<LedgerRefusal["reason"]>()(
+  "readOnly",
+  "backlogRootInvalid",
+  "invalidSlug",
+  "duplicateSlug",
+  "slugNotFound",
+  "nonAbsoluteRoot",
+  "duplicateRoot",
+  "invalidStatusAlias",
+);
 
 // --- the exemplars ------------------------------------------------------------------------------
 //
@@ -647,6 +778,148 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
       slug: "gone",
       error: { kind: "rootUnreadable", slug: "gone", detail: "config.yml not found" },
     } satisfies ProjectLoad);
+  });
+});
+
+describe("記録した enum・variant tag の値が wire.ts の union に収まる", () => {
+  // What the shape comparison cannot see: `"bogus"` is a string, so it has the right *shape* and is
+  // still not a value `wire.ts` admits. Every admissible set below is locked to `wire.ts` by
+  // `unionValues`, so a renamed serde token fails here rather than reaching a `switch` that has no
+  // branch for it.
+
+  it("ProjectLoad — task と interpretation の enum", () => {
+    admits(LOAD_STATES, LOADED.state, "project_load_loaded.state");
+    const snapshot = snapshotOf(LOADED);
+    for (const [at, view] of snapshot.tasks.entries()) {
+      admits(STORAGE_STATES, view.task.storageState, `tasks[${at}].task.storageState`);
+      admits(HEALTH_STATES, view.task.health.state, `tasks[${at}].task.health.state`);
+      if (view.task.health.state === "degraded") {
+        for (const [index, event] of view.task.health.events.entries()) {
+          admits(DEGRADE_EVENTS, event.event, `tasks[${at}].health.events[${index}].event`);
+          if (event.event === "danglingReference") {
+            admits(REFERENCE_KINDS, event.kind, `tasks[${at}].health.events[${index}].kind`);
+          }
+          if (event.event === "unparseable") {
+            for (const field of event.missingRequired) {
+              admits(REQUIRED_FIELDS, field, `tasks[${at}].health.events[${index}].missingRequired`);
+            }
+          }
+        }
+      }
+      const mapping = view.interpretation.status;
+      if (mapping !== null) {
+        admits(STATUS_COLUMNS, mapping.column, `tasks[${at}].interpretation.status.column`);
+        admits(
+          STATUS_DECLARATIONS,
+          mapping.declaration,
+          `tasks[${at}].interpretation.status.declaration`,
+        );
+      }
+      for (const [index, reference] of view.interpretation.pullRequests.entries()) {
+        admits(
+          REMOTE_HOST_KINDS,
+          reference.host,
+          `tasks[${at}].interpretation.pullRequests[${index}].host`,
+        );
+      }
+    }
+    // 列の作成時 status 候補 (doc-7 §4.1): the boundary keys these by canonical column, so a moved
+    // column token would silently offer a cell's 新規タスク入力 the wrong candidate set.
+    for (const [at, candidate] of snapshot.createStatusCandidates.entries()) {
+      admits(STATUS_COLUMNS, candidate.column, `createStatusCandidates[${at}].column`);
+    }
+    // The same tasks arrive on the reload path, so its copy is checked rather than assumed identical.
+    const event = fixture<ReloadEvent>("reload_event.json");
+    admits(LOAD_STATES, event.load.state, "reload_event.load.state");
+  });
+
+  it("AppSettings の選択値", () => {
+    const loaded = fixture<LoadedSettings>("loaded_settings.json");
+    admits(CARD_DENSITIES, loaded.settings.card_density, "settings.card_density");
+    admits(
+      DETAIL_PLACEMENTS,
+      loaded.settings.default_detail_placement,
+      "settings.default_detail_placement",
+    );
+    for (const [at, selection] of loaded.settings.default_storage_filter.entries()) {
+      admits(STORAGE_SELECTIONS, selection, `settings.default_storage_filter[${at}]`);
+    }
+    admits(SETTINGS_STATES, loaded.status.state, "status.state");
+  });
+
+  it("TaskHistory の tag と remote", () => {
+    const history = fixture<TaskHistory>("task_history.json");
+    admits(COMMIT_SEARCH_STATES, history.commits.state, "commits.state");
+    if (history.remote !== null) {
+      admits(REMOTE_HOST_KINDS, history.remote.kind, "remote.kind");
+    }
+    for (const [at, relation] of history.relations.entries()) {
+      admits(RELATION_STATES, relation.outcome.state, `relations[${at}].outcome.state`);
+      if (relation.outcome.state === "lookupFailed") {
+        admits(LOOKUP_FAILURES, relation.outcome.reason, `relations[${at}].outcome.reason`);
+      }
+    }
+    admits(
+      COMMIT_SEARCH_STATES,
+      fixture<CommitSearch>("commit_search_no_repository.json").state,
+      "commit_search_no_repository.state",
+    );
+    admits(
+      COMMIT_SEARCH_STATES,
+      fixture<CommitSearch>("commit_search_unreadable.json").state,
+      "commit_search_unreadable.state",
+    );
+  });
+
+  it("UpdateResult と CliReadiness の tag", () => {
+    admits(
+      UPDATE_STATES,
+      fixture<UpdateResult>("update_result_conflict.json").state,
+      "update_result_conflict.state",
+    );
+    const ran = fixture<UpdateResult>("update_result_ran_failed.json");
+    admits(UPDATE_STATES, ran.state, "update_result_ran_failed.state");
+    if (ran.state === "ran") {
+      admits(OUTCOME_STATES, ran.outcome.state, "outcome.state");
+      if (ran.outcome.state === "failed") {
+        admits(FAILURE_KINDS, ran.outcome.kind.kind, "outcome.kind.kind");
+      }
+    }
+    admits(CLI_STATES, fixture<CliReadiness>("cli_readiness.json").state, "cli_readiness.state");
+  });
+
+  it("外部エディタ経路の enum", () => {
+    const readiness = fixture<EditorReadiness>("editor_readiness.json");
+    if (readiness.configured !== null) {
+      admits(EDITOR_SOURCES, readiness.configured.source, "editor_readiness.configured.source");
+    }
+    admits(
+      LAUNCH_METHODS,
+      fixture<EditorLaunch>("editor_launch.json").method,
+      "editor_launch.method",
+    );
+  });
+
+  it("CommandError の kind と拒否理由", () => {
+    // The kinds and refusal reasons are the two the 台帳管理画面 switches on to pick a field to send
+    // the user back to (doc-3 §3.1), so a moved token there is a form that can no longer be corrected.
+    for (const [at, error] of fixture<CommandError[]>("command_errors.json").entries()) {
+      admits(ERROR_KINDS, error.kind, `command_errors[${at}].kind`);
+      if (error.kind === "ledgerRefused") {
+        admits(REFUSAL_REASONS, error.reason.reason, `command_errors[${at}].reason.reason`);
+      }
+      if (error.kind === "updatesUnavailable") {
+        admits(CLI_STATES, error.readiness.state, `command_errors[${at}].readiness.state`);
+      }
+      if (error.kind === "editorLaunchFailed") {
+        admits(LAUNCH_METHODS, error.method, `command_errors[${at}].method`);
+      }
+    }
+    const unreadable = fixture<ProjectLoad>("project_load_unreadable.json");
+    admits(LOAD_STATES, unreadable.state, "project_load_unreadable.state");
+    if (unreadable.state === "unreadable") {
+      admits(ERROR_KINDS, unreadable.error.kind, "project_load_unreadable.error.kind");
+    }
   });
 });
 

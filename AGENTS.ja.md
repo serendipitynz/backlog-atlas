@@ -95,9 +95,10 @@ Svelte コンパイラを要するのは 2 つ目のプロジェクトだけで�
 serde 出力を手書きで写しており、どちらのコンパイラも他方を検査しない。
 `src-tauri/src/wire_fixtures.rs` が payload ごとに 1 件を直列化して
 `src-tauri/wire-fixtures/*.json` と照合し、`src/lib/wire-fixture.test.ts` が各記録を `wire.ts`
-に対して 2 度検査する — キーを `keyof` と、**値の型**を同じ型を注釈した見本値と — うえで
-payload にフロントエンドの関数を通す。両方が必要である: `keyof` が固定するのは項目名であり、
-number から string へ変わった項目は名前を保つ。どちらも cast ではなく (cast は任意の JSON を
+に対して 3 通りに検査する — キーを `keyof`、**値の型**を同じ型を注釈した見本値、**serde の
+enum トークンと variant tag** を `unionValues` で固定したメンバー一覧と — うえで payload に
+フロントエンドの関数を通す。3 つすべてが必要である: `keyof` が固定するのは項目名であり、
+number から string へ変わった項目は名前を保ち、改名された variant トークンは名前も型も保つ。どちらも cast ではなく (cast は任意の JSON を
 受け入れる)、テスト内に書いた仕様でもない (どちらも tsc が `wire.ts` から決める) ので、Rust の
 出力・`wire.ts`・テストを 2 つずつ一致させることはできない。見本値は `null` を残さず全項目を
 埋める。`null` は何とでも一致するためである。記録の更新は

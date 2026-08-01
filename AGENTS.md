@@ -99,10 +99,12 @@ numbers it returns.
 mirrors this crate's serde output by hand and neither compiler checks the other.
 `src-tauri/src/wire_fixtures.rs` serializes one sample per payload and compares it with
 `src-tauri/wire-fixtures/*.json`; `src/lib/wire-fixture.test.ts` checks each recording
-against `wire.ts` twice — its keys against `keyof`, its **value types** against an
-exemplar annotated with the same type — and then runs the frontend's functions over the
-payload. Both halves are needed: `keyof` fixes the field names, and a field that changed
-from a number to a string keeps its name. Neither is a cast (a cast accepts any JSON) and
+against `wire.ts` three ways — its keys against `keyof`, its **value types** against an
+exemplar annotated with the same type, and its **serde enum tokens and variant tags**
+against `unionValues`-locked member lists — and then runs the frontend's functions over
+the payload. All three are needed: `keyof` fixes the field names, a field that changed
+from a number to a string keeps its name, and a renamed variant token keeps both its name
+and its type. Neither is a cast (a cast accepts any JSON) and
 neither is a spec written in the test (tsc decides both from `wire.ts`), so the Rust
 output, `wire.ts`, and the test cannot be brought into agreement two at a time. Populate
 every field of an exemplar rather than leaving it `null`: a `null` agrees with anything.
