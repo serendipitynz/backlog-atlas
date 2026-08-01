@@ -1094,7 +1094,7 @@ impl BacklogCli for SystemBacklog {
         // so does this.
         let stdout = drain(child.stdout.take());
         let stderr = drain(child.stderr.take());
-        let status = match wait_until(&mut child, self.deadline) {
+        let status = match wait_until(&mut child, self.deadline, CLEANUP_GRACE) {
             Waited::Exited(status) => status,
             Waited::Killed { detail } => {
                 // Nothing is waited on here. A pipe reaches EOF only when *every* writer has closed
@@ -1112,7 +1112,7 @@ impl BacklogCli for SystemBacklog {
         // The child exited, so its own ends are closed — but a descendant may still hold them, so
         // even here the drain gets a bound rather than a join. One shared instant for both pipes:
         // two sequential graces would double the bound for no gain.
-        let until = Instant::now() + DRAIN_GRACE;
+        let until = Instant::now() + CLEANUP_GRACE;
         Ok(CliRun {
             success: status.success(),
             code: status.code(),
@@ -1135,53 +1135,98 @@ pub const CLI_DEADLINE: Duration = Duration::from_secs(30);
 /// what the measurement can distinguish.
 const WAIT_POLL: Duration = Duration::from_millis(20);
 
+/// 後始末猶予 (doc-5 §5, decision-18): how long the two cleanups that follow the wait may take.
+///
+/// Both would otherwise be unbounded, and each would put back the wait the deadline removed:
+///
+/// - **Reaping a killed child.** `Child::wait` blocks until the process exits, and a kill that did
+///   not land leaves a process that may never do so.
+/// - **Finishing the drain.** A pipe reaches EOF only when every writer has closed it, and a
+///   descendant that inherited the pipe holds it open for as long as it likes.
+///
+/// One second is far more than either needs when nothing is wrong, and the whole of it is spent only
+/// when something really is still holding on.
+const CLEANUP_GRACE: Duration = Duration::from_secs(1);
+
 /// What became of the wait (decision-18).
 enum Waited {
     Exited(std::process::ExitStatus),
     Killed { detail: Option<String> },
 }
 
-/// Wait for `child` for at most `deadline`, killing and reaping it if it outlives that.
+/// The two things the bounded wait does to a running process.
 ///
-/// A `try_wait` that itself errors is not treated as terminal: it means this poll learned nothing,
-/// not that the child is gone (on Unix a signal arriving during `waitpid` surfaces here as `EINTR`).
-/// The loop keeps its last such error and lets the deadline be the one thing that ends the wait, so
-/// the only claim ever made is the one Atlas can support — that it stopped waiting.
-fn wait_until(child: &mut std::process::Child, deadline: Duration) -> Waited {
-    let until = Instant::now() + deadline;
-    let mut last_error: Option<String> = None;
+/// A trait rather than [`std::process::Child`] directly, for one failure only a fake can produce: a
+/// kill that does not land. `SIGKILL` cannot be refused for one's own child, so the path where the
+/// process survives the kill is unreachable with a real one — and it is the path where an unbounded
+/// reap would quietly restore the wait the deadline exists to end.
+trait Reapable {
+    /// Whether the process has exited, without waiting for it to.
+    fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>>;
+    fn kill(&mut self) -> std::io::Result<()>;
+}
+
+impl Reapable for std::process::Child {
+    fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+        self.try_wait()
+    }
+
+    fn kill(&mut self) -> std::io::Result<()> {
+        std::process::Child::kill(self)
+    }
+}
+
+/// Wait for `process` for at most `deadline`; if it outlives that, kill it and reap it within
+/// `grace`. Every step is bounded, so this returns after `deadline + grace` at the very worst.
+///
+/// Nothing here is required to succeed. The kill may fail, the reap may find the process still
+/// running, and a poll may error — each is recorded in the detail rather than turned into a longer
+/// wait, because the only claim Atlas can always support is that it stopped waiting.
+fn wait_until<P: Reapable>(process: &mut P, deadline: Duration, grace: Duration) -> Waited {
+    let mut failed_poll: Option<String> = None;
+    if let Some(status) = poll_until(process, Instant::now() + deadline, &mut failed_poll) {
+        return Waited::Exited(status);
+    }
+    let mut notes: Vec<String> = failed_poll.take().into_iter().collect();
+    if let Err(error) = process.kill() {
+        notes.push(format!("terminating it failed: {error}"));
+    }
+    // Reaped so the deadline leaves no zombie behind for the rest of the run — but on a bound, since
+    // a process that survived the kill is exactly what a blocking `wait` would sit on forever.
+    if poll_until(process, Instant::now() + grace, &mut failed_poll).is_none() {
+        notes.push(
+            failed_poll
+                .take()
+                .unwrap_or_else(|| "it was still running after being terminated".to_string()),
+        );
+    }
+    Waited::Killed {
+        detail: (!notes.is_empty()).then(|| notes.join("; ")),
+    }
+}
+
+/// Poll until the process has exited or `until` has passed.
+///
+/// A poll that errors is not treated as terminal: it means this attempt learned nothing, not that
+/// the process is gone (on Unix a signal arriving during `waitpid` surfaces here as `EINTR`). The
+/// last such error is left in `failed` for the caller to report.
+fn poll_until<P: Reapable>(
+    process: &mut P,
+    until: Instant,
+    failed: &mut Option<String>,
+) -> Option<std::process::ExitStatus> {
     loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return Waited::Exited(status),
+        match process.poll() {
+            Ok(Some(status)) => return Some(status),
             Ok(None) => {}
-            Err(error) => last_error = Some(format!("waiting on the process failed: {error}")),
+            Err(error) => *failed = Some(format!("waiting on it failed: {error}")),
         }
         if Instant::now() >= until {
-            let killed = child.kill();
-            // Reap it, so the deadline does not leave a zombie behind for the rest of the run.
-            let reaped = child.wait();
-            // Neither result is discarded. A `SIGKILL`/`TerminateProcess` that failed leaves the
-            // process running, and the failure text is the only place that could ever say so — this
-            // is why the text says Atlas stopped waiting rather than that the process is gone.
-            let notes: Vec<String> = last_error
-                .into_iter()
-                .chain(killed.err().map(|e| format!("terminating it failed: {e}")))
-                .chain(reaped.err().map(|e| format!("reaping it failed: {e}")))
-                .collect();
-            return Waited::Killed {
-                detail: (!notes.is_empty()).then(|| notes.join("; ")),
-            };
+            return None;
         }
         std::thread::sleep(WAIT_POLL);
     }
 }
-
-/// How long the drain may still be waited on after the child itself is gone (decision-18). A pipe
-/// reaches EOF only when every writer has closed it, so this bound — not EOF — is what keeps a
-/// descendant that inherited the pipe from re-introducing an unbounded wait. One second is far more
-/// than the kernel needs to hand over what an exited process already wrote, and the whole of it is
-/// spent only when something really is still holding the pipe.
-const DRAIN_GRACE: Duration = Duration::from_secs(1);
 
 /// One pipe being read on its own thread, with what has been read so far reachable *without* waiting
 /// for EOF (decision-18). That is the whole point: joining the thread would mean waiting for the last
@@ -1679,6 +1724,62 @@ mod tests {
     /// Windows equivalent written here could not be run on this host — a stated gap is worth more than
     /// an unverified branch. What is under test is platform-independent ([`Drain::take`] bounds the
     /// wait everywhere); only the way to construct the situation is not.
+    /// A process that never exits and whose kill never lands. Unreachable with a real child —
+    /// `SIGKILL` cannot be refused for one's own process — and the only path where the reap could
+    /// still be unbounded, so it is the one the fake exists for.
+    struct SurvivesTheKill {
+        kill_attempted: bool,
+    }
+
+    impl Reapable for SurvivesTheKill {
+        fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+            Ok(None)
+        }
+
+        fn kill(&mut self) -> std::io::Result<()> {
+            self.kill_attempted = true;
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "refused",
+            ))
+        }
+    }
+
+    #[test]
+    fn a_kill_that_does_not_land_still_ends_the_wait() {
+        let mut process = SurvivesTheKill {
+            kill_attempted: false,
+        };
+        let started = Instant::now();
+        let waited = wait_until(
+            &mut process,
+            Duration::from_millis(100),
+            Duration::from_millis(100),
+        );
+        let elapsed = started.elapsed();
+
+        let Waited::Killed { detail } = waited else {
+            panic!("a process that never exits cannot be observed exiting");
+        };
+        // Positive counterpart to the bound: the kill really was attempted, so this is not passing
+        // because the deadline path was skipped altogether.
+        assert!(process.kill_attempted, "the kill must be attempted");
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "a reap that cannot succeed must not become the wait the deadline just ended \
+             ({elapsed:?})"
+        );
+        let detail = detail.expect("a kill that did not land has to be reported");
+        assert!(
+            detail.contains("terminating it failed"),
+            "the failed kill must be named: {detail}"
+        );
+        assert!(
+            detail.contains("still running"),
+            "so must the process outliving it: {detail}"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_descendant_holding_the_pipes_does_not_extend_the_wait() {
