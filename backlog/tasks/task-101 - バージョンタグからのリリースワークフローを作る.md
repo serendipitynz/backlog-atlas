@@ -4,7 +4,7 @@ title: バージョンタグからのリリースワークフローを作る
 status: To Do
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-01 01:52'
+updated_date: '2026-08-01 02:15'
 labels:
   - release
   - 'kind:chore'
@@ -33,4 +33,5 @@ ordinal: 101000
 - [ ] #4 リリースノートがマージ済み Pull Request から生成される
 - [ ] #5 手動実行でも同じ結果になる
 - [ ] #6 CI が Node の版を直書きせず node-version-file: .node-version を読む
+- [ ] #7 TASK-104 が updater を持つと判断した場合、v0.1.0 のバンドルへ updater の受け皿（署名鍵の参照と更新エンドポイントの設定）が入っており、持たないと判断した場合は入っていない。どちらの分岐を採ったかがワークフローまたは tauri.conf.json のコメントから読める
 <!-- AC:END -->
