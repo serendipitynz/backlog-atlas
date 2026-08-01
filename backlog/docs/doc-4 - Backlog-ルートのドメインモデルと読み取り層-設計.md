@@ -58,7 +58,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 ### 3.2 設定・マイルストーン・文書
 
-- **設定（config）**: `config.yml` から status 定義・task_prefix・ディレクトリ構成等を写す。読み取り層全体の解決基点であり、タスク解析より先に構築する。config.yml に Backlog の版情報は無い（v1.47.1 の `config.yml`・`backlog config list` に版欄は無く、status 定義・task_prefix・date_format 等のみ、実測）。版に依存しない読み取りは 4 章による。
+- **設定（config）**: `config.yml` から status 定義・task_prefix・ディレクトリ構成等を写す。読み取り層全体の解決基点であり、タスク解析より先に構築する。config.yml に Backlog の版情報は無い（v1.48.0 の `config.yml`・`backlog config list` に版欄は無く、status 定義・task_prefix・date_format 等のみ、実測）。版に依存しない読み取りは 4 章による。
 - **マイルストーン**: `milestones/m-N` の frontmatter（id・title）と本文（Description）を写す。タスクの milestone 参照の解決先。
 - **文書**: `docs/doc-N` の frontmatter（id・title・type・tags・日付）と本文を写す。タスクの documentation 参照の解決先。
 
@@ -82,7 +82,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | archive/tasks/ | archive | アーカイブ済みタスク。id・status は保持。 |
 | archive/drafts/ | archive | アーカイブ済み下書き。id は `DRAFT-N`、status はアーカイブ前を保持。 |
 
-- v1.47.1 実測では、`archive/` は `tasks` / `drafts` / `milestones` へネストし、タスクは `archive/tasks` と `archive/drafts` に置かれる（`archive/` 直下にタスクファイルは無い）。`archive/milestones` はアーカイブ済みマイルストーンであり、タスクとして扱わない（§3.2）。走査は `archive/` を平坦にではなく、この実構造で辿る。
+- v1.48.0 実測では、`archive/` は `tasks` / `drafts` / `milestones` へネストし、タスクは `archive/tasks` と `archive/drafts` に置かれる（`archive/` 直下にタスクファイルは無い）。`archive/milestones` はアーカイブ済みマイルストーンであり、タスクとして扱わない（§3.2）。走査は `archive/` を平坦にではなく、この実構造で辿る。
 - draft は `drafts/`（保存区分 draft）と `archive/drafts/`（保存区分 archive）の両方に在りうる。id はいずれも `DRAFT-N`。status は一律 `Draft` ではなく、`draft create` 直後は `Draft`、`task demote` 由来や archive 済みは遷移前の status（例 `To Do`）を保持する（遷移の詳細は doc-5 の 3.3）。保存区分（ファイルの置き場所）と status（作業状態）は別軸である。
 - `Draft` は `config.yml` の `statuses` に含まれないことがあるが、draft が正規に取りうる既知の status であり、未知 status として縮退（5 章の想定外スキーマ）させない。status 正規化（TASK-7）は `Draft` を既知値として扱う。
 - 保存区分は status（作業状態）とは独立の軸である。status が Done のタスクでも、tasks/ に在れば active、completed/ に在れば completed になる。両者を混同しないことがこの区分を持たせる目的で、混同すると完了整理済み・アーカイブ・draft のタスクが通常の進捗表示へ混入する（doc-7）。
@@ -101,7 +101,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
   - **任意フィールド**（implementationPlan／implementationNotes・milestone・priority・assignee・dependencies・references・acceptanceCriteria など、3.1 で任意・0 個以上とした項目）: 不在は正常であり、縮退契機にしない。存在すれば写す。
   - **存在時構造検査項目**（SECTION 対（`BEGIN`／`END`）の開閉、AC ブロック内の `#N` 番号列、frontmatter の YAML 妥当性など）: 存在する場合にのみ構造の妥当性を検査し、不在は正常として扱う。構造が壊れているとき（対が閉じない・番号列が読めない・YAML が読めない等）だけ縮退させる。
   この分類により、生成元の版が不明・混在でも判別できた範囲で読め、任意項目の不在で正常なタスク（例: PLAN／NOTES を持たないタスク）を縮退させない。想定するフィールド/SECTION 集合は、各項目がこの 3 分類のどれかを併せて明記する。
-- **サポート範囲**: 動作確認した版は書き込み CLI の版に対して固定する（現行 v1.47.1 を含む、decision-2）。これは更新（doc-5 の操作写像・オプション名の検査）の基準であり、生成元の版を縛るものではない。読み取り側のサポート範囲は、上記スキーマ能力検査が扱えるフィールド/SECTION 集合として定める。
+- **サポート範囲**: 動作確認した版は書き込み CLI の版に対して固定する（現行 v1.48.0 を含む、decision-2）。これは更新（doc-5 の操作写像・オプション名の検査）の基準であり、生成元の版を縛るものではない。読み取り側のサポート範囲は、上記スキーマ能力検査が扱えるフィールド/SECTION 集合として定める。
 
 ## 5. 解析エラー・欠損時の扱い
 

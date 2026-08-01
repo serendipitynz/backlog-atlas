@@ -91,7 +91,7 @@ Git 履歴欄は doc-6 の出力をまとめて見せる。
 
 ## 6. 詳細からの編集操作
 
-詳細画面からの編集（title・description・status 変更、ラベル/AC 増減、AC チェック、AC 差し替え、priority・milestone・assignee・dependencies 変更、References 編集、実装計画・ノート編集など）は、すべて Backlog 更新アダプター（doc-5）の更新操作として発行する。詳細画面は操作の入口であり、管理ファイルを直接書き換えない。各編集は doc-5 の操作写像に対応づき、利用者入力は引数配列要素として渡す（シェル非連結、doc-5）。Pull Request・Git 履歴は参照系であり、詳細画面からの編集対象にしない。ただし PR URL の登録は References 編集として扱い、**References 非空全置換**（doc-5 の `task edit --ref`。既存参照を含めて渡し、その非空集合で置き換える）に帰着させる。参照を空にする（最後の 1 件を消す）操作は v1.47.1 の CLI では行えないため、GUI では最後の参照削除を無効化し、必要なら外部エディタ経路へ案内する（doc-5 の 3 章）。dependencies 変更も同様に **非空全置換**（doc-5 の `task edit --depends-on`。既存依存を含めて渡し、その非空集合で置き換える）に帰着させ、依存を空にする（最後の 1 件を消す）操作は v1.47.1 の CLI では行えないため、GUI では最後の依存削除を無効化し、必要なら外部エディタ経路へ案内する（doc-5 の 3.1）。assignee の設定・変更は、GUI 上ではこの画面だけが扱う（doc-5 §3、TASK-57 の決定）。欄は 1 件で、`task edit -a` は最後の 1 値だけを採り、frontmatter の assignee 一覧を渡した 1 件だけの一覧へ置き換える（**assignee の 1 件化**とは、この置き換えで既存の複数 assignee が 1 件になることを指す。doc-5 §3 の実測）。したがって複数 assignee のタスクでは、保存すると 1 件になることを保存前に示す。空欄は「変更しない」であり解除ではない: `-a ""` は終了コード 0 で何も変えないため（doc-5 §3.1）、解除が要る場合は外部エディタ経路へ案内する。AC 本文の差し替えは、単一オプションではなく **複合操作**（既存全 index の `--remove-ac` ＋ 新項目の `--ac` ＋ 完了の `--check-ac` を 1 回の `task edit` で渡す。doc-5 の 3 章）で行い、1 項目単位の AC 増減・チェック（既存の `--ac`／`--remove-ac`／`--check-ac`）とは別操作として区別する。
+詳細画面からの編集（title・description・status 変更、ラベル/AC 増減、AC チェック、AC 差し替え、priority・milestone・assignee・dependencies 変更、References 編集、実装計画・ノート編集など）は、すべて Backlog 更新アダプター（doc-5）の更新操作として発行する。詳細画面は操作の入口であり、管理ファイルを直接書き換えない。各編集は doc-5 の操作写像に対応づき、利用者入力は引数配列要素として渡す（シェル非連結、doc-5）。Pull Request・Git 履歴は参照系であり、詳細画面からの編集対象にしない。ただし PR URL の登録は References 編集として扱い、**References 非空全置換**（doc-5 の `task edit --ref`。既存参照を含めて渡し、その非空集合で置き換える）に帰着させる。参照を空にする（最後の 1 件を消す）操作は v1.48.0 の CLI では行えないため、GUI では最後の参照削除を無効化し、必要なら外部エディタ経路へ案内する（doc-5 の 3 章）。dependencies 変更も同様に **非空全置換**（doc-5 の `task edit --depends-on`。既存依存を含めて渡し、その非空集合で置き換える）に帰着させ、依存を空にする（最後の 1 件を消す）操作は v1.48.0 の CLI では行えないため、GUI では最後の依存削除を無効化し、必要なら外部エディタ経路へ案内する（doc-5 の 3.1）。assignee の設定・変更は、GUI 上ではこの画面だけが扱う（doc-5 §3、TASK-57 の決定）。欄は 1 件で、`task edit -a` は最後の 1 値だけを採り、frontmatter の assignee 一覧を渡した 1 件だけの一覧へ置き換える（**assignee の 1 件化**とは、この置き換えで既存の複数 assignee が 1 件になることを指す。doc-5 §3 の実測）。したがって複数 assignee のタスクでは、保存すると 1 件になることを保存前に示す。空欄は「変更しない」であり解除ではない: `-a ""` は終了コード 0 で何も変えないため（doc-5 §3.1）、解除が要る場合は外部エディタ経路へ案内する。AC 本文の差し替えは、単一オプションではなく **複合操作**（既存全 index の `--remove-ac` ＋ 新項目の `--ac` ＋ 完了の `--check-ac` を 1 回の `task edit` で渡す。doc-5 の 3 章）で行い、1 項目単位の AC 増減・チェック（既存の `--ac`／`--remove-ac`／`--check-ac`）とは別操作として区別する。
 
 以下は、元要望中核である GUI 編集操作の具体を定める。
 
@@ -126,7 +126,7 @@ Git 履歴欄は doc-6 の出力をまとめて見せる。
 
 ### 6.5 保存区分別の編集可否
 
-doc-7 では active だけでなく draft・completed・archive のカードからも詳細画面を開ける。一方 v1.47.1 では、completed・archive 内の TASK-ID への `task edit` は `Task … not found`（終了コード 1）になる（実測）。詳細画面の編集操作は、対象タスクの保存区分（doc-4 の 3.4）別に定める。
+doc-7 では active だけでなく draft・completed・archive のカードからも詳細画面を開ける。一方 v1.48.0 では、completed・archive 内の TASK-ID への `task edit` は `Task … not found`（終了コード 1）になる（実測）。詳細画面の編集操作は、対象タスクの保存区分（doc-4 の 3.4）別に定める。
 
 - **active**: 本章の通常編集（`task edit` 系）と、状態遷移 `task demote`／`task archive`／`task complete`（いずれも doc-5 の操作写像）。`task archive` は status を問わず実行できるが、`task complete` は status が `Done` のときのみ成功する（非 Done では「is not Done」で失敗、実測）。GUI は `task complete` を Done のタスクに限って能動化し、対象外では理由付きで無効化する。
 - **draft**: `draft promote`／`draft archive` のみ（doc-5 の 3.3）。内容編集は GUI に出さず、必要なら外部エディタ経路（7 章）へ案内する。
