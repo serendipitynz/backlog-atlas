@@ -1,10 +1,10 @@
 ---
 id: TASK-91
 title: 画面横断契約の Svelte コンポーネントテスト基盤を入れる
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-01 01:51'
+updated_date: '2026-08-01 04:03'
 labels:
   - test
   - 'kind:chore'
@@ -22,12 +22,12 @@ ordinal: 91000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 コンポーネントをマウントして操作できるテスト基盤が devDependency として入り、npm test（または移行後の pnpm test）から動く
-- [ ] #2 選定した基盤と、全面導入せず画面横断契約に絞る理由が記録されている
-- [ ] #3 モーダルの閉じると未保存確認の契約がテストで固定されている
-- [ ] #4 production dependency が増えていない
-- [ ] #5 タスク詳細・プロジェクト詳細の離脱と保存中状態の契約がテストで固定されている
-- [ ] #6 再読込イベント後の選択・未保存・履歴の整合がテストで固定されている
-- [ ] #7 Rust wire fixture と TypeScript 型利用の往復がテストで固定されている
-- [ ] #8 起動時の設定・workspace・監視の順序がテストで固定されている
+- [x] #1 コンポーネントをマウントして操作できるテスト基盤が devDependency として入り、npm test（または移行後の pnpm test）から動く
+- [x] #2 選定した基盤と、全面導入せず画面横断契約に絞る理由が記録されている
+- [x] #3 モーダルの閉じると未保存確認の契約がテストで固定されている
+- [x] #4 production dependency が増えていない
+- [x] #5 タスク詳細・プロジェクト詳細の離脱と保存中状態の契約がテストで固定されている
+- [x] #6 再読込イベント後の選択・未保存・履歴の整合がテストで固定されている
+- [x] #7 Rust wire fixture と TypeScript 型利用の往復がテストで固定されている
+- [x] #8 起動時の設定・workspace・監視の順序がテストで固定されている
 <!-- AC:END -->
