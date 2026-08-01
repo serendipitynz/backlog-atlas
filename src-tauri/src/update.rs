@@ -36,6 +36,7 @@ use std::ffi::OsStr;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 // --- version probe / capability (doc-5 §3.2, decision-7, AC #6) ---------------------------------
@@ -1093,21 +1094,27 @@ impl BacklogCli for SystemBacklog {
         let status = match wait_until(&mut child, self.deadline) {
             Waited::Exited(status) => status,
             Waited::Killed { detail } => {
-                // The pipes reach EOF once the killed process's ends are closed, so the readers end
-                // on their own; joining them keeps the threads from outliving the call.
-                let _ = stdout.join();
-                let _ = stderr.join();
+                // Nothing is waited on here. A pipe reaches EOF only when *every* writer has closed
+                // it, and killing the direct child closes only the direct child's end — a descendant
+                // that inherited the pipe keeps it open for as long as it likes. Waiting for the
+                // readers would therefore hand back the unbounded wait the deadline just ended. The
+                // threads are left to finish on their own (see [`drain`]), and this call's output is
+                // dropped: there is no verdict to explain, only a deadline that was reached.
                 return Err(RunError::TimedOut {
                     after: self.deadline,
                     detail,
                 });
             }
         };
+        // The child exited, so its own ends are closed — but a descendant may still hold them, so
+        // even here the drain gets a bound rather than a join. One shared instant for both pipes:
+        // two sequential graces would double the bound for no gain.
+        let until = Instant::now() + DRAIN_GRACE;
         Ok(CliRun {
             success: status.success(),
             code: status.code(),
-            stdout: joined(stdout),
-            stderr: joined(stderr),
+            stdout: text(stdout.take(until)),
+            stderr: text(stderr.take(until)),
         })
     }
 }
@@ -1156,25 +1163,72 @@ fn wait_until(child: &mut std::process::Child, deadline: Duration) -> Waited {
     }
 }
 
-/// Read one pipe to its end on its own thread. Bytes rather than a `String`: the CLI's output is not
-/// promised to be UTF-8, and the caller replaces what is not (as `Command::output` also leaves it to
-/// the caller to decide).
-fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        let mut buffer = Vec::new();
-        if let Some(mut pipe) = pipe {
-            let _ = pipe.read_to_end(&mut buffer);
-        }
-        buffer
-    })
+/// How long the drain may still be waited on after the child itself is gone (decision-18). A pipe
+/// reaches EOF only when every writer has closed it, so this bound — not EOF — is what keeps a
+/// descendant that inherited the pipe from re-introducing an unbounded wait. One second is far more
+/// than the kernel needs to hand over what an exited process already wrote, and the whole of it is
+/// spent only when something really is still holding the pipe.
+const DRAIN_GRACE: Duration = Duration::from_secs(1);
+
+/// One pipe being read on its own thread, with what has been read so far reachable *without* waiting
+/// for EOF (decision-18). That is the whole point: joining the thread would mean waiting for the last
+/// writer to close, and the last writer is not necessarily the process Atlas launched.
+struct Drain {
+    /// Bytes rather than a `String`: the CLI's output is not promised to be UTF-8, and the caller
+    /// replaces what is not (as `Command::output` also leaves it to the caller to decide).
+    buffer: Arc<Mutex<Vec<u8>>>,
+    finished: std::sync::mpsc::Receiver<()>,
 }
 
-/// The drained pipe as text. A reader thread that panicked yields empty output rather than
-/// propagating: the exit code is the verdict (doc-5 §5), and losing the reason text must not turn a
-/// CLI failure into a panic in the command boundary.
-fn joined(handle: std::thread::JoinHandle<Vec<u8>>) -> String {
-    let bytes = handle.join().unwrap_or_default();
+impl Drain {
+    /// Wait until `until` for the pipe to end, then take what has been read by then. A drain that has
+    /// not finished is abandoned, not stopped — see [`drain`] for what its thread does after that.
+    fn take(self, until: Instant) -> Vec<u8> {
+        let _ = self
+            .finished
+            .recv_timeout(until.saturating_duration_since(Instant::now()));
+        std::mem::take(&mut *bytes(&self.buffer))
+    }
+}
+
+fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> Drain {
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let (done, finished) = std::sync::mpsc::channel();
+    // Weak, so the thread can tell whether anyone is still going to read what it stores.
+    let sink = Arc::downgrade(&buffer);
+    std::thread::spawn(move || {
+        if let Some(mut pipe) = pipe {
+            let mut chunk = [0u8; 8 * 1024];
+            while let Ok(read) = pipe.read(&mut chunk) {
+                if read == 0 {
+                    break;
+                }
+                // Once the caller has taken its answer and moved on, keep *reading* — a writer must
+                // never block on a pipe Atlas stopped emptying — but stop accumulating output nobody
+                // will look at, which a descendant writing forever would otherwise grow without end.
+                if let Some(buffer) = sink.upgrade() {
+                    bytes(&buffer).extend_from_slice(&chunk[..read]);
+                }
+            }
+        }
+        // A closed receiver means the caller already gave up on this pipe; there is nobody to tell.
+        let _ = done.send(());
+    });
+    Drain { buffer, finished }
+}
+
+/// The drained bytes as text.
+fn text(bytes: Vec<u8>) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// Reach the shared buffer, recovering a poisoned lock. A panicked reader must not turn a CLI failure
+/// into a panic in the command boundary: the exit code is the verdict (doc-5 §5), and the worst a
+/// poisoned buffer costs is the reason text.
+fn bytes(buffer: &Mutex<Vec<u8>>) -> std::sync::MutexGuard<'_, Vec<u8>> {
+    buffer
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// What became of a screen action's plan (doc-5 §5). `Succeeded` means every invocation exited 0.
@@ -1553,25 +1607,91 @@ mod tests {
         assert_eq!(run.code, Some(0));
     }
 
+    /// 512 KiB is past every platform's default pipe buffer (64 KiB on Linux and Windows; macOS grows
+    /// to at most 64 KiB), so an undrained pipe would block the writer well before this much.
+    const LARGE_OUTPUT: usize = 512 * 1024;
+
+    /// A program whose *output* is large but whose command line is short. The payload has to be
+    /// produced after startup rather than passed in: on Windows a process command line is capped at
+    /// 32,767 characters and `cmd.exe`'s own limit is 8,191, so a 512 KiB argument fails at `spawn`
+    /// and the test would never reach the pipe it is about.
+    #[cfg(unix)]
+    fn writes_large_output() -> (&'static str, Vec<String>) {
+        (
+            "sh",
+            vec![
+                "-c".to_string(),
+                format!("yes 0123456789abcdefghijklmnopqrstuvwxyz | head -c {LARGE_OUTPUT}"),
+            ],
+        )
+    }
+    #[cfg(windows)]
+    fn writes_large_output() -> (&'static str, Vec<String>) {
+        // 16,384 lines of 32 characters plus CRLF — comfortably past `LARGE_OUTPUT`.
+        (
+            "cmd",
+            vec![
+                "/c".to_string(),
+                "for /L %i in (1,1,16384) do @echo 01234567890123456789012345678901".to_string(),
+            ],
+        )
+    }
+
     /// A CLI's output has to survive the bounded wait: the pipes are drained on their own threads
     /// precisely so a child writing more than one pipe buffer neither deadlocks nor loses its tail.
     /// Without draining, the assertion below is where a naive `try_wait` loop turns into a 期限到達.
     #[test]
     fn output_larger_than_a_pipe_buffer_comes_back_whole() {
-        // 512 KiB is past every platform's default pipe buffer (64 KiB on Linux, 64 KiB on Windows,
-        // and macOS grows to at most 64 KiB), so an undrained pipe would block the writer.
-        let chunk = "x".repeat(512 * 1024);
-        #[cfg(unix)]
-        let (program, args) = ("printf", vec!["%s".to_string(), chunk.clone()]);
-        #[cfg(windows)]
-        let (program, args) = ("cmd", vec!["/c".to_string(), format!("echo {chunk}")]);
+        let (program, args) = writes_large_output();
         let run = bounded(program, Duration::from_secs(30))
             .run(None, &args)
             .expect("a program that exits produces a verdict");
         assert!(
-            run.stdout.len() >= chunk.len(),
+            run.stdout.len() >= LARGE_OUTPUT,
             "the whole of a large stdout must come back, got {} bytes",
             run.stdout.len()
+        );
+    }
+
+    /// The bound has to cover the *drain*, not just the child. A pipe reaches EOF only when every
+    /// writer has closed it, so a descendant that inherited stdout keeps it open long after the direct
+    /// child is gone — and waiting for EOF there hands back exactly the unbounded wait the deadline
+    /// exists to remove. Both return paths are checked: the child that exits, and the child that is
+    /// killed at the deadline.
+    ///
+    /// Unix only, because building such a descendant is the shell's business, not this code's, and a
+    /// Windows equivalent written here could not be run on this host — a stated gap is worth more than
+    /// an unverified branch. What is under test is platform-independent ([`Drain::take`] bounds the
+    /// wait everywhere); only the way to construct the situation is not.
+    #[cfg(unix)]
+    #[test]
+    fn a_descendant_holding_the_pipes_does_not_extend_the_wait() {
+        // The direct child exits at once, leaving `sleep 10` holding the stdout it inherited.
+        let started = Instant::now();
+        let run = bounded("sh", Duration::from_secs(30))
+            .run(None, &["-c".to_string(), "sleep 10 & exit 0".to_string()])
+            .expect("the direct child exited, so there is a verdict");
+        let after_exit = started.elapsed();
+        assert!(run.success, "the direct child's own exit is the verdict");
+        assert!(
+            after_exit < Duration::from_secs(5),
+            "an exited child's output must be taken under the drain grace, not on the descendant's \
+             schedule ({after_exit:?})"
+        );
+
+        // The direct child outlives the deadline and is killed; the descendant still holds stdout.
+        let started = Instant::now();
+        let error = bounded("sh", Duration::from_millis(200))
+            .run(None, &["-c".to_string(), "sleep 10 & sleep 10".to_string()])
+            .expect_err("the direct child never exits");
+        let after_kill = started.elapsed();
+        assert!(
+            matches!(error, RunError::TimedOut { .. }),
+            "the deadline ended the wait: {error:?}"
+        );
+        assert!(
+            after_kill < Duration::from_secs(5),
+            "a 期限到達 must not then wait on a descendant's pipe ({after_kill:?})"
         );
     }
 
