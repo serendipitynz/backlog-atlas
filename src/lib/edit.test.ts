@@ -590,7 +590,7 @@ describe("失敗の言い分け (doc-5 §5, doc-9 §4.2)", () => {
     const detail = failureDetail({
       command: "task edit",
       kind: { kind: "timedOut", afterMs: 30000 },
-      stderr: "the backlog CLI did not finish within 30 seconds and was terminated",
+      stderr: "the backlog CLI did not finish within 30 seconds, so Atlas stopped waiting for it",
       completedBefore: 0,
       reloadRequired: true,
     });

@@ -369,7 +369,7 @@ fn update_result_timed_out_is_recorded() {
             outcome: UpdateOutcome::Failed(UpdateFailure {
                 command: "task edit".to_string(),
                 kind: FailureKind::TimedOut { after_ms: 30_000 },
-                stderr: "the backlog CLI did not finish within 30 seconds and was terminated"
+                stderr: "the backlog CLI did not finish within 30 seconds, so Atlas stopped waiting for it"
                     .to_string(),
                 completed_before: 0,
                 reload_required: true,

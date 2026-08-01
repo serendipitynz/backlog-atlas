@@ -769,7 +769,7 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
           state: "failed",
           command: "task edit",
           kind: { kind: "timedOut", afterMs: 30000 },
-          stderr: "the backlog CLI did not finish within 30 seconds and was terminated",
+          stderr: "the backlog CLI did not finish within 30 seconds, so Atlas stopped waiting for it",
           completedBefore: 0,
           reloadRequired: true,
         },

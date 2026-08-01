@@ -851,9 +851,12 @@ impl std::fmt::Display for RunError {
         match self {
             RunError::Spawn(error) => write!(f, "{error}"),
             RunError::TimedOut { after, detail } => {
+                // "Atlas stopped waiting", not "the process is gone": the kill is attempted, not
+                // guaranteed, and a kill that failed is named in `detail` rather than contradicted
+                // here.
                 write!(
                     f,
-                    "the backlog CLI did not finish within {} seconds and was terminated",
+                    "the backlog CLI did not finish within {} seconds, so Atlas stopped waiting for it",
                     after.as_secs()
                 )?;
                 match detail {
@@ -1154,10 +1157,20 @@ fn wait_until(child: &mut std::process::Child, deadline: Duration) -> Waited {
             Err(error) => last_error = Some(format!("waiting on the process failed: {error}")),
         }
         if Instant::now() >= until {
-            let _ = child.kill();
+            let killed = child.kill();
             // Reap it, so the deadline does not leave a zombie behind for the rest of the run.
-            let _ = child.wait();
-            return Waited::Killed { detail: last_error };
+            let reaped = child.wait();
+            // Neither result is discarded. A `SIGKILL`/`TerminateProcess` that failed leaves the
+            // process running, and the failure text is the only place that could ever say so — this
+            // is why the text says Atlas stopped waiting rather than that the process is gone.
+            let notes: Vec<String> = last_error
+                .into_iter()
+                .chain(killed.err().map(|e| format!("terminating it failed: {e}")))
+                .chain(reaped.err().map(|e| format!("reaping it failed: {e}")))
+                .collect();
+            return Waited::Killed {
+                detail: (!notes.is_empty()).then(|| notes.join("; ")),
+            };
         }
         std::thread::sleep(WAIT_POLL);
     }
@@ -1586,11 +1599,12 @@ mod tests {
             matches!(error, RunError::TimedOut { after, .. } if after == deadline),
             "the deadline is what ended the wait: {error:?}"
         );
-        // The process itself was ended, not merely abandoned: `run` returns only after `kill` and the
-        // reaping `wait`, both of which had to succeed for this call to come back at all. It does
-        // *not* wait on the pipe readers — a descendant can hold those open indefinitely, which is
-        // why the drain is bounded separately — so what returning promptly proves is the deadline and
-        // the reap, not EOF. Waiting the program out instead would take ten minutes.
+        // What this proves is the bound, and only that. Before returning, `run` attempts the `kill`
+        // and the reaping `wait` — but neither is required to have succeeded (a failure is named in
+        // the failure text instead), and the pipe readers are not waited on at all, since a
+        // descendant can hold those open indefinitely. So a prompt return says the deadline ended
+        // the wait; it does not say the process is gone, and it does not say EOF was reached.
+        // Waiting the program out instead would take ten minutes.
         assert!(
             elapsed < Duration::from_secs(5),
             "the wait must end at the deadline, not at the program's own exit ({elapsed:?})"
