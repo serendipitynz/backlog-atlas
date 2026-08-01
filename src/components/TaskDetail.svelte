@@ -455,7 +455,7 @@
 
   /**
    * Transitions ask for a second press. Not a general habit — none of these has a reverse
-   * operation in v1.47.1 (doc-5 §3.1), so an accidental one cannot be undone from Atlas at all.
+   * operation in v1.48.0 (doc-5 §3.1), so an accidental one cannot be undone from Atlas at all.
    */
   async function runTransition(offer: TransitionOffer): Promise<void> {
     if (!offer.enabled || busy) return;

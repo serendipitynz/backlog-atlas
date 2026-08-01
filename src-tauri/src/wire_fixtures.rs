@@ -380,7 +380,7 @@ fn command_errors_are_recorded() {
             CommandError::UpdatesUnavailable {
                 readiness: CliReadiness::Unsupported {
                     version: "1.20.0".to_string(),
-                    minimum: "1.47.0".to_string(),
+                    minimum: "1.48.0".to_string(),
                 },
             },
             CommandError::TaskNotFound {
@@ -506,7 +506,7 @@ fn cli_readiness_is_recorded() {
     recorded(
         "cli_readiness.json",
         &CliReadiness::Ready {
-            version: "1.47.1".to_string(),
+            version: "1.48.0".to_string(),
         },
     );
 }

@@ -155,7 +155,7 @@ describe("CLI で不能な操作の案内先 (AC #5)", () => {
     for (const storageState of ["draft", "completed", "archive"] as const) {
       const availability = editAvailability(taskView({ storageState }), {
         state: "ready",
-        version: "1.47.1",
+        version: "1.48.0",
       });
       expect(availability.state).toBe("unavailable");
       if (availability.state !== "unavailable") return;

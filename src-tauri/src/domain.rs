@@ -41,7 +41,7 @@ pub enum StorageState {
 
 /// Resolved `config.yml` (doc-4 §3.2). Built before any task is parsed because it is the
 /// resolution basepoint (status set, task prefix). `config.yml` carries no Backlog version
-/// field (measured on v1.47.1), so nothing here records a generator version — reads are
+/// field (measured on v1.48.0), so nothing here records a generator version — reads are
 /// version-independent by schema-capability probing, not version branching (doc-4 §4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

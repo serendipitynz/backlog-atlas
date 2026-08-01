@@ -760,7 +760,7 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
   it("CliReadiness と外部エディタ経路", () => {
     sameValueTypes("cli_readiness", fixture<CliReadiness>("cli_readiness.json"), {
       state: "ready",
-      version: "1.47.1",
+      version: "1.48.0",
     } satisfies CliReadiness);
     sameValueTypes("editor_readiness", fixture<EditorReadiness>("editor_readiness.json"), {
       configured: { source: "appSettings", program: "code", args: ["-w"] },
@@ -784,7 +784,7 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
         reason: { reason: "invalidStatusAlias", key: "Doing", value: "nope" },
         detail: "d",
       },
-      { kind: "updatesUnavailable", readiness: { state: "unsupported", version: "1.20.0", minimum: "1.47.0" } },
+      { kind: "updatesUnavailable", readiness: { state: "unsupported", version: "1.20.0", minimum: "1.48.0" } },
       { kind: "taskNotFound", slug: "atlas", task_id: "TASK-99" },
       { kind: "unknownTaskFile", slug: "atlas", path: "/elsewhere/evil.md" },
       { kind: "editorLaunchFailed", method: "configured", program: "code", detail: "d" },

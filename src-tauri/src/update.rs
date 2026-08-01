@@ -19,8 +19,8 @@
 //!   version at or above the confirmed [`MIN_VERSION`] yields a [`CliCapability`]. [`run`] takes that
 //!   capability by reference, so an update is unreachable without a supported CLI — a missing or
 //!   too-old CLI degrades Atlas to read-only by construction, not by a flag a caller might forget.
-//!   Operations v1.47.1 cannot perform (milestone description update, single-option AC replace,
-//!   emptying references) are unrepresentable or refused *before* any process starts.
+//!   Operations v1.48.0 cannot perform (milestone description update, emptying references) are
+//!   unrepresentable or refused *before* any process starts.
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -34,8 +34,8 @@ use std::process::Command;
 /// the CLI itself rejects an option (surfaced here as an ordinary CLI failure, doc-5 §5).
 pub const MIN_VERSION: Version = Version {
     major: 1,
-    minor: 47,
-    patch: 1,
+    minor: 48,
+    patch: 0,
 };
 
 /// A `major.minor.patch` version, ordered field-major so `>=` is semver comparison.
@@ -48,7 +48,7 @@ pub struct Version {
 
 impl Version {
     /// Parse `backlog --version` output. Tolerates a leading `v` and trailing text, and treats a
-    /// missing minor/patch as 0, so a terse `1` or a decorated `v1.47.1` both parse. `None` when no
+    /// missing minor/patch as 0, so a terse `1` or a decorated `v1.48.0` both parse. `None` when no
     /// leading integer is present at all — that output is not a version we can compare (AC #6).
     pub fn parse(text: &str) -> Option<Version> {
         let token = text.trim().trim_start_matches('v');
@@ -138,7 +138,7 @@ pub fn probe(cli: &dyn BacklogCli) -> CliStatus {
 // --- operation map (doc-5 §3, AC #1) ------------------------------------------------------------
 
 /// One Atlas 更新操作 (doc-5 §1). Each variant maps to exactly one Backlog CLI sub-command; the
-/// mapping is [`plan_operation`]. Operations v1.47.1 cannot perform are absent by construction:
+/// mapping is [`plan_operation`]. Operations v1.48.0 cannot perform are absent by construction:
 /// there is no milestone-description edit (only [`UpdateOperation::MilestoneAdd`] sets a
 /// description, at creation), no single-option AC replace (only the composite [`AcEdit::Replace`]),
 /// and references cannot be emptied ([`TaskEdit::references`] is refused when empty) — doc-5 §3.1.
@@ -186,7 +186,7 @@ pub enum UpdateOperation {
     /// `doc update` (doc-5 §3): title / whole-body / type / path / tags.
     #[serde(rename_all = "camelCase")]
     DocUpdate { doc_id: String, update: DocUpdate },
-    /// `milestone add` (doc-5 §3). Description is set only here — v1.47.1 has no update path (§3.1).
+    /// `milestone add` (doc-5 §3). Description is set only here — v1.48.0 has no update path (§3.1).
     #[serde(rename_all = "camelCase")]
     MilestoneAdd {
         name: String,
@@ -213,7 +213,7 @@ pub enum UpdateOperation {
 
 /// `task create` fields — the range Atlas passes at create time (doc-5 §3, doc-10 §7).
 ///
-/// Narrower than what the CLI accepts, by product judgment rather than by capability: v1.47.1's
+/// Narrower than what the CLI accepts, by product judgment rather than by capability: v1.48.0's
 /// `task create` also takes `-a`/`--plan`/`--notes`/`--ref`/`--depends-on` and stores every one of
 /// them in the created file (measured 2026-07-29, doc-5 §3). What Atlas passes here is what
 /// identifies and classifies a task at the moment it is created; plan・notes・references・
@@ -256,7 +256,7 @@ pub struct TaskEdit {
     pub priority: Option<String>,
     pub milestone: Option<String>,
     /// `--assignee` (doc-5 §3). One value rather than a set, and the whole GUI route for assignee
-    /// (TASK-57): v1.47.1 takes a single assignee — a repeated `-a` keeps only the last, a
+    /// (TASK-57): v1.48.0 takes a single assignee — a repeated `-a` keeps only the last, a
     /// comma-separated value lands as one literal entry, and the write replaces the whole
     /// frontmatter list however many entries it had (measured 2026-07-29). `Some(blank)` is refused
     /// — `-a ""` exits 0 without clearing (measured), the same silent-no-op as `--ref ""`, so
@@ -267,12 +267,12 @@ pub struct TaskEdit {
     pub add_labels: Vec<String>,
     pub remove_labels: Vec<String>,
     /// `--depends-on` sets the whole dependency set (doc-5 §3). `None` leaves it untouched;
-    /// `Some(empty)` is refused — `--depends-on ""` exits 0 without clearing anything in v1.47.1
+    /// `Some(empty)` is refused — `--depends-on ""` exits 0 without clearing anything in v1.48.0
     /// (measured), the same silent-no-op trap as `--ref ""`, so clearing all dependencies is not a
     /// capability the CLI offers and must not be reported as a success ([`RejectReason::EmptyDependencies`]).
     pub dependencies: Option<Vec<String>>,
     /// `--ref` full-replaces with a *non-empty* set (doc-5 §3, §3.1). `Some(empty)` is refused —
-    /// v1.47.1 cannot empty references (doc-5 §3.1). `None` leaves references untouched.
+    /// v1.48.0 cannot empty references (doc-5 §3.1). `None` leaves references untouched.
     pub references: Option<Vec<String>>,
     pub ac: AcEdit,
 }
@@ -292,10 +292,12 @@ pub enum NoteEdit {
 }
 
 /// Acceptance-criteria edit (doc-5 §3). The per-item deltas ([`AcEdit::Delta`]) and the whole-set
-/// replacement ([`AcEdit::Replace`]) are kept apart because doc-5 §3/§3.1 require it: v1.47.1 has no
-/// single-option "set all AC" (`--acceptance-criteria` is additive, not a replace), so a replace is
+/// replacement ([`AcEdit::Replace`]) are kept apart because doc-5 §3/§3.1 require it: a replace is
 /// the composite of removing every existing index, adding the new items, and checking the completed
-/// ones by their new index — all in one `task edit` call.
+/// ones by their new index — all in one `task edit` call. v1.48.0's single-option
+/// `--acceptance-criteria` does replace the whole set, but it refuses to run alongside `--ac`,
+/// `--remove-ac`, `--check-ac` or `--uncheck-ac` ("Cannot combine …", measured), so it cannot carry
+/// the checked state of the new items. The composite can, and one call keeps the replace atomic.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(tag = "mode", rename_all = "camelCase")]
 pub enum AcEdit {
@@ -450,7 +452,7 @@ impl Invocation {
     }
 }
 
-/// The option flags each sub-command accepts in the confirmed version (v1.47.1 `--help`, doc-5 §3).
+/// The option flags each sub-command accepts in the confirmed version (v1.48.0 `--help`, doc-5 §3).
 /// This is the single source of truth for AC #5's "未知オプションは起動前に拒否する": every option
 /// [`plan_operation`] emits is checked against this set, so a flag the confirmed version does not
 /// define is refused before any process starts rather than passed to a CLI that may reject it.
@@ -498,7 +500,7 @@ fn allowed_options(command: &[&str]) -> &'static [&'static str] {
 /// [`UpdateFailure`], surfaced to the caller as `Err` from [`run`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum RejectReason {
-    /// `references` was `Some(empty)`. v1.47.1 cannot empty references (doc-5 §3.1); the last one
+    /// `references` was `Some(empty)`. v1.48.0 cannot empty references (doc-5 §3.1); the last one
     /// must be removed through the external-editor path (doc-8), not here.
     EmptyReferences,
     /// `dependencies` was `Some(empty)`. `--depends-on ""` exits 0 without clearing (measured), the
@@ -528,15 +530,15 @@ impl std::fmt::Display for RejectReason {
         match self {
             RejectReason::EmptyReferences => write!(
                 f,
-                "references cannot be emptied through the CLI (v1.47.1); keep at least one reference"
+                "references cannot be emptied through the CLI (v1.48.0); keep at least one reference"
             ),
             RejectReason::EmptyDependencies => write!(
                 f,
-                "dependencies cannot be cleared through the CLI (v1.47.1); keep at least one dependency"
+                "dependencies cannot be cleared through the CLI (v1.48.0); keep at least one dependency"
             ),
             RejectReason::EmptyAssignee => write!(
                 f,
-                "assignee cannot be cleared through the CLI (v1.47.1); pass a non-blank assignee"
+                "assignee cannot be cleared through the CLI (v1.48.0); pass a non-blank assignee"
             ),
             RejectReason::NothingToEdit => write!(f, "task edit was requested with no field to change"),
             RejectReason::NothingToUpdate => {
@@ -617,7 +619,7 @@ fn plan_task_create(c: &TaskCreate) -> Invocation {
         .opt_if("--priority", &c.priority)
         .opt_if("--milestone", &c.milestone);
     if !c.labels.is_empty() {
-        // v1.47.1 `task create --labels` takes one comma-separated value (doc-5 §3 create row).
+        // v1.48.0 `task create --labels` takes one comma-separated value (doc-5 §3 create row).
         inv = inv.opt("--labels", c.labels.join(","));
     }
     for ac in &c.acceptance_criteria {
@@ -653,10 +655,9 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
     };
 
     // Labels are comma-joined into a single `--add-label`/`--remove-label`, not repeated per label:
-    // v1.47.1 `--add-label`/`--remove-label` take one value and a repeated flag keeps only the last
-    // (measured — they carry no "can be used multiple times" collector, unlike `--ac`/`--ref`),
-    // while a comma-separated value applies to every label. Repeating would silently drop all but
-    // the last label.
+    // a comma-separated value applies to every label in both v1.48.0 and v1.48.0, whereas repeating
+    // the flag does not — v1.48.0 keeps only the last value and v1.48.0 accumulates (both measured).
+    // Comma-joining is the one form that means the same thing on either version.
     if !edit.add_labels.is_empty() {
         inv = inv.opt("--add-label", edit.add_labels.join(","));
     }
@@ -675,7 +676,7 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
     }
 
     if let Some(refs) = &edit.references {
-        // 参照の全置換は非空集合のみ (doc-5 §3.1): emptying is impossible in v1.47.1.
+        // 参照の全置換は非空集合のみ (doc-5 §3.1): emptying is impossible in v1.48.0.
         if refs.is_empty() {
             return Err(RejectReason::EmptyReferences);
         }
@@ -957,7 +958,7 @@ mod tests {
     impl FakeCli {
         fn supported() -> Self {
             FakeCli {
-                version: "1.47.1".to_string(),
+                version: "1.48.0".to_string(),
                 version_ok: true,
                 spawn_error: false,
                 results: RefCell::new(VecDeque::new()),
@@ -1087,13 +1088,13 @@ mod tests {
 
     #[test]
     fn version_parse_tolerates_decoration() {
-        assert_eq!(Version::parse("1.47.1").unwrap(), MIN_VERSION);
-        assert_eq!(Version::parse("v1.47.1\n").unwrap(), MIN_VERSION);
+        assert_eq!(Version::parse("1.48.0").unwrap(), MIN_VERSION);
+        assert_eq!(Version::parse("v1.48.0\n").unwrap(), MIN_VERSION);
         assert_eq!(
-            Version::parse("1.47").unwrap(),
+            Version::parse("1.48").unwrap(),
             Version {
                 major: 1,
-                minor: 47,
+                minor: 48,
                 patch: 0
             }
         );
@@ -1147,7 +1148,7 @@ mod tests {
 
     #[test]
     fn task_create_maps_the_create_time_range_atlas_passes() {
-        // The range is Atlas's, not the CLI's: v1.47.1 `task create` also accepts `-a`/`--plan`/
+        // The range is Atlas's, not the CLI's: v1.48.0 `task create` also accepts `-a`/`--plan`/
         // `--notes`/`--ref`/`--depends-on` (doc-5 §3). Every field this struct can hold reaches the
         // argv; the ones it cannot hold are a product judgment stated on [`TaskCreate`].
         let cli = FakeCli::supported();
@@ -1231,9 +1232,9 @@ mod tests {
 
     #[test]
     fn multiple_labels_are_comma_joined_into_one_flag() {
-        // Regression (review [P1]): v1.47.1 `--add-label`/`--remove-label` keep only the last value
-        // when the flag is repeated (measured), so multiple labels must go in one comma-separated
-        // value or all but the last are silently dropped.
+        // Regression (review [P1]): repeating `--add-label`/`--remove-label` means different things
+        // per version — v1.48.0 keeps only the last value, v1.48.0 accumulates (both measured) — so
+        // multiple labels must go in one comma-separated value, the form both versions agree on.
         let cli = FakeCli::supported();
         run_one(
             UpdateOperation::TaskEdit {
@@ -1511,7 +1512,7 @@ mod tests {
         );
     }
 
-    // --- AC #5: operations outside v1.47.1's capability are refused before launch ---------------
+    // --- AC #5: operations outside v1.48.0's capability are refused before launch ---------------
 
     #[test]
     fn emptying_references_is_refused_without_launching() {

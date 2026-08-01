@@ -217,7 +217,7 @@ describe("CLI 縮退 (doc-5 §5)", () => {
   });
 
   it("closes every cell's 入口 while a create is in flight", () => {
-    expect(laneCreateHold({ readiness: { state: "ready", version: "1.47.1" }, busy: true })).toBe(
+    expect(laneCreateHold({ readiness: { state: "ready", version: "1.48.0" }, busy: true })).toBe(
       ISSUE_BUSY_REASON,
     );
   });
@@ -225,12 +225,12 @@ describe("CLI 縮退 (doc-5 §5)", () => {
   // An empty title is not a reason to withhold the 入口 — it is the value the 入口 exists to take.
   it("opens the 入口 whenever the CLI is present and nothing is in flight", () => {
     expect(
-      laneCreateHold({ readiness: { state: "ready", version: "1.47.1" }, busy: false }),
+      laneCreateHold({ readiness: { state: "ready", version: "1.48.0" }, busy: false }),
     ).toBeNull();
   });
 
   it("leaves 発行 to the input alone once the CLI is present", () => {
-    const readiness = { state: "ready", version: "1.47.1" } as const;
+    const readiness = { state: "ready", version: "1.48.0" } as const;
     expect(
       issueAvailability(buildLaneTaskCreate("題名", "To Do"), { readiness, busy: false }).state,
     ).toBe("ready");

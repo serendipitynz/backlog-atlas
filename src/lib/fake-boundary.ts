@@ -89,7 +89,7 @@ function emptyLedger(): LedgerResponse {
  * bargain `fixtures.ts` makes — everything else stays a value that keeps the screen quiet.
  */
 export const answers = {
-  cli: { state: "ready", version: "1.47.1" } as CliReadiness,
+  cli: { state: "ready", version: "1.48.0" } as CliReadiness,
   editor: { configured: null, association: "open" } as EditorReadiness,
   ledger: emptyLedger(),
   ledgerPath: "/config/ledger.toml",
@@ -139,7 +139,7 @@ export function emitReload(event: ReloadEvent): void {
 export function reset(): void {
   calls.length = 0;
   listeners.length = 0;
-  answers.cli = { state: "ready", version: "1.47.1" };
+  answers.cli = { state: "ready", version: "1.48.0" };
   answers.editor = { configured: null, association: "open" };
   answers.ledger = emptyLedger();
   answers.ledgerPath = "/config/ledger.toml";
