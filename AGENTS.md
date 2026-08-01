@@ -68,6 +68,43 @@ Move the state through Backlog CLI calls, like every other task update.
   esbuild resolves its platform binary through an optional dependency instead, and the
   build, the tests, and `svelte-check` all pass without either script.
 
+## Tests
+
+`pnpm test` runs two Vitest projects.
+
+- **`unit`** — `src/**/*.test.ts` in the `node` environment. The rules, held as pure
+  functions, plus the recorded wire payloads. No DOM.
+- **`component`** — `src/**/*.component.test.ts` in `jsdom`, mounting components through
+  Svelte's own `mount`. `src/lib/render.ts` is the whole harness; no testing library is
+  installed, because the queries these tests need are the components' own selectors and
+  the events include an IME composition (`isComposing`, `keyCode === 229`) that a
+  synthetic `type()` cannot produce.
+
+Keep the split. A DOM given to the `unit` project would change the environment those
+tests have been passing in, and only the second project needs the Svelte compiler.
+
+**Component tests hold画面横断契約 only** — the contracts no pure function can hold and
+no single screen owns: a modal's exits, 破棄前確認 on leaving a detail panel, what a
+reload may not discard, the startup call order. Screen-by-screen coverage is not the
+goal and a full GUI E2E is a separate thing again (TASK-105); a component test per
+screen would make every UI change a test change and buy no contract.
+
+**`jsdom` runs no layout.** `getClientRects` returns nothing for everything, which would
+silently empty `Modal.svelte`'s focus cycle, so `render.ts` reports a box for elements
+that are rendered — by the rule the app's call depends on (`hidden`, inline
+`display: none`, a closed `details`), never by measuring. No test may assert on the
+numbers it returns.
+
+**Wire payloads are recorded, with the Rust side as their source.** `src/lib/wire.ts`
+mirrors this crate's serde output by hand and neither compiler checks the other.
+`src-tauri/src/wire_fixtures.rs` serializes one sample per payload and compares it with
+`src-tauri/wire-fixtures/*.json`; `src/lib/wire-fixture.test.ts` reads the same files as
+the `wire.ts` types and runs the frontend's functions over them. Re-record with
+`ATLAS_RECORD_WIRE_FIXTURES=1 cargo test` and **commit the result** — the frontend test
+reads the committed file. The samples are built as struct literals with fabricated
+absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
+and a recorded fixture has to be byte-identical on every machine.
+
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.
