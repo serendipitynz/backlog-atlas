@@ -1,10 +1,10 @@
 ---
 id: TASK-84
 title: 台帳と設定を一時ファイル置換で保存する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-01 21:41'
+updated_date: '2026-08-01 21:51'
 labels:
   - robustness
   - rust
