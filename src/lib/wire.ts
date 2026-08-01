@@ -597,6 +597,12 @@ export interface AppSettings {
   default_detail_placement: DetailPlacement;
   /** 継続検出の可否 (doc-9 §3.1). False stops every root's watch. */
   watch_external_changes: boolean;
+  /**
+   * 実行ファイル解決の順序 の 1 段目 (doc-5 §4, decision-16): the Backlog CLI executable to run, as an
+   * absolute path. Absent — not `null` — when unset, like `external_editor`, and unset is the normal
+   * case: the automatic resolution covers an npm install on all three platforms.
+   */
+  backlog_cli?: string;
   /** 外部エディタ指定 (doc-8 §7). Absent — not `null` — when unset: the key is skipped in the file. */
   external_editor?: EditorCommand;
 }

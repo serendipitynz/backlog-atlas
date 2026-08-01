@@ -17,6 +17,7 @@
 //! | doc-8 §2.1 詳細配置 | [`DetailPlacement`] | 併置サイドバー / 中央モーダル / 全面シングルビュー |
 //! | doc-9 §3.1 継続検出の可否 | [`AppSettings::watch_external_changes`] | whether the per-root file watch is started at all |
 //! | doc-8 §7 外部エディタ指定 | [`AppSettings::external_editor`] | the 起動指定 that outranks `$VISUAL`/`$EDITOR` |
+//! | doc-5 §4 実行ファイル解決の順序 1 段目 | [`AppSettings::backlog_cli`] | the Backlog CLI executable to run, outranking every automatic resolution |
 //! | decision-13 既定値で動いている旨 | [`SettingsStatus`] | why the values in hand are the defaults, and whether saving is allowed |
 //!
 //! ## Reading this file never stops the screen (AC #6)
@@ -42,7 +43,7 @@
 use crate::editor::EditorCommand;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The only schema version this build writes. A file at exactly this version is writable; an unknown
 /// *higher* one degrades to read-only and is left untouched (decision-13, AC #1) — the same rule the
@@ -122,6 +123,16 @@ pub struct AppSettings {
     /// and doc-9 §3.1 frames turning it off as a deliberate choice with a stated consequence.
     #[serde(default = "watch_external_changes_default")]
     pub watch_external_changes: bool,
+    /// 実行ファイル解決の順序 の 1 段目 (doc-5 §4, decision-16): the Backlog CLI executable to run,
+    /// as an absolute path. Set, it is used as written — the resolution does not check that it exists
+    /// and does not fall back, so a mistyped path surfaces as its own 起動失敗 naming the path rather
+    /// than as "some other CLI ran". Unset — which is the normal case, since the automatic resolution
+    /// covers an npm install on all three platforms — the resolution continues to its later steps.
+    ///
+    /// Placed before `external_editor` for the reason stated there: this is a scalar and TOML forbids
+    /// one after a sub-table. Skipped when unset, like the editor override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backlog_cli: Option<PathBuf>,
     // Last field on purpose: it serializes as the `[external_editor]` sub-table, and TOML forbids a
     // scalar key appearing after a table within the same table. Skipped when unset so a file with no
     // editor override stays terse.
@@ -146,6 +157,7 @@ impl Default for AppSettings {
             default_storage_filter: default_storage_filter(),
             default_detail_placement: DetailPlacement::default(),
             watch_external_changes: watch_external_changes_default(),
+            backlog_cli: None,
             external_editor: None,
         }
     }
@@ -362,6 +374,9 @@ mod tests {
             default_storage_filter: vec![StorageSelection::Active, StorageSelection::Draft],
             default_detail_placement: DetailPlacement::Full,
             watch_external_changes: false,
+            // A path with a space, because that is what an npm global prefix under a Windows user
+            // profile or an Application Support directory looks like (doc-5 §4 順序 1).
+            backlog_cli: Some(PathBuf::from("/opt/my tools/backlog")),
             external_editor: Some(EditorCommand {
                 program: "/Applications/My Editor.app/Contents/MacOS/my editor".into(),
                 args: vec!["-w".into()],
@@ -373,6 +388,16 @@ mod tests {
         let reloaded = LoadedSettings::load(&path);
         assert_eq!(reloaded.status, SettingsStatus::Stored);
         assert_eq!(reloaded.settings, settings);
+
+        // `backlog_cli` is a scalar and `external_editor` a sub-table: TOML forbids the scalar after
+        // the table, so a save that emitted them the other way round would produce a file this very
+        // `load` cannot read. Asserted on the text because the round-trip above passes either way
+        // only as long as the field order stays right.
+        let text = std::fs::read_to_string(&path).expect("written");
+        assert!(
+            text.find("backlog_cli").unwrap() < text.find("[external_editor]").unwrap(),
+            "the scalar has to precede the sub-table:\n{text}"
+        );
     }
 
     #[test]

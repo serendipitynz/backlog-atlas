@@ -431,6 +431,7 @@ fn loaded_settings_is_recorded() {
                 ],
                 default_detail_placement: DetailPlacement::Modal,
                 watch_external_changes: false,
+                backlog_cli: Some(PathBuf::from("/opt/backlog/backlog")),
                 external_editor: Some(EditorCommand {
                     program: "code".to_string(),
                     args: vec!["-w".to_string()],

@@ -9,6 +9,7 @@
     ],
     "default_detail_placement": "modal",
     "watch_external_changes": false,
+    "backlog_cli": "/opt/backlog/backlog",
     "external_editor": {
       "program": "code",
       "args": [
