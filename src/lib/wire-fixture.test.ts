@@ -1062,7 +1062,8 @@ describe("記録した payload を画面の関数がそのまま読める", () =
 
     // `readOnly` carries a `version`, and the notice prints it — a renamed payload field would show
     // the sentence with a hole in it rather than failing.
-    expect(statusNotice(loaded.status)).toContain("2");
+    if (loaded.status.state !== "readOnly") throw new Error("the recording is the readOnly case");
+    expect(statusNotice(loaded.status)).toContain(String(loaded.status.version));
     expect(saveAvailability(loaded.status).enabled).toBe(false);
     expect(editorArgsText(loaded.settings.external_editor)).toBe("-w");
   });

@@ -48,7 +48,13 @@ use std::path::{Path, PathBuf};
 /// The only schema version this build writes. A file at exactly this version is writable; an unknown
 /// *higher* one degrades to read-only and is left untouched (decision-13, AC #1) — the same rule the
 /// ledger follows (doc-3 §2.2), which decision-13 asks the two files to keep in step.
-pub const KNOWN_SCHEMA_VERSION: u32 = 1;
+///
+/// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16). decision-13 puts 項目の追加 under
+/// this version's management, and the read-only degrade is what the raise buys: left at 1, a build
+/// predating the field would read the newer file as its own version, let serde drop the key it does
+/// not know, and delete the value on its next save. Older files are unaffected — a *lower* version
+/// loads with the missing keys defaulted, and the next save writes this version.
+pub const KNOWN_SCHEMA_VERSION: u32 = 2;
 
 /// カード情報量 (doc-7 §3): which column of the card assignment table is in force.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -418,6 +424,46 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_version_bump_is_what_stops_an_older_build_dropping_a_newer_field() {
+        // The boundary a new persisted item has to be defended at (decision-13 項目の追加は
+        // スキーマ版の管理対象). Both directions matter, and only the second needs the raise.
+        let tmp = TempDir::new();
+
+        // Older file, this build: the missing keys default and the next save adopts this version, so
+        // raising the number does not strand anyone's existing settings.toml.
+        let older = tmp.path.join("older.toml");
+        std::fs::write(&older, "schema_version = 1\ncard_density = \"s\"\n").unwrap();
+        let loaded = LoadedSettings::load(&older);
+        assert_eq!(loaded.status, SettingsStatus::Stored);
+        assert_eq!(loaded.settings.card_density, CardDensity::S);
+        assert_eq!(loaded.settings.backlog_cli, None);
+        save(&older, &loaded.settings).expect("an older file is ours to rewrite");
+        assert_eq!(
+            LoadedSettings::load(&older).settings.schema_version,
+            KNOWN_SCHEMA_VERSION
+        );
+
+        // Newer file, this build standing in for the build that predates `backlog_cli`: it must not be
+        // parsed and must not be written. Left at the old number, this file would read as Stored, its
+        // unknown key would be dropped by serde, and the next save would delete it.
+        let newer = tmp.path.join("newer.toml");
+        let written = format!(
+            "schema_version = {}\nbacklog_cli = \"/opt/backlog/backlog\"\n",
+            KNOWN_SCHEMA_VERSION + 1
+        );
+        std::fs::write(&newer, &written).unwrap();
+        let loaded = LoadedSettings::load(&newer);
+        assert_eq!(
+            loaded.status,
+            SettingsStatus::ReadOnly {
+                version: KNOWN_SCHEMA_VERSION + 1
+            }
+        );
+        assert!(save(&newer, &AppSettings::default()).is_err());
+        assert_eq!(std::fs::read_to_string(&newer).unwrap(), written);
+    }
+
     // --- 縮退 (AC #1/#6) --------------------------------------------------------------------
 
     #[test]
@@ -533,7 +579,9 @@ mod tests {
         };
         save(&path, &settings).expect("saved");
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("schema_version = 1"));
+        // Against the constant, not a literal: what this asserts is that the written file states the
+        // version this build's field set means, which stays true across a bump.
+        assert!(text.contains(&format!("schema_version = {KNOWN_SCHEMA_VERSION}")));
         assert!(text.contains("card_density = \"m\""));
         assert!(text.contains("watch_external_changes = true"));
         assert!(text.contains("[external_editor]"));

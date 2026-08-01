@@ -39,6 +39,7 @@ use crate::interpret::type_value::derive_types;
 use crate::ledger::{Ledger, ProjectEntry};
 use crate::settings::{
     AppSettings, CardDensity, DetailPlacement, LoadedSettings, SettingsStatus, StorageSelection,
+    KNOWN_SCHEMA_VERSION,
 };
 use crate::update::{FailureKind, UpdateFailure, UpdateOutcome};
 
@@ -422,7 +423,7 @@ fn loaded_settings_is_recorded() {
         "loaded_settings.json",
         &LoadedSettings {
             settings: AppSettings {
-                schema_version: 1,
+                schema_version: KNOWN_SCHEMA_VERSION,
                 theme: Some("nord".to_string()),
                 card_density: CardDensity::L,
                 default_storage_filter: vec![
@@ -437,7 +438,9 @@ fn loaded_settings_is_recorded() {
                     args: vec!["-w".to_string()],
                 }),
             },
-            status: SettingsStatus::ReadOnly { version: 2 },
+            status: SettingsStatus::ReadOnly {
+                version: KNOWN_SCHEMA_VERSION + 1,
+            },
         },
     );
 }

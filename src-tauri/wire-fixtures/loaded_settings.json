@@ -1,6 +1,6 @@
 {
   "settings": {
-    "schema_version": 1,
+    "schema_version": 2,
     "theme": "nord",
     "card_density": "l",
     "default_storage_filter": [
@@ -19,6 +19,6 @@
   },
   "status": {
     "state": "readOnly",
-    "version": 2
+    "version": 3
   }
 }

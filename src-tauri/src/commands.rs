@@ -1906,7 +1906,10 @@ ordinal: 1000\n\
         };
         let json = serde_json::to_value(&loaded).unwrap();
         assert_eq!(json["status"]["state"], "absent");
-        assert_eq!(json["settings"]["schema_version"], 1);
+        assert_eq!(
+            json["settings"]["schema_version"],
+            crate::settings::KNOWN_SCHEMA_VERSION
+        );
         assert_eq!(json["settings"]["card_density"], "m");
         assert_eq!(json["settings"]["default_storage_filter"][0], "active");
         assert_eq!(json["settings"]["default_detail_placement"], "sidebar");

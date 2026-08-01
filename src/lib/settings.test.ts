@@ -191,4 +191,22 @@ describe("第 2 の書き手（既定の詳細配置）と開いているフォ�
     const draft: AppSettings = { ...DEFAULTS, schema_version: 99 };
     expect(mergeDraft(DEFAULTS, draft, { ...DEFAULTS, schema_version: 2 }).schema_version).toBe(2);
   });
+
+  it("keeps a hand-edited backlog_cli when the form saves some other field", () => {
+    // 保存 serializes this return value as the whole file, so a field this merge omits is deleted
+    // from disk. `backlog_cli` has no control on the form (doc-5 §4 順序 1 is hand-edited only), which
+    // is precisely why dropping it would go unnoticed until updates degraded again.
+    const withCli: AppSettings = { ...DEFAULTS, backlog_cli: "/opt/backlog/backlog" };
+    const draft: AppSettings = { ...withCli, card_density: "l" };
+    const merged = mergeDraft(withCli, draft, withCli);
+    expect(merged.backlog_cli).toBe("/opt/backlog/backlog");
+    expect(merged.card_density).toBe("l");
+    // And absent rather than present-and-undefined when there is none, like external_editor.
+    expect("backlog_cli" in mergeDraft(DEFAULTS, { ...DEFAULTS }, DEFAULTS)).toBe(false);
+  });
+
+  it("counts a backlog_cli difference as dirty", () => {
+    // Without it in `normalize`, an incoming change to the field would read as "nothing to save".
+    expect(isDirty(DEFAULTS, { ...DEFAULTS, backlog_cli: "/opt/backlog/backlog" })).toBe(true);
+  });
 });

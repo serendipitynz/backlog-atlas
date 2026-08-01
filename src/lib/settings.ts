@@ -229,8 +229,14 @@ export function mergeDraft(
       next.watch_external_changes,
     ),
   };
+  // Both optional fields are carried the same way, and `backlog_cli` has to be even though no control
+  // on this form can touch it: the form save serializes this return value as the *whole* file, so a
+  // field left out here is deleted from disk. It is hand-edited only (doc-5 §4 順序 1), which makes it
+  // exactly the value a user would not think to re-enter after changing a theme.
+  const cli = pick(draft.backlog_cli, baseline.backlog_cli, next.backlog_cli);
+  // Absent rather than `undefined`-valued: the key is skipped in the file when there is no value.
+  if (cli !== undefined) merged.backlog_cli = cli;
   const editor = pick(draft.external_editor, baseline.external_editor, next.external_editor);
-  // Absent rather than `undefined`-valued: the key is skipped in the file when there is no 起動指定.
   if (editor !== undefined) merged.external_editor = editor;
   return merged;
 }
@@ -249,7 +255,7 @@ export function isDirty(a: AppSettings, b: AppSettings): boolean {
   return JSON.stringify(normalize(a)) !== JSON.stringify(normalize(b));
 }
 
-/** Field order fixed for the comparison above; `external_editor` absent and `undefined` are one state. */
+/** Field order fixed for the comparison above; an absent optional and `undefined` are one state. */
 function normalize(settings: AppSettings): unknown {
   return [
     settings.schema_version,
@@ -258,6 +264,7 @@ function normalize(settings: AppSettings): unknown {
     settings.default_storage_filter,
     settings.default_detail_placement,
     settings.watch_external_changes,
+    settings.backlog_cli ?? null,
     settings.external_editor ?? null,
   ];
 }
