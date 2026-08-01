@@ -1,10 +1,10 @@
 ---
 id: TASK-60
 title: Windows で npm 導入の Backlog CLI を解決できず更新経路が発行不能になるのを直す
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-07-31 20:55'
-updated_date: '2026-07-31 21:10'
+updated_date: '2026-08-01 09:35'
 labels:
   - 'kind:bug'
 milestone: m-2
@@ -46,7 +46,33 @@ npm パッケージを解剖した結果、**ネイティブの実行ファイ�
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Windows で npm 導入の Backlog CLI を解決し、CLI 縮退が解けることを実機で確認する
-- [ ] #2 採る手段を decision として記録する（シェルを経由する場合はその位置づけと AGENTS との関係を明記）
-- [ ] #3 実行ファイルの解決を BacklogCli の実装内に閉じ、doc-5 の操作写像を変えない
-- [ ] #4 macOS・Linux の解決経路を壊していないことを確認する
+- [x] #2 採る手段を decision として記録する（シェルを経由する場合はその位置づけと AGENTS との関係を明記）
+- [x] #3 実行ファイルの解決を BacklogCli の実装内に閉じ、doc-5 の操作写像を変えない
+- [x] #4 macOS・Linux の解決経路を壊していないことを確認する
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-01 に decision-16 として決定し、実装した。
+
+**採った手段**: 実行ファイル解決の順序（①アプリ設定 `backlog_cli` ②Windows で PATH 上に
+`backlog.exe` が無い場合に npm の shim の所在から辿るプラットフォーム別実行ファイル
+③プログラム名 `backlog`）。候補 (a) と (c) の併用で、(b) は単体で解決しないため不採用、
+(d) sidecar 同梱は decision-7 の同梱検討契機に属する判断なので TASK-99 へ残した。
+
+**シェル経由は回避できた**: npm パッケージの解剖で、`.cmd`/`.ps1` を起動せずとも
+`backlog.md-<platform>-<arch>/backlog[.exe]` を直接起動できることを確認した
+（macOS で 70,612,322 バイト、`--version` が 1.48.0 を返す）。AGENTS.md / AGENTS.ja.md は
+改訂していない。
+
+**AC #4 の確認内容**: macOS は順序の 3 段目に到達し、`Command::new` へ渡すプログラム名が
+`"backlog"` のまま変わらない。実 CLI を使う 2 件の ignored テスト
+（`commands::tests::the_frontend_edit_reaches_the_real_cli` ほか）を
+`cargo test -- --include-ignored` で通し、実物の CLI へ届くことを実測した（301 件全通過）。
+Linux は `SubPackage::current().is_windows()` が偽で同じ 3 段目へ落ちる同一経路であり、
+`update::tests::without_a_setting_a_unix_host_still_gets_the_bare_name` が固定している。
+**Linux 実機では走らせていない。**
+
+**AC #1 は未達**: Windows 実機での確認はユーザーへ依頼した。
+<!-- SECTION:NOTES:END -->
