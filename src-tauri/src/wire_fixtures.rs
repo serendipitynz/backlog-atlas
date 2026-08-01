@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 
 use crate::commands::{
     CliReadiness, CommandError, CommitSearch, LedgerRefusal, LedgerResponse, ProjectLoad,
-    ProjectSnapshot, TaskHistory, TaskView, UpdateResult,
+    ProjectSnapshot, RegisterResponse, ReloadEvent, TaskHistory, TaskView, UpdateResult,
 };
 use crate::domain::{
     AcceptanceCriterion, Config, Decision, DegradeEvent, Document, Milestone, ReferenceKind,
@@ -458,6 +458,43 @@ fn editor_payloads_are_recorded() {
             method: LaunchMethod::Association,
             program: "open".to_string(),
             args: vec!["/repos/atlas/backlog/tasks/task-1 - a.md".to_string()],
+        },
+    );
+}
+
+#[test]
+fn register_response_is_recorded() {
+    // Recorded as its own payload and not left to `LedgerResponse` alone: this is the one command
+    // whose answer names the entry it created, because doc-3 §3.1 lets the slug be derived from the
+    // project-root directory name — so the caller reads `entry` rather than assuming what it asked
+    // for. A rename of the outer pair appears in no other recording.
+    recorded(
+        "register_response.json",
+        &RegisterResponse {
+            entry: entry(),
+            ledger: LedgerResponse {
+                ledger: Ledger {
+                    schema_version: 1,
+                    projects: vec![entry()],
+                },
+                read_only: false,
+            },
+        },
+    );
+}
+
+#[test]
+fn reload_event_is_recorded() {
+    // The `project-reloaded` payload. No command returns it, so it is the one wire shape that would
+    // otherwise never be recorded — and the shell keys the new load by `slug`, so a rename of either
+    // field stops every watch-triggered re-read from reaching a row, silently.
+    recorded(
+        "reload_event.json",
+        &ReloadEvent {
+            slug: "atlas".to_string(),
+            load: ProjectLoad::Loaded {
+                project: snapshot(),
+            },
         },
     );
 }

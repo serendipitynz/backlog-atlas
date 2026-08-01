@@ -28,19 +28,36 @@ import { statusNotice, saveAvailability, editorArgsText } from "./settings";
 import { buildSwimlane } from "./swimlane";
 import { degradeMark, taskMarks } from "./mark";
 import type {
+  AcceptanceCriterion,
   AppSettings,
   CliReadiness,
+  Commit,
   CommandError,
   CommitSearch,
+  Config,
+  Decision,
+  Document,
   EditorLaunch,
   EditorReadiness,
+  Ledger,
   LedgerResponse,
   LoadedSettings,
+  Milestone,
+  ProjectEntry,
   ProjectLoad,
   ProjectSnapshot,
+  PrRelation,
+  PullRequestRef,
+  RegisterResponse,
+  ReloadEvent,
+  RemoteHost,
+  StatusMapping,
   Task,
   TaskHistory,
+  TaskInterpretation,
   TaskView,
+  TypeValue,
+  UnknownSection,
   UpdateResult,
 } from "./wire";
 
@@ -79,6 +96,30 @@ function keysOf(value: unknown): string[] {
   return Object.keys(value as Record<string, unknown>).sort();
 }
 
+/**
+ * `T`'s keys, listed exhaustively — the compile-time half of the comparison, and the reason a hand
+ * written list here is not a third declaration that can drift from the other two.
+ *
+ * The list is checked against `wire.ts` by tsc in both directions: a name that is not a key of `T` is
+ * rejected, and a key of `T` that is *missing* from the list makes the call unassignable (the
+ * parameter type collapses to a marker tuple naming the omission). Paired with the runtime assertion
+ * against the recorded JSON, that is what closes the loop — a cast could not:
+ *
+ * - Rust renames a field → the recorded keys change → the runtime assertion fails → the list has to
+ *   be edited → and the edited list does not compile until `wire.ts` carries the new name too.
+ * - `wire.ts` renames a field → `keyof T` changes → the list stops compiling → and editing it to
+ *   match fails the runtime assertion, because the recording still has the old name.
+ *
+ * So `wire.ts`, the Rust output, and this list cannot be brought into agreement two at a time.
+ */
+function keysOfType<T extends object>() {
+  return <K extends readonly (keyof T)[]>(
+    ...names: [keyof T] extends [K[number]]
+      ? K
+      : readonly ["a key of the type is missing from this list", Exclude<keyof T, K[number]>]
+  ): string[] => (names as readonly (keyof T)[]).map(String).sort();
+}
+
 const LOADED = fixture<ProjectLoad>("project_load_loaded.json");
 
 function snapshotOf(load: ProjectLoad): ProjectSnapshot {
@@ -87,8 +128,9 @@ function snapshotOf(load: ProjectLoad): ProjectSnapshot {
 }
 
 describe("Rust が記録した payload の項目が wire.ts と一致する", () => {
-  // These lists are the contract, spelled out. A field added on the Rust side lands here as a
-  // mismatch, which is the prompt to add it to `wire.ts` too — the step that used to be invisible.
+  // Every list below goes through `keysOfType`, so it is checked against `wire.ts` by tsc as well as
+  // against the recording at run time. A field that appears on the Rust side cannot be absorbed by
+  // editing one list — see `keysOfType`.
 
   it("記録されている payload はすべてこのファイルが読む", () => {
     // Listed rather than counted: a payload recorded on the Rust side with no reader here would
@@ -104,103 +146,190 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       "loaded_settings.json",
       "project_load_loaded.json",
       "project_load_unreadable.json",
+      "register_response.json",
+      "reload_event.json",
       "task_history.json",
       "update_result_conflict.json",
       "update_result_ran_failed.json",
     ]);
   });
 
-  it("ProjectSnapshot", () => {
-    expect(keysOf(snapshotOf(LOADED))).toEqual([
-      "config",
-      "createStatusCandidates",
-      "decisions",
-      "documents",
-      "milestones",
-      "slug",
-      "tasks",
-    ]);
-  });
-
-  it("Config", () => {
-    expect(keysOf(snapshotOf(LOADED).config)).toEqual([
-      "dateFormat",
-      "defaultStatus",
-      "projectName",
-      "statuses",
-      "taskPrefix",
-    ]);
+  it("ProjectSnapshot と Config", () => {
+    expect(keysOf(snapshotOf(LOADED))).toEqual(
+      keysOfType<ProjectSnapshot>()(
+        "slug",
+        "config",
+        "tasks",
+        "milestones",
+        "documents",
+        "decisions",
+        "createStatusCandidates",
+      ),
+    );
+    expect(keysOf(snapshotOf(LOADED).config)).toEqual(
+      keysOfType<Config>()(
+        "projectName",
+        "taskPrefix",
+        "statuses",
+        "defaultStatus",
+        "dateFormat",
+      ),
+    );
   });
 
   it("TaskView と Task", () => {
     const view: TaskView = snapshotOf(LOADED).tasks[0];
-    expect(keysOf(view)).toEqual(["interpretation", "task"]);
-    expect(keysOf(view.interpretation)).toEqual(["pullRequests", "status", "types"]);
-    const task: Task = view.task;
-    expect(keysOf(task)).toEqual([
-      "acceptanceCriteria",
-      "assignee",
-      "createdDate",
-      "dependencies",
-      "description",
-      "documentation",
-      "health",
-      "id",
-      "implementationNotes",
-      "implementationPlan",
-      "labels",
-      "milestone",
-      "ordinal",
-      "priority",
-      "project",
-      "references",
-      "sourcePath",
-      "status",
-      "storageState",
-      "title",
-      // `type` and not `typeLabels`: the Rust field is renamed for the wire, and doc-4 §3.3 keeps
-      // Type apart from the label list — a rename here would merge two things the model separates.
-      "type",
-      "unknownSections",
-      "updatedDate",
-    ]);
+    expect(keysOf(view)).toEqual(keysOfType<TaskView>()("task", "interpretation"));
+    expect(keysOf(view.interpretation)).toEqual(
+      keysOfType<TaskInterpretation>()("status", "types", "pullRequests"),
+    );
+    expect(keysOf(view.task)).toEqual(
+      keysOfType<Task>()(
+        "sourcePath",
+        "project",
+        "storageState",
+        "id",
+        "title",
+        "status",
+        // `type` and not `typeLabels`: the Rust field is renamed for the wire, and doc-4 §3.3 keeps
+        // Type apart from the label list — a rename here would merge two things the model separates.
+        "type",
+        "labels",
+        "assignee",
+        "priority",
+        "ordinal",
+        "milestone",
+        "createdDate",
+        "updatedDate",
+        "dependencies",
+        "documentation",
+        "references",
+        "description",
+        "acceptanceCriteria",
+        "implementationPlan",
+        "implementationNotes",
+        "unknownSections",
+        "health",
+      ),
+    );
+    // The nested shapes a card and the detail panel read field by field, so a rename inside one of
+    // them cannot hide behind its container's key set.
+    expect(keysOf(view.task.acceptanceCriteria[0])).toEqual(
+      keysOfType<AcceptanceCriterion>()("number", "text", "checked"),
+    );
+    expect(keysOf(view.task.unknownSections[0])).toEqual(
+      keysOfType<UnknownSection>()("name", "body"),
+    );
+    const mapping = view.interpretation.status;
+    if (mapping === null) throw new Error("the recorded task has no status mapping");
+    expect(keysOf(mapping)).toEqual(keysOfType<StatusMapping>()("raw", "column", "declaration"));
+    expect(keysOf(view.interpretation.types[0])).toEqual(
+      keysOfType<TypeValue>()("value", "known"),
+    );
+    expect(keysOf(view.interpretation.pullRequests[0])).toEqual(
+      keysOfType<PullRequestRef>()("url", "host", "owner", "repo", "number"),
+    );
   });
 
-  it("ProjectEntry — 台帳側は snake_case のまま", () => {
+  it("Milestone と Document と Decision", () => {
+    const snapshot = snapshotOf(LOADED);
+    expect(keysOf(snapshot.milestones[0])).toEqual(
+      keysOfType<Milestone>()("sourcePath", "id", "title", "description"),
+    );
+    expect(keysOf(snapshot.documents[0])).toEqual(
+      keysOfType<Document>()(
+        "sourcePath",
+        "id",
+        "title",
+        "type",
+        "tags",
+        "createdDate",
+        "updatedDate",
+        "body",
+      ),
+    );
+    // decision-4 keeps decisions out of `Document`: they carry `status`/`date` instead of
+    // `type`/`tags`, and no `sourcePath` — which is exactly the kind of difference a shared key list
+    // would paper over.
+    expect(keysOf(snapshot.decisions[0])).toEqual(
+      keysOfType<Decision>()("id", "title", "status", "date", "body"),
+    );
+  });
+
+  it("Ledger と ProjectEntry — 台帳側は snake_case のまま", () => {
     const response = fixture<LedgerResponse>("ledger_response.json");
-    expect(keysOf(response)).toEqual(["ledger", "readOnly"]);
-    expect(keysOf(response.ledger)).toEqual(["project", "schema_version"]);
+    expect(keysOf(response)).toEqual(keysOfType<LedgerResponse>()("ledger", "readOnly"));
+    expect(keysOf(response.ledger)).toEqual(keysOfType<Ledger>()("schema_version", "project"));
     // doc-3 §2.2 keeps the ledger hand-editable, so its field names are the TOML's. `wire.ts`
     // mirrors them as they are rather than "correcting" them — a silent camelCasing here would read
     // every entry as undefined.
-    expect(keysOf(response.ledger.project[0])).toEqual([
-      "backlog_root",
-      "git_remote_present",
-      "project_root",
-      "slug",
-      "status_aliases",
-    ]);
+    expect(keysOf(response.ledger.project[0])).toEqual(
+      keysOfType<ProjectEntry>()(
+        "slug",
+        "project_root",
+        "backlog_root",
+        "git_remote_present",
+        "status_aliases",
+      ),
+    );
   });
 
   it("AppSettings — 設定ファイルのキーがそのまま IPC の項目名", () => {
     const loaded = fixture<LoadedSettings>("loaded_settings.json");
-    expect(keysOf(loaded)).toEqual(["settings", "status"]);
-    const settings: AppSettings = loaded.settings;
-    expect(keysOf(settings)).toEqual([
-      "card_density",
-      "default_detail_placement",
-      "default_storage_filter",
-      "external_editor",
-      "schema_version",
-      "theme",
-      "watch_external_changes",
-    ]);
+    expect(keysOf(loaded)).toEqual(keysOfType<LoadedSettings>()("settings", "status"));
+    // `external_editor` is optional on both sides and skipped when unset, so the recording has to
+    // carry it — an absent key here would let the optional field drop out unnoticed.
+    expect(keysOf(loaded.settings)).toEqual(
+      keysOfType<AppSettings>()(
+        "schema_version",
+        "theme",
+        "card_density",
+        "default_storage_filter",
+        "default_detail_placement",
+        "watch_external_changes",
+        "external_editor",
+      ),
+    );
   });
 
   it("TaskHistory", () => {
     const history = fixture<TaskHistory>("task_history.json");
-    expect(keysOf(history)).toEqual(["commits", "relations", "remote"]);
-    expect(keysOf(history.relations[0])).toEqual(["outcome", "pullRequest"]);
+    expect(keysOf(history)).toEqual(keysOfType<TaskHistory>()("commits", "remote", "relations"));
+    expect(keysOf(history.relations[0])).toEqual(
+      keysOfType<PrRelation>()("pullRequest", "outcome"),
+    );
+    const remote = history.remote;
+    if (remote === null) throw new Error("the recorded history has no remote");
+    expect(keysOf(remote)).toEqual(keysOfType<RemoteHost>()("kind", "owner", "repo"));
+    if (history.commits.state !== "searched") throw new Error("expected a searched commit list");
+    expect(keysOf(history.commits.commits[0])).toEqual(
+      keysOfType<Commit>()("id", "shortId", "summary", "date", "author"),
+    );
+  });
+
+  it("RegisterResponse — 登録の応答", () => {
+    // Its own payload rather than only its nested types: `ledger_register` is the one command whose
+    // answer names the entry it created (doc-3 §3.1 lets the slug be derived), and a rename of the
+    // outer `entry`/`ledger` pair is invisible in any other recording.
+    const response = fixture<RegisterResponse>("register_response.json");
+    expect(keysOf(response)).toEqual(keysOfType<RegisterResponse>()("entry", "ledger"));
+    expect(response.entry.slug).toBe("atlas");
+    expect(response.ledger.readOnly).toBe(false);
+  });
+
+  it("ReloadEvent — 再読込イベントの payload", () => {
+    // The `project-reloaded` payload, which no command returns: the shell keys the new load by
+    // `slug`, so a rename of either field would silently stop every watch-triggered re-read from
+    // reaching a row.
+    const event = fixture<ReloadEvent>("reload_event.json");
+    expect(keysOf(event)).toEqual(keysOfType<ReloadEvent>()("slug", "load"));
+    const rows = buildSwimlane({
+      order: [event.slug],
+      loads: new Map([[event.slug, event.load]]),
+      hidden: new Set(),
+      filter: defaultFilter(["active", "indeterminate"]),
+    });
+    expect(rows[0].state).toBe("loaded");
   });
 });
 

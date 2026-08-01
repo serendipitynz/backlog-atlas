@@ -98,8 +98,11 @@ numbers it returns.
 **Wire payloads are recorded, with the Rust side as their source.** `src/lib/wire.ts`
 mirrors this crate's serde output by hand and neither compiler checks the other.
 `src-tauri/src/wire_fixtures.rs` serializes one sample per payload and compares it with
-`src-tauri/wire-fixtures/*.json`; `src/lib/wire-fixture.test.ts` reads the same files as
-the `wire.ts` types and runs the frontend's functions over them. Re-record with
+`src-tauri/wire-fixtures/*.json`; `src/lib/wire-fixture.test.ts` compares each recorded
+shape's keys with `keyof` of its `wire.ts` type and runs the frontend's functions over
+the payload. The `keyof` comparison is what makes it a check rather than a cast — a cast
+accepts any JSON — and it is exhaustive in both directions, so the three cannot be
+brought into agreement two at a time. Re-record with
 `ATLAS_RECORD_WIRE_FIXTURES=1 cargo test` and **commit the result** — the frontend test
 reads the committed file. The samples are built as struct literals with fabricated
 absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
