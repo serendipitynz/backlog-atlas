@@ -655,8 +655,8 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
     };
 
     // Labels are comma-joined into a single `--add-label`/`--remove-label`, not repeated per label:
-    // a comma-separated value applies to every label in both v1.48.0 and v1.48.0, whereas repeating
-    // the flag does not — v1.48.0 keeps only the last value and v1.48.0 accumulates (both measured).
+    // a comma-separated value applies to every label in both v1.47.1 and v1.48.0, whereas repeating
+    // the flag does not — v1.47.1 keeps only the last value and v1.48.0 accumulates (both measured).
     // Comma-joining is the one form that means the same thing on either version.
     if !edit.add_labels.is_empty() {
         inv = inv.opt("--add-label", edit.add_labels.join(","));
@@ -1233,7 +1233,7 @@ mod tests {
     #[test]
     fn multiple_labels_are_comma_joined_into_one_flag() {
         // Regression (review [P1]): repeating `--add-label`/`--remove-label` means different things
-        // per version — v1.48.0 keeps only the last value, v1.48.0 accumulates (both measured) — so
+        // per version — v1.47.1 keeps only the last value, v1.48.0 accumulates (both measured) — so
         // multiple labels must go in one comma-separated value, the form both versions agree on.
         let cli = FakeCli::supported();
         run_one(

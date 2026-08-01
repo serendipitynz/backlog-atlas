@@ -336,12 +336,12 @@ export const DOC_TITLE_EMPTY_REASON =
  * and v1.48.0 alike (TASK-58 実測). The original reason — that its effect was unmeasured, and that
  * the same-shaped `--ref ""`/`--depends-on ""` exit 0 while clearing nothing — turned out not to
  * hold for this flag. What is left is a product decision Atlas has not taken yet, so the reason
- * says so plainly instead of blaming the CLI (doc-10 §6 requires the stated reason to be the real
- * one). TASK-109 decides whether to offer it.
+ * says so plainly instead of blaming the CLI (doc-10 §1 requires the stated reason to be the real
+ * one; the tags decision itself is §5). TASK-109 decides whether to offer it.
  */
 export const DOC_EMPTY_TAGS_REASON =
   "tags を空にする操作は現在提供していません（CLI の `--tags \"\"` はタグを消せますが、" +
-  "Atlas がこの操作を出すかどうかは未決定です。doc-10 §6）";
+  "Atlas がこの操作を出すかどうかは未決定です。doc-10 §5）";
 
 /** The values a 文書更新 asserts, kept so the re-read can be checked against them ([`docDivergence`]). */
 export interface DocSubmitted {

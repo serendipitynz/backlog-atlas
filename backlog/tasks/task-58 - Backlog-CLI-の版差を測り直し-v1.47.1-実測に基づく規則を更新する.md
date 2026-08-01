@@ -4,7 +4,7 @@ title: Backlog CLI の版差を測り直し v1.47.1 実測に基づく規則を�
 status: In Review
 assignee: []
 created_date: '2026-07-31 19:46'
-updated_date: '2026-08-01 07:59'
+updated_date: '2026-08-01 08:14'
 labels:
   - 'kind:chore'
 milestone: m-2
@@ -25,10 +25,12 @@ doc-3・doc-4・doc-5・doc-8・doc-9・doc-10・doc-12 は Backlog CLI v1.47.1 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 対象版を確定し、doc に「v1.47.1 実測」と書かれた挙動を一時プロジェクトで測り直す
-- [x] #2 変化した挙動を doc-3・doc-4・doc-5・doc-8・doc-9・doc-10・doc-12 の該当箇所へ反映する
+- [x] #2 変化した挙動を doc-3・doc-4・doc-5・doc-8・doc-9・doc-10 の該当箇所へ反映する（doc-12 は「原文が『対応 CLI（v1.47.1）に無い』と述べる箇所の版番号も、原文のまま写している」と自ら宣言する転記文書なので対象外とし、その理由を記録する）
 - [x] #3 新版で可能になった操作について、GUI 側の無効化と「提供しない操作区画」を見直す
 - [x] #4 update::MIN_VERSION と decision-2・decision-7 のサポート範囲の表記を、測り直した版に合わせる
 <!-- AC:END -->
+
+
 
 
 
