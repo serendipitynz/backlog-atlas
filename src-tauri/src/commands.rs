@@ -1398,9 +1398,14 @@ pub fn task_file_open(
 /// Probe the write-side CLI (doc-5 §3.2, decision-7). Probed on demand rather than cached at startup:
 /// a `backlog` installed or upgraded while Atlas is running must take effect without a restart, and
 /// the cost is one `--version` process.
+///
+/// The アプリ設定 side of 実行ファイル解決の順序 is read here rather than passed from the frontend, for
+/// the same reason [`editor_probe`] reads it: the probe and the update must not be able to reach
+/// different executables.
 #[tauri::command(async)]
-pub fn cli_probe() -> CliReadiness {
-    update::probe(&SystemBacklog).into()
+pub fn cli_probe(app: AppHandle) -> CliReadiness {
+    let settings = current_settings(&app);
+    update::probe(&SystemBacklog::resolve(settings.backlog_cli.as_deref())).into()
 }
 
 /// Run one screen action against a project (doc-5 §5, doc-9 §4). `action` is a sequence of 更新操作
@@ -1420,7 +1425,7 @@ pub fn update_apply(
     // landing between the two would break exactly that pairing.
     let lifecycle = lifecycle(&state);
     let entry = entry_for(&app, &lifecycle, &slug)?;
-    let cli = SystemBacklog;
+    let cli = SystemBacklog::resolve(current_settings(&app).backlog_cli.as_deref());
     // 縮退 (doc-5 §5): without a supported CLI there is no capability to hand `apply`, so the update
     // is refused here — the type below cannot be constructed any other way.
     let capability = match update::probe(&cli) {
@@ -2074,7 +2079,7 @@ references:\n  - https://example.test/one\n\
             status_aliases: BTreeMap::new(),
         };
 
-        let cli = SystemBacklog;
+        let cli = SystemBacklog::resolve(None);
         let CliStatus::Supported(capability) = update::probe(&cli) else {
             panic!("this test needs a supported backlog CLI on PATH");
         };
@@ -2184,7 +2189,7 @@ labels: []\n\
             status_aliases: BTreeMap::new(),
         };
 
-        let cli = SystemBacklog;
+        let cli = SystemBacklog::resolve(None);
         let CliStatus::Supported(capability) = update::probe(&cli) else {
             panic!("this test needs a supported backlog CLI on PATH");
         };

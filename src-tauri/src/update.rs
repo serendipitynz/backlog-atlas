@@ -8,6 +8,10 @@
 //! - **操作写像** (doc-5 §3, AC #1): [`UpdateOperation`] → a plan of [`Invocation`]s, built by
 //!   [`plan_operation`]. One operation is one sub-command call; `task edit`/`doc update` combine
 //!   their fields into a single call rather than one call per field (doc-5 §3 bullet).
+//! - **実行ファイル解決の順序** (doc-5 §4, decision-16): [`resolve`] decides *which* executable the
+//!   invocations run — アプリ設定 `backlog_cli`, then the プラットフォーム別実行ファイル reached from
+//!   an npm shim on Windows, then the bare name `backlog`. It is the only part of this module that
+//!   knows anything about how the CLI was installed; everything below it takes the answer as given.
 //! - **作業ディレクトリ + 引数配列渡し** (doc-5 §4, AC #2): [`run`] runs each invocation with
 //!   `project_root` as `current_dir`, passing every argument as its own array element — never a
 //!   shell string, so a value with spaces/newlines/metacharacters cannot word-split or inject.
@@ -23,7 +27,9 @@
 //!   unrepresentable or refused *before* any process starts.
 
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::env;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 // --- version probe / capability (doc-5 §3.2, decision-7, AC #6) ---------------------------------
@@ -806,9 +812,9 @@ pub struct CliRun {
 }
 
 /// The write-side CLI, abstracted so the executable resolution is the only swappable part (doc-5
-/// §4, decision-7): [`SystemBacklog`] resolves `backlog` on PATH now, and a sidecar implementation
-/// would swap only this trait's impl, leaving the operation map, working directory, and argument
-/// arrays unchanged (TASK-15).
+/// §4, decision-7): [`SystemBacklog`] runs whatever the 実行ファイル解決の順序 settled on
+/// (decision-16), and a sidecar implementation would swap only this trait's impl, leaving the
+/// operation map, working directory, and argument arrays unchanged (TASK-99).
 pub trait BacklogCli {
     /// Run `backlog <args>` with `current_dir` as the working directory (doc-5 §4). `None` runs in
     /// the inherited directory — used only by the version probe, which is project-independent. An
@@ -817,18 +823,205 @@ pub trait BacklogCli {
     fn run(&self, current_dir: Option<&Path>, args: &[String]) -> std::io::Result<CliRun>;
 }
 
-/// The PATH-resolved `backlog` (doc-5 §4). Passes each argument as its own array element and never
-/// through a shell (AC #2), so a value with whitespace or shell metacharacters cannot word-split,
-/// expand, or inject.
-pub struct SystemBacklog;
+// --- 実行ファイル解決の順序 (doc-5 §4, decision-16) ---------------------------------------------
+
+/// The platform/architecture pair naming backlog.md's プラットフォーム別サブパッケージ, spelled the
+/// way the package's own `resolveBinary.cjs` spells it (`win32` → `windows`, `x86_64` → `x64`).
+///
+/// Carried as a value rather than read from `cfg!` at the point of use, so a macOS host can drive the
+/// Windows resolution in a test — a `cfg`-only branch is checked by nothing until it ships, which is
+/// the rule m-1 TASK-44 fixed for platform branching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubPackage {
+    /// npm's `process.platform`, as the sub-package names it: `windows`, `darwin`, `linux`.
+    platform: &'static str,
+    /// npm's `process.arch`: `x64`, `arm64`.
+    arch: &'static str,
+}
+
+impl SubPackage {
+    /// What this build targets. The one place the build's own target is read.
+    pub const fn current() -> SubPackage {
+        SubPackage {
+            #[cfg(target_os = "windows")]
+            platform: "windows",
+            #[cfg(not(target_os = "windows"))]
+            platform: std::env::consts::OS,
+            #[cfg(target_arch = "x86_64")]
+            arch: "x64",
+            #[cfg(target_arch = "aarch64")]
+            arch: "arm64",
+            // Any other architecture keeps Rust's spelling. It will not name a real sub-package, so
+            // the resolution falls through to the bare name — the same place macOS・Linux land.
+            #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+            arch: std::env::consts::ARCH,
+        }
+    }
+
+    /// Windows is the only platform whose npm install leaves no directly runnable executable on PATH
+    /// (decision-16), so it is the only one whose resolution walks to the sub-package.
+    fn is_windows(&self) -> bool {
+        self.platform == "windows"
+    }
+
+    /// `resolveBinary.cjs`'s `binary`: the file name inside the sub-package.
+    fn executable(&self) -> &'static str {
+        if self.is_windows() {
+            "backlog.exe"
+        } else {
+            "backlog"
+        }
+    }
+
+    /// `resolveBinary.cjs`'s `getPackageName`.
+    fn package(&self) -> String {
+        format!("backlog.md-{}-{}", self.platform, self.arch)
+    }
+}
+
+/// The three shims npm leaves on PATH (decision-16). None is launched: finding one only says "an npm
+/// install of backlog.md is on PATH, and its directory is where to start walking".
+const SHIM_NAMES: [&str; 3] = ["backlog", "backlog.cmd", "backlog.ps1"];
+
+/// What the 実行ファイル解決の順序 settled on — what gets handed to `Command::new` (doc-5 §4,
+/// decision-16). A value rather than a `PathBuf` alone so the resolution can be asserted without
+/// launching anything, and so the failure message can say which step produced the program.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliProgram {
+    /// 順序 1 — アプリ設定 `backlog_cli`, used as written.
+    Configured(PathBuf),
+    /// 順序 2 — the プラットフォーム別実行ファイル reached from an npm shim's directory.
+    SubPackage(PathBuf),
+    /// 順序 3 — the bare name, left for the OS to resolve on PATH. What every platform did before
+    /// decision-16, and what macOS・Linux still do.
+    OnPath,
+}
+
+impl CliProgram {
+    /// The program `Command::new` receives.
+    fn program(&self) -> &Path {
+        match self {
+            CliProgram::Configured(path) | CliProgram::SubPackage(path) => path,
+            CliProgram::OnPath => Path::new("backlog"),
+        }
+    }
+}
+
+/// Where npm's global prefix keeps `node_modules` relative to the directory holding the shims: beside
+/// them (npm's Windows prefix, `%APPDATA%\npm`) and one level up under `lib` (its POSIX prefix, whose
+/// `bin` and `lib` are siblings). Both are tried whatever the platform — probing a path that does not
+/// exist costs one `stat`, and pinning a layout per platform would be a second fact to keep true.
+fn node_modules_roots(shim_dir: &Path) -> Vec<PathBuf> {
+    let mut roots = vec![shim_dir.join("node_modules")];
+    if let Some(parent) = shim_dir.parent() {
+        roots.push(parent.join("lib").join("node_modules"));
+    }
+    roots
+}
+
+/// 実行ファイル解決の順序 (doc-5 §4, decision-16). `exists` reports whether a path is a file the way
+/// the filesystem would; it is a parameter so the whole order — including the Windows steps — is
+/// decided by pure inputs and can be asserted on any host.
+///
+/// Step 2 runs only when PATH holds no directly runnable executable: a `backlog.exe` placed there by
+/// Scoop or by a future sidecar is the OS's to resolve, and must not be overridden by npm's layout.
+pub fn resolve(
+    configured: Option<&Path>,
+    path_var: Option<&OsStr>,
+    target: SubPackage,
+    exists: &dyn Fn(&Path) -> bool,
+) -> CliProgram {
+    if let Some(path) = configured {
+        return CliProgram::Configured(path.to_path_buf());
+    }
+    if target.is_windows() {
+        let dirs: Vec<PathBuf> = path_var
+            .map(|v| env::split_paths(v).collect())
+            .unwrap_or_default();
+        let runnable_on_path = dirs
+            .iter()
+            .any(|dir| exists(&dir.join(target.executable())));
+        if !runnable_on_path {
+            if let Some(found) = sub_package_executable(&dirs, target, exists) {
+                return CliProgram::SubPackage(found);
+            }
+        }
+    }
+    CliProgram::OnPath
+}
+
+/// Walk from the first PATH directory holding a shim to the プラットフォーム別実行ファイル
+/// (decision-16 順序 2). Two nestings are tried under each `node_modules` root: npm keeps the
+/// sub-package under `backlog.md`, and an install that hoisted it puts it at the root.
+fn sub_package_executable(
+    dirs: &[PathBuf],
+    target: SubPackage,
+    exists: &dyn Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let package = target.package();
+    let binary = target.executable();
+    for dir in dirs {
+        if !SHIM_NAMES.iter().any(|name| exists(&dir.join(name))) {
+            continue;
+        }
+        for root in node_modules_roots(dir) {
+            let nested = root
+                .join("backlog.md")
+                .join("node_modules")
+                .join(&package)
+                .join(binary);
+            let hoisted = root.join(&package).join(binary);
+            for candidate in [nested, hoisted] {
+                if exists(&candidate) {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The resolved `backlog` (doc-5 §4). Passes each argument as its own array element and never through
+/// a shell (AC #2), so a value with whitespace or shell metacharacters cannot word-split, expand, or
+/// inject. The program is resolved once, at construction, so one screen action cannot run two
+/// different executables.
+pub struct SystemBacklog {
+    program: CliProgram,
+}
+
+impl SystemBacklog {
+    /// Resolve against this machine: アプリ設定, the process's `PATH`, and this build's target.
+    pub fn resolve(configured: Option<&Path>) -> SystemBacklog {
+        SystemBacklog {
+            program: resolve(
+                configured,
+                env::var_os("PATH").as_deref(),
+                SubPackage::current(),
+                &|path| path.is_file(),
+            ),
+        }
+    }
+
+    /// Which step of the order produced the program in hand.
+    pub fn program(&self) -> &CliProgram {
+        &self.program
+    }
+}
 
 impl BacklogCli for SystemBacklog {
     fn run(&self, current_dir: Option<&Path>, args: &[String]) -> std::io::Result<CliRun> {
-        let mut cmd = Command::new("backlog");
+        let program = self.program.program();
+        let mut cmd = Command::new(program);
         if let Some(dir) = current_dir {
             cmd.current_dir(dir);
         }
-        let out = cmd.args(args).output()?;
+        // `std::io::Error` from a spawn names the errno and nothing else. Naming what we tried to run
+        // is what makes a mistyped `backlog_cli` fixable: decision-16 uses that setting as written, so
+        // the path in it is exactly the thing the user has to correct.
+        let out = cmd
+            .args(args)
+            .output()
+            .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", program.display())))?;
         Ok(CliRun {
             success: out.status.success(),
             code: out.status.code(),
@@ -940,6 +1133,201 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::VecDeque;
     use std::path::PathBuf;
+
+    // --- 実行ファイル解決の順序 (doc-5 §4, decision-16) ------------------------------------------
+
+    /// The two targets the order behaves differently for. Built here rather than from
+    /// [`SubPackage::current`] so both branches are exercised on whichever host runs the tests —
+    /// the reason the target is a value at all (m-1 TASK-44).
+    const WINDOWS: SubPackage = SubPackage {
+        platform: "windows",
+        arch: "x64",
+    };
+    const MACOS: SubPackage = SubPackage {
+        platform: "darwin",
+        arch: "arm64",
+    };
+
+    /// Every path below is built by joining segments and every `PATH` by [`env::join_paths`], so the
+    /// separators are the host's on whichever host runs the tests. Windows-shaped literals could not
+    /// be used even for the Windows cases: a drive letter's colon is a `PATH` separator on Unix, so
+    /// `join_paths` refuses it and `split_paths` would tear it in half. Path *syntax* is `std`'s
+    /// concern anyway — what these fix is the order and the layout walk.
+    fn path_var(dirs: &[&Path]) -> std::ffi::OsString {
+        env::join_paths(dirs.iter().copied()).expect("joinable")
+    }
+
+    /// An `exists` that answers from a fixed list, so a candidate the resolution builds has to match
+    /// the layout the test states.
+    fn only(paths: Vec<PathBuf>) -> impl Fn(&Path) -> bool {
+        move |candidate: &Path| paths.iter().any(|p| p == candidate)
+    }
+
+    /// npm's Windows prefix: the shims and `node_modules` sit in the same directory.
+    fn npm_prefix() -> PathBuf {
+        PathBuf::from("prefix").join("npm")
+    }
+
+    /// The nesting npm actually produces: the sub-package under `backlog.md`'s own `node_modules`.
+    fn nested_under(node_modules: &Path) -> PathBuf {
+        node_modules
+            .join("backlog.md")
+            .join("node_modules")
+            .join("backlog.md-windows-x64")
+            .join("backlog.exe")
+    }
+
+    #[test]
+    fn without_a_setting_a_unix_host_still_gets_the_bare_name() {
+        // AC #4, and the structural half of decision-16: macOS・Linux reach 順序 3, so what reaches
+        // `Command::new` is the same `"backlog"` as before this change — whatever is on PATH.
+        let bin = PathBuf::from("usr").join("local").join("bin");
+        let resolved = resolve(
+            None,
+            Some(path_var(&[&bin]).as_os_str()),
+            MACOS,
+            &only(vec![bin.join("backlog")]),
+        );
+        assert_eq!(resolved, CliProgram::OnPath);
+        assert_eq!(resolved.program(), Path::new("backlog"));
+    }
+
+    #[test]
+    fn a_windows_host_walks_from_the_shim_to_the_sub_package() {
+        // The defect TASK-60 reports: PATH holds the three shims and no `backlog.exe`, so 順序 3
+        // alone finds nothing (Rust appends only `.exe`). 順序 2 reaches the real executable.
+        let prefix = npm_prefix();
+        let binary = nested_under(&prefix.join("node_modules"));
+        let resolved = resolve(
+            None,
+            Some(path_var(&[&prefix, Path::new("windows")]).as_os_str()),
+            WINDOWS,
+            &only(vec![prefix.join("backlog.cmd"), binary.clone()]),
+        );
+        assert_eq!(resolved, CliProgram::SubPackage(binary));
+    }
+
+    #[test]
+    fn a_hoisted_sub_package_is_found_too() {
+        let prefix = npm_prefix();
+        let hoisted = prefix
+            .join("node_modules")
+            .join("backlog.md-windows-x64")
+            .join("backlog.exe");
+        let resolved = resolve(
+            None,
+            Some(path_var(&[&prefix]).as_os_str()),
+            WINDOWS,
+            &only(vec![prefix.join("backlog.ps1"), hoisted.clone()]),
+        );
+        assert_eq!(resolved, CliProgram::SubPackage(hoisted));
+    }
+
+    #[test]
+    fn a_prefix_that_keeps_bin_and_lib_apart_is_found_too() {
+        // npm's other prefix layout: the shim in `bin` and the packages one level up under `lib`.
+        let prefix = PathBuf::from("tools").join("node");
+        let bin = prefix.join("bin");
+        let binary = nested_under(&prefix.join("lib").join("node_modules"));
+        let resolved = resolve(
+            None,
+            Some(path_var(&[&bin]).as_os_str()),
+            WINDOWS,
+            &only(vec![bin.join("backlog"), binary.clone()]),
+        );
+        assert_eq!(resolved, CliProgram::SubPackage(binary));
+    }
+
+    #[test]
+    fn a_native_executable_on_path_outranks_the_npm_layout() {
+        // decision-16 順序 2 の但し書き: a `backlog.exe` on PATH — Scoop's, or a future sidecar's —
+        // is the OS's to resolve. Walking npm's layout anyway would run a different CLI than the one
+        // the user put on PATH.
+        let scoop = PathBuf::from("scoop").join("shims");
+        let prefix = npm_prefix();
+        let resolved = resolve(
+            None,
+            Some(path_var(&[&scoop, &prefix]).as_os_str()),
+            WINDOWS,
+            &only(vec![
+                scoop.join("backlog.exe"),
+                prefix.join("backlog.cmd"),
+                nested_under(&prefix.join("node_modules")),
+            ]),
+        );
+        assert_eq!(resolved, CliProgram::OnPath);
+    }
+
+    #[test]
+    fn a_shim_with_no_sub_package_falls_through_rather_than_guessing() {
+        let prefix = npm_prefix();
+        let resolved = resolve(
+            None,
+            Some(path_var(&[&prefix]).as_os_str()),
+            WINDOWS,
+            &only(vec![prefix.join("backlog.cmd")]),
+        );
+        assert_eq!(resolved, CliProgram::OnPath);
+    }
+
+    #[test]
+    fn an_absent_path_variable_resolves_to_the_bare_name() {
+        assert_eq!(
+            resolve(None, None, WINDOWS, &only(Vec::new())),
+            CliProgram::OnPath
+        );
+    }
+
+    #[test]
+    fn the_setting_is_used_as_written_even_when_nothing_is_there() {
+        // decision-16 順序 1: no existence check and no fall-back. A mistyped path has to surface as
+        // its own 起動失敗 naming that path — falling through would hide the typo behind a CLI the
+        // user did not name.
+        let typo = PathBuf::from("opt").join("backlog").join("balcklog");
+        let prefix = npm_prefix();
+        let resolved = resolve(
+            Some(&typo),
+            Some(path_var(&[&prefix]).as_os_str()),
+            WINDOWS,
+            &only(vec![
+                prefix.join("backlog.cmd"),
+                nested_under(&prefix.join("node_modules")),
+            ]),
+        );
+        assert_eq!(resolved, CliProgram::Configured(typo.clone()));
+        assert_eq!(resolved.program(), typo);
+    }
+
+    #[test]
+    fn a_spawn_failure_names_the_program_it_tried() {
+        // Without this the 縮退 reason is a bare errno, which says nothing about *which* executable
+        // was missing — the one actionable fact when 順序 1 holds a mistyped path.
+        let missing = "/opt/backlog/does-not-exist";
+        let cli = SystemBacklog {
+            program: CliProgram::Configured(PathBuf::from(missing)),
+        };
+        let CliStatus::Unavailable { detail } = probe(&cli) else {
+            panic!("a missing executable is 起動失敗");
+        };
+        assert!(detail.contains(missing), "detail should name it: {detail}");
+    }
+
+    #[test]
+    fn this_build_targets_a_sub_package_the_package_actually_publishes() {
+        // The tokens are `resolveBinary.cjs`'s, not Rust's: `windows` not `win32`, `x64` not
+        // `x86_64`. A build whose target maps to neither still resolves — it lands on 順序 3.
+        let current = SubPackage::current();
+        assert!(current.package().starts_with("backlog.md-"));
+        assert_eq!(
+            current.executable(),
+            if cfg!(target_os = "windows") {
+                "backlog.exe"
+            } else {
+                "backlog"
+            }
+        );
+        assert_eq!(current.is_windows(), cfg!(target_os = "windows"));
+    }
 
     // --- a scriptable CLI so no real `backlog` is needed --------------------------------------
 
