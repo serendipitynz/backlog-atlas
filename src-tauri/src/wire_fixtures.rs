@@ -31,7 +31,9 @@ use crate::domain::{
 use crate::editor::{
     ConfiguredEditor, EditorCommand, EditorLaunch, EditorReadiness, EditorSource, LaunchMethod,
 };
-use crate::history::{Commit, PrRelation, RelationOutcome, RemoteHost, RemoteHostKind};
+use crate::history::{
+    Commit, LookupFailure, PrRelation, RelationOutcome, RemoteHost, RemoteHostKind,
+};
 use crate::interpret::status::{StatusColumn, StatusDeclaration, StatusMapping};
 use crate::interpret::type_value::derive_types;
 use crate::ledger::{Ledger, ProjectEntry};
@@ -507,4 +509,571 @@ fn cli_readiness_is_recorded() {
             version: "1.47.1".to_string(),
         },
     );
+}
+
+// --- every serde token, so an unrecorded variant is anchored too -------------------------------
+//
+// A payload sample only exercises the variants it happens to carry: the recordings serialize
+// `StatusDeclaration::Declared` and never `Draft`, so renaming `Draft`'s token on this side moved
+// nothing the frontend compares. Recording the *complete* token set closes that — every member of
+// every union `wire.ts` declares is then anchored to what serde actually emits.
+//
+// Nothing below spells a token. Each list holds one value per variant and serde produces the strings,
+// so this cannot agree with a stale `wire.ts` by being edited. What keeps a list complete is the
+// exhaustive `match` beside it: adding a variant to the enum stops that match compiling, which is the
+// prompt to add the sample.
+
+/// The token a unit-like enum serializes to.
+fn unit_tokens<T: serde::Serialize>(values: &[T]) -> Vec<String> {
+    values
+        .iter()
+        .map(
+            |value| match serde_json::to_value(value).expect("serializes") {
+                serde_json::Value::String(token) => token,
+                other => panic!("expected a bare string token, got {other}"),
+            },
+        )
+        .collect()
+}
+
+/// The value of `tag` in a tagged enum's serialized form.
+fn tag_tokens<T: serde::Serialize>(values: &[T], tag: &str) -> Vec<String> {
+    values
+        .iter()
+        .map(|value| {
+            let json = serde_json::to_value(value).expect("serializes");
+            json.get(tag)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_else(|| panic!("no `{tag}` tag in {json}"))
+                .to_string()
+        })
+        .collect()
+}
+
+fn every_storage_state() -> Vec<StorageState> {
+    let all = vec![
+        StorageState::Active,
+        StorageState::Draft,
+        StorageState::Completed,
+        StorageState::Archive,
+    ];
+    for value in &all {
+        match value {
+            StorageState::Active
+            | StorageState::Draft
+            | StorageState::Completed
+            | StorageState::Archive => {}
+        }
+    }
+    all
+}
+
+fn every_storage_selection() -> Vec<StorageSelection> {
+    let all = vec![
+        StorageSelection::Active,
+        StorageSelection::Draft,
+        StorageSelection::Completed,
+        StorageSelection::Archive,
+        StorageSelection::Indeterminate,
+    ];
+    for value in &all {
+        match value {
+            StorageSelection::Active
+            | StorageSelection::Draft
+            | StorageSelection::Completed
+            | StorageSelection::Archive
+            | StorageSelection::Indeterminate => {}
+        }
+    }
+    all
+}
+
+fn every_status_column() -> Vec<StatusColumn> {
+    let all = vec![
+        StatusColumn::ToDo,
+        StatusColumn::InProgress,
+        StatusColumn::InReview,
+        StatusColumn::Done,
+    ];
+    for value in &all {
+        match value {
+            StatusColumn::ToDo
+            | StatusColumn::InProgress
+            | StatusColumn::InReview
+            | StatusColumn::Done => {}
+        }
+    }
+    all
+}
+
+fn every_status_declaration() -> Vec<StatusDeclaration> {
+    let all = vec![
+        StatusDeclaration::Declared,
+        StatusDeclaration::Draft,
+        StatusDeclaration::Undeclared,
+        StatusDeclaration::NoDeclaredSet,
+    ];
+    for value in &all {
+        match value {
+            StatusDeclaration::Declared
+            | StatusDeclaration::Draft
+            | StatusDeclaration::Undeclared
+            | StatusDeclaration::NoDeclaredSet => {}
+        }
+    }
+    all
+}
+
+fn every_reference_kind() -> Vec<ReferenceKind> {
+    let all = vec![
+        ReferenceKind::Milestone,
+        ReferenceKind::Documentation,
+        ReferenceKind::Reference,
+    ];
+    for value in &all {
+        match value {
+            ReferenceKind::Milestone | ReferenceKind::Documentation | ReferenceKind::Reference => {}
+        }
+    }
+    all
+}
+
+fn every_required_field() -> Vec<RequiredField> {
+    let all = vec![
+        RequiredField::Id,
+        RequiredField::Title,
+        RequiredField::Status,
+    ];
+    for value in &all {
+        match value {
+            RequiredField::Id | RequiredField::Title | RequiredField::Status => {}
+        }
+    }
+    all
+}
+
+fn every_remote_host_kind() -> Vec<RemoteHostKind> {
+    let all = vec![RemoteHostKind::GitHub];
+    for value in &all {
+        match value {
+            RemoteHostKind::GitHub => {}
+        }
+    }
+    all
+}
+
+fn every_lookup_failure() -> Vec<LookupFailure> {
+    let all = vec![
+        LookupFailure::ToolMissing,
+        LookupFailure::InvalidReference,
+        LookupFailure::QueryFailed,
+    ];
+    for value in &all {
+        match value {
+            LookupFailure::ToolMissing
+            | LookupFailure::InvalidReference
+            | LookupFailure::QueryFailed => {}
+        }
+    }
+    all
+}
+
+fn every_launch_method() -> Vec<LaunchMethod> {
+    let all = vec![LaunchMethod::Configured, LaunchMethod::Association];
+    for value in &all {
+        match value {
+            LaunchMethod::Configured | LaunchMethod::Association => {}
+        }
+    }
+    all
+}
+
+fn every_editor_source() -> Vec<EditorSource> {
+    let all = vec![
+        EditorSource::AppSettings,
+        EditorSource::Visual,
+        EditorSource::Editor,
+    ];
+    for value in &all {
+        match value {
+            EditorSource::AppSettings | EditorSource::Visual | EditorSource::Editor => {}
+        }
+    }
+    all
+}
+
+fn every_card_density() -> Vec<CardDensity> {
+    let all = vec![CardDensity::S, CardDensity::M, CardDensity::L];
+    for value in &all {
+        match value {
+            CardDensity::S | CardDensity::M | CardDensity::L => {}
+        }
+    }
+    all
+}
+
+fn every_detail_placement() -> Vec<DetailPlacement> {
+    let all = vec![
+        DetailPlacement::Sidebar,
+        DetailPlacement::Modal,
+        DetailPlacement::Full,
+    ];
+    for value in &all {
+        match value {
+            DetailPlacement::Sidebar | DetailPlacement::Modal | DetailPlacement::Full => {}
+        }
+    }
+    all
+}
+
+fn every_task_health() -> Vec<TaskHealth> {
+    let all = vec![TaskHealth::Ok, TaskHealth::Degraded { events: Vec::new() }];
+    for value in &all {
+        match value {
+            TaskHealth::Ok | TaskHealth::Degraded { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_degrade_event() -> Vec<DegradeEvent> {
+    let all = vec![
+        DegradeEvent::Unparseable {
+            missing_required: Vec::new(),
+            detail: None,
+        },
+        DegradeEvent::UnexpectedSchema {
+            detail: String::new(),
+        },
+        DegradeEvent::DanglingReference {
+            kind: ReferenceKind::Milestone,
+            target: String::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            DegradeEvent::Unparseable { .. }
+            | DegradeEvent::UnexpectedSchema { .. }
+            | DegradeEvent::DanglingReference { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_project_load() -> Vec<ProjectLoad> {
+    let all = vec![
+        ProjectLoad::Loaded {
+            project: snapshot(),
+        },
+        ProjectLoad::Unreadable {
+            slug: String::new(),
+            error: CommandError::UnknownProject {
+                slug: String::new(),
+            },
+        },
+    ];
+    for value in &all {
+        match value {
+            ProjectLoad::Loaded { .. } | ProjectLoad::Unreadable { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_commit_search() -> Vec<CommitSearch> {
+    let all = vec![
+        CommitSearch::Searched {
+            commits: Vec::new(),
+        },
+        CommitSearch::NoRepository {
+            project_root: PathBuf::new(),
+        },
+        CommitSearch::Unreadable {
+            detail: String::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            CommitSearch::Searched { .. }
+            | CommitSearch::NoRepository { .. }
+            | CommitSearch::Unreadable { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_relation_outcome() -> Vec<RelationOutcome> {
+    let all = vec![
+        RelationOutcome::Resolved {
+            commit_ids: Vec::new(),
+        },
+        RelationOutcome::HostUnsupported,
+        RelationOutcome::LookupFailed {
+            reason: LookupFailure::ToolMissing,
+            detail: String::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            RelationOutcome::Resolved { .. }
+            | RelationOutcome::HostUnsupported
+            | RelationOutcome::LookupFailed { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_update_outcome() -> Vec<UpdateOutcome> {
+    let all = vec![
+        UpdateOutcome::Succeeded,
+        UpdateOutcome::Failed(UpdateFailure {
+            command: String::new(),
+            kind: FailureKind::Spawn,
+            stderr: String::new(),
+            completed_before: 0,
+            partial: false,
+        }),
+    ];
+    for value in &all {
+        match value {
+            UpdateOutcome::Succeeded | UpdateOutcome::Failed(_) => {}
+        }
+    }
+    all
+}
+
+fn every_failure_kind() -> Vec<FailureKind> {
+    let all = vec![FailureKind::Spawn, FailureKind::NonZero { code: None }];
+    for value in &all {
+        match value {
+            FailureKind::Spawn | FailureKind::NonZero { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_update_result() -> Vec<UpdateResult> {
+    let all = vec![
+        UpdateResult::Conflict {
+            diverged: Vec::new(),
+            unread: Vec::new(),
+            project: snapshot(),
+        },
+        UpdateResult::Ran {
+            outcome: UpdateOutcome::Succeeded,
+            project: None,
+        },
+    ];
+    for value in &all {
+        match value {
+            UpdateResult::Conflict { .. } | UpdateResult::Ran { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_cli_readiness() -> Vec<CliReadiness> {
+    let all = vec![
+        CliReadiness::Ready {
+            version: String::new(),
+        },
+        CliReadiness::Unavailable {
+            detail: String::new(),
+        },
+        CliReadiness::Unsupported {
+            version: String::new(),
+            minimum: String::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            CliReadiness::Ready { .. }
+            | CliReadiness::Unavailable { .. }
+            | CliReadiness::Unsupported { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_settings_status() -> Vec<SettingsStatus> {
+    let all = vec![
+        SettingsStatus::Stored,
+        SettingsStatus::Absent,
+        SettingsStatus::Unreadable {
+            detail: String::new(),
+        },
+        SettingsStatus::ReadOnly { version: 0 },
+    ];
+    for value in &all {
+        match value {
+            SettingsStatus::Stored
+            | SettingsStatus::Absent
+            | SettingsStatus::Unreadable { .. }
+            | SettingsStatus::ReadOnly { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_ledger_refusal() -> Vec<LedgerRefusal> {
+    let all = vec![
+        LedgerRefusal::ReadOnly { schema_version: 0 },
+        LedgerRefusal::BacklogRootInvalid {
+            path: String::new(),
+        },
+        LedgerRefusal::InvalidSlug {
+            slug: String::new(),
+        },
+        LedgerRefusal::DuplicateSlug {
+            slug: String::new(),
+        },
+        LedgerRefusal::SlugNotFound {
+            slug: String::new(),
+        },
+        LedgerRefusal::NonAbsoluteRoot {
+            path: String::new(),
+        },
+        LedgerRefusal::DuplicateRoot {
+            slug: String::new(),
+        },
+        LedgerRefusal::InvalidStatusAlias {
+            key: String::new(),
+            value: String::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            LedgerRefusal::ReadOnly { .. }
+            | LedgerRefusal::BacklogRootInvalid { .. }
+            | LedgerRefusal::InvalidSlug { .. }
+            | LedgerRefusal::DuplicateSlug { .. }
+            | LedgerRefusal::SlugNotFound { .. }
+            | LedgerRefusal::NonAbsoluteRoot { .. }
+            | LedgerRefusal::DuplicateRoot { .. }
+            | LedgerRefusal::InvalidStatusAlias { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_command_error() -> Vec<CommandError> {
+    let blank = String::new;
+    let all = vec![
+        CommandError::Ledger { detail: blank() },
+        CommandError::LedgerRefused {
+            reason: LedgerRefusal::ReadOnly { schema_version: 0 },
+            detail: blank(),
+        },
+        CommandError::Settings { detail: blank() },
+        CommandError::RootUnreadable {
+            slug: blank(),
+            detail: blank(),
+        },
+        CommandError::UnknownProject { slug: blank() },
+        CommandError::ProjectNotOpen { slug: blank() },
+        CommandError::TaskNotFound {
+            slug: blank(),
+            task_id: blank(),
+        },
+        CommandError::UpdatesUnavailable {
+            readiness: CliReadiness::Ready { version: blank() },
+        },
+        CommandError::UpdateRejected { detail: blank() },
+        CommandError::UncheckableTarget {
+            what: blank(),
+            detail: blank(),
+        },
+        CommandError::ReloadFailed {
+            detail: blank(),
+            applied: None,
+        },
+        CommandError::VersionProbeFailed { detail: blank() },
+        CommandError::WatchFailed {
+            slug: blank(),
+            detail: blank(),
+        },
+        CommandError::UnknownTaskFile {
+            slug: blank(),
+            path: PathBuf::new(),
+        },
+        CommandError::EditorUnavailable { detail: blank() },
+        CommandError::EditorLaunchFailed {
+            method: LaunchMethod::Configured,
+            program: blank(),
+            detail: blank(),
+        },
+    ];
+    for value in &all {
+        match value {
+            CommandError::Ledger { .. }
+            | CommandError::LedgerRefused { .. }
+            | CommandError::Settings { .. }
+            | CommandError::RootUnreadable { .. }
+            | CommandError::UnknownProject { .. }
+            | CommandError::ProjectNotOpen { .. }
+            | CommandError::TaskNotFound { .. }
+            | CommandError::UpdatesUnavailable { .. }
+            | CommandError::UpdateRejected { .. }
+            | CommandError::UncheckableTarget { .. }
+            | CommandError::ReloadFailed { .. }
+            | CommandError::VersionProbeFailed { .. }
+            | CommandError::WatchFailed { .. }
+            | CommandError::UnknownTaskFile { .. }
+            | CommandError::EditorUnavailable { .. }
+            | CommandError::EditorLaunchFailed { .. } => {}
+        }
+    }
+    all
+}
+
+#[test]
+fn every_union_token_is_recorded() {
+    // Keyed by the `wire.ts` type the tokens belong to, so `src/lib/wire-fixture.test.ts` can compare
+    // each set with the `unionValues`-locked list for that type. The map's own key set is compared
+    // there too, so an enum recorded here with no counterpart on that side is a failure rather than a
+    // set nobody reads.
+    let mut tokens: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+
+    tokens.insert("StorageState", unit_tokens(&every_storage_state()));
+    tokens.insert("StorageSelection", unit_tokens(&every_storage_selection()));
+    tokens.insert("StatusColumn", unit_tokens(&every_status_column()));
+    tokens.insert(
+        "StatusDeclaration",
+        unit_tokens(&every_status_declaration()),
+    );
+    tokens.insert("ReferenceKind", unit_tokens(&every_reference_kind()));
+    tokens.insert("RequiredField", unit_tokens(&every_required_field()));
+    tokens.insert("RemoteHostKind", unit_tokens(&every_remote_host_kind()));
+    tokens.insert("LookupFailure", unit_tokens(&every_lookup_failure()));
+    tokens.insert("LaunchMethod", unit_tokens(&every_launch_method()));
+    tokens.insert("EditorSource", unit_tokens(&every_editor_source()));
+    tokens.insert("CardDensity", unit_tokens(&every_card_density()));
+    tokens.insert("DetailPlacement", unit_tokens(&every_detail_placement()));
+
+    tokens.insert("TaskHealth", tag_tokens(&every_task_health(), "state"));
+    tokens.insert("DegradeEvent", tag_tokens(&every_degrade_event(), "event"));
+    tokens.insert("ProjectLoad", tag_tokens(&every_project_load(), "state"));
+    tokens.insert("CommitSearch", tag_tokens(&every_commit_search(), "state"));
+    tokens.insert(
+        "RelationOutcome",
+        tag_tokens(&every_relation_outcome(), "state"),
+    );
+    tokens.insert("UpdateResult", tag_tokens(&every_update_result(), "state"));
+    tokens.insert(
+        "UpdateOutcome",
+        tag_tokens(&every_update_outcome(), "state"),
+    );
+    tokens.insert("FailureKind", tag_tokens(&every_failure_kind(), "kind"));
+    tokens.insert("CliReadiness", tag_tokens(&every_cli_readiness(), "state"));
+    tokens.insert(
+        "SettingsStatus",
+        tag_tokens(&every_settings_status(), "state"),
+    );
+    tokens.insert("CommandError", tag_tokens(&every_command_error(), "kind"));
+    tokens.insert(
+        "LedgerRefusal",
+        tag_tokens(&every_ledger_refusal(), "reason"),
+    );
+
+    recorded("wire_tokens.json", &tokens);
 }

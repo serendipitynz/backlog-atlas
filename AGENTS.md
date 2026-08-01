@@ -104,7 +104,14 @@ exemplar annotated with the same type, and its **serde enum tokens and variant t
 against `unionValues`-locked member lists — and then runs the frontend's functions over
 the payload. All three are needed: `keyof` fixes the field names, a field that changed
 from a number to a string keeps its name, and a renamed variant token keeps both its name
-and its type. Neither is a cast (a cast accepts any JSON) and
+and its type.
+
+A payload sample only exercises the variants it happens to carry, so `wire_tokens.json`
+records the **complete** token set for every union — otherwise a member no sample uses is
+anchored to `wire.ts` alone and a Rust-side rename of it passes everything. Each list in
+`wire_fixtures.rs` is kept complete by an exhaustive `match` beside it: adding a variant
+stops that match compiling, which is the prompt to add the sample. Nothing there spells a
+token — serde produces them all. Neither is a cast (a cast accepts any JSON) and
 neither is a spec written in the test (tsc decides both from `wire.ts`), so the Rust
 output, `wire.ts`, and the test cannot be brought into agreement two at a time. Populate
 every field of an exemplar rather than leaving it `null`: a `null` agrees with anything.

@@ -225,6 +225,26 @@ function admits(values: readonly string[], recorded: string | null, at: string):
   expect(recorded === null || values.includes(recorded), `${at}: ${String(recorded)}`).toBe(true);
 }
 
+/**
+ * The complete set of tokens serde emits for each union, recorded by
+ * `src-tauri/src/wire_fixtures.rs`. This is what anchors the member lists below to *Rust* and not only
+ * to `wire.ts`.
+ *
+ * A payload sample only exercises the variants it happens to carry — the recordings serialize
+ * `StatusDeclaration::Declared` and never `Draft` — so renaming an unrecorded member's token on the
+ * Rust side moved nothing any other check compares. With the whole set recorded, every member is
+ * anchored: the Rust rename changes this file, and the comparison against the `unionValues` list
+ * fails.
+ */
+const TOKENS = fixture<Record<string, string[]>>("wire_tokens.json");
+
+/** Assert that Rust emits exactly the members `wire.ts` declares for this union. */
+function sameTokens(name: string, listed: readonly string[]): void {
+  const recorded = TOKENS[name];
+  expect(recorded, `${name} is not in wire_tokens.json`).toBeDefined();
+  expect([...recorded].sort(), name).toEqual([...listed].sort());
+}
+
 const STORAGE_STATES = unionValues<StorageState>()("active", "draft", "completed", "archive");
 const STORAGE_SELECTIONS = unionValues<StorageSelection>()(
   "active",
@@ -486,6 +506,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       "task_history.json",
       "update_result_conflict.json",
       "update_result_ran_failed.json",
+      "wire_tokens.json",
     ]);
   });
 
@@ -779,6 +800,51 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
       error: { kind: "rootUnreadable", slug: "gone", detail: "config.yml not found" },
     } satisfies ProjectLoad);
   });
+});
+
+describe("wire.ts の union メンバーが Rust の直列化と一致する", () => {
+  // The third leg's missing half, and the one a payload sample cannot supply: a sample carries one
+  // variant, so every *other* member of its union was anchored to `wire.ts` alone. Comparing the
+  // recorded token set closes that for all of them at once — a Rust-side rename of a member no
+  // recording exercises now fails here.
+
+  const UNIONS: Record<string, readonly string[]> = {
+    StorageState: STORAGE_STATES,
+    StorageSelection: STORAGE_SELECTIONS,
+    StatusColumn: STATUS_COLUMNS,
+    StatusDeclaration: STATUS_DECLARATIONS,
+    ReferenceKind: REFERENCE_KINDS,
+    RequiredField: REQUIRED_FIELDS,
+    RemoteHostKind: REMOTE_HOST_KINDS,
+    LookupFailure: LOOKUP_FAILURES,
+    LaunchMethod: LAUNCH_METHODS,
+    EditorSource: EDITOR_SOURCES,
+    CardDensity: CARD_DENSITIES,
+    DetailPlacement: DETAIL_PLACEMENTS,
+    TaskHealth: HEALTH_STATES,
+    DegradeEvent: DEGRADE_EVENTS,
+    ProjectLoad: LOAD_STATES,
+    CommitSearch: COMMIT_SEARCH_STATES,
+    RelationOutcome: RELATION_STATES,
+    UpdateResult: UPDATE_STATES,
+    UpdateOutcome: OUTCOME_STATES,
+    FailureKind: FAILURE_KINDS,
+    CliReadiness: CLI_STATES,
+    SettingsStatus: SETTINGS_STATES,
+    CommandError: ERROR_KINDS,
+    LedgerRefusal: REFUSAL_REASONS,
+  };
+
+  it("記録された union はすべてここで照合される", () => {
+    // Both ways round: a union recorded on the Rust side with no list here would be an anchor nobody
+    // reads, and a list here with nothing recorded would be locked to `wire.ts` alone — which is the
+    // gap this whole block exists to close.
+    expect(Object.keys(TOKENS).sort()).toEqual(Object.keys(UNIONS).sort());
+  });
+
+  for (const [name, listed] of Object.entries(UNIONS)) {
+    it(name, () => sameTokens(name, listed));
+  }
 });
 
 describe("記録した enum・variant tag の値が wire.ts の union に収まる", () => {
