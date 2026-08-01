@@ -295,6 +295,17 @@ impl LoadedSettings {
 /// The stored `schema_version` is this build's, whatever the caller passed: what is written is what
 /// this build's field set means, so claiming another version would misdescribe the bytes.
 pub fn save(path: &Path, settings: &AppSettings) -> Result<LoadedSettings, SettingsError> {
+    save_with(&crate::store::SystemFiles, path, settings)
+}
+
+/// [`save`] against a given 保存境界. The boundary is an argument so a test can fail one step of the
+/// 一時ファイル置換 and assert that settings this build could not finish writing left the previous
+/// ones readable — without it, decision-13's degrade would hide the loss behind the defaults.
+pub fn save_with(
+    files: &dyn crate::store::Files,
+    path: &Path,
+    settings: &AppSettings,
+) -> Result<LoadedSettings, SettingsError> {
     if let SettingsStatus::ReadOnly { version } = LoadedSettings::load(path).status {
         return Err(SettingsError::ReadOnly(version));
     }
@@ -302,10 +313,7 @@ pub fn save(path: &Path, settings: &AppSettings) -> Result<LoadedSettings, Setti
         schema_version: KNOWN_SCHEMA_VERSION,
         ..settings.clone()
     };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, toml::to_string_pretty(&stored)?)?;
+    crate::store::replace(files, path, &toml::to_string_pretty(&stored)?)?;
     Ok(LoadedSettings {
         settings: stored,
         status: SettingsStatus::Stored,
@@ -404,6 +412,77 @@ mod tests {
             text.find("backlog_cli").unwrap() < text.find("[external_editor]").unwrap(),
             "the scalar has to precede the sub-table:\n{text}"
         );
+    }
+
+    /// Settings that differ from the defaults in every item, so "the previous ones survived" and
+    /// "the new ones landed whole" are both visible in the file.
+    fn settings_worth_losing() -> AppSettings {
+        AppSettings {
+            schema_version: KNOWN_SCHEMA_VERSION,
+            theme: Some("Atlas Dark".into()),
+            card_density: CardDensity::L,
+            default_storage_filter: vec![StorageSelection::Active, StorageSelection::Draft],
+            default_detail_placement: DetailPlacement::Full,
+            watch_external_changes: false,
+            backlog_cli: Some(PathBuf::from("/opt/my tools/backlog")),
+            external_editor: Some(EditorCommand {
+                program: "/usr/bin/my editor".into(),
+                args: vec!["-w".into()],
+            }),
+        }
+    }
+
+    #[test]
+    fn a_failed_save_leaves_the_previous_settings_readable() {
+        // decision-17 AC #4 for the settings. Asserting on `load` and not only on the bytes is the
+        // point: decision-13 degrades an unreadable file to the defaults, so a half-written save
+        // would not look like an error to the next start — it would look like the user's theme,
+        // density, watch setting and `backlog_cli` were never saved.
+        for step in crate::store::EVERY_STEP {
+            let tmp = TempDir::new();
+            let path = tmp.path.join("cfg").join("settings.toml");
+            let previous = settings_worth_losing();
+            save(&path, &previous).expect("the first save succeeds");
+            let bytes_before = std::fs::read(&path).unwrap();
+
+            let next = AppSettings {
+                theme: Some("Atlas Light".into()),
+                ..AppSettings::default()
+            };
+            let error = save_with(&crate::store::FakeFiles::failing_at(step), &path, &next)
+                .expect_err("the injected step fails the save");
+
+            assert!(matches!(error, SettingsError::Io(_)), "{step:?}: {error}");
+            assert_eq!(std::fs::read(&path).unwrap(), bytes_before, "{step:?}");
+            let after = LoadedSettings::load(&path);
+            assert_eq!(after.status, SettingsStatus::Stored, "{step:?}");
+            assert_eq!(after.settings, previous, "{step:?}");
+        }
+    }
+
+    #[test]
+    fn saved_settings_reach_the_file_only_by_rename() {
+        // decision-17 AC #5 for the settings: the destination's name is never written through, so a
+        // reader of it sees the whole previous settings or the whole new ones and never a prefix.
+        // The previous file is the longer one, so a writer that truncated in place would be caught
+        // by the residue as well as by the call record.
+        let tmp = TempDir::new();
+        let path = tmp.path.join("cfg").join("settings.toml");
+        save(&path, &settings_worth_losing()).expect("the first save succeeds");
+        let previous = std::fs::read_to_string(&path).unwrap();
+
+        let files = crate::store::FakeFiles::working();
+        let next = AppSettings::default();
+        save_with(&files, &path, &next).expect("saved");
+
+        crate::store::assert_reached_only_by_rename(&files, &path);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(after.len() < previous.len(), "the shorter file replaced it");
+        assert!(
+            !after.contains("Atlas Dark") && !after.contains("my tools"),
+            "nothing of the previous file is left:\n{after}"
+        );
+        assert_eq!(LoadedSettings::load(&path).settings, next);
     }
 
     #[test]

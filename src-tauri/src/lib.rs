@@ -28,6 +28,10 @@ pub mod read;
 // ledger defines what Atlas reads, this holds how it is shown — kept a separate file so the ledger's
 // read-only degrade cannot also freeze the display defaults.
 pub mod settings;
+// Public: how Atlas's own two files reach the disk — 一時ファイル置換 (decision-17). Not a layer of
+// its own but the one write path `ledger` and `settings` share, so neither can be made durable
+// without the other. Public because `settings::save_with` names its boundary in a public signature.
+pub mod store;
 // Public: same-root freshness — file watch, read-version index, pre-update conflict detection, and
 // the shared reload path (TASK-32 / doc-9). The read/update layers' freshness counterpart: it keeps
 // the domain model in step with a Backlog root other processes may also write, detecting external

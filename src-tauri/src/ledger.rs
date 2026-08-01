@@ -528,14 +528,23 @@ impl LoadedLedger {
     /// Persist the ledger to `path`, creating the parent directory as needed. Refuses when
     /// the ledger was loaded read-only, so an unknown newer file is never clobbered (AC #1).
     pub fn save(&self, path: &Path) -> Result<(), LedgerError> {
+        self.save_with(&crate::store::SystemFiles, path)
+    }
+
+    /// [`LoadedLedger::save`] against a given 保存境界. The boundary is an argument so a test can
+    /// fail one step of the 一時ファイル置換 and assert that a ledger this build could not finish
+    /// writing left the previous one readable — the failure decision-17 exists to survive, and one
+    /// no real disk can be asked to produce.
+    pub fn save_with(
+        &self,
+        files: &dyn crate::store::Files,
+        path: &Path,
+    ) -> Result<(), LedgerError> {
         if self.read_only {
             return Err(LedgerError::ReadOnly(self.ledger.schema_version));
         }
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
         let text = toml::to_string_pretty(&self.ledger)?;
-        std::fs::write(path, text)?;
+        crate::store::replace(files, path, &text)?;
         Ok(())
     }
 }
@@ -1238,6 +1247,69 @@ mod tests {
                 .get("Closed")
                 .unwrap(),
             "Done"
+        );
+    }
+
+    /// A ledger holding one registered project, plus the path it should be saved to. The two
+    /// durability tests below both need "a previous ledger on disk and a different one to write".
+    fn a_ledger_to_save(tmp: &TempDir) -> (LoadedLedger, PathBuf) {
+        let backlog = tmp.make_backlog_root("proj");
+        let project_root = backlog.parent().unwrap().to_path_buf();
+        let path = tmp.path.join("cfg").join("projects.toml");
+        let mut loaded = LoadedLedger::load(&path).unwrap();
+        register(&mut loaded.ledger, project_root, Some("proj"));
+        (loaded, path)
+    }
+
+    #[test]
+    fn a_failed_save_leaves_the_previous_ledger_loadable() {
+        // decision-17 AC #4 for the ledger. The old contents are a *valid* ledger, because the
+        // damage the finding describes is not "the bytes changed" but "the next start cannot open
+        // any registered project" — so the assertion is that `load` still succeeds and still
+        // returns what was there before.
+        for step in crate::store::EVERY_STEP {
+            let tmp = TempDir::new();
+            let (loaded, path) = a_ledger_to_save(&tmp);
+            loaded.save(&path).unwrap();
+            let before = LoadedLedger::load(&path).unwrap();
+            let bytes_before = std::fs::read(&path).unwrap();
+
+            let mut next = before.clone();
+            next.ledger.remove("proj").unwrap();
+            let error = next
+                .save_with(&crate::store::FakeFiles::failing_at(step), &path)
+                .unwrap_err();
+
+            assert!(matches!(error, LedgerError::Io(_)), "{step:?}: {error}");
+            assert_eq!(std::fs::read(&path).unwrap(), bytes_before, "{step:?}");
+            let after = LoadedLedger::load(&path).expect("the ledger still loads");
+            assert_eq!(after.ledger, before.ledger, "{step:?}");
+        }
+    }
+
+    #[test]
+    fn a_saved_ledger_reaches_the_file_only_by_rename() {
+        // decision-17 AC #5 for the ledger: the destination's name is never written through, so a
+        // reader of it sees the whole previous ledger or the whole new one and never a prefix.
+        let tmp = TempDir::new();
+        let (mut loaded, path) = a_ledger_to_save(&tmp);
+        loaded.save(&path).unwrap();
+        let previous = std::fs::read_to_string(&path).unwrap();
+        loaded.ledger.remove("proj").unwrap();
+
+        let files = crate::store::FakeFiles::working();
+        loaded.save_with(&files, &path).unwrap();
+
+        crate::store::assert_reached_only_by_rename(&files, &path);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_ne!(after, previous, "the save did happen");
+        assert!(
+            LoadedLedger::load(&path)
+                .unwrap()
+                .ledger
+                .projects
+                .is_empty(),
+            "the whole new ledger is what is there: {after}"
         );
     }
 
