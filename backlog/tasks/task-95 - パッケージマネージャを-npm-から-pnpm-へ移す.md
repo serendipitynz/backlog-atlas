@@ -1,10 +1,10 @@
 ---
 id: TASK-95
 title: パッケージマネージャを pnpm へ移し Node と pnpm の版を固定する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-01 03:11'
+updated_date: '2026-08-01 03:26'
 labels:
   - build
   - 'kind:chore'
