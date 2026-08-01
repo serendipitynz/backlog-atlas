@@ -33,21 +33,30 @@ function dialogOf(host: HTMLElement): HTMLElement {
 }
 
 describe("モーダルの閉じる出口", () => {
-  it("Escape と子の閉じるが同じ 1 つの出口へ集まる", () => {
+  it("この層が持つ出口は Escape だけで、他に出口を足さない", () => {
+    // The layer's own half of the contract. That Escape and the *caller's* close control reach one
+    // request is asserted in `App.component.test.ts`, through 設定 and プロジェクト登録 — only the
+    // caller wires both, so a snippet here could not tell whether it had stopped doing so.
+    //
+    // What is fixed here is that this layer adds no exit of its own: a press inside it that is not
+    // Escape must not close it, or a 破棄前確認 put in front of `onclose` (TASK-86) would have a way
+    // around it that nobody wired.
     const closed: string[] = [];
     const { host } = render(Modal, {
       label: "設定",
       onclose: () => closed.push("onclose"),
-      children: snippet('<button type="button" data-close>閉じる</button>'),
+      children: snippet('<button type="button">保存</button><input type="text" />'),
     });
+    const dialog = dialogOf(host);
 
-    press(dialogOf(host), "Escape");
+    click(byText(host, "button", "保存"));
+    press(dialog, "Enter");
+    press(dialog, " ");
+    press(host.querySelector("input")!, "Escape", { metaKey: true });
+    expect(closed).toEqual([]);
+
+    press(dialog, "Escape");
     expect(closed).toEqual(["onclose"]);
-
-    // The child's own control is wired by whoever opened the modal, so what this fixes is that the
-    // layer adds no second exit of its own: Escape is answered here, and everything else is the
-    // caller's — one place for a 破棄前確認 to be put in front of (TASK-86).
-    expect(host.querySelectorAll("[data-close]")).toHaveLength(1);
   });
 
   it("閉じる要求はモーダル自身を外さない", () => {

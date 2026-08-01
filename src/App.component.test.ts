@@ -20,7 +20,7 @@ vi.mock("./lib/commands", async (importOriginal) => {
 });
 
 import App from "./App.svelte";
-import { byText, cleanup, click, fill, only, render } from "./lib/render";
+import { byLabel, byText, cleanup, click, fill, only, press, render } from "./lib/render";
 import {
   answers,
   deferred,
@@ -62,7 +62,25 @@ function confirmBand(host: HTMLElement): HTMLElement | null {
   return host.querySelector<HTMLElement>('.band[data-band="confirm"]');
 }
 
-const TASK = taskView({ id: "TASK-1", title: "最初の題", references: ["https://example.test/1"] });
+const TASK = taskView({
+  id: "TASK-1",
+  title: "最初の題",
+  status: "In Progress",
+  column: "inProgress",
+  // Ordered explicitly: セル内の並び is ordinal 昇順 and a task without one sorts last (doc-7 §5), so
+  // leaving these unset would put TASK at the end of the cell and disable 次のタスク.
+  ordinal: 1000,
+  references: ["https://example.test/1"],
+});
+
+/** A second task in the same cell as [`TASK`], so 別タスクを開く and 前後移動 have a destination. */
+const NEIGHBOUR = taskView({
+  id: "TASK-2",
+  title: "隣の題",
+  status: "In Progress",
+  column: "inProgress",
+  ordinal: 2000,
+});
 
 beforeEach(() => {
   reset();
@@ -147,26 +165,98 @@ describe("起動時の設定・workspace・監視の順序", () => {
 // -------------------------------------------------------------------------------------------------
 
 describe("タスク詳細の離脱と保存中状態", () => {
-  /** Open the task and start an 編集セッション with an unsaved title. */
+  /**
+   * Open the first task and start an 編集セッション with an unsaved title.
+   *
+   * Two tasks in the same cell, so the routes that leave by *arriving* somewhere — 別タスクを開く and
+   * 前後移動 — have a destination. Both carry `column: "inProgress"`, which is what makes them
+   * neighbours: 前後移動 is movement within one cell (doc-8 §2.2), so two tasks in different columns
+   * would leave the 次のタスク button disabled and the test asserting nothing.
+   */
   async function withUnsavedTitle(): Promise<HTMLElement> {
-    const host = await startWith([loaded("atlas", [TASK])]);
-    click(only(host, "button.card"));
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
     await settled();
     click(byText(host, "button.primary", "編集"));
     fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
     return host;
   }
 
-  it("未保存のまま閉じると確認を経てから閉じる", async () => {
+  // doc-8 §6.3 names five routes out of an 編集セッション, and they do not share a callback: 閉じる is
+  // `onclose`, キャンセル is `onconfirmDiscard`, 別タスクを開く and 前後移動 are `onselect`, and
+  // 詳細配置の切替 is `onplacement`. Each is asserted separately because each is a place the shell's
+  // one gate can be bypassed on its own — a single case over the close button would leave the other
+  // three free to unmount the panel while every test stayed green.
+
+  it("未保存のまま閉じると確認を経てから閉じる（onclose）", async () => {
     const host = await withUnsavedTitle();
     expect(confirmBand(host)).toBeNull();
 
     click(only(host, "button.close"));
 
-    // 破棄前確認 (doc-8 §6.3): one band, one wording, for all five routes. The panel is still up —
-    // the shell holds the exit rather than taking it.
+    // 破棄前確認 (doc-8 §6.3): one band, one wording. The panel is still up — the shell holds the
+    // exit rather than taking it.
     expect(confirmBand(host)).not.toBeNull();
     expect(host.querySelector('[aria-label="タスク詳細"]')).not.toBeNull();
+  });
+
+  it("キャンセルも同じ帯を通る（onconfirmDiscard）", async () => {
+    const host = await withUnsavedTitle();
+
+    // The one route the shell cannot carry out itself: ending the session belongs to the panel, so it
+    // hands the shell a `proceed` instead. That makes it the route most easily given its own wording.
+    click(byText(host, "button", "キャンセル"));
+
+    expect(confirmBand(host)).not.toBeNull();
+    expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
+
+    click(byText(host, ".band button", "破棄して続ける"));
+    // The session ends and the panel stays open on the same task — キャンセル leaves the task, not the
+    // panel, which is what tells it apart from 閉じる.
+    expect(host.querySelector('[aria-label="タスク詳細"]')).not.toBeNull();
+    expect(host.querySelector('.field input[type="text"]')).toBeNull();
+  });
+
+  it("別タスクを開く操作も同じ帯を通る（onselect）", async () => {
+    const host = await withUnsavedTitle();
+
+    click(byText(host, "button.card .title", "隣の題").closest("button.card")!);
+
+    expect(confirmBand(host)).not.toBeNull();
+    // Still on the first task: a selection change that has not been answered must not land.
+    expect(host.querySelector('[aria-label="タスク詳細"] .field input[type="text"]')).not.toBeNull();
+
+    click(byText(host, ".band button", "破棄して続ける"));
+    await settled();
+    expect(host.querySelector('[aria-label="タスク詳細"] h2')?.textContent).toBe("隣の題");
+  });
+
+  it("前後移動も同じ帯を通る（onselect）", async () => {
+    const host = await withUnsavedTitle();
+
+    // 前後移動 arrives at the same guard as any other selection change rather than carrying a second
+    // one of its own (doc-8 §2.2) — which is only observable from here, since the button is the
+    // panel's and the gate is the shell's.
+    const next = byText<HTMLButtonElement>(host, "button.mini", "次のタスク →");
+    expect(next.disabled).toBe(false);
+    click(next);
+
+    expect(confirmBand(host)).not.toBeNull();
+  });
+
+  it("詳細配置の切替も同じ帯を通る（onplacement）", async () => {
+    const host = await withUnsavedTitle();
+
+    // The switch is drawn beside 閉じる because both answer "この面をどうするか" (doc-8 §2.2), and the
+    // 全面 case genuinely unmounts the grid's panel — so it loses input exactly like the others.
+    const group = only(host, '[aria-label="詳細配置"]');
+    const other = [...group.querySelectorAll<HTMLButtonElement>("button.switch")].find(
+      (button) => button.getAttribute("aria-pressed") === "false",
+    );
+    if (other === undefined) throw new Error("every placement reads as the current one");
+    click(other);
+
+    expect(confirmBand(host)).not.toBeNull();
   });
 
   it("編集に戻ると未保存入力がそのまま残る", async () => {
@@ -221,6 +311,49 @@ describe("タスク詳細の離脱と保存中状態", () => {
     await settled();
 
     expect(madeTo("update_apply")).toHaveLength(1);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", () => {
+  /** Open 設定 from the fixed header — the entry point doc-7 §2.1 puts it behind. */
+  async function openSettings(): Promise<HTMLElement> {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(byLabel(host, "button.header-entry", "設定"));
+    return host;
+  }
+
+  it("Escape と Settings 自身の閉じるが、どちらも同じ 1 つの出口へ届く", async () => {
+    // Asserted through the real caller rather than a snippet: what a snippet would prove is that the
+    // layer answers Escape, and the contract is that `Modal`'s `onclose` and the child's own control
+    // are the *same* request. Only the caller wires both, so only from here can one of them be
+    // rewired without the test noticing.
+    const byEscape = await openSettings();
+    const dialog = only(byEscape, '[role="dialog"][aria-label="設定"]');
+    press(dialog, "Escape");
+    expect(byEscape.querySelector('[aria-label="設定"]')).toBeNull();
+
+    cleanup();
+
+    const byControl = await openSettings();
+    expect(byControl.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
+    click(byText(byControl, "button.mini", "閉じる"));
+    expect(byControl.querySelector('[aria-label="設定"]')).toBeNull();
+  });
+
+  it("プロジェクト登録も同じ 2 経路で閉じる", async () => {
+    const byEscape = await startWith([loaded("atlas", [TASK])]);
+    click(byLabel(byEscape, "button.header-entry", "プロジェクトを登録"));
+    press(only(byEscape, '[role="dialog"][aria-label="プロジェクトを登録"]'), "Escape");
+    expect(byEscape.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
+
+    cleanup();
+
+    const byControl = await startWith([loaded("atlas", [TASK])]);
+    click(byLabel(byControl, "button.header-entry", "プロジェクトを登録"));
+    click(byText(byControl, "button", "閉じる"));
+    expect(byControl.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
   });
 });
 

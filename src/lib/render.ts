@@ -174,6 +174,38 @@ export function only<E extends Element>(host: ParentNode, selector: string): E {
   return found[0];
 }
 
+/**
+ * `element`'s text with its `aria-hidden` descendants left out — what a screen reader would announce.
+ *
+ * Needed because several controls print something beside their name that is decorative and marked as
+ * such: the header entries append the chord from the 割り当て一覧 (doc-7 §2.1), which differs between
+ * macOS and the rest, and the menu button carries a ☰ glyph. Matching on `textContent` would tie a
+ * test to the platform it happened to run on.
+ */
+function announced(element: Element): string {
+  let text = "";
+  for (const node of element.childNodes) {
+    if (node.nodeType === node.TEXT_NODE) text += node.textContent ?? "";
+    else if (node instanceof Element && node.getAttribute("aria-hidden") !== "true") {
+      text += announced(node);
+    }
+  }
+  return text.trim();
+}
+
+/** The one element matching `selector` whose announced name is `label`. */
+export function byLabel<E extends Element>(host: ParentNode, selector: string, label: string): E {
+  const found = [...host.querySelectorAll<E>(selector)].filter(
+    (element) => announced(element) === label,
+  );
+  if (found.length !== 1) {
+    throw new Error(
+      `expected exactly one ${selector} announced as "${label}", found ${found.length}`,
+    );
+  }
+  return found[0];
+}
+
 /** The element whose visible text is `text`, where a selector would only restate the markup. */
 export function byText<E extends Element>(host: ParentNode, selector: string, text: string): E {
   const found = [...host.querySelectorAll<E>(selector)].filter(
