@@ -19,9 +19,12 @@
 //! | decision-17 ファイル同期 | [`Files::sync_all`] | getting the temp file's bytes out of the page cache before the `rename` |
 //!
 //! decision-17 sets the durability level at ファイル同期 and stops there: 親ディレクトリ同期 is not
-//! done, because it takes an unsafe `CreateFileW` on Windows and macOS's `fsync` would still not
-//! reach the drive without `F_FULLFSYNC`. What is left is "a power cut may lose the most recent
-//! save", with the old file intact — not "a half-written file under the destination's name".
+//! done, because whether a directory handle can be flushed on Windows is unmeasured here and the
+//! level would otherwise be lower on Windows alone. So what this module guarantees is about a
+//! **failure part-way through a write** — out of space, an I/O error, the process killed: the
+//! destination's name then holds the whole old file or the whole new one, never a prefix. What
+//! survives a power cut is *not* claimed: the directory entry the `rename` changed is not synced,
+//! so past that point it is the filesystem's crash rules, which nothing here establishes.
 //!
 //! The module is named `store` and not `sync` because `sync` already names the same-root freshness
 //! layer (doc-9), and ファイル同期 would put one spelling on two referents.
