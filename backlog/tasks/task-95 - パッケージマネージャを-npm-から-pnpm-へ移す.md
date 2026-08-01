@@ -4,7 +4,7 @@ title: パッケージマネージャを pnpm へ移し Node と pnpm の版を�
 status: In Review
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-01 03:06'
+updated_date: '2026-08-01 03:11'
 labels:
   - build
   - 'kind:chore'
@@ -23,7 +23,7 @@ ordinal: 95000
 
 固定する版は 24（Krypton）。2026-08-01 時点の実データで v24 が Active LTS（LTS 開始 2025-10-28、maintenance 入り 2026-10-20、EOL 2028-04-30）であり、現在使っている v22（Jod）は 2025-10-21 に maintenance へ入っている。v26 は 2026-10-28 に LTS になる予定で今は Current なので、公開直前に基準へ据える利得がない（10 月に LTS 化した時点で上げる運用にする）。ツールチェーンの下限は実測で sass >=20.19.0・vitest 4 が ^20 || ^22 || >=24・vite 6 が ^18 || ^20 || >=22 なので 24 はすべて満たす。
 
-ファイルは .node-version 1 つだけを置く。.nvmrc は nvm 固有の名前で、実際に使っている fnm・nodenv・asdf・mise が読む広いほうの慣習が .node-version である。actions/setup-node の node-version-file はどちらも読む。2 つ置くとずれる場所が 2 つになるので併置しない。中身はメジャーのみ（24）とする — このプロジェクトで Node はビルド時だけの依存で、出荷物は Vite の出力を内包した Tauri バイナリであり Node は製品に入らないため、パッチまで固定する再現性の利得が小さい。将来 Node のパッチ差でビルドが壊れたら、その時点で厳密指定へ落とす。
+ファイルは .node-version 1 つだけを置く。.nvmrc は nvm 固有の名前で、.node-version が広いほうの慣習である。actions/setup-node の node-version-file はどちらも読む。2 つ置くとずれる場所が 2 つになるので併置しない。ただし既定でこのファイルを読むかどうかはツールごとに揃っていない。fnm は既定で読み、メジャーのみの指定も自力で解決する（fnm 1.39.0 で実測、v24.18.1 を選ぶ）。asdf は legacy_version_file = yes の下でのみ読み、mise は idiomatic version file を既定で無効にしており、nodenv は alias plugin なしにメジャーのみの指定を解決しない。これらを使う場合は各ツールの流儀で Node 24 を選ぶ。1 ファイルに絞る根拠は版がずれる場所を 1 つに保つことであり、どのツールが既定で読むかとは独立である。中身はメジャーのみ（24）とする — このプロジェクトで Node はビルド時だけの依存で、出荷物は Vite の出力を内包した Tauri バイナリであり Node は製品に入らないため、パッチまで固定する再現性の利得が小さい。将来 Node のパッチ差でビルドが壊れたら、その時点で厳密指定へ落とす。
 
 engines.node は入れない。真実の出所を 2 つにしないためで、pnpm は engine-strict=true を書かないと強制しないので .npmrc もセットで必要になる。
 
