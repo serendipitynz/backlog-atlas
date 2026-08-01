@@ -32,7 +32,7 @@ import {
 import { snapshot, taskView } from "./fixtures";
 import type { AcceptanceCriterion, CliReadiness, TaskEdit, UpdateOperation } from "./wire";
 
-const READY: CliReadiness = { state: "ready", version: "1.47.1" };
+const READY: CliReadiness = { state: "ready", version: "1.48.0" };
 
 function criteria(...items: [string, boolean][]): AcceptanceCriterion[] {
   return items.map(([text, checked], index) => ({ number: index + 1, text, checked }));
@@ -215,7 +215,7 @@ describe("AC の項目単位操作と全体差し替えの区別 (doc-5 §3)", (
   });
 });
 
-// v1.47.1 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
+// v1.48.0 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
 // --check-ac / --uncheck-ac は削除後の番号を指す。--ac の追加は末尾に付き番号をずらさない。
 describe("AC 項目単位操作の番号を削除後の並びへ写す", () => {
   const three = taskView({
@@ -484,7 +484,7 @@ describe("保存区分別の編集可否 (doc-8 §6.5)", () => {
     const availability = editAvailability(taskView({}), {
       state: "unsupported",
       version: "1.0.0",
-      minimum: "1.47.1",
+      minimum: "1.48.0",
     });
     expect(availability.state).toBe("unavailable");
   });

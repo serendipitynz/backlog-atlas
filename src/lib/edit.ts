@@ -32,7 +32,7 @@
  * - **Touched, not merely different** (doc-9 §5 (ii)). A field the user did not touch is never
  *   sent, so re-applying a draft onto a newer read cannot revert someone else's change.
  * - **The CLI's limits are anticipated, not discovered** (doc-8 §6, AC #6). Emptying references or
- *   dependencies, and every operation v1.47.1 lacks, are withheld here rather than issued and
+ *   dependencies, and every operation v1.48.0 lacks, are withheld here rather than issued and
  *   refused by the adapter.
  * - **A withheld operation says why** (doc-5 §5). Nothing is silently missing: either it is offered,
  *   or it carries the reason it is not.
@@ -64,9 +64,11 @@ export interface AcDelta {
 
 /**
  * The AC edit in progress. The two modes are kept apart all the way to the wire because doc-5
- * §3/§3.1 require it: v1.47.1 has no single-option "set all AC", so 全体差し替え is a composite
- * that must not be confused with the per-item operations — and per-item text editing does not
- * exist at all, which is why `delta` has no text field for an existing item.
+ * §3/§3.1 require it: 全体差し替え is a composite that must not be confused with the per-item
+ * operations. v1.48.0's single-option `--acceptance-criteria` does replace the whole set, but it
+ * refuses to run beside `--check-ac` (実測), so it cannot carry the checked state the composite
+ * does. Per-item text editing does not exist at all, which is why `delta` has no text field for an
+ * existing item.
  */
 export type AcDraft = { mode: "delta"; delta: AcDelta } | { mode: "replace"; items: AcItem[] };
 
@@ -236,7 +238,7 @@ function changed(session: EditSession, field: DraftField): boolean {
       return draft.milestone !== "" && draft.milestone !== (task.milestone ?? "");
     case "assignee":
       // Blank is "leave it alone", as with status/priority/milestone: emptying the box cannot mean
-      // unassign, because v1.47.1 has no way to do it (ASSIGNEE_NOT_CLEARABLE). A task with several
+      // unassign, because v1.48.0 has no way to do it (ASSIGNEE_NOT_CLEARABLE). A task with several
       // assignees is *changed* by any different value, since the write collapses the list to one.
       return (
         draft.assignee.trim() !== "" &&
@@ -384,16 +386,16 @@ export type SavePlan =
 export const EXTERNAL_EDITOR_ROUTE = "この画面下部の「外部エディタで開く」";
 
 export const EMPTY_REFERENCES_REASON =
-  "References は最後の 1 件を削除できません（v1.47.1 の CLI に空集合化の手段がないため）。" +
+  "References は最後の 1 件を削除できません（v1.48.0 の CLI に空集合化の手段がないため）。" +
   `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します（doc-5 §3.1・doc-8 §7）`;
 
 /**
  * Why an emptied assignee box changes nothing. `task edit -a ""` exits 0 without clearing in
- * v1.47.1 (実測) — the same silent-no-op as `--ref ""` — so blanking the box is read as "leave it
+ * v1.48.0 (実測) — the same silent-no-op as `--ref ""` — so blanking the box is read as "leave it
  * alone" rather than issued as an unassignment that would be reported as a success and not happen.
  */
 export const ASSIGNEE_NOT_CLEARABLE =
-  "assignee は空欄にしても解除されません（v1.47.1 の CLI に解除の手段がなく、`-a \"\"` は終了コード 0 で" +
+  "assignee は空欄にしても解除されません（v1.48.0 の CLI に解除の手段がなく、`-a \"\"` は終了コード 0 で" +
   `何も変えないため、空欄は「変更しない」として扱います）。解除する場合は${EXTERNAL_EDITOR_ROUTE}から` +
   "管理ファイルを直接編集します（doc-5 §3・doc-8 §7）";
 
@@ -420,12 +422,12 @@ export function assigneeCollapseWarning(
 }
 
 export const EMPTY_DEPENDENCIES_REASON =
-  "dependencies は最後の 1 件を削除できません（v1.47.1 の CLI に空集合化の手段がないため）。" +
+  "dependencies は最後の 1 件を削除できません（v1.48.0 の CLI に空集合化の手段がないため）。" +
   `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します（doc-5 §3.1・doc-8 §7）`;
 
 /**
  * Renumber a per-item AC edit for the CLI (doc-5 §3). One `task edit` resolves its AC options in
- * two different frames, measured on v1.47.1:
+ * two different frames, measured on v1.48.0:
  *
  * - `--remove-ac` indexes the criteria **as read** — `--remove-ac 1 --remove-ac 3` removes the
  *   first and third, not the first and then the third of what is left.
@@ -464,7 +466,7 @@ export const EMPTY_TITLE_REASON =
 
 /**
  * Whether one more removal is allowed from a 非空全置換 field (doc-5 §3.1). The last element stays:
- * `--ref ""` / `--depends-on ""` exit 0 without clearing in v1.47.1, so an "empty it" control would
+ * `--ref ""` / `--depends-on ""` exit 0 without clearing in v1.48.0, so an "empty it" control would
  * promise something the CLI silently declines to do.
  */
 export function canRemoveLast(values: readonly string[]): boolean {
@@ -799,7 +801,7 @@ export function readinessReason(readiness: CliReadiness | null): string | null {
 }
 
 const DRAFT_READ_ONLY =
-  "draft の内容編集は提供しません（v1.47.1 に draft 向けの task edit 相当が無いため。doc-5 §3.3）。" +
+  "draft の内容編集は提供しません（v1.48.0 に draft 向けの task edit 相当が無いため。doc-5 §3.3）。" +
   `編集するには draft promote でタスクへ昇格するか、${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 const CLOSED_READ_ONLY =
@@ -869,7 +871,7 @@ export interface TransitionOffer {
 
 /**
  * The transitions a 保存区分 has, or why it has none. `none` is 提示しない (AC #6): completed and
- * archive have no reverse operation in v1.47.1, so no control is drawn for one.
+ * archive have no reverse operation in v1.48.0, so no control is drawn for one.
  */
 export type TransitionOffers =
   | { state: "offered"; offers: TransitionOffer[] }
@@ -904,7 +906,7 @@ export function transitionOffers(
     return {
       state: "none",
       reason:
-        "completed・archive から戻す操作は v1.47.1 の CLI にないため提供しません（doc-5 §3.1）",
+        "completed・archive から戻す操作は v1.48.0 の CLI にないため提供しません（doc-5 §3.1）",
     };
   }
 
@@ -984,13 +986,13 @@ const TASK_COMPLETE_EFFECT =
 
 // --- 選択肢 (doc-5 §3 の値域) --------------------------------------------------------------
 
-/** `--priority` の値域 (v1.47.1 `task edit --help`). Clearing one is not offered — no CLI option. */
+/** `--priority` の値域 (v1.48.0 `task edit --help`). Clearing one is not offered — no CLI option. */
 export const PRIORITIES = ["high", "medium", "low"] as const;
 
 /**
  * The values a select may offer for a field the CLI can set but not unset. "未設定" is offered only
  * while the field *is* unset, where choosing it changes nothing: offering it on a set field would
- * be a clear operation v1.47.1 does not have (AC #6 — not presented rather than refused later).
+ * be a clear operation v1.48.0 does not have (AC #6 — not presented rather than refused later).
  */
 export interface SelectOption {
   value: string;

@@ -28,7 +28,7 @@
  *
  * - **Touched, not merely different**. A field the user did not touch is never sent, so issuing a
  *   文書更新 cannot revert a facet someone else changed between the read and the save.
- * - **The CLI's limits are anticipated, not discovered** (doc-5 §5). An operation v1.47.1 cannot
+ * - **The CLI's limits are anticipated, not discovered** (doc-5 §5). An operation v1.48.0 cannot
  *   perform, and one the boundary refuses before launch (doc-9 §4.2), is withheld here rather than
  *   issued and rejected.
  * - **A withheld operation says why**. Nothing is silently missing: either it is offered, or it
@@ -111,12 +111,12 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * Why a comma cannot appear in a label or a tag. `task create --labels` and `doc update --tags` take
- * *one* comma-separated value in v1.47.1 (doc-5 §3, `update.rs`), so a value containing a comma would
+ * *one* comma-separated value in v1.48.0 (doc-5 §3, `update.rs`), so a value containing a comma would
  * silently become two — the failure mode worth anticipating, since nothing would report it.
  */
 export function commaReason(what: string, value: string): string {
   return (
-    `${what}に「,」を含められません（v1.47.1 の CLI は 1 個のカンマ区切り値として受け取るため、` +
+    `${what}に「,」を含められません（v1.48.0 の CLI は 1 個のカンマ区切り値として受け取るため、` +
     `「${value}」は 2 件に分かれます。doc-5 §3）`
   );
 }
@@ -132,7 +132,7 @@ function firstWithComma(values: readonly string[]): string | undefined {
  * status・labels・priority・milestone・AC.
  *
  * Narrower than what the CLI accepts, and narrowed by product judgment rather than by capability:
- * v1.47.1's `task create` also takes `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` and stores
+ * v1.48.0's `task create` also takes `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` and stores
  * them in the created file (doc-5 §3, 2026-07-29 実測). The form holds what identifies and
  * classifies a task at the moment it is created; plan・notes・references・dependencies accrue while
  * the work runs and are edited from タスク詳細 (doc-8 §6), so a field here would only move the same
@@ -243,7 +243,7 @@ export function buildDocCreate(input: DocCreateInput): IssuePlan {
 
 /**
  * The 文書更新 form's values. `content` is the **whole** body: `doc update --content` full-replaces
- * it and v1.47.1 has no partial update (doc-5 §3.1), so the editor is seeded with the body as read
+ * it and v1.48.0 has no partial update (doc-5 §3.1), so the editor is seeded with the body as read
  * and a partial edit is reduced to handing back the edited whole (doc-5 §3.2, AC #2).
  */
 export interface DocDraft {
@@ -307,7 +307,7 @@ function docChanged(session: DocSession, field: DocField): boolean {
     case "content":
       return draft.content !== (baseline.body ?? "");
     case "docType":
-      // `""` is 変更しない, not 未設定へ戻す: v1.47.1 has no way to unset a document's type.
+      // `""` is 変更しない, not 未設定へ戻す: v1.48.0 has no way to unset a document's type.
       return draft.docType !== "" && draft.docType !== (baseline.type ?? "");
     case "path":
       // No baseline to compare against (see `DocDraft.path`), so any value is a move request.
@@ -332,14 +332,16 @@ export const DOC_TITLE_EMPTY_REASON =
   "title を空にはできません（doc-4 §3.2 の必須項目で、空にすると文書として読めなくなります）";
 
 /**
- * Why the last tag cannot be removed. `--tags ""` is not among the behaviours doc-5 §3.1 measured on
- * v1.47.1 — `--ref ""` and `--depends-on ""` were, and both exit 0 while clearing nothing. Offering
- * a clear whose effect is unconfirmed would promise something that may silently not happen, so it is
- * withheld rather than issued and hoped for.
+ * Why the last tag cannot be removed. Not a CLI limit: `--tags ""` does clear the tags, on v1.47.1
+ * and v1.48.0 alike (TASK-58 実測). The original reason — that its effect was unmeasured, and that
+ * the same-shaped `--ref ""`/`--depends-on ""` exit 0 while clearing nothing — turned out not to
+ * hold for this flag. What is left is a product decision Atlas has not taken yet, so the reason
+ * says so plainly instead of blaming the CLI (doc-10 §1 requires the stated reason to be the real
+ * one; the tags decision itself is §5). TASK-109 decides whether to offer it.
  */
 export const DOC_EMPTY_TAGS_REASON =
-  "tags を空にする操作は提供しません（v1.47.1 で `--tags \"\"` の効果が確認されておらず、" +
-  "同型の `--ref \"\"`・`--depends-on \"\"` は終了コード 0 のまま何も消さないことが実測されているため。doc-5 §3.1）";
+  "tags を空にする操作は現在提供していません（CLI の `--tags \"\"` はタグを消せますが、" +
+  "Atlas がこの操作を出すかどうかは未決定です。doc-10 §5）";
 
 /** The values a 文書更新 asserts, kept so the re-read can be checked against them ([`docDivergence`]). */
 export interface DocSubmitted {
@@ -471,7 +473,7 @@ export function buildMilestoneAdd(input: MilestoneAddInput): IssuePlan {
  * user commits — doc-10 §6 forbids issuing one of these without that list, because doc-9 §4.2.3
  * treats "the user decided from what they saw" as the thing the check protects.
  *
- * Wider than the read layer's reference resolution on purpose: v1.47.1 treats a value as a reference
+ * Wider than the read layer's reference resolution on purpose: v1.48.0 treats a value as a reference
  * when it matches the id *or* the title modulo surrounding whitespace and case — `"  M-0  "` is
  * rewritten by a rename of `m-0` (doc-9 §4.2.1). Tasks outside `tasks/` are excluded because no
  * operation was observed to touch them.
@@ -563,12 +565,12 @@ export const MILESTONE_REASSIGN_TARGET_IS_SELF_REASON =
   "付け替え先が削除するマイルストーン自身です";
 
 /**
- * v1.47.1 の削除はファイルを消さない (doc-9 §4.2.1 実測): the milestone file moves to
+ * v1.48.0 の削除はファイルを消さない (doc-9 §4.2.1 実測): the milestone file moves to
  * `archive/milestones/`. Stated beside the control because "削除" otherwise reads as an unlink, and
  * doc-10 §6 asks the screen to keep the CLI's word while saying what actually happens.
  */
 export const MILESTONE_REMOVE_MOVES_THE_FILE =
-  "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します（v1.47.1 実測）";
+  "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します（v1.48.0 実測）";
 
 /** `keep` leaves referencing tasks pointing at a milestone that is no longer in the root. */
 export const MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES =
@@ -624,7 +626,7 @@ export function buildMilestoneArchive(milestone: Milestone): IssuePlan {
  * floating beside the list would state the same absence in a second place with no 写像先 beside it.
  */
 export const MILESTONE_DESCRIPTION_NOT_EDITABLE =
-  "作成後の説明の編集は提供しません。v1.47.1 の `milestone` に update/edit サブコマンドが無く、" +
+  "作成後の説明の編集は提供しません。v1.48.0 の `milestone` に update/edit サブコマンドが無く、" +
   "説明は `milestone add -d` で作成時にのみ設定できます（`rename` は名称だけを変え、説明は変えません）。" +
   "CLI が提供するまで Atlas も提供しません（doc-5 §3.1・§3.2）";
 
@@ -649,7 +651,7 @@ export interface WithheldOperation {
 /**
  * What the マイルストーン区画 still withholds (doc-10 §6). 改称・削除・アーカイブ left this list once
  * doc-9 §4.2 defined their 照合 (TASK-45); what remains is missing for the other family of reason —
- * v1.47.1 has no subcommand for it — so no entry here speaks of 照合不能 any more. Kept as a list of
+ * v1.48.0 has no subcommand for it — so no entry here speaks of 照合不能 any more. Kept as a list of
  * one rather than folded into a sentence: the 区画's three points (名称・写像先・理由) are what tell
  * "Atlas decided against this" apart from a disabled button (doc-11 §5).
  */
@@ -669,7 +671,7 @@ export const WITHHELD_MILESTONE_OPERATIONS: WithheldOperation[] = [
  * the milestone list: "there is no unpressable button here" and "this was decided against" are only
  * told apart when the presentation matches.
  *
- * The delete is absent for two reasons in sequence. v1.47.1's `doc` has no delete/remove, and
+ * The delete is absent for two reasons in sequence. v1.48.0's `doc` has no delete/remove, and
  * filling that gap by having Atlas unlink the file itself is outside decision-2's boundary (reads
  * parse directly, writes go through the CLI). Same standing as the milestone description edit:
  * Atlas offers it when the CLI does.
@@ -680,7 +682,7 @@ export const WITHHELD_DOCUMENT_OPERATIONS: WithheldOperation[] = [
     label: "文書の削除",
     mapping: "`doc` に delete/remove 相当のサブコマンドなし",
     reason:
-      "v1.47.1 の `doc` に削除サブコマンドが無く、Atlas が管理ファイルを直接消すことは " +
+      "v1.48.0 の `doc` に削除サブコマンドが無く、Atlas が管理ファイルを直接消すことは " +
       "decision-2 の境界（更新は Backlog CLI 経由）の外にあるため提供しません（doc-10 §5）。" +
       "文書を消す必要があるときは、対象プロジェクトで直接ファイルを操作してください。",
   },
@@ -691,7 +693,7 @@ export const WITHHELD_DOCUMENT_OPERATIONS: WithheldOperation[] = [
 /** One field the create form does not offer, with its reason and its post-creation route. */
 export interface OmittedCreateField {
   label: string;
-  /** The flag v1.47.1's `task create` takes it on — shown so the absence cannot read as「CLI に無い」. */
+  /** The flag v1.48.0's `task create` takes it on — shown so the absence cannot read as「CLI に無い」. */
   flag: string;
   /** Why there is no field. Written as a product judgment — doc-10 §7 forbids「CLI に無い」. */
   reason: string;
@@ -707,7 +709,7 @@ export interface OmittedCreateField {
  */
 export const TASK_CREATE_SCOPE_NOTE =
   "作成フォームは、タスクを識別し分類するのに要る項目へ絞ってあります。" +
-  "以下は v1.47.1 の `task create` が受け取り、作成された管理ファイルへ保存する項目ですが" +
+  "以下は v1.48.0 の `task create` が受け取り、作成された管理ファイルへ保存する項目ですが" +
   "（doc-5 §3、2026-07-29 実測）、Atlas の製品判断で欄を置いていません（doc-10 §7）。";
 
 export const TASK_CREATE_OMITTED_FIELDS: OmittedCreateField[] = [

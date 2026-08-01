@@ -91,7 +91,7 @@ function blockedReason(plan: IssuePlan): string {
   return plan.reason;
 }
 
-const READY: CliReadiness = { state: "ready", version: "1.47.1" };
+const READY: CliReadiness = { state: "ready", version: "1.48.0" };
 
 // --- 新規タスク作成 (doc-5 §3 task create・doc-10 §7 作成時に渡す範囲, AC #1) ------------------
 
@@ -125,7 +125,7 @@ describe("buildTaskCreate", () => {
   });
 
   it("carries nothing outside the create-time range, whatever the CLI would accept", () => {
-    // The range is Atlas's, not v1.47.1's: `task create` also takes `-a`/`--plan`/`--notes`/
+    // The range is Atlas's, not v1.48.0's: `task create` also takes `-a`/`--plan`/`--notes`/
     // `--ref`/`--depends-on` and stores them (doc-5 §3, 実測). Keeping the form narrower is the
     // product judgment stated on `TaskCreateInput`, so this fixes what the operation may carry —
     // it is not a record of a CLI limit.
@@ -155,7 +155,7 @@ describe("buildTaskCreate", () => {
   });
 
   it("refuses a label containing a comma, which the CLI would split in two", () => {
-    // `--labels` takes one comma-separated value in v1.47.1 (doc-5 §3): "a,b" would become two
+    // `--labels` takes one comma-separated value in v1.48.0 (doc-5 §3): "a,b" would become two
     // labels with nothing reporting it.
     expect(blockedReason(buildTaskCreate(taskInput({ labels: ["ui,auth"] })))).toContain("ui,auth");
   });
@@ -244,7 +244,7 @@ describe("buildDocUpdate", () => {
     expect(blockedReason(buildDocUpdate(session))).toBe(DOC_TITLE_EMPTY_REASON);
   });
 
-  it("refuses emptying tags, whose CLI effect v1.47.1 has not been measured for", () => {
+  it("refuses emptying tags, which Atlas has not decided to offer (the CLI can do it)", () => {
     const session = setDocField(startDocSession(document()), "tags", []);
     expect(blockedReason(buildDocUpdate(session))).toBe(DOC_EMPTY_TAGS_REASON);
   });
@@ -312,7 +312,7 @@ describe("マイルストーンの提供範囲", () => {
 
   it("keeps only the description edit withheld, now that 照合 is defined for the other three", () => {
     // doc-10 §6 after TASK-45: 改称・削除・アーカイブ are offered, so the 区画 holds the one entry
-    // whose cause is different — v1.47.1 has no subcommand for it.
+    // whose cause is different — v1.48.0 has no subcommand for it.
     expect(WITHHELD_MILESTONE_OPERATIONS.map((entry) => entry.kind)).toEqual(["describe"]);
     for (const entry of WITHHELD_MILESTONE_OPERATIONS) {
       expect(entry.label).not.toBe("");
@@ -342,10 +342,10 @@ const MILESTONE: Milestone = {
 describe("参照タスク集合 (doc-9 §4.2.2)", () => {
   const tasks = [
     taskView({ id: "TASK-1", milestone: "m-1" }),
-    // v1.47.1 matches the title ignoring surrounding space and case, so this one is rewritten too
+    // v1.48.0 matches the title ignoring surrounding space and case, so this one is rewritten too
     // even though the read layer resolves it to nothing (doc-9 §4.2.1).
     taskView({ id: "TASK-2", milestone: "  phase ONE  " }),
-    // The id padded and upper-cased is a reference to v1.47.1 too (doc-9 §4.2.1), so an id compared
+    // The id padded and upper-cased is a reference to v1.48.0 too (doc-9 §4.2.1), so an id compared
     // exactly would leave this one out of the set — and out of what the screen shows.
     taskView({ id: "TASK-3", milestone: "  M-1  " }),
     taskView({ id: "TASK-8", milestone: null }),
@@ -466,7 +466,7 @@ describe("buildMilestoneArchive", () => {
 // --- 文書の提供しない操作 (doc-10 §5) ----------------------------------------------------------
 
 describe("発行の可否", () => {
-  const ready: CliReadiness = { state: "ready", version: "1.47.1" };
+  const ready: CliReadiness = { state: "ready", version: "1.48.0" };
   const plan: IssuePlan = { state: "ready", action: [{ op: "milestoneAdd", name: "m-2" }] };
 
   it("lets a caller hold issuance with its own reason, ahead of the form's state", () => {
@@ -502,7 +502,7 @@ describe("文書の提供範囲", () => {
     // The reason has to be in two steps: that the CLI lacks it, and that Atlas does not fill the
     // gap by unlinking the file itself (decision-2's boundary). With only the first, it reads as
     // "then Atlas should just delete it".
-    expect(remove.reason).toContain("v1.47.1");
+    expect(remove.reason).toContain("v1.48.0");
     expect(remove.reason).toContain("decision-2");
     expect(remove.mapping).not.toBe("");
   });
@@ -512,7 +512,7 @@ describe("文書の提供範囲", () => {
 
 describe("新規タスク作成の範囲", () => {
   it("states the narrowing as a product judgment, never as a missing CLI feature", () => {
-    // doc-10 §7 forbids writing「CLI に無い」: v1.47.1's `task create` does accept these (measured),
+    // doc-10 §7 forbids writing「CLI に無い」: v1.48.0's `task create` does accept these (measured),
     // so it would be false — and it would leave the CLI as a pretext for widening the form later.
     expect(TASK_CREATE_SCOPE_NOTE).toContain("製品判断");
     for (const field of TASK_CREATE_OMITTED_FIELDS) {
@@ -524,7 +524,7 @@ describe("新規タスク作成の範囲", () => {
     }
   });
 
-  it("covers exactly the fields v1.47.1 accepts and this form does not offer", () => {
+  it("covers exactly the fields v1.48.0 accepts and this form does not offer", () => {
     expect(TASK_CREATE_OMITTED_FIELDS.map((field) => field.flag)).toEqual([
       "-a",
       "--plan",

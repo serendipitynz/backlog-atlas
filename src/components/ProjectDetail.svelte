@@ -1042,7 +1042,7 @@
                     onsave={updateDoc}
                   />
                   <p class="hint">
-                    `doc update --content` は本文を全置換します（v1.47.1 に部分更新はありません。doc-5
+                    `doc update --content` は本文を全置換します（v1.48.0 に部分更新はありません。doc-5
                     §3.1）。この欄は読み取った本文全文で、発行時はここにある全文をそのまま渡します。
                   </p>
                 </div>
@@ -1249,7 +1249,7 @@
                             <span>参照するタスクも更新する（外すと --no-update-tasks）</span>
                           </label>
                           <p class="hint">
-                            v1.47.1 の改称は id（{milestone.id}）を変えないため、実際に書き換わるのは
+                            v1.48.0 の改称は id（{milestone.id}）を変えないため、実際に書き換わるのは
                             milestone 値が id 以外のタスクだけです。
                           </p>
                         {:else if open === "remove"}
@@ -1522,7 +1522,7 @@
           {/if}
 
           <!-- The omissions are stated as a product judgment (doc-10 §7), never as「CLI に無い」—
-               v1.47.1's `task create` does accept these (measured), so that would be false. -->
+               v1.48.0's `task create` does accept these (measured), so that would be false. -->
           <div class="scope">
             <h3>この区画が欄を出さない項目</h3>
             <p>{TASK_CREATE_SCOPE_NOTE}</p>

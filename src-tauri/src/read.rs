@@ -41,7 +41,7 @@ use std::path::{Path, PathBuf};
 const DRAFT_ID_PREFIX: &str = "DRAFT";
 
 /// Fallback task prefix when `config.yml` omits `task_prefix`. Matches the Backlog CLI's own
-/// default (measured on v1.47.1); a missing optional key must not make the root unreadable.
+/// default (measured on v1.48.0); a missing optional key must not make the root unreadable.
 const DEFAULT_TASK_PREFIX: &str = "TASK";
 
 /// ルート読取不能 (doc-4 §5): the root as a whole cannot be read, so no model exists for it.
@@ -324,7 +324,7 @@ fn parse_task(path: &Path, text: &str, slug: &str, dir: ScanDir, config: &Config
 /// in `tasks/` would enter the active-only default swimlane as an ordinary task (doc-7).
 ///
 /// Prefix matching is case-insensitive. `backlog init --defaults` writes `task_prefix: "task"`
-/// while the ids it then generates are `TASK-N` (measured on v1.47.1), so a case-sensitive
+/// while the ids it then generates are `TASK-N` (measured on v1.48.0), so a case-sensitive
 /// comparison would degrade every task in a default-initialized root.
 fn check_task_id(id: &str, dir: ScanDir, config: &Config, events: &mut Vec<DegradeEvent>) {
     let is_draft = is_prefixed_number(id, DRAFT_ID_PREFIX);
@@ -480,7 +480,7 @@ fn identity(text: &str) -> Option<((String, String), String)> {
 }
 
 /// A milestone's Description is written as a plain `## Description` heading, not a SECTION
-/// pair (measured on v1.47.1), so accept either.
+/// pair (measured on v1.48.0), so accept either.
 fn section_or_heading(body: &str, heading: &str) -> Option<String> {
     let parsed = parse::parse_body(body);
     if parsed.description.is_some() {
@@ -782,7 +782,7 @@ date_format: yyyy-mm-dd\n";
         }
     }
 
-    /// A task file as Backlog v1.47.1 writes one.
+    /// A task file as Backlog v1.48.0 writes one.
     fn task_file(id: &str, status: &str) -> String {
         format!(
             "---\n\
@@ -969,7 +969,7 @@ ordinal: 1000\n\
 
     #[test]
     fn a_task_outside_the_recognized_locations_keeps_an_indeterminate_storage_state() {
-        // A flat archive/*.md — not produced by v1.47.1, but reads must not depend on the
+        // A flat archive/*.md — not produced by v1.48.0, but reads must not depend on the
         // generating version (doc-4 §4), and guessing a storage state would leak the file into
         // the active-only default swimlane (§3.4 last bullet).
         let source = MemorySource::new().file(
@@ -1356,7 +1356,7 @@ updated_date: '2026-07-22 12:25'\n\
     #[test]
     fn the_task_prefix_is_matched_case_insensitively() {
         // `backlog init --defaults` writes task_prefix: "task" while generating TASK-N ids
-        // (measured on v1.47.1); a case-sensitive check would degrade every task in such a root.
+        // (measured on v1.48.0); a case-sensitive check would degrade every task in such a root.
         let mut source = MemorySource::new();
         source.config = Some("statuses: [\"To Do\"]\ntask_prefix: \"task\"\n".to_string());
         let source = source.file(

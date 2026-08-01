@@ -1542,7 +1542,7 @@ ordinal: 1000\n\
     impl BacklogCli for FakeCli {
         fn run(&self, _dir: Option<&Path>, args: &[String]) -> std::io::Result<CliRun> {
             self.calls.borrow_mut().push(args.to_vec());
-            let stdout = if args == ["--version"] { "1.47.1" } else { "" };
+            let stdout = if args == ["--version"] { "1.48.0" } else { "" };
             Ok(CliRun {
                 success: true,
                 code: Some(0),
@@ -2034,7 +2034,7 @@ ordinal: 1000\n\
 
     /// End-to-end against the *real* `backlog` on PATH: the JSON タスク詳細 sends, through the
     /// operation map, into a file the read layer then re-reads. It is the only test that proves the
-    /// composite AC replacement and the References 全置換 behave on v1.47.1 the way doc-5 §3 says
+    /// composite AC replacement and the References 全置換 behave on v1.48.0 the way doc-5 §3 says
     /// they do — every other test stops at the argument array.
     ///
     /// `#[ignore]` by default for the same reason as the watch test in `sync.rs`: it asserts on an
@@ -2148,7 +2148,7 @@ references:\n  - https://example.test/one\n\
 
     /// The per-item AC edit's index frames, end to end against the real CLI. One `task edit`
     /// resolves `--remove-ac` against the criteria as read but `--check-ac` against what is left
-    /// after the removals (measured on v1.47.1), so a delta carrying the numbers the user pointed
+    /// after the removals (measured on v1.48.0), so a delta carrying the numbers the user pointed
     /// at would check a different criterion — silently, whenever the shifted index is still in
     /// range. The frontend renumbers before sending; this pins what the renumbered form does.
     ///
@@ -2408,7 +2408,7 @@ labels: []\n\
 
         let cli = FakeCli::default();
         let capability = capability(&cli);
-        // Emptying references is not something v1.47.1 can do (doc-5 §3.1): refused before launch.
+        // Emptying references is not something v1.48.0 can do (doc-5 §3.1): refused before launch.
         let action = vec![UpdateOperation::TaskEdit {
             task_id: "TASK-1".to_string(),
             edit: TaskEdit {
@@ -2459,7 +2459,7 @@ labels: []\n\
                         "---\nid: TASK-1\ntitle: Task TASK-1\nstatus: Done\nlabels: []\n---\n\n",
                     )?;
                 }
-                let stdout = if args == ["--version"] { "1.47.1" } else { "" };
+                let stdout = if args == ["--version"] { "1.48.0" } else { "" };
                 Ok(CliRun {
                     success: true,
                     code: Some(0),
