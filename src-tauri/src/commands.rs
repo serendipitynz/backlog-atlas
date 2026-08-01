@@ -1602,18 +1602,23 @@ ordinal: 1000\n\
             &task_file("TASK-2", "Done", "[]"),
         );
         let ledger_path = temp.path.join("projects.toml");
+        // The temp path goes through `toml_path`, not into `"{}"`: on Windows the path is
+        // `C:\Users\…`, whose `\U` is an invalid escape inside a basic string, and the parse would
+        // fail before this reached the alias it is about. `join` for the same reason a `/` literal
+        // is not appended — the value has to be the path this platform spells.
         std::fs::write(
             &ledger_path,
             format!(
                 "schema_version = 1\n\
                  [[project]]\n\
                  slug = \"atlas\"\n\
-                 project_root = \"{root}\"\n\
-                 backlog_root = \"{root}/backlog\"\n\
+                 project_root = {root}\n\
+                 backlog_root = {backlog_root}\n\
                  git_remote_present = false\n\
                  [project.status_aliases]\n\
                  Done = \"Shipped\"\n",
-                root = temp.path.display()
+                root = crate::ledger::toml_path(&temp.path),
+                backlog_root = crate::ledger::toml_path(&temp.path.join("backlog")),
             ),
         )
         .unwrap();
