@@ -94,10 +94,13 @@ Svelte コンパイラを要するのは 2 つ目のプロジェクトだけで�
 **wire payload は Rust 側を正本として記録する。** `src/lib/wire.ts` はこの crate の
 serde 出力を手書きで写しており、どちらのコンパイラも他方を検査しない。
 `src-tauri/src/wire_fixtures.rs` が payload ごとに 1 件を直列化して
-`src-tauri/wire-fixtures/*.json` と照合し、`src/lib/wire-fixture.test.ts` が記録された各形状の
-キーを対応する `wire.ts` 型の `keyof` と突き合わせ、payload にフロントエンドの関数を通す。
-検査たらしめているのはこの `keyof` の照合である — cast は任意の JSON を受け入れる — そして
-両方向に網羅的なので、3 者を 2 つずつ一致させることはできない。記録の更新は
+`src-tauri/wire-fixtures/*.json` と照合し、`src/lib/wire-fixture.test.ts` が各記録を `wire.ts`
+に対して 2 度検査する — キーを `keyof` と、**値の型**を同じ型を注釈した見本値と — うえで
+payload にフロントエンドの関数を通す。両方が必要である: `keyof` が固定するのは項目名であり、
+number から string へ変わった項目は名前を保つ。どちらも cast ではなく (cast は任意の JSON を
+受け入れる)、テスト内に書いた仕様でもない (どちらも tsc が `wire.ts` から決める) ので、Rust の
+出力・`wire.ts`・テストを 2 つずつ一致させることはできない。見本値は `null` を残さず全項目を
+埋める。`null` は何とでも一致するためである。記録の更新は
 `ATLAS_RECORD_WIRE_FIXTURES=1 cargo test` で行い、**結果をコミットする** — フロント側の
 テストはコミットされたファイルを読む。標本は一時ディレクトリの読取ではなく、絶対パスを
 作り置いた struct リテラルで組む。リテラルなら新しい項目をコンパイラが名指しし、記録した

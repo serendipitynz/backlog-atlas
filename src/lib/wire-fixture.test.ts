@@ -120,6 +120,210 @@ function keysOfType<T extends object>() {
   ): string[] => (names as readonly (keyof T)[]).map(String).sort();
 }
 
+/**
+ * A value's *type* shape, ignoring what it holds: `"1000"` and `"m-1"` are the same shape, `1000` is
+ * a different one. An array reports its first element's shape, which is enough here because the
+ * recordings hold homogeneous lists.
+ */
+type Shape = string | Shape[] | { [key: string]: Shape };
+
+function shapeOf(value: unknown): Shape {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return value.length === 0 ? [] : [shapeOf(value[0])];
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, held]) => [key, shapeOf(held)]),
+    );
+  }
+  return typeof value;
+}
+
+/**
+ * Where the recorded payload's value types differ from `expected`'s, as dotted paths.
+ *
+ * `expected` is always a value tsc has already checked against `wire.ts`, so this is the half the
+ * key-set comparison cannot do: `keysOfType` fixes the field *names*, and a Rust field that changed
+ * from a number to a string keeps its name. Both halves are needed, and both are anchored to
+ * `wire.ts` rather than to a spec written here — change `Task["ordinal"]` to `string` and the
+ * exemplar below stops compiling.
+ *
+ * `null` on either side agrees with anything, because almost every field on this wire is `X | null`
+ * and which of the two a sample happens to carry is not the contract. What is left is exactly the
+ * mismatch class this exists for: a field whose non-null type moved.
+ */
+function shapeMismatches(recorded: Shape, expected: Shape, at = ""): string[] {
+  if (recorded === "null" || expected === "null") return [];
+  if (Array.isArray(recorded) || Array.isArray(expected)) {
+    if (!Array.isArray(recorded) || !Array.isArray(expected)) {
+      return [`${at}: ${JSON.stringify(recorded)} vs ${JSON.stringify(expected)}`];
+    }
+    // An empty list on either side says nothing about its element type.
+    return recorded.length === 0 || expected.length === 0
+      ? []
+      : shapeMismatches(recorded[0], expected[0], `${at}[]`);
+  }
+  if (typeof recorded === "object" || typeof expected === "object") {
+    if (typeof recorded !== "object" || typeof expected !== "object") {
+      return [`${at}: ${JSON.stringify(recorded)} vs ${JSON.stringify(expected)}`];
+    }
+    // Only the keys both carry: which optional fields a sample includes is the key-set comparison's
+    // business, and a tagged union's variants legitimately differ here.
+    return Object.keys(recorded)
+      .filter((key) => key in expected)
+      .flatMap((key) => shapeMismatches(recorded[key], expected[key], at === "" ? key : `${at}.${key}`));
+  }
+  return recorded === expected ? [] : [`${at}: ${recorded} vs ${expected}`];
+}
+
+/** Assert a recorded payload's value types against a `wire.ts`-typed exemplar. */
+function sameValueTypes(name: string, recorded: unknown, exemplar: unknown): void {
+  expect(shapeMismatches(shapeOf(recorded), shapeOf(exemplar)), name).toEqual([]);
+}
+
+// --- the exemplars ------------------------------------------------------------------------------
+//
+// Each is annotated with its `wire.ts` type, so tsc is what decides its value types: none of these
+// literals can carry a type `wire.ts` does not declare. That is what keeps them from being a third
+// spec — the objection the key lists had before `keysOfType`.
+//
+// Every field is populated rather than left `null` where the type allows it. A `null` agrees with
+// anything (see `shapeMismatches`), so a null-heavy exemplar would quietly check less and less.
+
+const CRITERION_EXEMPLAR: AcceptanceCriterion = { number: 1, text: "x", checked: true };
+
+const TASK_EXEMPLAR: Task = {
+  sourcePath: "/repos/atlas/backlog/tasks/task-1 - a.md",
+  project: "atlas",
+  storageState: "active",
+  id: "TASK-1",
+  title: "A task",
+  status: "In Progress",
+  type: ["feature"],
+  labels: ["ui"],
+  assignee: ["someone"],
+  priority: "high",
+  ordinal: 1000,
+  milestone: "m-1",
+  createdDate: "2026-07-01 10:00",
+  updatedDate: "2026-07-20 11:00",
+  dependencies: ["TASK-2"],
+  documentation: ["doc-7"],
+  references: ["https://example.test/pull/1"],
+  description: "What it is for.",
+  acceptanceCriteria: [CRITERION_EXEMPLAR],
+  implementationPlan: "Do it.",
+  implementationNotes: "Done it.",
+  unknownSections: [{ name: "REVIEW", body: "Kept." }],
+  health: { state: "degraded", events: [{ event: "danglingReference", kind: "documentation", target: "doc-99" }] },
+};
+
+const SNAPSHOT_EXEMPLAR: ProjectSnapshot = {
+  slug: "atlas",
+  config: {
+    projectName: "Atlas",
+    taskPrefix: "TASK",
+    statuses: ["To Do"],
+    defaultStatus: "To Do",
+    dateFormat: "yyyy-MM-dd",
+  },
+  tasks: [
+    {
+      task: TASK_EXEMPLAR,
+      interpretation: {
+        status: { raw: "In Progress", column: "inProgress", declaration: "declared" },
+        types: [{ value: "feature", known: true }],
+        pullRequests: [
+          {
+            url: "https://example.test/pull/1",
+            host: "gitHub",
+            owner: "serendipitynz",
+            repo: "backlog-atlas",
+            number: 1,
+          },
+        ],
+      },
+    },
+  ],
+  milestones: [
+    {
+      sourcePath: "/repos/atlas/backlog/milestones/m-1 - phase.md",
+      id: "m-1",
+      title: "Phase one",
+      description: "The first phase.",
+    },
+  ],
+  documents: [
+    {
+      sourcePath: "/repos/atlas/backlog/docs/doc-7 - screen.md",
+      id: "doc-7",
+      title: "Screen design",
+      type: "specification",
+      tags: ["ui"],
+      createdDate: "2026-07-01 10:00",
+      updatedDate: "2026-07-20 11:00",
+      body: "The screen.",
+    },
+  ],
+  decisions: [
+    {
+      id: "decision-12",
+      title: "Colour tokens",
+      status: "accepted",
+      date: "2026-07-10",
+      body: "The tokens.",
+    },
+  ],
+  createStatusCandidates: [{ column: "toDo", statuses: ["To Do"] }],
+};
+
+const ENTRY_EXEMPLAR: ProjectEntry = {
+  slug: "atlas",
+  project_root: "/repos/atlas",
+  backlog_root: "/repos/atlas/backlog",
+  git_remote_present: true,
+  status_aliases: { Doing: "inProgress" },
+};
+
+const LEDGER_EXEMPLAR: LedgerResponse = {
+  ledger: { schema_version: 1, project: [ENTRY_EXEMPLAR] },
+  readOnly: false,
+};
+
+const SETTINGS_EXEMPLAR: LoadedSettings = {
+  settings: {
+    schema_version: 1,
+    theme: "nord",
+    card_density: "l",
+    default_storage_filter: ["active", "indeterminate"],
+    default_detail_placement: "modal",
+    watch_external_changes: false,
+    external_editor: { program: "code", args: ["-w"] },
+  },
+  status: { state: "readOnly", version: 2 },
+};
+
+const HISTORY_EXEMPLAR: TaskHistory = {
+  commits: {
+    state: "searched",
+    commits: [
+      {
+        id: "0123456789abcdef0123456789abcdef01234567",
+        shortId: "0123456",
+        summary: "TASK-1: do it",
+        date: "2026-07-20T10:00:00+09:00",
+        author: "Someone",
+      },
+    ],
+  },
+  remote: { kind: "gitHub", owner: "serendipitynz", repo: "backlog-atlas" },
+  relations: [
+    {
+      pullRequest: "https://example.test/pull/1",
+      outcome: { state: "resolved", commitIds: ["0123456789abcdef0123456789abcdef01234567"] },
+    },
+  ],
+};
+
 const LOADED = fixture<ProjectLoad>("project_load_loaded.json");
 
 function snapshotOf(load: ProjectLoad): ProjectSnapshot {
@@ -330,6 +534,119 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       filter: defaultFilter(["active", "indeterminate"]),
     });
     expect(rows[0].state).toBe("loaded");
+  });
+});
+
+describe("記録した payload の値の型が wire.ts の宣言と一致する", () => {
+  // The half `keysOfType` cannot do. A Rust field that changed from a number to a string keeps its
+  // name, so the key comparison stays green — which is what this catches. Each exemplar is annotated
+  // with its `wire.ts` type, so the types being compared against are the declarations themselves.
+
+  it("ProjectLoad — スナップショット全体", () => {
+    sameValueTypes("project_load_loaded", snapshotOf(LOADED), SNAPSHOT_EXEMPLAR);
+  });
+
+  it("ReloadEvent も同じスナップショットを運ぶ", () => {
+    const event = fixture<ReloadEvent>("reload_event.json");
+    sameValueTypes("reload_event", event, {
+      slug: "atlas",
+      load: { state: "loaded", project: SNAPSHOT_EXEMPLAR },
+    } satisfies ReloadEvent);
+  });
+
+  it("Ledger と RegisterResponse", () => {
+    sameValueTypes("ledger_response", fixture<LedgerResponse>("ledger_response.json"), LEDGER_EXEMPLAR);
+    sameValueTypes("register_response", fixture<RegisterResponse>("register_response.json"), {
+      entry: ENTRY_EXEMPLAR,
+      ledger: LEDGER_EXEMPLAR,
+    } satisfies RegisterResponse);
+  });
+
+  it("LoadedSettings", () => {
+    sameValueTypes("loaded_settings", fixture<LoadedSettings>("loaded_settings.json"), SETTINGS_EXEMPLAR);
+  });
+
+  it("TaskHistory と CommitSearch の縮退", () => {
+    sameValueTypes("task_history", fixture<TaskHistory>("task_history.json"), HISTORY_EXEMPLAR);
+    sameValueTypes(
+      "commit_search_no_repository",
+      fixture<CommitSearch>("commit_search_no_repository.json"),
+      { state: "noRepository", projectRoot: "/repos/atlas" } satisfies CommitSearch,
+    );
+    sameValueTypes(
+      "commit_search_unreadable",
+      fixture<CommitSearch>("commit_search_unreadable.json"),
+      { state: "unreadable", detail: "git not found on PATH" } satisfies CommitSearch,
+    );
+  });
+
+  it("UpdateResult", () => {
+    sameValueTypes(
+      "update_result_conflict",
+      fixture<UpdateResult>("update_result_conflict.json"),
+      {
+        state: "conflict",
+        diverged: ["tasks/task-1 - a.md"],
+        unread: ["tasks/task-9 - new.md"],
+        project: SNAPSHOT_EXEMPLAR,
+      } satisfies UpdateResult,
+    );
+    sameValueTypes("update_result_ran_failed", fixture<UpdateResult>("update_result_ran_failed.json"), {
+      state: "ran",
+      outcome: {
+        state: "failed",
+        command: "task edit",
+        kind: { kind: "nonZero", code: 1 },
+        stderr: "no such task",
+        completedBefore: 1,
+        partial: true,
+      },
+      project: null,
+    } satisfies UpdateResult);
+  });
+
+  it("CliReadiness と外部エディタ経路", () => {
+    sameValueTypes("cli_readiness", fixture<CliReadiness>("cli_readiness.json"), {
+      state: "ready",
+      version: "1.47.1",
+    } satisfies CliReadiness);
+    sameValueTypes("editor_readiness", fixture<EditorReadiness>("editor_readiness.json"), {
+      configured: { source: "appSettings", program: "code", args: ["-w"] },
+      association: "open",
+    } satisfies EditorReadiness);
+    sameValueTypes("editor_launch", fixture<EditorLaunch>("editor_launch.json"), {
+      method: "association",
+      program: "open",
+      args: ["/repos/atlas/backlog/tasks/task-1 - a.md"],
+    } satisfies EditorLaunch);
+  });
+
+  it("CommandError の各変種", () => {
+    // Compared one by one rather than as a list: the variants are a tagged union, so a single
+    // exemplar would only ever describe the one whose tag it carries.
+    const errors = fixture<CommandError[]>("command_errors.json");
+    const exemplars: CommandError[] = [
+      { kind: "ledgerRefused", reason: { reason: "duplicateSlug", slug: "atlas" }, detail: "d" },
+      {
+        kind: "ledgerRefused",
+        reason: { reason: "invalidStatusAlias", key: "Doing", value: "nope" },
+        detail: "d",
+      },
+      { kind: "updatesUnavailable", readiness: { state: "unsupported", version: "1.20.0", minimum: "1.47.0" } },
+      { kind: "taskNotFound", slug: "atlas", task_id: "TASK-99" },
+      { kind: "unknownTaskFile", slug: "atlas", path: "/elsewhere/evil.md" },
+      { kind: "editorLaunchFailed", method: "configured", program: "code", detail: "d" },
+    ];
+    expect(errors).toHaveLength(exemplars.length);
+    errors.forEach((error, at) => sameValueTypes(`command_errors[${at}]`, error, exemplars[at]));
+  });
+
+  it("ProjectLoad の unreadable 変種", () => {
+    sameValueTypes("project_load_unreadable", fixture<ProjectLoad>("project_load_unreadable.json"), {
+      state: "unreadable",
+      slug: "gone",
+      error: { kind: "rootUnreadable", slug: "gone", detail: "config.yml not found" },
+    } satisfies ProjectLoad);
   });
 });
 

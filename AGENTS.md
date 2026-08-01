@@ -98,11 +98,15 @@ numbers it returns.
 **Wire payloads are recorded, with the Rust side as their source.** `src/lib/wire.ts`
 mirrors this crate's serde output by hand and neither compiler checks the other.
 `src-tauri/src/wire_fixtures.rs` serializes one sample per payload and compares it with
-`src-tauri/wire-fixtures/*.json`; `src/lib/wire-fixture.test.ts` compares each recorded
-shape's keys with `keyof` of its `wire.ts` type and runs the frontend's functions over
-the payload. The `keyof` comparison is what makes it a check rather than a cast — a cast
-accepts any JSON — and it is exhaustive in both directions, so the three cannot be
-brought into agreement two at a time. Re-record with
+`src-tauri/wire-fixtures/*.json`; `src/lib/wire-fixture.test.ts` checks each recording
+against `wire.ts` twice — its keys against `keyof`, its **value types** against an
+exemplar annotated with the same type — and then runs the frontend's functions over the
+payload. Both halves are needed: `keyof` fixes the field names, and a field that changed
+from a number to a string keeps its name. Neither is a cast (a cast accepts any JSON) and
+neither is a spec written in the test (tsc decides both from `wire.ts`), so the Rust
+output, `wire.ts`, and the test cannot be brought into agreement two at a time. Populate
+every field of an exemplar rather than leaving it `null`: a `null` agrees with anything.
+Re-record with
 `ATLAS_RECORD_WIRE_FIXTURES=1 cargo test` and **commit the result** — the frontend test
 reads the committed file. The samples are built as struct literals with fabricated
 absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
