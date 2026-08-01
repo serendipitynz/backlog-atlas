@@ -48,6 +48,26 @@ Atlas はタスクのファイルを利用者自身の外部エディタで開�
 保存を外部変更として再読込するだけである。Atlas 自身が管理対象 Markdown を書かない不変
 は保たれるが、管理対象 Markdown が変わる経路は CLI 媒介の経路だけではない。
 
+## ソースからのビルド
+
+必要なもの: Node 24、pnpm 10.30.3、および Tauri 2 が要求する Rust ツールチェーン。
+Node のメジャーは `.node-version` に固定してある。fnm・nodenv・asdf・mise と
+`actions/setup-node` はいずれもこのファイルを読む。pnpm は `package.json` の
+`packageManager` に固定してあり、Corepack がこれを読む。Node が要るのはビルド時だけで
+ある。出荷物は Vite の出力を内包した Tauri バイナリであり、Node は入らない。
+
+```sh
+pnpm install
+pnpm test            # Vitest
+pnpm run check       # svelte-check
+pnpm run build       # Vite。出力は dist/
+pnpm tauri dev       # アプリを起動する
+pnpm tauri build     # アプリをパッケージする
+```
+
+Rust コアは `src-tauri/` で従来のコマンドを使う (`cargo test`、`cargo fmt`、
+`cargo clippy`)。
+
 ## 状態
 
 設計フェーズ (m-0) は完了し、実装フェーズ (m-1) が進行中である。decision-1〜13 を

@@ -48,6 +48,22 @@
 
 状態の変更も、他のタスク更新と同じく Backlog CLI 呼び出しで行う。
 
+## ツールチェーン
+
+- Node 24 と pnpm 10.30.3 を使う。Node のメジャーは `.node-version` で、pnpm は
+  `package.json` の `packageManager` で固定する。`.nvmrc` と `engines.node` は意図的に
+  置かない。ツールごとに固定箇所を一つに保ち、二箇所がずれる場所を作らないためである。
+- パッケージマネージャは pnpm だけを使う。導入は `pnpm install`、スクリプトはすべて
+  pnpm 経由で実行する (`pnpm test`、`pnpm run check`、`pnpm run build`、
+  `pnpm tauri dev`、`pnpm tauri build`)。このリポジトリで npm・yarn を実行しない。
+  いずれも `pnpm-lock.yaml` の隣に二つ目の lock ファイルを書いてしまう。
+- Rust 側は従来のコマンドを `src-tauri/` で実行する (`cargo test`、`cargo fmt`、
+  `cargo clippy`)。
+- `pnpm install` は `@parcel/watcher` と `esbuild` を build script 未承認として報告する。
+  承認しないまま残す。`@parcel/watcher` は sass 自身の watch モードにしか要らず、esbuild
+  はプラットフォーム別バイナリを optional dependency で解決するため、いずれの script
+  なしでもビルド・テスト・`svelte-check` は通る。
+
 ## 作業上の規約
 
 - コードコメントは英語、利用者向け説明は日本語を基本にする。
