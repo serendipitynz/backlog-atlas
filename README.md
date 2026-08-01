@@ -52,6 +52,31 @@ protection. Atlas only launches the editor and picks up the save as an external
 change to reload. The invariant that Atlas itself never writes managed Markdown still
 holds; the CLI-mediated path is not the only way managed Markdown changes.
 
+## Building from source
+
+Requirements: Node 24, pnpm 10.30.3, and the Rust toolchain Tauri 2 asks for. The Node
+major is pinned in `.node-version`, holding the bare major `24`. fnm reads that file by
+default and resolves the bare major on its own (measured with fnm 1.39.0: it selects
+v24.18.1), and `actions/setup-node` reads it through `node-version-file`. Other version
+managers need a step of their own — asdf reads `.node-version` only under
+`legacy_version_file = yes`, mise keeps idiomatic version files off by default, and
+nodenv does not resolve a bare major without an alias plugin — so with those, select
+Node 24 however that tool expects. pnpm is pinned in `package.json`'s `packageManager`
+field, which Corepack reads. Node is a build-time requirement only — the shipped
+artifact is a Tauri binary with the Vite output inside it, and it carries no Node.
+
+```sh
+pnpm install
+pnpm test            # Vitest
+pnpm run check       # svelte-check
+pnpm run build       # Vite, into dist/
+pnpm tauri dev       # run the app
+pnpm tauri build     # package the app
+```
+
+The Rust core has its own commands, run from `src-tauri/`: `cargo test`, `cargo fmt`,
+`cargo clippy`.
+
 ## Status
 
 The design phase (m-0) is complete and the implementation phase (m-1) is under way.
