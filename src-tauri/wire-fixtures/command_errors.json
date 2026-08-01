@@ -1,0 +1,43 @@
+[
+  {
+    "kind": "ledgerRefused",
+    "reason": {
+      "reason": "duplicateSlug",
+      "slug": "atlas"
+    },
+    "detail": "slug already registered"
+  },
+  {
+    "kind": "ledgerRefused",
+    "reason": {
+      "reason": "invalidStatusAlias",
+      "key": "Doing",
+      "value": "nope"
+    },
+    "detail": "not a canonical column"
+  },
+  {
+    "kind": "updatesUnavailable",
+    "readiness": {
+      "state": "unsupported",
+      "version": "1.20.0",
+      "minimum": "1.47.0"
+    }
+  },
+  {
+    "kind": "taskNotFound",
+    "slug": "atlas",
+    "task_id": "TASK-99"
+  },
+  {
+    "kind": "unknownTaskFile",
+    "slug": "atlas",
+    "path": "/elsewhere/evil.md"
+  },
+  {
+    "kind": "editorLaunchFailed",
+    "method": "configured",
+    "program": "code",
+    "detail": "No such file or directory"
+  }
+]

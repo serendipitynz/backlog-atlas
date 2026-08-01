@@ -1,0 +1,17 @@
+{
+  "ledger": {
+    "schema_version": 1,
+    "project": [
+      {
+        "slug": "atlas",
+        "project_root": "/repos/atlas",
+        "backlog_root": "/repos/atlas/backlog",
+        "git_remote_present": true,
+        "status_aliases": {
+          "Doing": "inProgress"
+        }
+      }
+    ]
+  },
+  "readOnly": false
+}

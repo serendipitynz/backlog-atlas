@@ -1,0 +1,36 @@
+{
+  "commits": {
+    "state": "searched",
+    "commits": [
+      {
+        "id": "0123456789abcdef0123456789abcdef01234567",
+        "shortId": "0123456",
+        "summary": "TASK-1: do it",
+        "date": "2026-07-20T10:00:00+09:00",
+        "author": "Someone"
+      }
+    ]
+  },
+  "remote": {
+    "kind": "gitHub",
+    "owner": "serendipitynz",
+    "repo": "backlog-atlas"
+  },
+  "relations": [
+    {
+      "pullRequest": "https://example.test/pull/1",
+      "outcome": {
+        "state": "resolved",
+        "commitIds": [
+          "0123456789abcdef0123456789abcdef01234567"
+        ]
+      }
+    },
+    {
+      "pullRequest": "https://example.test/pull/2",
+      "outcome": {
+        "state": "hostUnsupported"
+      }
+    }
+  ]
+}

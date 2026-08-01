@@ -1,0 +1,10 @@
+{
+  "configured": {
+    "source": "appSettings",
+    "program": "code",
+    "args": [
+      "-w"
+    ]
+  },
+  "association": "open"
+}
