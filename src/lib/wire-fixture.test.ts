@@ -448,6 +448,7 @@ const SETTINGS_EXEMPLAR: LoadedSettings = {
     default_storage_filter: ["active", "indeterminate"],
     default_detail_placement: "modal",
     watch_external_changes: false,
+    backlog_cli: "/opt/backlog/backlog",
     external_editor: { program: "code", args: ["-w"] },
   },
   status: { state: "readOnly", version: 2 },
@@ -633,8 +634,8 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
   it("AppSettings — 設定ファイルのキーがそのまま IPC の項目名", () => {
     const loaded = fixture<LoadedSettings>("loaded_settings.json");
     expect(keysOf(loaded)).toEqual(keysOfType<LoadedSettings>()("settings", "status"));
-    // `external_editor` is optional on both sides and skipped when unset, so the recording has to
-    // carry it — an absent key here would let the optional field drop out unnoticed.
+    // `backlog_cli` and `external_editor` are optional on both sides and skipped when unset, so the
+    // recording has to carry them — an absent key here would let an optional field drop out unnoticed.
     expect(keysOf(loaded.settings)).toEqual(
       keysOfType<AppSettings>()(
         "schema_version",
@@ -643,6 +644,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
         "default_storage_filter",
         "default_detail_placement",
         "watch_external_changes",
+        "backlog_cli",
         "external_editor",
       ),
     );
@@ -1060,7 +1062,8 @@ describe("記録した payload を画面の関数がそのまま読める", () =
 
     // `readOnly` carries a `version`, and the notice prints it — a renamed payload field would show
     // the sentence with a hole in it rather than failing.
-    expect(statusNotice(loaded.status)).toContain("2");
+    if (loaded.status.state !== "readOnly") throw new Error("the recording is the readOnly case");
+    expect(statusNotice(loaded.status)).toContain(String(loaded.status.version));
     expect(saveAvailability(loaded.status).enabled).toBe(false);
     expect(editorArgsText(loaded.settings.external_editor)).toBe("-w");
   });

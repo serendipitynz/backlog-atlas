@@ -88,7 +88,7 @@ describe("CLI 縮退帯 (②)", () => {
   it("distinguishes 確認中 from 検出できない, since the two lead to different actions", () => {
     expect(cliDegradedBand(null)).toContain("確認中");
     expect(cliDegradedBand({ state: "unavailable", detail: "not on PATH" })).toContain(
-      "見つかりません",
+      "解決できません",
     );
   });
 

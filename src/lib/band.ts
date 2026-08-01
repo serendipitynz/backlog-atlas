@@ -103,8 +103,10 @@ function cliDegradedSummary(readiness: CliReadiness | null): string | null {
   switch (readiness.state) {
     case "ready":
       return null;
+    // Not "PATH 上に見つかりません": since decision-16 the resolution is アプリ設定 → npm の
+    // サブパッケージ → PATH, so naming PATH alone would state a reason that is not the one that held.
     case "unavailable":
-      return "PATH 上に backlog CLI が見つかりません";
+      return "backlog CLI の実行ファイルを解決できません";
     case "unsupported":
       return `backlog CLI ${readiness.version} は動作確認範囲外です（必要: ${readiness.minimum} 以上）`;
   }

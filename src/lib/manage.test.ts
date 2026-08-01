@@ -586,12 +586,15 @@ describe("issueAvailability", () => {
   it("withholds every operation when there is no supported CLI, before the form is even judged", () => {
     // The form is buildable; the CLI is what is missing, and that verdict has to win.
     const available = issueAvailability(buildTaskCreate(taskInput()), {
-      readiness: { state: "unavailable", detail: "not on PATH" },
+      readiness: { state: "unavailable", detail: "backlog: No such file or directory (os error 2)" },
       busy: false,
     });
     expect(available.state).toBe("blocked");
     if (available.state !== "blocked") throw new Error("unreachable");
-    expect(available.reason).toContain("PATH 上に backlog CLI が見つからない");
+    expect(available.reason).toContain("backlog CLI の実行ファイルを解決できない");
+    // The 起動失敗 detail names the executable that was tried (decision-16 順序 1): it is what the
+    // user corrects when アプリ設定 `backlog_cli` holds a typo, so the reason has to carry it through.
+    expect(available.reason).toContain("backlog: No such file or directory");
   });
 
   it("reports 確認中 rather than 'no CLI' while the probe has not answered", () => {

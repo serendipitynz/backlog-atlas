@@ -17,6 +17,7 @@
 //! | doc-8 §2.1 詳細配置 | [`DetailPlacement`] | 併置サイドバー / 中央モーダル / 全面シングルビュー |
 //! | doc-9 §3.1 継続検出の可否 | [`AppSettings::watch_external_changes`] | whether the per-root file watch is started at all |
 //! | doc-8 §7 外部エディタ指定 | [`AppSettings::external_editor`] | the 起動指定 that outranks `$VISUAL`/`$EDITOR` |
+//! | doc-5 §4 実行ファイル解決の順序 1 段目 | [`AppSettings::backlog_cli`] | the Backlog CLI executable to run, outranking every automatic resolution |
 //! | decision-13 既定値で動いている旨 | [`SettingsStatus`] | why the values in hand are the defaults, and whether saving is allowed |
 //!
 //! ## Reading this file never stops the screen (AC #6)
@@ -42,12 +43,18 @@
 use crate::editor::EditorCommand;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The only schema version this build writes. A file at exactly this version is writable; an unknown
 /// *higher* one degrades to read-only and is left untouched (decision-13, AC #1) — the same rule the
 /// ledger follows (doc-3 §2.2), which decision-13 asks the two files to keep in step.
-pub const KNOWN_SCHEMA_VERSION: u32 = 1;
+///
+/// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16). decision-13 puts 項目の追加 under
+/// this version's management, and the read-only degrade is what the raise buys: left at 1, a build
+/// predating the field would read the newer file as its own version, let serde drop the key it does
+/// not know, and delete the value on its next save. Older files are unaffected — a *lower* version
+/// loads with the missing keys defaulted, and the next save writes this version.
+pub const KNOWN_SCHEMA_VERSION: u32 = 2;
 
 /// カード情報量 (doc-7 §3): which column of the card assignment table is in force.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -122,6 +129,16 @@ pub struct AppSettings {
     /// and doc-9 §3.1 frames turning it off as a deliberate choice with a stated consequence.
     #[serde(default = "watch_external_changes_default")]
     pub watch_external_changes: bool,
+    /// 実行ファイル解決の順序 の 1 段目 (doc-5 §4, decision-16): the Backlog CLI executable to run,
+    /// as an absolute path. Set, it is used as written — the resolution does not check that it exists
+    /// and does not fall back, so a mistyped path surfaces as its own 起動失敗 naming the path rather
+    /// than as "some other CLI ran". Unset — which is the normal case, since the automatic resolution
+    /// covers an npm install on all three platforms — the resolution continues to its later steps.
+    ///
+    /// Placed before `external_editor` for the reason stated there: this is a scalar and TOML forbids
+    /// one after a sub-table. Skipped when unset, like the editor override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backlog_cli: Option<PathBuf>,
     // Last field on purpose: it serializes as the `[external_editor]` sub-table, and TOML forbids a
     // scalar key appearing after a table within the same table. Skipped when unset so a file with no
     // editor override stays terse.
@@ -146,6 +163,7 @@ impl Default for AppSettings {
             default_storage_filter: default_storage_filter(),
             default_detail_placement: DetailPlacement::default(),
             watch_external_changes: watch_external_changes_default(),
+            backlog_cli: None,
             external_editor: None,
         }
     }
@@ -362,6 +380,9 @@ mod tests {
             default_storage_filter: vec![StorageSelection::Active, StorageSelection::Draft],
             default_detail_placement: DetailPlacement::Full,
             watch_external_changes: false,
+            // A path with a space, because that is what an npm global prefix under a Windows user
+            // profile or an Application Support directory looks like (doc-5 §4 順序 1).
+            backlog_cli: Some(PathBuf::from("/opt/my tools/backlog")),
             external_editor: Some(EditorCommand {
                 program: "/Applications/My Editor.app/Contents/MacOS/my editor".into(),
                 args: vec!["-w".into()],
@@ -373,6 +394,16 @@ mod tests {
         let reloaded = LoadedSettings::load(&path);
         assert_eq!(reloaded.status, SettingsStatus::Stored);
         assert_eq!(reloaded.settings, settings);
+
+        // `backlog_cli` is a scalar and `external_editor` a sub-table: TOML forbids the scalar after
+        // the table, so a save that emitted them the other way round would produce a file this very
+        // `load` cannot read. Asserted on the text because the round-trip above passes either way
+        // only as long as the field order stays right.
+        let text = std::fs::read_to_string(&path).expect("written");
+        assert!(
+            text.find("backlog_cli").unwrap() < text.find("[external_editor]").unwrap(),
+            "the scalar has to precede the sub-table:\n{text}"
+        );
     }
 
     #[test]
@@ -391,6 +422,46 @@ mod tests {
             loaded.settings.default_storage_filter,
             vec![StorageSelection::Active]
         );
+    }
+
+    #[test]
+    fn the_version_bump_is_what_stops_an_older_build_dropping_a_newer_field() {
+        // The boundary a new persisted item has to be defended at (decision-13 項目の追加は
+        // スキーマ版の管理対象). Both directions matter, and only the second needs the raise.
+        let tmp = TempDir::new();
+
+        // Older file, this build: the missing keys default and the next save adopts this version, so
+        // raising the number does not strand anyone's existing settings.toml.
+        let older = tmp.path.join("older.toml");
+        std::fs::write(&older, "schema_version = 1\ncard_density = \"s\"\n").unwrap();
+        let loaded = LoadedSettings::load(&older);
+        assert_eq!(loaded.status, SettingsStatus::Stored);
+        assert_eq!(loaded.settings.card_density, CardDensity::S);
+        assert_eq!(loaded.settings.backlog_cli, None);
+        save(&older, &loaded.settings).expect("an older file is ours to rewrite");
+        assert_eq!(
+            LoadedSettings::load(&older).settings.schema_version,
+            KNOWN_SCHEMA_VERSION
+        );
+
+        // Newer file, this build standing in for the build that predates `backlog_cli`: it must not be
+        // parsed and must not be written. Left at the old number, this file would read as Stored, its
+        // unknown key would be dropped by serde, and the next save would delete it.
+        let newer = tmp.path.join("newer.toml");
+        let written = format!(
+            "schema_version = {}\nbacklog_cli = \"/opt/backlog/backlog\"\n",
+            KNOWN_SCHEMA_VERSION + 1
+        );
+        std::fs::write(&newer, &written).unwrap();
+        let loaded = LoadedSettings::load(&newer);
+        assert_eq!(
+            loaded.status,
+            SettingsStatus::ReadOnly {
+                version: KNOWN_SCHEMA_VERSION + 1
+            }
+        );
+        assert!(save(&newer, &AppSettings::default()).is_err());
+        assert_eq!(std::fs::read_to_string(&newer).unwrap(), written);
     }
 
     // --- 縮退 (AC #1/#6) --------------------------------------------------------------------
@@ -508,7 +579,9 @@ mod tests {
         };
         save(&path, &settings).expect("saved");
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("schema_version = 1"));
+        // Against the constant, not a literal: what this asserts is that the written file states the
+        // version this build's field set means, which stays true across a bump.
+        assert!(text.contains(&format!("schema_version = {KNOWN_SCHEMA_VERSION}")));
         assert!(text.contains("card_density = \"m\""));
         assert!(text.contains("watch_external_changes = true"));
         assert!(text.contains("[external_editor]"));
