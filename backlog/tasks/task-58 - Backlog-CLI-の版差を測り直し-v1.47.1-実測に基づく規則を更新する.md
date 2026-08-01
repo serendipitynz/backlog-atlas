@@ -4,7 +4,7 @@ title: Backlog CLI の版差を測り直し v1.47.1 実測に基づく規則を�
 status: In Review
 assignee: []
 created_date: '2026-07-31 19:46'
-updated_date: '2026-08-01 08:14'
+updated_date: '2026-08-01 08:20'
 labels:
   - 'kind:chore'
 milestone: m-2
@@ -30,10 +30,6 @@ doc-3・doc-4・doc-5・doc-8・doc-9・doc-10・doc-12 は Backlog CLI v1.47.1 
 - [x] #4 update::MIN_VERSION と decision-2・decision-7 のサポート範囲の表記を、測り直した版に合わせる
 <!-- AC:END -->
 
-
-
-
-
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
@@ -56,7 +52,7 @@ doc-3・doc-4・doc-5・doc-8・doc-9・doc-10・doc-12 は Backlog CLI v1.47.1 
 
 ## 版差ではなく doc の記述が誤っていたもの
 
-`doc update --tags ""` はタグを実際に消す（両版）。doc-10 §6 が非提供の根拠にしていた「効果が未確認で、同型の `--ref ""` は沈黙無変更」は成り立たない。理由を未決へ訂正し、提供可否は TASK-109 へ。
+`doc update --tags ""` はタグを実際に消す（両版）。doc-10 §5（文書区画）が非提供の根拠にしていた「効果が未確認で、同型の `--ref ""` は沈黙無変更」は成り立たない。理由を未決へ訂正し、提供可否は TASK-109 へ。
 
 ## 反映
 
