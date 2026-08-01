@@ -4,7 +4,7 @@ title: バージョンタグからのリリースワークフローを作る
 status: To Do
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-01 00:38'
+updated_date: '2026-08-01 01:52'
 labels:
   - release
   - 'kind:chore'
@@ -14,6 +14,7 @@ dependencies:
   - TASK-96
   - TASK-99
   - TASK-100
+  - TASK-104
 priority: high
 ordinal: 101000
 ---
