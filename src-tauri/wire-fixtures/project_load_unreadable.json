@@ -1,0 +1,9 @@
+{
+  "state": "unreadable",
+  "slug": "gone",
+  "error": {
+    "kind": "rootUnreadable",
+    "slug": "gone",
+    "detail": "config.yml not found"
+  }
+}

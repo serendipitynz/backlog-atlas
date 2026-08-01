@@ -39,6 +39,11 @@ pub mod sync;
 // working directory, and degrades to read-only when no supported CLI is present. Called by the
 // command layer through `sync`, which wraps every launch in the doc-9 §4 pre-update check.
 pub mod update;
+// Test-only: the recorded wire payloads `src/lib/wire.ts` mirrors. Not a layer — it holds no logic,
+// only the samples whose serialized form is committed under `wire-fixtures/` for the frontend test to
+// read back (TASK-91).
+#[cfg(test)]
+mod wire_fixtures;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

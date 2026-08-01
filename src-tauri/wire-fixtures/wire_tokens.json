@@ -1,0 +1,138 @@
+{
+  "CardDensity": [
+    "s",
+    "m",
+    "l"
+  ],
+  "CliReadiness": [
+    "ready",
+    "unavailable",
+    "unsupported"
+  ],
+  "CommandError": [
+    "ledger",
+    "ledgerRefused",
+    "settings",
+    "rootUnreadable",
+    "unknownProject",
+    "projectNotOpen",
+    "taskNotFound",
+    "updatesUnavailable",
+    "updateRejected",
+    "uncheckableTarget",
+    "reloadFailed",
+    "versionProbeFailed",
+    "watchFailed",
+    "unknownTaskFile",
+    "editorUnavailable",
+    "editorLaunchFailed"
+  ],
+  "CommitSearch": [
+    "searched",
+    "noRepository",
+    "unreadable"
+  ],
+  "DegradeEvent": [
+    "unparseable",
+    "unexpectedSchema",
+    "danglingReference"
+  ],
+  "DetailPlacement": [
+    "sidebar",
+    "modal",
+    "full"
+  ],
+  "EditorSource": [
+    "appSettings",
+    "visual",
+    "editor"
+  ],
+  "FailureKind": [
+    "spawn",
+    "nonZero"
+  ],
+  "LaunchMethod": [
+    "configured",
+    "association"
+  ],
+  "LedgerRefusal": [
+    "readOnly",
+    "backlogRootInvalid",
+    "invalidSlug",
+    "duplicateSlug",
+    "slugNotFound",
+    "nonAbsoluteRoot",
+    "duplicateRoot",
+    "invalidStatusAlias"
+  ],
+  "LookupFailure": [
+    "toolMissing",
+    "invalidReference",
+    "queryFailed"
+  ],
+  "ProjectLoad": [
+    "loaded",
+    "unreadable"
+  ],
+  "ReferenceKind": [
+    "milestone",
+    "documentation",
+    "reference"
+  ],
+  "RelationOutcome": [
+    "resolved",
+    "hostUnsupported",
+    "lookupFailed"
+  ],
+  "RemoteHostKind": [
+    "gitHub"
+  ],
+  "RequiredField": [
+    "id",
+    "title",
+    "status"
+  ],
+  "SettingsStatus": [
+    "stored",
+    "absent",
+    "unreadable",
+    "readOnly"
+  ],
+  "StatusColumn": [
+    "toDo",
+    "inProgress",
+    "inReview",
+    "done"
+  ],
+  "StatusDeclaration": [
+    "declared",
+    "draft",
+    "undeclared",
+    "noDeclaredSet"
+  ],
+  "StorageSelection": [
+    "active",
+    "draft",
+    "completed",
+    "archive",
+    "indeterminate"
+  ],
+  "StorageState": [
+    "active",
+    "draft",
+    "completed",
+    "archive"
+  ],
+  "TaskHealth": [
+    "ok",
+    "degraded"
+  ],
+  "UpdateOutcome": [
+    "succeeded",
+    "failed"
+  ],
+  "UpdateResult": [
+    "conflict",
+    "ran"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "state": "ran",
+  "outcome": {
+    "state": "failed",
+    "command": "task edit",
+    "kind": {
+      "kind": "nonZero",
+      "code": 1
+    },
+    "stderr": "no such task",
+    "completedBefore": 1,
+    "partial": true
+  },
+  "project": null
+}

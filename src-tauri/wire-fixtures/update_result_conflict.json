@@ -1,0 +1,208 @@
+{
+  "state": "conflict",
+  "diverged": [
+    "tasks/task-1 - a.md"
+  ],
+  "unread": [
+    "tasks/task-9 - new.md"
+  ],
+  "project": {
+    "slug": "atlas",
+    "config": {
+      "projectName": "Atlas",
+      "taskPrefix": "TASK",
+      "statuses": [
+        "To Do",
+        "In Progress",
+        "In Review",
+        "Done"
+      ],
+      "defaultStatus": "To Do",
+      "dateFormat": null
+    },
+    "tasks": [
+      {
+        "task": {
+          "sourcePath": "/repos/atlas/backlog/tasks/task-1 - a.md",
+          "project": "atlas",
+          "storageState": "active",
+          "id": "TASK-1",
+          "title": "A task",
+          "status": "In Progress",
+          "type": [
+            "feature"
+          ],
+          "labels": [
+            "ui"
+          ],
+          "assignee": [
+            "someone"
+          ],
+          "priority": "high",
+          "ordinal": 1000,
+          "milestone": "m-1",
+          "createdDate": "2026-07-01 10:00",
+          "updatedDate": "2026-07-20 11:00",
+          "dependencies": [
+            "TASK-2"
+          ],
+          "documentation": [
+            "doc-7"
+          ],
+          "references": [
+            "https://example.test/pull/1"
+          ],
+          "description": "What it is for.",
+          "acceptanceCriteria": [
+            {
+              "number": 1,
+              "text": "It works",
+              "checked": true
+            }
+          ],
+          "implementationPlan": "Do it.",
+          "implementationNotes": "Done it.",
+          "unknownSections": [
+            {
+              "name": "REVIEW",
+              "body": "Kept rather than dropped."
+            }
+          ],
+          "health": {
+            "state": "degraded",
+            "events": [
+              {
+                "event": "danglingReference",
+                "kind": "documentation",
+                "target": "doc-99"
+              }
+            ]
+          }
+        },
+        "interpretation": {
+          "status": {
+            "raw": "In Progress",
+            "column": "inProgress",
+            "declaration": "declared"
+          },
+          "types": [
+            {
+              "value": "feature",
+              "known": true
+            }
+          ],
+          "pullRequests": [
+            {
+              "url": "https://example.test/pull/1",
+              "host": "gitHub",
+              "owner": "serendipitynz",
+              "repo": "backlog-atlas",
+              "number": 1
+            }
+          ]
+        }
+      },
+      {
+        "task": {
+          "sourcePath": "/repos/atlas/backlog/tasks/task-broken.md",
+          "project": "atlas",
+          "storageState": null,
+          "id": null,
+          "title": null,
+          "status": null,
+          "type": [],
+          "labels": [],
+          "assignee": [],
+          "priority": null,
+          "ordinal": null,
+          "milestone": null,
+          "createdDate": null,
+          "updatedDate": null,
+          "dependencies": [],
+          "documentation": [],
+          "references": [],
+          "description": null,
+          "acceptanceCriteria": [],
+          "implementationPlan": null,
+          "implementationNotes": null,
+          "unknownSections": [],
+          "health": {
+            "state": "degraded",
+            "events": [
+              {
+                "event": "unparseable",
+                "missingRequired": [
+                  "id",
+                  "title"
+                ],
+                "detail": "mapping values are not allowed in this context"
+              }
+            ]
+          }
+        },
+        "interpretation": {
+          "status": null,
+          "types": [],
+          "pullRequests": []
+        }
+      }
+    ],
+    "milestones": [
+      {
+        "sourcePath": "/repos/atlas/backlog/milestones/m-1 - phase.md",
+        "id": "m-1",
+        "title": "Phase one",
+        "description": "The first phase."
+      }
+    ],
+    "documents": [
+      {
+        "sourcePath": "/repos/atlas/backlog/docs/doc-7 - screen.md",
+        "id": "doc-7",
+        "title": "Screen design",
+        "type": "specification",
+        "tags": [
+          "ui"
+        ],
+        "createdDate": "2026-07-01 10:00",
+        "updatedDate": "2026-07-20 11:00",
+        "body": "The screen."
+      }
+    ],
+    "decisions": [
+      {
+        "id": "decision-12",
+        "title": "Colour tokens",
+        "status": "accepted",
+        "date": "2026-07-10",
+        "body": "The tokens."
+      }
+    ],
+    "createStatusCandidates": [
+      {
+        "column": "toDo",
+        "statuses": [
+          "To Do"
+        ]
+      },
+      {
+        "column": "inProgress",
+        "statuses": [
+          "In Progress"
+        ]
+      },
+      {
+        "column": "inReview",
+        "statuses": [
+          "In Review"
+        ]
+      },
+      {
+        "column": "done",
+        "statuses": [
+          "Done"
+        ]
+      }
+    ]
+  }
+}
