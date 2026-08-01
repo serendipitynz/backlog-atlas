@@ -793,8 +793,10 @@ export function readinessReason(readiness: CliReadiness | null): string | null {
   switch (readiness.state) {
     case "ready":
       return null;
+    // See `cliDegradedSummary`: naming PATH alone stopped being true at decision-16. `detail` names
+    // the executable the resolution settled on, which is what the user has to act on.
     case "unavailable":
-      return `PATH 上に backlog CLI が見つからないため更新操作を提供しません（${readiness.detail}）`;
+      return `backlog CLI の実行ファイルを解決できないため更新操作を提供しません（${readiness.detail}）`;
     case "unsupported":
       return `backlog CLI ${readiness.version} は動作確認範囲外のため更新操作を提供しません（必要: ${readiness.minimum} 以上）`;
   }
