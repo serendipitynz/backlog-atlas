@@ -351,7 +351,28 @@ fn update_result_ran_is_recorded() {
                 kind: FailureKind::NonZero { code: Some(1) },
                 stderr: "no such task".to_string(),
                 completed_before: 1,
-                partial: true,
+                reload_required: true,
+            }),
+            project: None,
+        },
+    );
+}
+
+/// 期限到達 gets its own recording rather than riding on the one above: `after_ms` appears in no
+/// other payload, so without a sample carrying it the frontend's value-type check has nothing to
+/// compare and a change from a number to a string on this side would pass (decision-18).
+#[test]
+fn update_result_timed_out_is_recorded() {
+    recorded(
+        "update_result_ran_timed_out.json",
+        &UpdateResult::Ran {
+            outcome: UpdateOutcome::Failed(UpdateFailure {
+                command: "task edit".to_string(),
+                kind: FailureKind::TimedOut { after_ms: 30_000 },
+                stderr: "the backlog CLI did not finish within 30 seconds, so Atlas stopped waiting for it"
+                    .to_string(),
+                completed_before: 0,
+                reload_required: true,
             }),
             project: None,
         },
@@ -835,7 +856,7 @@ fn every_update_outcome() -> Vec<UpdateOutcome> {
             kind: FailureKind::Spawn,
             stderr: String::new(),
             completed_before: 0,
-            partial: false,
+            reload_required: false,
         }),
     ];
     for value in &all {
@@ -847,10 +868,14 @@ fn every_update_outcome() -> Vec<UpdateOutcome> {
 }
 
 fn every_failure_kind() -> Vec<FailureKind> {
-    let all = vec![FailureKind::Spawn, FailureKind::NonZero { code: None }];
+    let all = vec![
+        FailureKind::Spawn,
+        FailureKind::NonZero { code: None },
+        FailureKind::TimedOut { after_ms: 0 },
+    ];
     for value in &all {
         match value {
-            FailureKind::Spawn | FailureKind::NonZero { .. } => {}
+            FailureKind::Spawn | FailureKind::NonZero { .. } | FailureKind::TimedOut { .. } => {}
         }
     }
     all

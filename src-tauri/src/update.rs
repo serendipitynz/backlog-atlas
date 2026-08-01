@@ -15,10 +15,14 @@
 //! - **作業ディレクトリ + 引数配列渡し** (doc-5 §4, AC #2): [`run`] runs each invocation with
 //!   `project_root` as `current_dir`, passing every argument as its own array element — never a
 //!   shell string, so a value with spaces/newlines/metacharacters cannot word-split or inject.
-//! - **CLI 失敗時の扱い** (doc-5 §5, AC #3/#4): the exit code decides success; a non-zero exit or a
-//!   spawn failure yields [`UpdateOutcome::Failed`] carrying stderr as the failure reason, with the
-//!   domain model left untouched. A plan of several invocations aborts on the first failure and
-//!   reports how many already ran, so a partial application is observable by reload (doc-5 §6).
+//! - **CLI 失敗時の扱い** (doc-5 §5, AC #3/#4): the exit code decides success; a non-zero exit, a
+//!   spawn failure or a 期限到達 yields [`UpdateOutcome::Failed`] carrying the failure reason, with
+//!   the domain model left untouched. A plan of several invocations aborts on the first failure and
+//!   reports how many already ran, so what already landed is observable by reload (doc-5 §6).
+//! - **CLI 終了期限** (doc-5 §5, decision-18): every launch is bounded by [`CLI_DEADLINE`]. A child
+//!   still running at the deadline is killed and reported as [`FailureKind::TimedOut`] — which is
+//!   always [`UpdateFailure::reload_required`], because a killed `backlog` may have written before
+//!   it died.
 //! - **縮退** (doc-5 §3.1/§5, decision-7, AC #5/#6): [`probe`] reads `backlog --version` and only a
 //!   version at or above the confirmed [`MIN_VERSION`] yields a [`CliCapability`]. [`run`] takes that
 //!   capability by reference, so an update is unreachable without a supported CLI — a missing or
@@ -29,8 +33,11 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::ffi::OsStr;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 // --- version probe / capability (doc-5 §3.2, decision-7, AC #6) ---------------------------------
 
@@ -818,9 +825,47 @@ pub struct CliRun {
 pub trait BacklogCli {
     /// Run `backlog <args>` with `current_dir` as the working directory (doc-5 §4). `None` runs in
     /// the inherited directory — used only by the version probe, which is project-independent. An
-    /// `Err` is a spawn failure (起動失敗, doc-5 §5); a process that ran, at any exit code, is
-    /// `Ok(CliRun)` for the executor to judge.
-    fn run(&self, current_dir: Option<&Path>, args: &[String]) -> std::io::Result<CliRun>;
+    /// `Err` is a launch that produced no verdict — 起動失敗 or 期限到達 (doc-5 §5); a process that
+    /// ran to exit, at any exit code, is `Ok(CliRun)` for the executor to judge.
+    fn run(&self, current_dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError>;
+}
+
+/// A launch that produced no exit code (doc-5 §5). Separate from [`CliRun`] because neither case
+/// leaves the CLI's own verdict behind: there is no exit code to judge and no stderr the CLI wrote
+/// about *this* failure.
+#[derive(Debug)]
+pub enum RunError {
+    /// 起動失敗 (doc-5 §5): the process could not be started at all.
+    Spawn(std::io::Error),
+    /// 期限到達 (doc-5 §5, decision-18): the child was still running when [`CLI_DEADLINE`] elapsed,
+    /// so Atlas killed it. `detail` names what was observed while waiting — normally nothing, but a
+    /// wait that itself kept failing is the one thing a reader would otherwise have no trace of.
+    TimedOut {
+        after: Duration,
+        detail: Option<String>,
+    },
+}
+
+impl std::fmt::Display for RunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RunError::Spawn(error) => write!(f, "{error}"),
+            RunError::TimedOut { after, detail } => {
+                // "Atlas stopped waiting", not "the process is gone": the kill is attempted, not
+                // guaranteed, and a kill that failed is named in `detail` rather than contradicted
+                // here.
+                write!(
+                    f,
+                    "the backlog CLI did not finish within {} seconds, so Atlas stopped waiting for it",
+                    after.as_secs()
+                )?;
+                match detail {
+                    Some(detail) => write!(f, " ({detail})"),
+                    None => Ok(()),
+                }
+            }
+        }
+    }
 }
 
 // --- 実行ファイル解決の順序 (doc-5 §4, decision-16) ---------------------------------------------
@@ -987,6 +1032,10 @@ fn sub_package_executable(
 /// different executables.
 pub struct SystemBacklog {
     program: CliProgram,
+    /// CLI 終了期限 (doc-5 §5, decision-18). A field rather than a constant read at the point of use
+    /// so a test can state a deadline it can actually reach — a test that had to outlive the shipped
+    /// 30 seconds would either not be written or be written as a 30-second test.
+    deadline: Duration,
 }
 
 impl SystemBacklog {
@@ -999,6 +1048,7 @@ impl SystemBacklog {
                 SubPackage::current(),
                 &|path| path.is_file(),
             ),
+            deadline: CLI_DEADLINE,
         }
     }
 
@@ -1006,29 +1056,237 @@ impl SystemBacklog {
     pub fn program(&self) -> &CliProgram {
         &self.program
     }
+
+    /// The same executor against a stated program and deadline, for the deadline's own tests.
+    #[cfg(test)]
+    fn with_deadline(program: CliProgram, deadline: Duration) -> SystemBacklog {
+        SystemBacklog { program, deadline }
+    }
 }
 
 impl BacklogCli for SystemBacklog {
-    fn run(&self, current_dir: Option<&Path>, args: &[String]) -> std::io::Result<CliRun> {
+    fn run(&self, current_dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
         let program = self.program.program();
         let mut cmd = Command::new(program);
         if let Some(dir) = current_dir {
             cmd.current_dir(dir);
         }
+        // stdin is closed rather than inherited, as `Command::output` also does: a CLI that decided
+        // to prompt would otherwise wait on a terminal nobody is attached to, and the deadline would
+        // be the only thing that ever ended it.
+        cmd.args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         // `std::io::Error` from a spawn names the errno and nothing else. Naming what we tried to run
         // is what makes a mistyped `backlog_cli` fixable: decision-16 uses that setting as written, so
         // the path in it is exactly the thing the user has to correct.
-        let out = cmd
-            .args(args)
-            .output()
-            .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", program.display())))?;
+        let mut child = cmd.spawn().map_err(|e| {
+            RunError::Spawn(std::io::Error::new(
+                e.kind(),
+                format!("{}: {e}", program.display()),
+            ))
+        })?;
+        // Both pipes are drained by their own thread for the whole life of the child. Reading them
+        // only after the wait — the shape a `try_wait` loop invites — deadlocks the moment the child
+        // writes more than one pipe buffer: it blocks on the write, never exits, and the deadline
+        // turns a working CLI into a 期限到達. `Command::output` avoids this by reading concurrently;
+        // so does this.
+        let stdout = drain(child.stdout.take());
+        let stderr = drain(child.stderr.take());
+        let status = match wait_until(&mut child, self.deadline, CLEANUP_GRACE) {
+            Waited::Exited(status) => status,
+            Waited::Killed { detail } => {
+                // Nothing is waited on here. A pipe reaches EOF only when *every* writer has closed
+                // it, and killing the direct child closes only the direct child's end — a descendant
+                // that inherited the pipe keeps it open for as long as it likes. Waiting for the
+                // readers would therefore hand back the unbounded wait the deadline just ended. The
+                // threads are left to finish on their own (see [`drain`]), and this call's output is
+                // dropped: there is no verdict to explain, only a deadline that was reached.
+                return Err(RunError::TimedOut {
+                    after: self.deadline,
+                    detail,
+                });
+            }
+        };
+        // The child exited, so its own ends are closed — but a descendant may still hold them, so
+        // even here the drain gets a bound rather than a join. One shared instant for both pipes:
+        // two sequential graces would double the bound for no gain.
+        let until = Instant::now() + CLEANUP_GRACE;
         Ok(CliRun {
-            success: out.status.success(),
-            code: out.status.code(),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            success: status.success(),
+            code: status.code(),
+            stdout: text(stdout.take(until)),
+            stderr: text(stderr.take(until)),
         })
     }
+}
+
+/// CLI 終了期限 (doc-5 §5, decision-18): how long one launch may take before Atlas stops waiting and
+/// kills it. 30 seconds is ~100× the slowest steady-state invocation measured for decision-18
+/// (`backlog task list` at 288 ms on a 110-task root) and ~30× the slowest cold one (1037 ms), so a
+/// merely slow machine cannot reach it, while an unresponsive CLI can hold one project's backend for
+/// at most this long.
+pub const CLI_DEADLINE: Duration = Duration::from_secs(30);
+
+/// How often the wait loop asks whether the child has exited. There is no timed wait in `std`
+/// (`Child::wait` blocks, `Child::try_wait` does not wait at all), so the bound is a poll — 20 ms is
+/// under a sixth of the fastest invocation measured (117 ms), which keeps the added latency below
+/// what the measurement can distinguish.
+const WAIT_POLL: Duration = Duration::from_millis(20);
+
+/// 後始末猶予 (doc-5 §5, decision-18): how long the two cleanups that follow the wait may take.
+///
+/// Both would otherwise be unbounded, and each would put back the wait the deadline removed:
+///
+/// - **Reaping a killed child.** `Child::wait` blocks until the process exits, and a kill that did
+///   not land leaves a process that may never do so.
+/// - **Finishing the drain.** A pipe reaches EOF only when every writer has closed it, and a
+///   descendant that inherited the pipe holds it open for as long as it likes.
+///
+/// One second is far more than either needs when nothing is wrong, and the whole of it is spent only
+/// when something really is still holding on.
+const CLEANUP_GRACE: Duration = Duration::from_secs(1);
+
+/// What became of the wait (decision-18).
+enum Waited {
+    Exited(std::process::ExitStatus),
+    Killed { detail: Option<String> },
+}
+
+/// The two things the bounded wait does to a running process.
+///
+/// A trait rather than [`std::process::Child`] directly, for one failure only a fake can produce: a
+/// kill that does not land. `SIGKILL` cannot be refused for one's own child, so the path where the
+/// process survives the kill is unreachable with a real one — and it is the path where an unbounded
+/// reap would quietly restore the wait the deadline exists to end.
+trait Reapable {
+    /// Whether the process has exited, without waiting for it to.
+    fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>>;
+    fn kill(&mut self) -> std::io::Result<()>;
+}
+
+impl Reapable for std::process::Child {
+    fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+        self.try_wait()
+    }
+
+    fn kill(&mut self) -> std::io::Result<()> {
+        std::process::Child::kill(self)
+    }
+}
+
+/// Wait for `process` for at most `deadline`; if it outlives that, kill it and reap it within
+/// `grace`. Every step is bounded, so this returns after `deadline + grace` at the very worst.
+///
+/// Nothing here is required to succeed. The kill may fail, the reap may find the process still
+/// running, and a poll may error — each is recorded in the detail rather than turned into a longer
+/// wait, because the only claim Atlas can always support is that it stopped waiting.
+fn wait_until<P: Reapable>(process: &mut P, deadline: Duration, grace: Duration) -> Waited {
+    let mut failed_poll: Option<String> = None;
+    if let Some(status) = poll_until(process, Instant::now() + deadline, &mut failed_poll) {
+        return Waited::Exited(status);
+    }
+    let mut notes: Vec<String> = failed_poll.take().into_iter().collect();
+    if let Err(error) = process.kill() {
+        notes.push(format!("terminating it failed: {error}"));
+    }
+    // Reaped so the deadline leaves no zombie behind for the rest of the run — but on a bound, since
+    // a process that survived the kill is exactly what a blocking `wait` would sit on forever.
+    if poll_until(process, Instant::now() + grace, &mut failed_poll).is_none() {
+        notes.push(
+            failed_poll
+                .take()
+                .unwrap_or_else(|| "it was still running after being terminated".to_string()),
+        );
+    }
+    Waited::Killed {
+        detail: (!notes.is_empty()).then(|| notes.join("; ")),
+    }
+}
+
+/// Poll until the process has exited or `until` has passed.
+///
+/// A poll that errors is not treated as terminal: it means this attempt learned nothing, not that
+/// the process is gone (on Unix a signal arriving during `waitpid` surfaces here as `EINTR`). The
+/// last such error is left in `failed` for the caller to report.
+fn poll_until<P: Reapable>(
+    process: &mut P,
+    until: Instant,
+    failed: &mut Option<String>,
+) -> Option<std::process::ExitStatus> {
+    loop {
+        match process.poll() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) => {}
+            Err(error) => *failed = Some(format!("waiting on it failed: {error}")),
+        }
+        if Instant::now() >= until {
+            return None;
+        }
+        std::thread::sleep(WAIT_POLL);
+    }
+}
+
+/// One pipe being read on its own thread, with what has been read so far reachable *without* waiting
+/// for EOF (decision-18). That is the whole point: joining the thread would mean waiting for the last
+/// writer to close, and the last writer is not necessarily the process Atlas launched.
+struct Drain {
+    /// Bytes rather than a `String`: the CLI's output is not promised to be UTF-8, and the caller
+    /// replaces what is not (as `Command::output` also leaves it to the caller to decide).
+    buffer: Arc<Mutex<Vec<u8>>>,
+    finished: std::sync::mpsc::Receiver<()>,
+}
+
+impl Drain {
+    /// Wait until `until` for the pipe to end, then take what has been read by then. A drain that has
+    /// not finished is abandoned, not stopped — see [`drain`] for what its thread does after that.
+    fn take(self, until: Instant) -> Vec<u8> {
+        let _ = self
+            .finished
+            .recv_timeout(until.saturating_duration_since(Instant::now()));
+        std::mem::take(&mut *bytes(&self.buffer))
+    }
+}
+
+fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> Drain {
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let (done, finished) = std::sync::mpsc::channel();
+    // Weak, so the thread can tell whether anyone is still going to read what it stores.
+    let sink = Arc::downgrade(&buffer);
+    std::thread::spawn(move || {
+        if let Some(mut pipe) = pipe {
+            let mut chunk = [0u8; 8 * 1024];
+            while let Ok(read) = pipe.read(&mut chunk) {
+                if read == 0 {
+                    break;
+                }
+                // Once the caller has taken its answer and moved on, keep *reading* — a writer must
+                // never block on a pipe Atlas stopped emptying — but stop accumulating output nobody
+                // will look at, which a descendant writing forever would otherwise grow without end.
+                if let Some(buffer) = sink.upgrade() {
+                    bytes(&buffer).extend_from_slice(&chunk[..read]);
+                }
+            }
+        }
+        // A closed receiver means the caller already gave up on this pipe; there is nobody to tell.
+        let _ = done.send(());
+    });
+    Drain { buffer, finished }
+}
+
+/// The drained bytes as text.
+fn text(bytes: Vec<u8>) -> String {
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// Reach the shared buffer, recovering a poisoned lock. A panicked reader must not turn a CLI failure
+/// into a panic in the command boundary: the exit code is the verdict (doc-5 §5), and the worst a
+/// poisoned buffer costs is the reason text.
+fn bytes(buffer: &Mutex<Vec<u8>>) -> std::sync::MutexGuard<'_, Vec<u8>> {
+    buffer
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// What became of a screen action's plan (doc-5 §5). `Succeeded` means every invocation exited 0.
@@ -1043,9 +1301,7 @@ pub enum UpdateOutcome {
 }
 
 /// A CLI failure (doc-5 §5). The domain model is not touched by a failure; the caller reloads to
-/// reconcile (doc-5 §6). `completed_before` and `partial` exist for the multi-invocation case
-/// (AC #4): when an earlier invocation of the same action already ran, the reload is mandatory
-/// because on-disk state moved even though the action as a whole failed.
+/// reconcile (doc-5 §6).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateFailure {
@@ -1056,9 +1312,12 @@ pub struct UpdateFailure {
     pub stderr: String,
     /// How many invocations in the plan succeeded before this one failed.
     pub completed_before: usize,
-    /// `completed_before > 0`: earlier invocations already changed on-disk state, so a reload is
-    /// required to observe the partial application (AC #4, doc-5 §6).
-    pub partial: bool,
+    /// 要再読込 (doc-5 §5): Atlas cannot say the managed files are as they were before the call, so
+    /// the root must be re-read (doc-5 §6, AC #4). Two failures qualify, and the name says what they
+    /// have in common rather than how they arose: an invocation after the first (an earlier one
+    /// already wrote — 部分適用), and a 期限到達 (the killed invocation may have written, and
+    /// `SIGKILL`/`TerminateProcess` runs nothing that could have told us — decision-18).
+    pub reload_required: bool,
 }
 
 /// How a CLI invocation failed (doc-5 §5).
@@ -1069,6 +1328,14 @@ pub enum FailureKind {
     Spawn,
     /// The process ran and exited non-zero; `code` is its exit code when known.
     NonZero { code: Option<i32> },
+    /// 期限到達 (decision-18): the process was still running at [`CLI_DEADLINE`] and Atlas killed it.
+    /// Kept apart from [`FailureKind::NonZero`] because no exit code was observed — the process did
+    /// not decide anything, Atlas did — and apart from [`FailureKind::Spawn`] because it did start,
+    /// which is why this one is always 要再読込.
+    // The container's `rename_all` renames variants, not the fields inside them, so the one
+    // multi-word field on this enum needs the attribute of its own that `code` never revealed.
+    #[serde(rename_all = "camelCase")]
+    TimedOut { after_ms: u64 },
 }
 
 /// Run one screen action — a sequence of operations executed as a unit (doc-5 §5) — against
@@ -1099,15 +1366,27 @@ fn execute(project_root: &Path, plan: &[Invocation], cli: &dyn BacklogCli) -> Up
     for (i, inv) in plan.iter().enumerate() {
         let argv = inv.to_argv();
         match cli.run(Some(project_root), &argv) {
-            // 起動失敗 (doc-5 §5): the binary could not start. Abort with what ran so far.
-            Err(e) => {
+            // A launch with no verdict (doc-5 §5). 起動失敗 put nothing of *this* invocation on
+            // disk, so only an earlier one can make it 要再読込; 期限到達 did start the process, so
+            // it is 要再読込 even as the first invocation — it may have written before Atlas killed
+            // it, and nothing it could have run on the way out would have said so (decision-18).
+            Err(error) => {
+                let (kind, reload_required) = match &error {
+                    RunError::Spawn(_) => (FailureKind::Spawn, i > 0),
+                    RunError::TimedOut { after, .. } => (
+                        FailureKind::TimedOut {
+                            after_ms: after.as_millis() as u64,
+                        },
+                        true,
+                    ),
+                };
                 return UpdateOutcome::Failed(UpdateFailure {
                     command: inv.command_name(),
-                    kind: FailureKind::Spawn,
-                    stderr: e.to_string(),
+                    kind,
+                    stderr: error.to_string(),
                     completed_before: i,
-                    partial: i > 0,
-                })
+                    reload_required,
+                });
             }
             Ok(run) if !run.success => {
                 // Non-zero exit: keep stderr as the failure reason and stop; the domain model is
@@ -1118,7 +1397,7 @@ fn execute(project_root: &Path, plan: &[Invocation], cli: &dyn BacklogCli) -> Up
                     kind: FailureKind::NonZero { code: run.code },
                     stderr: run.stderr,
                     completed_before: i,
-                    partial: i > 0,
+                    reload_required: i > 0,
                 });
             }
             Ok(_) => {}
@@ -1303,13 +1582,287 @@ mod tests {
         // Without this the 縮退 reason is a bare errno, which says nothing about *which* executable
         // was missing — the one actionable fact when 順序 1 holds a mistyped path.
         let missing = "/opt/backlog/does-not-exist";
-        let cli = SystemBacklog {
-            program: CliProgram::Configured(PathBuf::from(missing)),
-        };
+        let cli = SystemBacklog::with_deadline(
+            CliProgram::Configured(PathBuf::from(missing)),
+            CLI_DEADLINE,
+        );
         let CliStatus::Unavailable { detail } = probe(&cli) else {
             panic!("a missing executable is 起動失敗");
         };
         assert!(detail.contains(missing), "detail should name it: {detail}");
+    }
+
+    // --- CLI 終了期限 (doc-5 §5, decision-18, TASK-85 AC #3) ---------------------------------------
+
+    /// A real process that outlives any deadline this test would set, and one that ends at once.
+    ///
+    /// Both are the host's own programs rather than a fixture built here: what is under test is that
+    /// `SystemBacklog::run` bounds a *process*, so a fake `BacklogCli` would test nothing — there
+    /// would be no child to kill. The pair is platform-specific because the programs are; the
+    /// assertions below are not.
+    #[cfg(unix)]
+    fn hangs_forever() -> (&'static str, Vec<String>) {
+        ("sleep", vec!["600".to_string()])
+    }
+    #[cfg(windows)]
+    fn hangs_forever() -> (&'static str, Vec<String>) {
+        // `ping` waits a second between echoes, so 600 of them outlast any deadline here. Chosen over
+        // `timeout` because `timeout` refuses to run without a console.
+        (
+            "ping",
+            vec!["-n".to_string(), "600".to_string(), "127.0.0.1".to_string()],
+        )
+    }
+
+    #[cfg(unix)]
+    fn exits_at_once() -> (&'static str, Vec<String>) {
+        ("true", Vec::new())
+    }
+    #[cfg(windows)]
+    fn exits_at_once() -> (&'static str, Vec<String>) {
+        (
+            "ping",
+            vec!["-n".to_string(), "1".to_string(), "127.0.0.1".to_string()],
+        )
+    }
+
+    fn bounded(program: &str, deadline: Duration) -> SystemBacklog {
+        SystemBacklog::with_deadline(CliProgram::Configured(PathBuf::from(program)), deadline)
+    }
+
+    #[test]
+    fn a_process_that_outlives_the_deadline_is_killed_and_reported_as_timed_out() {
+        let (program, args) = hangs_forever();
+        let deadline = Duration::from_millis(200);
+        let started = Instant::now();
+        let error = bounded(program, deadline)
+            .run(None, &args)
+            .expect_err("a process that never exits cannot produce a verdict");
+        let elapsed = started.elapsed();
+
+        assert!(
+            matches!(error, RunError::TimedOut { after, .. } if after == deadline),
+            "the deadline is what ended the wait: {error:?}"
+        );
+        // What this proves is the bound, and only that. Before returning, `run` attempts the `kill`
+        // and the reaping `wait` — but neither is required to have succeeded (a failure is named in
+        // the failure text instead), and the pipe readers are not waited on at all, since a
+        // descendant can hold those open indefinitely. So a prompt return says the deadline ended
+        // the wait; it does not say the process is gone, and it does not say EOF was reached.
+        // Waiting the program out instead would take ten minutes.
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "the wait must end at the deadline, not at the program's own exit ({elapsed:?})"
+        );
+    }
+
+    /// The positive counterpart. Without it the assertion above holds just as well for an executor
+    /// that reports 期限到達 for everything, including a CLI that answered.
+    #[test]
+    fn a_process_that_finishes_inside_the_deadline_returns_its_exit() {
+        let (program, args) = exits_at_once();
+        let run = bounded(program, Duration::from_secs(30))
+            .run(None, &args)
+            .expect("a program that exits produces a verdict");
+        assert!(run.success, "the program exits 0");
+        assert_eq!(run.code, Some(0));
+    }
+
+    /// 512 KiB is past every platform's default pipe buffer (64 KiB on Linux and Windows; macOS grows
+    /// to at most 64 KiB), so an undrained pipe would block the writer well before this much.
+    const LARGE_OUTPUT: usize = 512 * 1024;
+
+    /// A program whose *output* is large but whose command line is short. The payload has to be
+    /// produced after startup rather than passed in: on Windows a process command line is capped at
+    /// 32,767 characters and `cmd.exe`'s own limit is 8,191, so a 512 KiB argument fails at `spawn`
+    /// and the test would never reach the pipe it is about.
+    #[cfg(unix)]
+    fn writes_large_output() -> (&'static str, Vec<String>) {
+        (
+            "sh",
+            vec![
+                "-c".to_string(),
+                format!("yes 0123456789abcdefghijklmnopqrstuvwxyz | head -c {LARGE_OUTPUT}"),
+            ],
+        )
+    }
+    #[cfg(windows)]
+    fn writes_large_output() -> (&'static str, Vec<String>) {
+        // 16,384 lines of 32 characters plus CRLF — comfortably past `LARGE_OUTPUT`.
+        (
+            "cmd",
+            vec![
+                "/c".to_string(),
+                "for /L %i in (1,1,16384) do @echo 01234567890123456789012345678901".to_string(),
+            ],
+        )
+    }
+
+    /// A CLI's output has to survive the bounded wait: the pipes are drained on their own threads
+    /// precisely so a child writing more than one pipe buffer neither deadlocks nor loses its tail.
+    /// Without draining, the assertion below is where a naive `try_wait` loop turns into a 期限到達.
+    #[test]
+    fn output_larger_than_a_pipe_buffer_comes_back_whole() {
+        let (program, args) = writes_large_output();
+        let run = bounded(program, Duration::from_secs(30))
+            .run(None, &args)
+            .expect("a program that exits produces a verdict");
+        assert!(
+            run.stdout.len() >= LARGE_OUTPUT,
+            "the whole of a large stdout must come back, got {} bytes",
+            run.stdout.len()
+        );
+    }
+
+    /// The bound has to cover the *drain*, not just the child. A pipe reaches EOF only when every
+    /// writer has closed it, so a descendant that inherited stdout keeps it open long after the direct
+    /// child is gone — and waiting for EOF there hands back exactly the unbounded wait the deadline
+    /// exists to remove. Both return paths are checked: the child that exits, and the child that is
+    /// killed at the deadline.
+    ///
+    /// Unix only, because building such a descendant is the shell's business, not this code's, and a
+    /// Windows equivalent written here could not be run on this host — a stated gap is worth more than
+    /// an unverified branch. What is under test is platform-independent ([`Drain::take`] bounds the
+    /// wait everywhere); only the way to construct the situation is not.
+    /// A process that never exits and whose kill never lands. Unreachable with a real child —
+    /// `SIGKILL` cannot be refused for one's own process — and the only path where the reap could
+    /// still be unbounded, so it is the one the fake exists for.
+    struct SurvivesTheKill {
+        kill_attempted: bool,
+    }
+
+    impl Reapable for SurvivesTheKill {
+        fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+            Ok(None)
+        }
+
+        fn kill(&mut self) -> std::io::Result<()> {
+            self.kill_attempted = true;
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "refused",
+            ))
+        }
+    }
+
+    #[test]
+    fn a_kill_that_does_not_land_still_ends_the_wait() {
+        let mut process = SurvivesTheKill {
+            kill_attempted: false,
+        };
+        let started = Instant::now();
+        let waited = wait_until(
+            &mut process,
+            Duration::from_millis(100),
+            Duration::from_millis(100),
+        );
+        let elapsed = started.elapsed();
+
+        let Waited::Killed { detail } = waited else {
+            panic!("a process that never exits cannot be observed exiting");
+        };
+        // Positive counterpart to the bound: the kill really was attempted, so this is not passing
+        // because the deadline path was skipped altogether.
+        assert!(process.kill_attempted, "the kill must be attempted");
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "a reap that cannot succeed must not become the wait the deadline just ended \
+             ({elapsed:?})"
+        );
+        let detail = detail.expect("a kill that did not land has to be reported");
+        assert!(
+            detail.contains("terminating it failed"),
+            "the failed kill must be named: {detail}"
+        );
+        assert!(
+            detail.contains("still running"),
+            "so must the process outliving it: {detail}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_descendant_holding_the_pipes_does_not_extend_the_wait() {
+        // The direct child exits at once, leaving `sleep 10` holding the stdout it inherited.
+        let started = Instant::now();
+        let run = bounded("sh", Duration::from_secs(30))
+            .run(None, &["-c".to_string(), "sleep 10 & exit 0".to_string()])
+            .expect("the direct child exited, so there is a verdict");
+        let after_exit = started.elapsed();
+        assert!(run.success, "the direct child's own exit is the verdict");
+        assert!(
+            after_exit < Duration::from_secs(5),
+            "an exited child's output must be taken under the drain grace, not on the descendant's \
+             schedule ({after_exit:?})"
+        );
+
+        // The direct child outlives the deadline and is killed; the descendant still holds stdout.
+        let started = Instant::now();
+        let error = bounded("sh", Duration::from_millis(200))
+            .run(None, &["-c".to_string(), "sleep 10 & sleep 10".to_string()])
+            .expect_err("the direct child never exits");
+        let after_kill = started.elapsed();
+        assert!(
+            matches!(error, RunError::TimedOut { .. }),
+            "the deadline ended the wait: {error:?}"
+        );
+        assert!(
+            after_kill < Duration::from_secs(5),
+            "a 期限到達 must not then wait on a descendant's pipe ({after_kill:?})"
+        );
+    }
+
+    /// 期限到達 is 要再読込 even as the first invocation, and it is not reported as a non-zero exit —
+    /// no exit code was observed (decision-18).
+    #[test]
+    fn a_timed_out_invocation_is_reload_required_from_the_first_call() {
+        struct TimingOutCli;
+        impl BacklogCli for TimingOutCli {
+            fn run(&self, _dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
+                if args == ["--version"] {
+                    return Ok(CliRun {
+                        success: true,
+                        code: Some(0),
+                        stdout: "1.48.0".to_string(),
+                        stderr: String::new(),
+                    });
+                }
+                Err(RunError::TimedOut {
+                    after: Duration::from_secs(30),
+                    detail: None,
+                })
+            }
+        }
+        let cli = TimingOutCli;
+        let CliStatus::Supported(capability) = probe(&cli) else {
+            panic!("the fake reports a supported version");
+        };
+        let outcome = run(
+            Path::new("/projects/atlas"),
+            &[UpdateOperation::TaskEdit {
+                task_id: "TASK-1".to_string(),
+                edit: TaskEdit {
+                    status: Some("Done".to_string()),
+                    ..TaskEdit::default()
+                },
+            }],
+            &capability,
+            &cli,
+        )
+        .expect("planning succeeds; the failure is at run time");
+        let UpdateOutcome::Failed(failure) = outcome else {
+            panic!("a timed-out invocation fails the action");
+        };
+        assert!(
+            matches!(failure.kind, FailureKind::TimedOut { after_ms } if after_ms == 30_000),
+            "kind must be 期限到達, got {:?}",
+            failure.kind
+        );
+        assert_eq!(failure.completed_before, 0, "it was the first invocation");
+        assert!(
+            failure.reload_required,
+            "a killed invocation may have written, so the root must be re-read (doc-5 §5)"
+        );
     }
 
     #[test]
@@ -1383,16 +1936,16 @@ mod tests {
     }
 
     impl BacklogCli for FakeCli {
-        fn run(&self, current_dir: Option<&Path>, args: &[String]) -> std::io::Result<CliRun> {
+        fn run(&self, current_dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
             self.calls
                 .borrow_mut()
                 .push((current_dir.map(Path::to_path_buf), args.to_vec()));
             if args == ["--version"] {
                 if self.spawn_error {
-                    return Err(std::io::Error::new(
+                    return Err(RunError::Spawn(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         "backlog not found",
-                    ));
+                    )));
                 }
                 return Ok(CliRun {
                     success: self.version_ok,
@@ -1402,10 +1955,10 @@ mod tests {
                 });
             }
             if self.spawn_error {
-                return Err(std::io::Error::new(
+                return Err(RunError::Spawn(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     "backlog not found",
-                ));
+                )));
             }
             Ok(self.results.borrow_mut().pop_front().unwrap_or(CliRun {
                 success: true,
@@ -2105,7 +2658,7 @@ mod tests {
                 assert_eq!(f.kind, FailureKind::NonZero { code: Some(1) });
                 assert!(f.stderr.contains("is not Done"));
                 assert_eq!(f.completed_before, 0);
-                assert!(!f.partial);
+                assert!(!f.reload_required);
             }
             other => panic!("expected Failed, got {other:?}"),
         }
@@ -2171,7 +2724,7 @@ mod tests {
             UpdateOutcome::Failed(f) => {
                 assert_eq!(f.command, "task complete");
                 assert_eq!(f.completed_before, 1);
-                assert!(f.partial);
+                assert!(f.reload_required);
             }
             other => panic!("expected Failed, got {other:?}"),
         }
@@ -2240,16 +2793,28 @@ mod tests {
             kind: FailureKind::NonZero { code: Some(1) },
             stderr: "boom".to_string(),
             completed_before: 1,
-            partial: true,
+            reload_required: true,
         }))
         .unwrap();
         assert_eq!(failed["state"], "failed");
         assert_eq!(failed["command"], "task edit");
         assert_eq!(failed["completedBefore"], 1);
-        assert_eq!(failed["partial"], true);
+        assert_eq!(failed["reloadRequired"], true);
         assert_eq!(failed["kind"]["kind"], "nonZero");
         assert_eq!(failed["kind"]["code"], 1);
         // snake_case field names must not leak to the wire.
         assert!(failed.get("completed_before").is_none());
+        assert!(failed.get("reload_required").is_none());
+
+        let timed_out = serde_json::to_value(UpdateOutcome::Failed(UpdateFailure {
+            command: "task edit".to_string(),
+            kind: FailureKind::TimedOut { after_ms: 30_000 },
+            stderr: "terminated".to_string(),
+            completed_before: 0,
+            reload_required: true,
+        }))
+        .unwrap();
+        assert_eq!(timed_out["kind"]["kind"], "timedOut");
+        assert_eq!(timed_out["kind"]["afterMs"], 30_000);
     }
 }

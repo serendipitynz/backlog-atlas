@@ -1,0 +1,15 @@
+{
+  "state": "ran",
+  "outcome": {
+    "state": "failed",
+    "command": "task edit",
+    "kind": {
+      "kind": "timedOut",
+      "afterMs": 30000
+    },
+    "stderr": "the backlog CLI did not finish within 30 seconds, so Atlas stopped waiting for it",
+    "completedBefore": 0,
+    "reloadRequired": true
+  },
+  "project": null
+}

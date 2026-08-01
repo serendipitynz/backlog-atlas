@@ -519,8 +519,15 @@ export type UpdateOperation =
   | { op: "milestoneRemove"; name: string; taskHandling: MilestoneTaskHandling }
   | { op: "milestoneArchive"; name: string };
 
-/** How a CLI invocation failed (doc-5 §5). */
-export type FailureKind = { kind: "spawn" } | { kind: "nonZero"; code: number | null };
+/**
+ * How a CLI invocation failed (doc-5 §5). `timedOut` is 期限到達 (decision-18): the process was still
+ * running at the CLI 終了期限 and Atlas killed it, so no exit code was ever observed — which is why it
+ * is not a `nonZero` with a missing code.
+ */
+export type FailureKind =
+  | { kind: "spawn" }
+  | { kind: "nonZero"; code: number | null }
+  | { kind: "timedOut"; afterMs: number };
 
 export interface UpdateFailure {
   /** The sub-command that failed, e.g. `"task edit"`. */
@@ -529,8 +536,12 @@ export interface UpdateFailure {
   /** The CLI's stderr — the failure reason doc-5 §5 requires showing. */
   stderr: string;
   completedBefore: number;
-  /** Earlier invocations already changed disk, so the re-read is mandatory (doc-5 §6). */
-  partial: boolean;
+  /**
+   * 要再読込 (doc-5 §5): Atlas cannot say the managed files are as they were, so the re-read is
+   * mandatory (doc-5 §6). True for an invocation after the first (an earlier one already wrote) and
+   * for every 期限到達 (the killed invocation may have written).
+   */
+  reloadRequired: boolean;
 }
 
 /** What became of a screen action (doc-5 §5). `failed` carries the failure's fields inline. */

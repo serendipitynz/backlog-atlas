@@ -577,10 +577,41 @@ describe("失敗の言い分け (doc-5 §5, doc-9 §4.2)", () => {
       kind: { kind: "nonZero", code: 1 },
       stderr: "Task TASK-9 not found",
       completedBefore: 0,
-      partial: false,
+      reloadRequired: false,
     });
     expect(detail).toContain("task edit");
     expect(detail).toContain("Task TASK-9 not found");
+    // 要再読込 でない失敗は再読込の注記を付けない — 付けると、何も起きていない失敗を
+    // 「画面が作り直された」と読ませてしまう。
+    expect(detail).not.toContain("再読込済み");
+  });
+
+  it("期限到達は終了コードではなく中断として述べ、適用の有無を断定しない", () => {
+    const detail = failureDetail({
+      command: "task edit",
+      kind: { kind: "timedOut", afterMs: 30000 },
+      stderr: "the backlog CLI did not finish within 30 seconds, so Atlas stopped waiting for it",
+      completedBefore: 0,
+      reloadRequired: true,
+    });
+    expect(detail).toContain("30 秒以内に終了しなかった");
+    // decision-18: 強制終了した呼び出しが書いたかどうかは分からないので、既に適用済みとは書かない。
+    expect(detail).toContain("変更したかどうかは分かりません");
+    expect(detail).toContain("再読込済み");
+    expect(detail).not.toContain("終了コード");
+    expect(detail).not.toContain("既に適用済み");
+  });
+
+  it("2 回目以降の失敗は既に適用された件数を述べる", () => {
+    const detail = failureDetail({
+      command: "task edit",
+      kind: { kind: "nonZero", code: 1 },
+      stderr: "boom",
+      completedBefore: 2,
+      reloadRequired: true,
+    });
+    expect(detail).toContain("2 件は既に適用済み");
+    expect(detail).not.toContain("分かりません");
   });
 
   it("照合不能は競合と読めない言い方にする", () => {

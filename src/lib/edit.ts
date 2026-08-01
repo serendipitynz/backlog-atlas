@@ -43,6 +43,7 @@ import type {
   CliReadiness,
   CommandError,
   ConflictSet,
+  FailureKind,
   Milestone,
   ProjectSnapshot,
   TaskEdit,
@@ -661,18 +662,36 @@ export type SaveState =
 
 /**
  * A CLI failure as the panel states it (doc-5 §5). The sub-command and stderr are the reason the
- * user acts on; `partial` is carried through because it changes what a retry means — earlier
- * invocations already landed, so the screen is showing a state the failed action half-created.
+ * user acts on; 要再読込 is carried through because it changes what a retry means — the screen is
+ * showing a state the failed action may have half-created.
  */
 export function failureDetail(failure: UpdateFailure): string {
-  const how =
-    failure.kind.kind === "spawn"
-      ? "起動できません"
-      : `終了コード ${failure.kind.code ?? "不明"}`;
-  const partial = failure.partial
+  const how = failureCause(failure.kind);
+  return `${failure.command} が失敗しました（${how}）${reloadNote(failure)}: ${failure.stderr.trim()}`;
+}
+
+function failureCause(kind: FailureKind): string {
+  switch (kind.kind) {
+    case "spawn":
+      return "起動できません";
+    case "nonZero":
+      return `終了コード ${kind.code ?? "不明"}`;
+    case "timedOut":
+      return `${Math.round(kind.afterMs / 1000)} 秒以内に終了しなかったため中断しました`;
+  }
+}
+
+/**
+ * What 要再読込 means for *this* failure. The two cases read differently on purpose: after an earlier
+ * invocation the screen can say what already landed, while a 期限到達 cannot — Atlas killed the
+ * process and nothing tells it whether the write happened (decision-18). Saying "既に適用済み" there
+ * would claim a fact nobody has.
+ */
+function reloadNote(failure: UpdateFailure): string {
+  if (!failure.reloadRequired) return "";
+  return failure.completedBefore > 0
     ? `（この操作の ${failure.completedBefore} 件は既に適用済みで、再読込済みです）`
-    : "";
-  return `${failure.command} が失敗しました（${how}）${partial}: ${failure.stderr.trim()}`;
+    : "（この操作が管理ファイルを変更したかどうかは分かりません。再読込済みです）";
 }
 
 /**

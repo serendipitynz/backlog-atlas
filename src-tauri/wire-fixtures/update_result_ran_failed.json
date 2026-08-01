@@ -9,7 +9,7 @@
     },
     "stderr": "no such task",
     "completedBefore": 1,
-    "partial": true
+    "reloadRequired": true
   },
   "project": null
 }

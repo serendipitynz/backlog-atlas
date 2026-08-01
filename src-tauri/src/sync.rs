@@ -237,9 +237,13 @@ fn same_version(
 pub enum ReloadReason {
     /// After a Backlog CLI update succeeded, its result is read back into the model (doc-5 §6).
     UpdateApplied,
-    /// A partial multi-invocation update failed midway; on-disk state moved, so the root is re-read
-    /// to reflect what actually landed (doc-5 §6 部分適用).
-    PartialUpdateFailed,
+    /// An update failed 要再読込 (doc-5 §5): Atlas cannot say the managed files are as they were, so
+    /// the root is re-read to reflect what actually landed (doc-5 §6). Two failures reach here — a
+    /// mid-sequence failure (an earlier invocation already wrote — 部分適用) and a 期限到達 (the
+    /// killed invocation may have written, decision-18). The reason is one variant, not two, because
+    /// what follows is identical: the root is re-read because its contents are unknown, and *why*
+    /// they are unknown is carried by the failure the caller already holds.
+    FailedUpdate,
     /// The file watch reported an external change to the root (doc-9 §3 継続検出).
     ExternalChange,
     /// The user asked for the root to be re-read. This is the fallback for when 継続検出 is not
@@ -503,10 +507,10 @@ impl SyncState {
             update::run(project_root, action, capability, cli).map_err(GuardError::Rejected)?;
         let reloaded = match &outcome {
             UpdateOutcome::Succeeded => Some(ReloadReason::UpdateApplied),
-            // A partial (mid-sequence) failure already moved on-disk state, so a reload is mandatory
-            // to reflect what landed (doc-5 §6); a non-partial failure changed nothing, so skip it.
-            UpdateOutcome::Failed(failure) if failure.partial => {
-                Some(ReloadReason::PartialUpdateFailed)
+            // 要再読込 (doc-5 §5): on-disk state may have moved, so a reload is mandatory to reflect
+            // what is actually there (doc-5 §6); a failure that changed nothing skips it.
+            UpdateOutcome::Failed(failure) if failure.reload_required => {
+                Some(ReloadReason::FailedUpdate)
             }
             UpdateOutcome::Failed(_) => None,
         };
@@ -1208,7 +1212,7 @@ task_prefix: \"TASK\"\n";
         // one a variant rather than a code path.
         for reason in [
             ReloadReason::UpdateApplied,
-            ReloadReason::PartialUpdateFailed,
+            ReloadReason::FailedUpdate,
             ReloadReason::ExternalChange,
             ReloadReason::ManualRefresh,
         ] {
@@ -1433,7 +1437,7 @@ task_prefix: \"TASK\"\n";
 
     // --- AC #3/#4: the guarded update ties check → run → reload into one unit --------------------
 
-    use crate::update::{probe, CliRun, CliStatus, TaskEdit};
+    use crate::update::{probe, CliRun, CliStatus, RunError, TaskEdit};
     use std::cell::RefCell;
     use std::collections::VecDeque;
 
@@ -1483,7 +1487,7 @@ task_prefix: \"TASK\"\n";
     }
 
     impl BacklogCli for FakeCli {
-        fn run(&self, _dir: Option<&Path>, args: &[String]) -> io::Result<CliRun> {
+        fn run(&self, _dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
             self.calls.borrow_mut().push(args.to_vec());
             if args == ["--version"] {
                 return Ok(CliRun {
@@ -1635,7 +1639,7 @@ task_prefix: \"TASK\"\n";
 
         match result {
             GuardedUpdate::Ran { outcome, model } => {
-                assert!(matches!(outcome, UpdateOutcome::Failed(ref f) if f.partial));
+                assert!(matches!(outcome, UpdateOutcome::Failed(ref f) if f.reload_required));
                 assert!(
                     model.is_some(),
                     "a partial failure reloads to reflect what landed (doc-5 §6)"
@@ -1671,7 +1675,7 @@ task_prefix: \"TASK\"\n";
 
         match result {
             GuardedUpdate::Ran { outcome, model } => {
-                assert!(matches!(outcome, UpdateOutcome::Failed(ref f) if !f.partial));
+                assert!(matches!(outcome, UpdateOutcome::Failed(ref f) if !f.reload_required));
                 assert!(
                     model.is_none(),
                     "a failure that changed nothing reloads nothing (doc-5 §5)"
