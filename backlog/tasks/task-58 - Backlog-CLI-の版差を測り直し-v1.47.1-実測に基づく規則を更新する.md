@@ -1,10 +1,10 @@
 ---
 id: TASK-58
 title: Backlog CLI の版差を測り直し v1.47.1 実測に基づく規則を更新する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 19:46'
-updated_date: '2026-08-01 08:20'
+updated_date: '2026-08-01 09:00'
 labels:
   - 'kind:chore'
 milestone: m-2
