@@ -1,10 +1,10 @@
 ---
 id: TASK-85
 title: 共通 mutex を分割し backlog 子プロセスへ終了期限を設ける
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-01 22:48'
+updated_date: '2026-08-01 23:46'
 labels:
   - robustness
   - rust
@@ -32,7 +32,7 @@ AtlasState.lifecycle がアプリ全体に 1 個しかなく、台帳を変更�
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-2026-08-02 に実装した。
+2026-08-02 に実装した。PR #43 (APPROVED、レビュー 5 ラウンド) としてマージ済み。
 
 **先に確定したこと（決定先行）**: 本タスクは対応順の表に決 印が無かったが、指示書の定義
 （既存 decision・doc の契約を変える）に当たるので、実装より先に **decision-18** を書いて
@@ -56,13 +56,23 @@ AtlasState.lifecycle がアプリ全体に 1 個しかなく、台帳を変更�
 エントリを読むことが型で書けない。試験は
 `work_on_one_project_serializes_against_work_on_that_same_project_only`。
 
-**AC #3 CLI 終了期限**: `SystemBacklog::run` を `Command::output()` から
-spawn + 配管 + `try_wait` の反復（20 ms 間隔）+ 期限到達時の `kill`/`wait` に置き換えた。
-新規依存は無い。標準出力・標準エラーは専用スレッドで最後まで読む。失敗は `RunError`
-（`Spawn` / `TimedOut`）で、`FailureKind::TimedOut { after_ms }` として wire に出る。
+**AC #3 CLI 終了期限**: `SystemBacklog::run` を `Command::output()` から、spawn +
+配管の専用スレッドでの読み出し + `wait_until` による期限付き待機へ置き換えた。新規依存は無い。
+**待機経路に残るブロッキング呼び出しを 1 つも残さない形にしてある**（レビューで 2 つ見つかった。
+下の「レビューで直したこと」を参照）—
+`wait_until` は `poll_until`（20 ms 間隔の `try_wait` 反復）で `CLI_DEADLINE` まで待ち、
+到達したら `kill` を試み、その回収も `CLEANUP_GRACE`（1 秒）を上限とする `poll_until` で行う。
+配管の読み切りも `join()` ではなく同じ `CLEANUP_GRACE` を上限に待ち、終わらないスレッドは
+停止させず放棄する（パイプは全ての書き手が閉じるまで EOF に達しないので、子孫が配管を
+継承していると `join()` は子の終了後も戻らない）。待機は `Reapable` トレイト越しなので、
+kill が効かない過程も試験できる。失敗は `RunError`（`Spawn` / `TimedOut`）で、
+`FailureKind::TimedOut { after_ms }` として wire に出る。`detail` には待機中に観測したこと
+（kill の失敗など）だけを書き、**コードが確かめていない「プロセスは終了した」は主張しない**。
 試験は `a_process_that_outlives_the_deadline_is_killed_and_reported_as_timed_out`（否定形）と
 `a_process_that_finishes_inside_the_deadline_returns_its_exit`（肯定形）、
-`output_larger_than_a_pipe_buffer_comes_back_whole`。
+`output_larger_than_a_pipe_buffer_comes_back_whole`、
+`a_descendant_holding_the_pipes_does_not_extend_the_wait`（`#[cfg(unix)]`）、
+`a_kill_that_does_not_land_still_ends_the_wait`。
 
 **AC #4 停止する偽 CLI**: `a_stalled_update_holds_up_neither_another_project_nor_the_settings`。
 alpha の更新が `backlog` の中で止まっている間に、beta の読取・台帳の読取・アプリ設定の
@@ -74,9 +84,18 @@ alpha の更新が `backlog` の中で止まっている間に、beta の読取�
 `ReloadReason::PartialUpdateFailed` も `FailedUpdate` へ改称した。画面の文言は
 `completedBefore > 0` と期限到達で書き分ける（後者は「既に適用済み」と書けない）。
 
-**検証**: `cargo test` 319 件、`cargo test -- --include-ignored` 323 件（実 CLI を使う 2 件も
-新しい待機経路を通って成功）、`cargo fmt --check`・`cargo clippy --all-targets` 無指摘。
-`pnpm test` 508 件、`pnpm run check` 0 errors、`pnpm run build` 成功。
+**レビューで直したこと（5 ラウンド・4 件）**: 4 件のうち 3 件が同じ 1 本の糸で、
+**「期限を設けた」と書いた経路に、期限の外側で無条件に待つ呼び出しが残っていた**。
+round 1 [P1] は配管の読み切り（`join()`）、round 4 [P1] は強制終了後の回収（`child.wait()`）。
+どちらも正常系では一瞬で終わるため実測に出ず、子孫プロセスが配管を継承する場合と、
+強制終了が効かない場合にだけ露出する。round 3 [P3]（テストのコメントが修正で消した挙動を
+説明したまま）は、書き直した文もまた偽だったところから round 4 の [P1] を掘り当てた。
+[P2] は Windows 分岐の試験が 512 KiB を**引数**で渡していたもので、コマンドライン上限
+（プロセス 32,767 文字・`cmd.exe` 8,191 文字）を超えるため Windows では `spawn` で落ちる。
+
+**検証**: `cargo test` **321** 件、`cargo test -- --include-ignored` **325** 件（実 CLI を使う
+2 件も新しい待機経路を通って成功）、`cargo fmt --check`・`cargo clippy --all-targets` 無指摘。
+`pnpm test` **508** 件、`pnpm run check` 0 errors、`pnpm run build` 成功。
 wire fixture は `ATLAS_RECORD_WIRE_FIXTURES=1 cargo test` で再記録してコミットした
 （`update_result_ran_timed_out.json` を新設。`afterMs` を運ぶ標本が他に無く、型が
 `wire.ts` だけに固定されるのを避けるため）。
