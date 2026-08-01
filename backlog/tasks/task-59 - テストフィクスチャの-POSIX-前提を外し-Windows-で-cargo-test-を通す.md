@@ -1,10 +1,10 @@
 ---
 id: TASK-59
 title: テストフィクスチャの POSIX 前提を外し Windows で cargo test を通す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 20:08'
-updated_date: '2026-08-01 11:51'
+updated_date: '2026-08-01 20:27'
 labels:
   - 'kind:bug'
 milestone: m-2
@@ -31,7 +31,7 @@ ordinal: 59000
 - [x] #1 3 件のフィクスチャの絶対パス生成をプラットフォーム依存にし、Windows でも絶対パスになるようにする
 - [x] #2 TOML へパスを埋める箇所をエスケープする（またはリテラル文字列を使う）
 - [x] #3 同じ前提を持つ他のフィクスチャが無いか、手書き TOML とパス直書きを走査して確かめる
-- [ ] #4 Windows 上で cargo test の全件が通ることを確認する（例外: history::tests::search_matches_task_id_in_commit_body は git の実体が wslgit である環境でのみ落ちる。wslgit は Windows 側の git 呼び出しを bash コマンド文字列へ組み直すため、フィクスチャが複数行の -m で渡すコミットメッセージが再クォートされる。原因の族が本タスクの POSIX パス前提と別であり、製品コードは run_git が log・-z・--format=…・--fixed-strings・--grep=<TASK-ID>・commit id・パスしか渡さず、改行を含む引数を git へ渡す経路が存在しないため、この 1 件は本タスクの対象外とする）
+- [x] #4 Windows 上で cargo test の全件が通ることを確認する（例外: history::tests::search_matches_task_id_in_commit_body は git の実体が wslgit である環境でのみ落ちる。wslgit は Windows 側の git 呼び出しを bash コマンド文字列へ組み直すため、フィクスチャが複数行の -m で渡すコミットメッセージが再クォートされる。原因の族が本タスクの POSIX パス前提と別であり、製品コードは run_git が log・-z・--format=…・--fixed-strings・--grep=<TASK-ID>・commit id・パスしか渡さず、改行を含む引数を git へ渡す経路が存在しないため、この 1 件は本タスクの対象外とする）
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -76,7 +76,18 @@ serde の JSON を書く wire fixture の記録側。
 304 件がすべて通り、`cargo fmt --check` と `cargo clippy --all-targets` は無指摘。
 フロントエンドには触っていない（wire 型の増減が無いので fixture の再記録も不要）。
 
-**AC #4 は未達**: Windows 実機での全件確認はユーザーへ依頼した。AC #4 に書いた例外
-（`history::tests::search_matches_task_id_in_commit_body`）は 2026-08-01 の実測で
-4 failed のうちの 1 件として現れたもので、ユーザーが 3 択から「AC に例外と理由を書く」を選んだ。
+**AC #4 の確認内容（2026-08-01、Windows 実機。PR 提示後にユーザーが実施）**: `cargo test` が
+300 passed / 1 failed / 4 ignored（計 305）で、落ちたのは AC #4 に書いた例外の 1 件だけだった
+（従来の 4 failed から 3 件減った）。直した 3 件
+（`ledger::tests::load_rejects_corrupt_ledger`・
+`load_keeps_invalid_status_alias_for_the_interpretation_layer`・
+`commands::tests::an_invalid_alias_in_the_ledger_file_leaves_that_status_unmapped`）が通り、
+`an_absolute_root_is_absolute_on_this_platform` も通った — `C:\<name>` が `Path::is_absolute` の
+要求を満たす綴りであることは macOS 側から検査できない部分なので、実機のこの 1 件で確定した。
+件数が macOS の 304 と 1 違うのは正常で、`editor.rs` に Windows 限定のテストが 2 件
+（`the_changed_mode_code_matches_the_windows_binding`・
+`a_shell_execute_failure_is_reported_in_its_own_terms`）、Unix 限定が 1 件あるため。
+例外の 1 件の panic 出力は予告どおり
+`left: "subject line$' '$' 'Refs TASK-7 in the body"` で、この機の `git` の実体が wslgit である
+限り **1 failed がこの機での期待値**として残る。
 <!-- SECTION:NOTES:END -->
