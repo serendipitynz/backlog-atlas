@@ -55,8 +55,13 @@ holds; the CLI-mediated path is not the only way managed Markdown changes.
 ## Building from source
 
 Requirements: Node 24, pnpm 10.30.3, and the Rust toolchain Tauri 2 asks for. The Node
-major is pinned in `.node-version`, which fnm, nodenv, asdf, mise, and
-`actions/setup-node` all read; pnpm is pinned in `package.json`'s `packageManager`
+major is pinned in `.node-version`, holding the bare major `24`. fnm reads that file by
+default and resolves the bare major on its own (measured with fnm 1.39.0: it selects
+v24.18.1), and `actions/setup-node` reads it through `node-version-file`. Other version
+managers need a step of their own — asdf reads `.node-version` only under
+`legacy_version_file = yes`, mise keeps idiomatic version files off by default, and
+nodenv does not resolve a bare major without an alias plugin — so with those, select
+Node 24 however that tool expects. pnpm is pinned in `package.json`'s `packageManager`
 field, which Corepack reads. Node is a build-time requirement only — the shipped
 artifact is a Tauri binary with the Vite output inside it, and it carries no Node.
 

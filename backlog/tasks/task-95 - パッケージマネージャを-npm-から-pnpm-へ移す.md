@@ -4,7 +4,7 @@ title: パッケージマネージャを pnpm へ移し Node と pnpm の版を�
 status: In Review
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-01 02:56'
+updated_date: '2026-08-01 03:06'
 labels:
   - build
   - 'kind:chore'
@@ -57,4 +57,12 @@ engines.node は入れない。真実の出所を 2 つにしないためで、p
 - Windows / Linux 実機での確認は未実施。AC #5 の文言に OS の限定は無く macOS で全 5 コマンドが通ったのでチェック済みにしたが、対応順の表が本タスクへ付けた「実」印の趣旨に沿って、実機での確認はユーザーへ依頼する。
 
 pnpm 10.30.3 の既知の挙動: `pnpm install` が `@parcel/watcher` と `esbuild` を "Ignored build scripts" として毎回警告する。package.json の `pnpm.ignoredBuiltDependencies` と `pnpm.onlyBuiltDependencies: []`、および pnpm-workspace.yaml のいずれでも抑止できないことを実測したので、効かない設定は残さず、承認しない理由（sass の watch モード専用 / esbuild は optional dependency でプラットフォーム別バイナリを解決）を AGENTS の規約として書いた。
+
+### PR #37 レビュー [P2] への対応（2026-08-01）
+
+Description が `.node-version` の選定根拠として書いた「実際に使っている fnm・nodenv・asdf・mise が読む広いほうの慣習」は、読める慣習としては正しいが、**既定構成で読むかどうかは揃っていない**。レビューの指摘どおり、asdf は `legacy_version_file = yes` の下でのみ読み、mise は idiomatic version file を既定で無効にしており、nodenv は alias plugin なしにメジャーのみの `24` を解決しない。
+
+実測して確かめたのは fnm 1.39.0 だけで、`.node-version` の `24` から v24.18.1 を選ぶ (`fnm exec -- node --version`)。`actions/setup-node` は `node-version-file` を通じて `.node-version` を読む。
+
+`.node-version` を 1 ファイルだけ置く判断そのものは変えない。ずれる場所を 1 つに保つという根拠は、どのツールが既定で読むかとは独立だからである。README.md・README.ja.md の記述を、fnm と `actions/setup-node` に限って「読む」と述べ、asdf・mise・nodenv には各ツールの手当てが要ると書く形へ直した。
 <!-- SECTION:NOTES:END -->

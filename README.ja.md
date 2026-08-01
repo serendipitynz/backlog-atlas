@@ -51,10 +51,15 @@ Atlas はタスクのファイルを利用者自身の外部エディタで開�
 ## ソースからのビルド
 
 必要なもの: Node 24、pnpm 10.30.3、および Tauri 2 が要求する Rust ツールチェーン。
-Node のメジャーは `.node-version` に固定してある。fnm・nodenv・asdf・mise と
-`actions/setup-node` はいずれもこのファイルを読む。pnpm は `package.json` の
-`packageManager` に固定してあり、Corepack がこれを読む。Node が要るのはビルド時だけで
-ある。出荷物は Vite の出力を内包した Tauri バイナリであり、Node は入らない。
+Node のメジャーは `.node-version` に固定してあり、内容はメジャーのみの `24` である。
+fnm は既定でこのファイルを読み、メジャーのみの指定を自力で解決する (fnm 1.39.0 で実測:
+v24.18.1 を選ぶ)。`actions/setup-node` は `node-version-file` を通じて読む。他の
+バージョン管理ツールはそれぞれ別の手当てが要る。asdf は `legacy_version_file = yes` の
+下でのみ `.node-version` を読み、mise は idiomatic version file を既定で無効にしており、
+nodenv は alias plugin なしにメジャーのみの指定を解決しない。これらを使う場合は、その
+ツールの流儀で Node 24 を選ぶこと。pnpm は `package.json` の `packageManager` に固定して
+あり、Corepack がこれを読む。Node が要るのはビルド時だけである。出荷物は Vite の出力を
+内包した Tauri バイナリであり、Node は入らない。
 
 ```sh
 pnpm install
