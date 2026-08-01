@@ -4,6 +4,7 @@ title: Backlog CLI の版差を測り直し v1.47.1 実測に基づく規則を�
 status: To Do
 assignee: []
 created_date: '2026-07-31 19:46'
+updated_date: '2026-08-01 01:51'
 labels:
   - 'kind:chore'
 milestone: m-2
@@ -28,3 +29,13 @@ doc-3・doc-4・doc-5・doc-8・doc-9・doc-10・doc-12 は Backlog CLI v1.47.1 
 - [ ] #3 新版で可能になった操作について、GUI 側の無効化と「提供しない操作区画」を見直す
 - [ ] #4 update::MIN_VERSION と decision-2・decision-7 のサポート範囲の表記を、測り直した版に合わせる
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+測定中に見つかった v1.47.1 の挙動（1.48.0 で変わったか確認する）:
+
+- backlog task edit -t <新title> は frontmatter の title を書き換えるが、ファイル名は変えない。TASK-95 で title を「パッケージマネージャを npm から pnpm へ移す」から「パッケージマネージャを pnpm へ移し Node と pnpm の版を固定する」へ変えた結果、ファイル名だけ旧 title のまま残っている（2026-08-01）。v1.47.1 の help で確認した rename 相当のサブコマンドは milestone rename だけで、task には rename が無く、title を変える手段は task edit -t/--title に限られる（その title 更新がファイル名を追随させないことが、まさにこの項の観測である）。Atlas は frontmatter を正本として読むので機能影響は無いが、リポジトリを ls で見たときに title と食い違う。1.48.0 で task 側に rename が入ったか、task edit -t がファイル名を追随させるようになったかを確認し、いずれも無ければ「title 変更時にファイル名が追随しない」を doc-5 へ記録する。
+- backlog task edit <id> --dep <N> は依存を追加ではなく置換する。TASK-65 に --dep 58 を単独で渡したところ、既にあった TASK-64 が消えた。複数の依存を保つには 1 回の呼び出しで --dep をすべて並べる必要がある（--ac が追加なのと挙動が逆）。この非対称は doc-5 の操作写像に影響するので 1.48.0 で確認する。
+- backlog task edit <id> -l <labels> もラベルを置換する。kind:* を保ったまま他のラベルを変えるときは既存のラベルをすべて並べ直す。
+<!-- SECTION:NOTES:END -->
