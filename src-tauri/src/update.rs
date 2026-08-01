@@ -1586,11 +1586,13 @@ mod tests {
             matches!(error, RunError::TimedOut { after, .. } if after == deadline),
             "the deadline is what ended the wait: {error:?}"
         );
-        // The process itself was ended, not merely abandoned: `run` only returns after `kill` and the
-        // reaping `wait`, and both pipe readers reached EOF — which the closed ends of a live process
-        // would not give. Waiting out the program instead would take ten minutes.
+        // The process itself was ended, not merely abandoned: `run` returns only after `kill` and the
+        // reaping `wait`, both of which had to succeed for this call to come back at all. It does
+        // *not* wait on the pipe readers — a descendant can hold those open indefinitely, which is
+        // why the drain is bounded separately — so what returning promptly proves is the deadline and
+        // the reap, not EOF. Waiting the program out instead would take ten minutes.
         assert!(
-            elapsed < Duration::from_secs(30),
+            elapsed < Duration::from_secs(5),
             "the wait must end at the deadline, not at the program's own exit ({elapsed:?})"
         );
     }
