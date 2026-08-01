@@ -1,10 +1,10 @@
 ---
 id: TASK-60
 title: Windows で npm 導入の Backlog CLI を解決できず更新経路が発行不能になるのを直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 20:55'
-updated_date: '2026-08-01 09:35'
+updated_date: '2026-08-01 11:41'
 labels:
   - 'kind:bug'
 milestone: m-2
@@ -45,7 +45,7 @@ npm パッケージを解剖した結果、**ネイティブの実行ファイ�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Windows で npm 導入の Backlog CLI を解決し、CLI 縮退が解けることを実機で確認する
+- [x] #1 Windows で npm 導入の Backlog CLI を解決し、CLI 縮退が解けることを実機で確認する
 - [x] #2 採る手段を decision として記録する（シェルを経由する場合はその位置づけと AGENTS との関係を明記）
 - [x] #3 実行ファイルの解決を BacklogCli の実装内に閉じ、doc-5 の操作写像を変えない
 - [x] #4 macOS・Linux の解決経路を壊していないことを確認する
@@ -66,13 +66,21 @@ npm パッケージを解剖した結果、**ネイティブの実行ファイ�
 （macOS で 70,612,322 バイト、`--version` が 1.48.0 を返す）。AGENTS.md / AGENTS.ja.md は
 改訂していない。
 
-**AC #4 の確認内容**: macOS は順序の 3 段目に到達し、`Command::new` へ渡すプログラム名が
-`"backlog"` のまま変わらない。実 CLI を使う 2 件の ignored テスト
-（`commands::tests::the_frontend_edit_reaches_the_real_cli` ほか）を
-`cargo test -- --include-ignored` で通し、実物の CLI へ届くことを実測した（301 件全通過）。
-Linux は `SubPackage::current().is_windows()` が偽で同じ 3 段目へ落ちる同一経路であり、
-`update::tests::without_a_setting_a_unix_host_still_gets_the_bare_name` が固定している。
-**Linux 実機では走らせていない。**
+**AC #1 の確認内容（2026-08-01、Windows 実機。PR 提示後にユーザーが実施）**: CLI 縮退帯が消え、
+タスクのタイトル編集が実際に管理ファイルへ届いた（画面の保存完了表示と `backlog\tasks\` 配下の
+パス表示）。あわせて 2 点を確認した — `backlog_cli` に解決できないパスを書くと
+「backlog CLI の実行ファイルを解決できません。作成・更新は発行できません（台帳エントリの更新は
+影響を受けません）。」が出ること、`backlog_cli` を残したまま設定画面から別項目を保存しても
+その値が消えないこと（PR #40 の [P1] の再発検査）。
 
-**AC #1 は未達**: Windows 実機での確認はユーザーへ依頼した。
+**AC #4 の確認内容**: macOS は順序の 3 段目に到達し、`Command::new` へ渡すプログラム名が
+`"backlog"` のまま変わらない。Linux は `SubPackage::current().is_windows()` が偽で同じ 3 段目へ
+落ちる同一経路であり、`update::tests::without_a_setting_a_unix_host_still_gets_the_bare_name` が
+固定している。**Linux 実機（WSL2 / Ubuntu 24.04）でも 2026-08-01 に確認した**:
+`cargo test -- --include-ignored` が 301 passed / 1 failed で、通った中に実物の CLI を起動する
+`commands::tests::the_frontend_edit_reaches_the_real_cli` と
+`the_renumbered_ac_delta_hits_the_intended_criterion` が含まれる。唯一の失敗は
+`the_gh_reference_means_returns_a_pr_commit_set` で、その `#[ignore]` の理由文が要求する
+認証済み `gh` と github.com への到達を使い捨ての検証環境が満たしていないだけであり、
+この AC の対象ではない。
 <!-- SECTION:NOTES:END -->
