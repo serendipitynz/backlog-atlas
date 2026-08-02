@@ -15,16 +15,19 @@
 //! (decision-20).
 //!
 //! Four boundary cases stay distinguishable because the display for each differs (decision-5,
-//! decision-20, doc-7 §3, doc-8 §4):
+//! decision-20, doc-7 §3, doc-8 §4). Two of them are named for a Type-value count rather than a
+//! kind-label count, which is decision-20 restating decision-5's 複数 kind / kind 無し: with two
+//! 導出元 the label count is no longer the number of values to show, and a task with `labels: []`
+//! and `type: bug` would otherwise be owed both "Type 未設定" and `bug`.
 //!
 //! | case | here | display |
 //! |---|---|---|
-//! | 複数 kind | two or more values, in 候補 order | all shown side by side, never rounded to one |
-//! | kind 無し | zero values ([`TypeValues::is_unset`]) | an explicit "Type 未設定", not an empty gap |
+//! | 複数 Type 値 | two or more values, in 候補 order | all shown side by side, never rounded to one |
+//! | Type 候補なし | zero values ([`TypeValues::is_unset`]) | an explicit "Type 未設定", not an empty gap |
 //! | 未知 Type | [`TypeValue::known`] false | the value, with a neutral fallback mark |
-//! | 同値の重複 | folded to one by [`derive_types`] | one value, so it cannot be read as 複数 kind |
+//! | 同値の重複 | folded to one by [`derive_types`] | one value, so it cannot be read as 複数 Type 値 |
 //!
-//! kind 無し is a legitimate state rather than a defect, which is why nothing here produces a
+//! Type 候補なし is a legitimate state rather than a defect, which is why nothing here produces a
 //! degrade event — it is a normal display state, kept apart from the parse-error marks
 //! (decision-5).
 
@@ -87,7 +90,7 @@ impl TypeValue {
 }
 
 /// A task's Type values in Type 候補 order — zero or more, because decision-5 refuses to collapse
-/// 複数 kind to a single value. Serializes as a plain array; `unset` is the empty array, so no
+/// 複数 Type 値 to a single value. Serializes as a plain array; `unset` is the empty array, so no
 /// consumer has to keep a separate flag in sync with the contents.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
@@ -98,14 +101,17 @@ impl TypeValues {
         &self.0
     }
 
-    /// kind 無し — the task has no Type 候補 at all (no `kind:` label and no `type` field).
+    /// Type 候補なし — the task has no Type 候補 at all (no `kind:` label and no non-blank `type`
+    /// field). decision-20's restatement of decision-5's kind 無し: the label count alone would
+    /// call a `type`-only task unset while it has a value to show.
     /// Display shows "Type 未設定" rather than nothing, since absence of a Type is itself the
     /// fact (decision-5).
     pub fn is_unset(&self) -> bool {
         self.0.is_empty()
     }
 
-    /// 複数 kind — two or more Type values, all of which are shown.
+    /// 複数 Type 値 — two or more Type values, all of which are shown. Counted over values, not
+    /// over kind labels, so one kind label plus a `type` field also lands here (decision-20).
     pub fn is_multiple(&self) -> bool {
         self.0.len() > 1
     }
@@ -118,7 +124,7 @@ impl TypeValues {
 
 /// Split frontmatter `labels` into kind labels (as bare Type 候補) and normal labels — the
 /// separation doc-4 §3.3 fixes at the read layer, with the derivation rule decision-5 fixes.
-/// Returned in the input order so 複数 kind keeps the order the labels were written in.
+/// Returned in the input order so the kind-derived 候補 keep the order the labels were written in.
 ///
 /// The two lists are disjoint by construction: this is the single place the split happens, so
 /// a kind label can never reach the normal label list (AC #5).
@@ -189,7 +195,7 @@ mod tests {
         assert!(types.values()[0].known);
     }
 
-    // AC #4 (複数 kind): every value is kept, in label order — no rounding to one.
+    // AC #4 (複数 Type 値): every value is kept, in label order — no rounding to one.
     #[test]
     fn multiple_kinds_are_all_kept_in_label_order() {
         let (kinds, _) = split_labels(labels(&["kind:research", "docs", "kind:writing"]));
@@ -201,7 +207,8 @@ mod tests {
         );
     }
 
-    // AC #4 (kind 無し): no kind label is 未設定 — distinguishable from a task that has Types.
+    // AC #4 (Type 候補なし): neither 導出元 gave a 候補, so 未設定 — distinguishable from a task
+    // that has Types.
     #[test]
     fn no_kind_label_is_unset() {
         let (kinds, normal) = split_labels(labels(&["ui", "backend"]));
@@ -283,7 +290,7 @@ mod tests {
             types.values().iter().map(|t| &t.value).collect::<Vec<_>>(),
             ["bug"]
         );
-        // Folded to one, so it cannot be read as 複数 kind.
+        // Folded to one, so it cannot be read as 複数 Type 値.
         assert!(!types.is_multiple());
     }
 
@@ -295,6 +302,25 @@ mod tests {
         let (kinds, _) = split_labels(labels(&["kind:bug", "kind:Bug"]));
         assert_eq!(kinds, ["bug", "Bug"]);
         assert_eq!(derive_types(&kinds).values().len(), 1);
+    }
+
+    // Type 候補なし, not kind 無し (decision-20). A task with no kind label but a `type` field has
+    // a value to show, so it is not 未設定 — read as a kind-label count, decision-5 and
+    // decision-20 would prescribe both "Type 未設定" and `bug` for the very same task.
+    #[test]
+    fn a_type_field_alone_is_not_unset() {
+        // The slot the read layer builds for `labels: []` + `type: bug`.
+        let types = derive_types(&labels(&["bug"]));
+        assert!(!types.is_unset());
+        assert_eq!(types.values()[0].value, "bug");
+    }
+
+    // 複数 Type 値 counts values, not kind labels: one kind label plus the field is two, and the
+    // 併記 rule has to fire for it.
+    #[test]
+    fn one_kind_label_plus_the_type_field_counts_as_multiple() {
+        let types = derive_types(&labels(&["bug", "feature"]));
+        assert!(types.is_multiple());
     }
 
     // Folding is by value, not by count: two genuinely different values stay two.

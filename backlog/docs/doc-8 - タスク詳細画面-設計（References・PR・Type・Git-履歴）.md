@@ -49,7 +49,7 @@ TASK-12 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書
 |---|---|---|---|---|---|
 | 見出し | 横断タスクID＋title、status、priority、assignee、milestone、日付、ID コピー | frontmatter（doc-4）。status は正準ステータス列への対応（decision-4）も併記。 | 常設 | 常設 | 常設 |
 | 編集（明示保存） | 6 章の編集操作 | doc-5 | 常設 | 常設 | 常設 |
-| Type | 0 個以上の Type 値。未設定は「Type 未設定」、未知 Type は中立表示に印 | kind ラベルと frontmatter `type` の 2 つの Type 導出元から（decision-5・decision-20）。通常ラベルと分離（4 章）。 | 常設 | 常設（脇列） | 常設 |
+| Type | 0 個以上の Type 値。Type 候補なし（どちらの導出元からも候補を得ない）は「Type 未設定」、未知 Type は中立表示に印 | kind ラベルと frontmatter `type` の 2 つの Type 導出元から（decision-5・decision-20）。通常ラベルと分離（4 章）。 | 常設 | 常設（脇列） | 常設 |
 | 通常ラベル | labels の非 kind 要素 | doc-4。Type と混ぜない。 | 常設 | 常設（脇列） | 常設 |
 | Description | 本文 | `SECTION:DESCRIPTION`（doc-4）。 | 常設 | 常設（主列） | 常設 |
 | Acceptance Criteria | `#N` 項目と checked 状態、達成数 | `AC:BEGIN`〜`AC:END`（doc-4）。 | 常設 | 常設（主列） | 常設 |
@@ -72,7 +72,7 @@ AC の要請（Type と Pull Request URL を通常ラベル・References から�
 
 - **Type ↔ 通常ラベル**: labels は読み取り層で kind ラベルと通常ラベルへ分離済み（doc-4・decision-5）。詳細画面は Type 区画に Type 値（複数併記・未設定・未知）を、通常ラベル区画に非 kind ラベルを、別区画として出す。同一の labels 一覧へ混在させない。チップの形の違い（塗り／輪郭ピル）は doc-11 §3。
 - **Type 値の由来は画面に出さない**: Type 値は kind ラベルと frontmatter `type` の 2 つの Type 導出元から集まる（decision-20）が、Type 区画はどちらの導出元から来た値かを区別せず、1 つの並びとして出す。両方が値を持つ Type の二重指定は、decision-5 の複数 kind と同じ見た目になる。大文字小文字を無視して同じ値になる Type 候補（同値の重複）は導出元を問わず 1 つに畳み、綴りは先に来たものを残す。
-- **Atlas は type フィールドを編集できない**（decision-20）: doc-5 の操作写像に `--type` が無いため、Type 区画に出ている値のうち frontmatter `type` 由来のものは、この画面からも 6 章の編集操作からも消せない。kind ラベル由来の値はラベル増減で消せるので、同じ区画に出ている値の間で編集可否が割れる。二重指定を解消したい利用者は Backlog CLI か管理ファイルの手編集による。編集経路を持つかどうかは m-3 の判断。
+- **Type 編集の非提供**（decision-20）: Type 区画に出ている値は、どちらの Type 導出元のものも、この画面からも 6 章の編集操作からも変更できない。理由は導出元ごとに別で、kind ラベル由来の値は読み取り層が保持するのが接頭辞を外した値であり元のラベル文字列と一致する保証が無いため、frontmatter `type` 由来の値は doc-5 の操作写像に `--type` が無いためである（6 章の編集草案が持つラベルは通常ラベルだけで、画面はこの 2 つの理由を Type 区画に述べる）。したがって Type の二重指定を解消したい利用者は Backlog CLI か管理ファイルの手編集による。編集経路を持つかどうかは m-3 の判断。
 - **Pull Request URL ↔ References**: References の URL のうち PR URL 抽出規則（doc-6）で Pull Request と判定した URL を Pull Request 区画へ、残りを References 区画へ分ける。1 タスクに複数 PR があれば全て並べる（doc-6）。
 - 分離は表示上の区画分けであり、正本の labels・references を書き換えない。抽出・分離は読み取り済みデータへの後処理である。
 
