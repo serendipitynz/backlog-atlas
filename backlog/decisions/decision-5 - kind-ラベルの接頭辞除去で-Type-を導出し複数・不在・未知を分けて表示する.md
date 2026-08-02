@@ -22,7 +22,8 @@ kind 無しの表示方法を決める（TASK-5 に依存、TASK-8）。
 - **kind 無し** … 1 タスクの labels に kind ラベルが 1 つも存在しない事象。
 - **未知 Type** … 導出した Type 値が既知 Type 集合に含まれない事象。
 - **既知 Type 集合** … Atlas が表示上の色・並び等を用意しておく Type 値の集合。
-  初期版は doc-2 が列挙した feature / bug / research / writing / maintenance とする。
+  初期版は doc-2 が列挙した feature / bug / research / writing / maintenance とする
+  （decision-20 が enhancement / task / chore / docs / spike を足して 10 語にした）。
 
 導出を「接頭辞 `kind:` の機械的除去」に置く根拠。kind ラベルの語彙（feature・bug 等）
 は各プロジェクトが付けるもので、Atlas が固定した対応表へ写す方式にすると、
@@ -35,6 +36,13 @@ kind 無しの表示方法を決める（TASK-5 に依存、TASK-8）。
 Type 値の導出は、kind ラベル `kind:X` の**接頭辞 `kind:` を除去した残り X** を
 Type 値とする（大文字小文字は保持、前後空白は除く）。分離自体は読み取り層で行う
 （doc-4 の 3.3 を再確認）。通常ラベル一覧には kind ラベルを混ぜない。
+
+> **2026-08-02 の注記（decision-20、TASK-110）**: 本節が Type 値の導出元を kind ラベル 1 つに
+> 限った点は decision-20 が改めた。Backlog CLI v1.48.0 が frontmatter へ書く `type:`
+> （type フィールド）も導出元になり、両方の値を併記する。接頭辞除去の規則そのものと、
+> 下の境界事象 3 つの表示規則は変えていない。既知 Type 集合は decision-20 が 10 語へ広げた。
+> 本節の挙動が変わるのは 1 点だけで、大文字小文字の違いしかない Type 候補
+> （`kind:bug` と `kind:Bug`）は decision-20 以降 1 つに畳まれる。
 
 境界事象の表示。
 

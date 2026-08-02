@@ -118,7 +118,7 @@ draft（doc-4 の保存区分 draft。frontmatter の id は `DRAFT-N`）に対�
 v1.48.0 が新たに受け取るオプションのうち、Atlas が使わないものと理由:
 
 - **`--clear-ac`／`--clear-labels`**: どちらも既存の手段（全 index の `--remove-ac`、全ラベルの `--remove-label`）で同じ結果になることを実測で確認した。操作写像を増やす利得が無い。
-- **`--type`**（`task create`／`task edit`）: frontmatter に `type:` フィールドを書く。Atlas は Type を `kind:` ラベルから導出する（decision-5）ので、このフィールドを読まない。**この食い違いは TASK-110 で扱う。**
+- **`--type`**（`task create`／`task edit`）: frontmatter に `type:` フィールドを書く。**Atlas は 2026-08-02 の decision-20（TASK-110）以降このフィールドを読み、kind ラベル由来の Type 値と併記する**が、操作写像には足していない。足さない理由は製品判断であり、CLI に手段が無いからではない（doc-10 §1 の「理由は真であるものを書く」）——TASK-110 の受入条件が読み取りと表示までを求めており、`--type` の値域が CLI 固定 Type 語彙（bug・feature・enhancement・task・chore・docs・spike の 7 語で、`config.yml` では増減できない。2026-08-02 実測）に閉じていて、開いた語彙であるラベル増減とは別の入力部品が要るためである。この結果、Atlas は Type の二重指定を解消できない（decision-20 の Consequences、doc-8 §4）。編集経路を持つかどうかは m-3 で判断する。
 
 コマンド構成では `sequence` が削除され `doctor` が加わったが、どちらも本書の操作写像に現れないので影響しない。
 
