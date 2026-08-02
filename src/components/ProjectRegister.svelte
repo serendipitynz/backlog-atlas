@@ -23,6 +23,7 @@
     type RefusalReport,
     type RegisterInput,
   } from "../lib/ledger";
+  import { createSlugPreviewLoader, type SlugPreview } from "../lib/slug-preview";
   import type { ProjectEntry, RegisterRequest } from "../lib/wire";
 
   interface Props {
@@ -56,10 +57,11 @@
    * The default slug derived from the project root (doc-3 §3.1). Shown beside the field rather than
    * written into it: the field being empty is what *means*「導出させる」, so filling it in would turn
    * the ledger's own derivation into a value this screen sent.
+   *
+   * Which derivation this is showing is `slugPreview`'s to decide — the root can change while an
+   * answer for the previous one is still in flight.
    */
-  let defaultSlug = $state<string | null>(null);
-  /** Distinguishes 未取得 from「導出できない」— only the second makes a slug mandatory. */
-  let defaultSlugKnown = $state(false);
+  let preview = $state<SlugPreview>({ state: "unknown" });
   let report = $state<RefusalReport | null>(null);
   let submitting = $state(false);
   let registered = $state<string | null>(null);
@@ -90,15 +92,15 @@
           : null,
   );
 
+  // `ondefaultSlug` is called through a closure rather than passed as the port itself: the prop is
+  // read at call time, so the loader cannot outlive a change of it.
+  const slugPreview = createSlugPreviewLoader({
+    derive: (projectRoot) => ondefaultSlug(projectRoot),
+    show: (value) => (preview = value),
+  });
+
   async function readDefaultSlug(): Promise<void> {
-    const projectRoot = input.projectRoot.trim();
-    if (projectRoot === "") {
-      defaultSlug = null;
-      defaultSlugKnown = false;
-      return;
-    }
-    defaultSlug = await ondefaultSlug(projectRoot);
-    defaultSlugKnown = true;
+    await slugPreview.load(input.projectRoot);
   }
 
   async function pickProjectRoot(): Promise<void> {
@@ -138,8 +140,7 @@
       }
       registered = result.slug;
       input = { ...EMPTY_REGISTER_INPUT };
-      defaultSlug = null;
-      defaultSlugKnown = false;
+      slugPreview.clear();
     } finally {
       submitting = false;
     }
@@ -236,19 +237,19 @@
     <span class="field">
       <input
         type="text"
-        placeholder={defaultSlug ?? "英小文字・数字・ハイフン"}
+        placeholder={preview.state === "derived" ? preview.slug : "英小文字・数字・ハイフン"}
         spellcheck="false"
         bind:value={input.slug}
       />
     </span>
   </label>
   {#if input.slug.trim() === ""}
-    {#if defaultSlug !== null}
+    {#if preview.state === "derived"}
       <p class="hint">
-        未指定なら <code>{defaultSlug}</code> をプロジェクトルート名から導出して使います（doc-3 §3.1）。
+        未指定なら <code>{preview.slug}</code> をプロジェクトルート名から導出して使います（doc-3 §3.1）。
         別の slug を使う場合はここに入力してください。
       </p>
-    {:else if defaultSlugKnown}
+    {:else if preview.state === "underivable"}
       <!-- doc-3 §3.1: a directory name with no usable characters yields no default, so the user
            has to name one. -->
       <p class="problem">
