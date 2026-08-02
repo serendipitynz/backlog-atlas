@@ -220,13 +220,15 @@ pub struct Task {
     /// Raw frontmatter `status`; normalization against `config.yml` is TASK-29, not here.
     /// `None` when the required field was absent (§4, §5).
     pub status: Option<String>,
-    /// kind-derived Type slot, held *separately* from normal labels so the two never mix
-    /// (§3.3, AC #3). Until TASK-8 fixes the derivation rule, this holds the raw kind-label
-    /// values (the text after `kind:`) as Type candidates; the final Type is derived later.
+    /// Type 候補 — the strings the two Type 導出元 held, kind labels first (the text after
+    /// `kind:`) then the frontmatter `type` field, held *separately* from normal labels so the
+    /// two never mix (§3.3, AC #3). These are what the file said, not what the screen shows:
+    /// classifying against 既知 Type 集合 and folding 同値の重複 belong to `interpret`
+    /// (decision-5, decision-20), so this list can be longer than the displayed Type values.
     /// Serialized as `type`: doc-4 §3.1/§3.3 names this field `type` in the referent table
-    /// that is the IPC wire contract, so it must not become `typeLabels` under `rename_all`.
+    /// that is the IPC wire contract, so it must not become `typeCandidates` under `rename_all`.
     #[serde(rename = "type")]
-    pub type_labels: Vec<String>,
+    pub type_candidates: Vec<String>,
     /// Normal (non-`kind:`) labels only — the display label list, never mixed with kind
     /// labels (§3.3, AC #3).
     pub labels: Vec<String>,
@@ -328,7 +330,7 @@ mod tests {
             id: id.map(Into::into),
             title: id.map(|_| "a title".into()),
             status: id.map(|_| "To Do".into()),
-            type_labels: vec![],
+            type_candidates: vec![],
             labels: vec![],
             assignee: vec![],
             priority: None,
@@ -493,9 +495,9 @@ mod tests {
     #[test]
     fn type_and_normal_labels_are_separated() {
         let mut t = task(Some("TASK-1"), Some(StorageState::Active), TaskHealth::Ok);
-        t.type_labels = vec!["feature".into()];
+        t.type_candidates = vec!["feature".into()];
         t.labels = vec!["ui".into(), "backend".into()];
-        assert_eq!(t.type_labels, vec!["feature".to_string()]);
+        assert_eq!(t.type_candidates, vec!["feature".to_string()]);
         assert!(!t.labels.contains(&"feature".to_string()));
     }
 
@@ -549,7 +551,7 @@ mod tests {
     fn serializes_with_doc_field_names() {
         let t = task(Some("TASK-1"), Some(StorageState::Active), TaskHealth::Ok);
         let mut t = t;
-        t.type_labels = vec!["feature".into()];
+        t.type_candidates = vec!["feature".into()];
         let json = serde_json::to_value(&t).unwrap();
         assert!(json.get("storageState").is_some());
         assert!(json.get("acceptanceCriteria").is_some());

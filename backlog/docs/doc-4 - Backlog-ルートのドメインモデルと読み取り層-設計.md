@@ -16,7 +16,9 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - **読み取り層** … Backlog 管理ファイルを解析してドメインモデルを構築する読み取り専用の処理層。書き込みは含まない。
 - **kind ラベル** … frontmatter の labels のうち `kind:` 接頭辞を持つ要素（TASK-8）。
 - **通常ラベル** … labels のうち kind ラベル以外の要素。
-- **Type** … kind ラベルから導出し、通常ラベルと分離して表示する分類値（doc-2、導出規則の確定は TASK-8）。
+- **type フィールド** … Backlog CLI v1.48.0 の `--type` が frontmatter へ書く単一のスカラー値 `type:`（decision-20、TASK-110）。labels と並ぶ位置に書かれ、並びではなく 1 値しか持てない。
+- **Type 導出元** … Atlas が Type 値を取り出す元になる frontmatter 上の場所（decision-20）。kind ラベルと type フィールドの 2 つ。
+- **Type** … Type 導出元から導出し、通常ラベルと分離して表示する分類値（doc-2、導出規則は decision-5 と decision-20）。
 - **タスク保存区分** … タスクファイルの走査元ディレクトリ（tasks / drafts / completed / archive）から決まる保管状態の分類（active / draft / completed / archive）。frontmatter の status（作業状態）とは独立の軸で、ファイルの置き場所だけで決まる（3.4）。
 
 ## 2. 読み取り層の位置づけと責務
@@ -45,7 +47,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | id（プロジェクト内 TASK-ID） | frontmatter `id` | 横断タスクID の右辺。draft は接頭辞 `DRAFT`（`DRAFT-N`）で、通常タスクの `TASK-N` とは別接頭辞（3.4）。 |
 | title | frontmatter `title` | |
 | status | frontmatter `status` | `config.yml` の status 定義で正規化（正規化規則は TASK-7）。draft の `Draft` は CLI 既知の status だが `config.yml` の `statuses` に含まれないことがあり、未知 status として縮退させず既知値として扱う（3.4・5 章）。 |
-| type | labels の kind ラベル | 分離は本層、値の導出は TASK-8。 |
+| type（Type 候補の並び） | labels の kind ラベル、および frontmatter `type` | 収集は本層、既知判定と同値の畳み込みは decision-5・decision-20 の解釈側。並び順は kind ラベル由来（labels の出現順）が先、type フィールド由来が後（3.3）。 |
 | labels（通常ラベル） | labels の非 kind 要素 | 表示用ラベル一覧。 |
 | assignee / priority / ordinal / milestone | 同名 frontmatter | milestone は ID 参照。 |
 | created_date / updated_date | 同名 frontmatter | |
@@ -64,11 +66,12 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 いずれも「1 プロジェクト（Backlog ルート）内で id により相互参照される」構造を保つ。
 
-### 3.3 labels から Type と通常ラベルを分離する境界
+### 3.3 Type 候補を集め、通常ラベルと分離する境界
 
 - 分離は**読み取り層で行う**。frontmatter の `labels` 配列を、`kind:` 接頭辞の有無で kind ラベルと通常ラベルへ分ける。
-- ドメインモデルのタスクは、生の `labels` ではなく分離済みの `type`（kind 由来）と `labels`（通常ラベル）を保持する。画面は通常ラベル一覧に kind ラベルを混ぜない（doc-2）。
-- Type の値そのものの導出規則（`kind:feature`→Type 名、複数 kind の扱い、不明値の表示）は TASK-8 の確定に従う。本層はその規則を適用する場を「読み取り層の分離境界」に固定するにとどめ、規則の中身は持ち込まない。未確定の間は、kind ラベルの生値を Type 候補として保持し、通常ラベルからは除いておく。
+- ドメインモデルのタスクは、生の `labels` ではなく分離済みの `type`（Type 候補の並び）と `labels`（通常ラベル）を保持する。画面は通常ラベル一覧に kind ラベルを混ぜない（doc-2）。
+- **Type 候補は 2 つの Type 導出元から集める**（decision-20）。kind ラベルの接頭辞除去後の値を labels の出現順に並べ、その後ろに frontmatter `type` の値を置く。空文字列または空白だけの `type` は候補を生まない。type フィールドを持たないタスクでは、この並びは decision-20 以前と同じである。
+- Type の値そのものの解釈（既知 Type 集合との照合、複数値の表示、同値の二重指定の畳み込み）は decision-5 と decision-20 に従い、**本層では行わない**。本層が保持するのはファイルが実際に書いていた候補であり、同値が 2 つあればそのまま 2 つ持つ。境界の外が見る Type 値は畳んだあとの並びなので、両者の個数は一致しないことがある。
 
 ### 3.4 タスク保存区分（走査元ディレクトリ由来）
 
@@ -98,7 +101,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - **版の扱い（書き込み CLI の版と生成元の版の分離）**: 「版」は 2 つを区別する。**書き込み CLI の版**は Atlas が更新で呼ぶ backlog CLI 実行ファイルの版で、実行時に `backlog --version` で取得できる（doc-5 の呼び出し先）。**生成元の版**はいま読んでいる管理ファイルを書いた backlog の版で、frontmatter にも config.yml にも記録が無く、ファイルからは不明である。読み取りは生成元の版に依存できないため、版番号での分岐をしない。
 - **読み取りはスキーマ能力検査で行う**: 版番号ではなく、frontmatter フィールド・SECTION・AC ブロック等の有無と構造から当該ファイルのスキーマ能力を判定して読み取る（**スキーマ能力検査**）。想定するフィールド/SECTION の集合を本層のスキーマ定義として明記し、その有無を検査対象にする。ただし「無ければ縮退」を全既知項目へ一律に適用しない。項目を次の 3 分類に分け、不在の意味を区別する（5 章）。
   - **必須フィールド**（id・title・status）: 欠くと当該タスクをドメインモデルへ写せず、解析不能として縮退させる。
-  - **任意フィールド**（implementationPlan／implementationNotes・milestone・priority・assignee・dependencies・references・acceptanceCriteria など、3.1 で任意・0 個以上とした項目）: 不在は正常であり、縮退契機にしない。存在すれば写す。
+  - **任意フィールド**（implementationPlan／implementationNotes・milestone・priority・assignee・dependencies・references・acceptanceCriteria・type など、3.1 で任意・0 個以上とした項目）: 不在は正常であり、縮退契機にしない。存在すれば写す。frontmatter `type` は decision-20 で既知フィールドになった項目で、それ以前は上の「未知フィールドは保持または無視」に落ちていた。
   - **存在時構造検査項目**（SECTION 対（`BEGIN`／`END`）の開閉、AC ブロック内の `#N` 番号列、frontmatter の YAML 妥当性など）: 存在する場合にのみ構造の妥当性を検査し、不在は正常として扱う。構造が壊れているとき（対が閉じない・番号列が読めない・YAML が読めない等）だけ縮退させる。
   この分類により、生成元の版が不明・混在でも判別できた範囲で読め、任意項目の不在で正常なタスク（例: PLAN／NOTES を持たないタスク）を縮退させない。想定するフィールド/SECTION 集合は、各項目がこの 3 分類のどれかを併せて明記する。
 - **サポート範囲**: 動作確認した版は書き込み CLI の版に対して固定する（現行 v1.48.0 を含む、decision-2）。これは更新（doc-5 の操作写像・オプション名の検査）の基準であり、生成元の版を縛るものではない。読み取り側のサポート範囲は、上記スキーマ能力検査が扱えるフィールド/SECTION 集合として定める。
@@ -119,7 +122,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 ## 6. 後続への影響
 
 - status 正規化（プロジェクト共通／個別）の確定は TASK-7。
-- kind ラベルからの Type 導出規則と不明値の表示は TASK-8。
+- kind ラベルからの Type 導出規則と不明値の表示は TASK-8（decision-5）。frontmatter `type` を 2 つ目の Type 導出元として足したのは TASK-110（decision-20）。
 - 同一 Backlog ルート更新時の競合検出・再読み込み（ファイル監視）は TASK-14。本層のドメインモデルはその再構築単位（ルート／ファイル）と整合させる。
 - References からの Pull Request 抽出・表示は TASK-12、タスク ID からの Git 履歴照合は TASK-10。
 - cross-branch を現在 checkout に限定する範囲確定は TASK-6。

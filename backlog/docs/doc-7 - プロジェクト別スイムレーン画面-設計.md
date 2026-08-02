@@ -84,7 +84,7 @@ TASK-11 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書
 | priority | frontmatter priority。族の色を借りず無彩 3 段（doc-11 §3） | ○ | ○ | ○ |
 | 状態の印 | health（縮退印、doc-4）・版ずれ（doc-9）・保存区分印・未対応区画の原文 status | ○ | ○ | ○ |
 | title | frontmatter title | 1 行 | 2 行 | 3 行 |
-| Type | kind ラベル由来（decision-5）。0 個以上を併記し、未設定は「Type 未設定」、未知 Type は中立表示に印 | — | ○ | ○ |
+| Type | kind ラベルと frontmatter `type` の 2 つの Type 導出元から（decision-5・decision-20）。0 個以上を併記し、Type 候補なし（どちらの導出元からも候補を得ない）は「Type 未設定」、未知 Type は中立表示に印 | — | ○ | ○ |
 | 通常ラベル | labels の非 kind 要素（doc-4）。Type と混ぜない | — | — | ○ |
 | assignee | frontmatter assignee | — | — | ○ |
 
@@ -130,7 +130,7 @@ TASK-11 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書
 
 フィルタはカードの取捨のみを行い、行・列の骨格（プロジェクト行と正準ステータス列）は保つ。次を単独・組合せで適用する。
 
-- Type（decision-5 の Type 値。複数 Type のタスクはいずれか一致で残す。未設定・未知も選べる）。
+- Type（decision-5・decision-20 の Type 値。複数 Type 値のタスクはいずれか一致で残す。未設定・未知も選べる）。
 - 通常ラベル。
 - priority。
 - assignee。

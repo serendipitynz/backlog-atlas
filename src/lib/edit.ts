@@ -90,7 +90,7 @@ export interface EditDraft {
   notes: string;
   /** `--notes` replaces, `--append-notes` appends: two CLI options, so a mode, not a flag. */
   notesMode: "set" | "append";
-  /** 通常ラベル only. Type (kind ラベル) is not edited here — see `TYPE_NOT_EDITABLE`. */
+  /** 通常ラベル only. Type is not edited here from either 導出元 — see `TYPE_NOT_EDITABLE`. */
   labels: string[];
   dependencies: string[];
   references: string[];
@@ -124,10 +124,18 @@ export interface EditSession {
   touched: DraftField[];
 }
 
-/** Why Type values are not editable here, stated once so the panel and the tests agree. */
+/**
+ * Why Type values are not editable here, stated once so the panel and the tests agree.
+ *
+ * Two reasons because decision-20 gave Type two 導出元, and the reason differs per source — the
+ * old text explained every visible Type as a kind label, which stopped being true the moment a
+ * `type:` field could produce one. Neither source is editable, so the message states that as one
+ * fact with its two grounds rather than implying one half can be reached.
+ */
 export const TYPE_NOT_EDITABLE =
-  "Type の編集は kind ラベルの増減になりますが、読み取り層が保持するのは接頭辞を外した値であり、" +
-  "元のラベル文字列と一致する保証がないため、この画面では提供しません（通常ラベルは編集できます）";
+  "Type の編集はこの画面では提供しません。kind ラベル由来の値は、読み取り層が保持するのが" +
+  "接頭辞を外した値で、元のラベル文字列と一致する保証がないためです。frontmatter の type 由来の値は、" +
+  "更新アダプターが --type の操作写像を持たないためです（通常ラベルは編集できます）";
 
 const EMPTY_DELTA: AcDelta = { add: [], remove: [], check: [], uncheck: [] };
 

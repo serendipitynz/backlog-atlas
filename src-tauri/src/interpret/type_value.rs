@@ -1,20 +1,33 @@
-//! Type 値の導出 — derive a task's Type values from its `kind:` labels (decision-5).
+//! Type 値の導出 — derive a task's Type values from its Type 候補 (decision-5, decision-20).
 //!
-//! The rule is mechanical prefix removal, not a lookup table: the kind vocabulary belongs to
-//! each project, so a table would need an Atlas-side edit every time a project invents a
-//! `kind:spike` — exactly the boundary decision-5 refuses to cross. An unrecognized value is
-//! therefore carried through as a Type value and merely *marked* unknown, never dropped.
+//! A **Type 候補** is one string taken from a **Type 導出元**, before any classifying or folding.
+//! There are two 導出元 (decision-20): the `kind:` labels, and the frontmatter `type` field
+//! Backlog CLI v1.48.0 writes. The read layer collects both into the task's `type` slot, kind
+//! labels first (doc-4 §3.3); this module applies the rules to what it collected.
 //!
-//! Three boundary cases stay distinguishable because the display for each differs (decision-5,
-//! doc-7 §3, doc-8 §4):
+//! From the kind side the rule is mechanical prefix removal, not a lookup table: the kind
+//! vocabulary belongs to each project, so a table would need an Atlas-side edit every time a
+//! project invents a `kind:spike` — exactly the boundary decision-5 refuses to cross. An
+//! unrecognized value is therefore carried through as a Type value and merely *marked* unknown,
+//! never dropped. The `type` field's vocabulary is the opposite — closed, and fixed in the CLI
+//! rather than in the project's config — but nothing here checks it against that vocabulary
+//! either: a hand-edited file can hold any string, and the CLI's list changes between versions
+//! (decision-20).
+//!
+//! Four boundary cases stay distinguishable because the display for each differs (decision-5,
+//! decision-20, doc-7 §3, doc-8 §4). Two of them are named for a Type-value count rather than a
+//! kind-label count, which is decision-20 restating decision-5's 複数 kind / kind 無し: with two
+//! 導出元 the label count is no longer the number of values to show, and a task with `labels: []`
+//! and `type: bug` would otherwise be owed both "Type 未設定" and `bug`.
 //!
 //! | case | here | display |
 //! |---|---|---|
-//! | 複数 kind | two or more values, in label order | all shown side by side, never rounded to one |
-//! | kind 無し | zero values ([`TypeValues::is_unset`]) | an explicit "Type 未設定", not an empty gap |
+//! | 複数 Type 値 | two or more values, in 候補 order | all shown side by side, never rounded to one |
+//! | Type 候補なし | zero values ([`TypeValues::is_unset`]) | an explicit "Type 未設定", not an empty gap |
 //! | 未知 Type | [`TypeValue::known`] false | the value, with a neutral fallback mark |
+//! | 同値の重複 | folded to one by [`derive_types`] | one value, so it cannot be read as 複数 Type 値 |
 //!
-//! kind 無し is a legitimate state rather than a defect, which is why nothing here produces a
+//! Type 候補なし is a legitimate state rather than a defect, which is why nothing here produces a
 //! degrade event — it is a normal display state, kept apart from the parse-error marks
 //! (decision-5).
 
@@ -25,15 +38,40 @@ use serde::Serialize;
 /// normal label list on a guess.
 pub const KIND_LABEL_PREFIX: &str = "kind:";
 
-/// 既知 Type 集合 (decision-5) — the Type values Atlas prepares display affordances (colour,
-/// ordering) for. Membership only selects the display treatment; it never gates a value.
-pub const KNOWN_TYPES: [&str; 5] = ["feature", "bug", "research", "writing", "maintenance"];
+/// 既知 Type 集合 (decision-5, widened by decision-20) — the Type values Atlas prepares display
+/// affordances (colour, ordering) for. Membership only selects the display treatment; it never
+/// gates a value.
+///
+/// Two origins, deliberately kept in one list because a Type value carries no record of which
+/// 導出元 produced it (doc-8 §4 does not show the origin, so neither does this):
+/// doc-2's five, and the five from Backlog CLI's own `--type` vocabulary that doc-2 did not have.
+/// The CLI's list can change between versions and nothing here follows it automatically — a
+/// value it adds would simply show with the 未知 Type mark, which is a display treatment and not
+/// a degrade (decision-20).
+pub const KNOWN_TYPES: [&str; 10] = [
+    // doc-2's enumeration (decision-5).
+    "feature",
+    "bug",
+    "research",
+    "writing",
+    "maintenance",
+    // Backlog CLI v1.48.0's `--type` vocabulary, less `bug`/`feature` which are already above
+    // (2026-08-02 measured: the CLI rejects anything outside its seven and `config.yml` cannot
+    // widen it). `task` reads oddly beside Atlas's own "task", but it is the CLI's word, not a
+    // name Atlas chose, so it is not reworded (decision-20).
+    "enhancement",
+    "task",
+    "chore",
+    "docs",
+    "spike",
+];
 
-/// One Type value: `X` from a `kind:X` label.
+/// One Type value derived from a Type 候補.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeValue {
-    /// The text after `kind:`, case preserved and surrounding whitespace removed (decision-5).
+    /// The Type 候補's text — after `kind:` for a label, the field's own value for `type` — with
+    /// case preserved and surrounding whitespace removed (decision-5).
     pub value: String,
     /// Whether `value` is in [`KNOWN_TYPES`]. False is 未知 Type: shown as is, with the neutral
     /// fallback mark.
@@ -51,8 +89,8 @@ impl TypeValue {
     }
 }
 
-/// A task's Type values in label order — zero or more, because decision-5 refuses to collapse
-/// 複数 kind to a single value. Serializes as a plain array; `unset` is the empty array, so no
+/// A task's Type values in Type 候補 order — zero or more, because decision-5 refuses to collapse
+/// 複数 Type 値 to a single value. Serializes as a plain array; `unset` is the empty array, so no
 /// consumer has to keep a separate flag in sync with the contents.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
@@ -63,13 +101,17 @@ impl TypeValues {
         &self.0
     }
 
-    /// kind 無し — the task has no `kind:` label. Display shows "Type 未設定" rather than
-    /// nothing, since absence of a Type is itself the fact (decision-5).
+    /// Type 候補なし — the task has no Type 候補 at all (no `kind:` label and no non-blank `type`
+    /// field). decision-20's restatement of decision-5's kind 無し: the label count alone would
+    /// call a `type`-only task unset while it has a value to show.
+    /// Display shows "Type 未設定" rather than nothing, since absence of a Type is itself the
+    /// fact (decision-5).
     pub fn is_unset(&self) -> bool {
         self.0.is_empty()
     }
 
-    /// 複数 kind — two or more Type values, all of which are shown.
+    /// 複数 Type 値 — two or more Type values, all of which are shown. Counted over values, not
+    /// over kind labels, so one kind label plus a `type` field also lands here (decision-20).
     pub fn is_multiple(&self) -> bool {
         self.0.len() > 1
     }
@@ -80,9 +122,9 @@ impl TypeValues {
     }
 }
 
-/// Split frontmatter `labels` into kind labels (as bare Type values) and normal labels — the
+/// Split frontmatter `labels` into kind labels (as bare Type 候補) and normal labels — the
 /// separation doc-4 §3.3 fixes at the read layer, with the derivation rule decision-5 fixes.
-/// Returned in the input order so 複数 kind keeps the order the labels were written in.
+/// Returned in the input order so the kind-derived 候補 keep the order the labels were written in.
 ///
 /// The two lists are disjoint by construction: this is the single place the split happens, so
 /// a kind label can never reach the normal label list (AC #5).
@@ -98,15 +140,30 @@ pub fn split_labels(labels: Vec<String>) -> (Vec<String>, Vec<String>) {
     (kinds, normal)
 }
 
-/// Classify already-split kind values (a task's `type` slot) into Type values, marking each
-/// against 既知 Type 集合.
-pub fn derive_types(kind_values: &[String]) -> TypeValues {
-    TypeValues(
-        kind_values
+/// Classify a task's Type 候補 (its `type` slot, already collected from both 導出元 by the read
+/// layer) into Type values, marking each against 既知 Type 集合 and folding 同値の重複.
+///
+/// The fold ignores which 導出元 a 候補 came from. Restricting it to cross-導出元 pairs would
+/// leave `kind:bug` + `kind:Bug` showing twice while `kind:bug` + `type: Bug` shows once, and
+/// since doc-8 §4 keeps the origin off the screen, a reader has nothing to tell those two
+/// situations apart by (decision-20). The comparison is the same ASCII case-insensitive one
+/// [`TypeValue::new`] uses against 既知 Type 集合, so a value is never both "same as an existing
+/// one" and "a different member of the known set".
+pub fn derive_types(candidates: &[String]) -> TypeValues {
+    let mut values: Vec<TypeValue> = Vec::new();
+    for candidate in candidates {
+        let value = candidate.trim();
+        // First spelling wins: kind labels come first in the slot, so an existing project's
+        // display is unchanged by a `type` field that merely repeats one of its kind labels.
+        if values
             .iter()
-            .map(|value| TypeValue::new(value.trim().to_string()))
-            .collect(),
-    )
+            .any(|kept| kept.value.eq_ignore_ascii_case(value))
+        {
+            continue;
+        }
+        values.push(TypeValue::new(value.to_string()));
+    }
+    TypeValues(values)
 }
 
 #[cfg(test)]
@@ -138,7 +195,7 @@ mod tests {
         assert!(types.values()[0].known);
     }
 
-    // AC #4 (複数 kind): every value is kept, in label order — no rounding to one.
+    // AC #4 (複数 Type 値): every value is kept, in label order — no rounding to one.
     #[test]
     fn multiple_kinds_are_all_kept_in_label_order() {
         let (kinds, _) = split_labels(labels(&["kind:research", "docs", "kind:writing"]));
@@ -150,7 +207,8 @@ mod tests {
         );
     }
 
-    // AC #4 (kind 無し): no kind label is 未設定 — distinguishable from a task that has Types.
+    // AC #4 (Type 候補なし): neither 導出元 gave a 候補, so 未設定 — distinguishable from a task
+    // that has Types.
     #[test]
     fn no_kind_label_is_unset() {
         let (kinds, normal) = split_labels(labels(&["ui", "backend"]));
@@ -163,22 +221,42 @@ mod tests {
     }
 
     // AC #4 (未知 Type): a project's own kind is carried as a value and only marked unknown.
+    // `refactoring` rather than decision-5's own `kind:spike` example, because decision-20 moved
+    // spike into 既知 Type 集合 along with the rest of the CLI's vocabulary.
     #[test]
     fn unknown_type_is_kept_and_marked() {
-        let types = derive_types(&labels(&["spike"]));
+        let types = derive_types(&labels(&["refactoring"]));
         assert!(types.has_unknown());
-        assert_eq!(types.values()[0].value, "spike");
+        assert_eq!(types.values()[0].value, "refactoring");
         assert!(!types.values()[0].known);
         // 未知 is not 未設定 — the value exists.
         assert!(!types.is_unset());
     }
 
-    // All five values decision-5 lists as 既知 Type 集合 resolve as known.
+    // Every value of 既知 Type 集合 resolves as known — decision-5's five plus decision-20's five.
     #[test]
-    fn known_type_set_matches_decision_5() {
+    fn known_type_set_resolves_as_known() {
         let types = derive_types(&labels(&KNOWN_TYPES));
         assert!(!types.has_unknown());
         assert_eq!(types.values().len(), KNOWN_TYPES.len());
+    }
+
+    // decision-20 widened 既知 Type 集合 to the CLI's vocabulary. Named one by one rather than
+    // asserting a length, so dropping a word to keep the count fails here.
+    #[test]
+    fn the_cli_type_vocabulary_is_known() {
+        for value in [
+            "bug",
+            "feature",
+            "enhancement",
+            "task",
+            "chore",
+            "docs",
+            "spike",
+        ] {
+            let types = derive_types(&labels(&[value]));
+            assert!(!types.has_unknown(), "{value} should be a known Type");
+        }
     }
 
     // A bare `kind:` carries no Type information, but decision-5 discards nothing: it becomes an
@@ -202,15 +280,68 @@ mod tests {
         assert_eq!(normal, ["area:kind:feature", "Kind:feature"]);
     }
 
+    // 同値の重複 (decision-20) is folded, and the first spelling is the one kept — so a `type`
+    // field repeating a kind label leaves an existing project's display exactly as it was.
+    #[test]
+    fn a_repeated_value_is_folded_to_one_keeping_the_first_spelling() {
+        // As the read layer builds it: kind labels first, then the `type` field.
+        let types = derive_types(&labels(&["bug", "Bug"]));
+        assert_eq!(
+            types.values().iter().map(|t| &t.value).collect::<Vec<_>>(),
+            ["bug"]
+        );
+        // Folded to one, so it cannot be read as 複数 Type 値.
+        assert!(!types.is_multiple());
+    }
+
+    // The fold does not look at which 導出元 a 候補 came from: two kind labels differing only in
+    // case fold too. Splitting the rule by origin would show these twice while `kind:bug` +
+    // `type: Bug` shows once, and doc-8 §4 gives the reader no way to tell the two apart.
+    #[test]
+    fn two_kind_labels_differing_only_in_case_also_fold() {
+        let (kinds, _) = split_labels(labels(&["kind:bug", "kind:Bug"]));
+        assert_eq!(kinds, ["bug", "Bug"]);
+        assert_eq!(derive_types(&kinds).values().len(), 1);
+    }
+
+    // Type 候補なし, not kind 無し (decision-20). A task with no kind label but a `type` field has
+    // a value to show, so it is not 未設定 — read as a kind-label count, decision-5 and
+    // decision-20 would prescribe both "Type 未設定" and `bug` for the very same task.
+    #[test]
+    fn a_type_field_alone_is_not_unset() {
+        // The slot the read layer builds for `labels: []` + `type: bug`.
+        let types = derive_types(&labels(&["bug"]));
+        assert!(!types.is_unset());
+        assert_eq!(types.values()[0].value, "bug");
+    }
+
+    // 複数 Type 値 counts values, not kind labels: one kind label plus the field is two, and the
+    // 併記 rule has to fire for it.
+    #[test]
+    fn one_kind_label_plus_the_type_field_counts_as_multiple() {
+        let types = derive_types(&labels(&["bug", "feature"]));
+        assert!(types.is_multiple());
+    }
+
+    // Folding is by value, not by count: two genuinely different values stay two.
+    #[test]
+    fn different_values_are_not_folded() {
+        let types = derive_types(&labels(&["bug", "feature"]));
+        assert_eq!(
+            types.values().iter().map(|t| &t.value).collect::<Vec<_>>(),
+            ["bug", "feature"]
+        );
+    }
+
     #[test]
     fn serializes_as_a_plain_array() {
-        let types = derive_types(&labels(&["feature", "spike"]));
+        let types = derive_types(&labels(&["feature", "refactoring"]));
         let json = serde_json::to_value(&types).unwrap();
         assert_eq!(
             json,
             serde_json::json!([
                 {"value": "feature", "known": true},
-                {"value": "spike", "known": false},
+                {"value": "refactoring", "known": false},
             ])
         );
         // 未設定 is the empty array — no separate flag to fall out of sync.
