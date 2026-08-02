@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   HEADER_ENTRIES,
+  SHORTCUT_HELP_LABEL,
   SHOW_ALL_ROWS_LABEL,
   headerMenu,
   showAllRowsHeld,
@@ -36,9 +37,24 @@ describe("メニュー項目 (doc-7 §2.1, doc-11 §4 ⑥)", () => {
     expect(entries).toEqual([...HEADER_ENTRIES]);
   });
 
+  /**
+   * The 割り当て一覧 line sits above the 行非表示 group and not at the end of the menu: the group's length
+   * is the number of hidden rows, so a fixed line placed after it would be at a different position on
+   * every open. Checked against the group rather than at an index, so the intent survives a new line.
+   */
+  it("puts the 割り当て一覧 line above the 行非表示 group, whatever its length", () => {
+    for (const hidden of [[], ["atlas"], ["atlas", "kanri"]]) {
+      const order = kinds(headerMenu(hidden));
+      expect(order.indexOf("shortcutHelp")).toBeLessThan(order.indexOf("showAllRows"));
+    }
+    expect(headerMenu([]).find((item) => item.kind === "shortcutHelp")?.label).toBe(
+      SHORTCUT_HELP_LABEL,
+    );
+  });
+
   it("offers すべて戻す with a 保留理由 while nothing is hidden (AC #5)", () => {
     const items = headerMenu([]);
-    expect(kinds(items)).toEqual(["entry", "entry", "showAllRows"]);
+    expect(kinds(items)).toEqual(["entry", "entry", "shortcutHelp", "showAllRows"]);
     const all = items.find((item) => item.kind === "showAllRows");
     expect(all?.label).toBe(SHOW_ALL_ROWS_LABEL);
     // 理由の無い無効化を置かない (doc-11 §5): the control is present, held, and says why.
@@ -48,7 +64,14 @@ describe("メニュー項目 (doc-7 §2.1, doc-11 §4 ⑥)", () => {
   /** doc-11 §4: 個々のレーンはメニューの一覧から戻す — the part the 帯 hands over. */
   it("lists one line per hidden row, in the order they were hidden", () => {
     const items = headerMenu(["atlas", "kanri"]);
-    expect(kinds(items)).toEqual(["entry", "entry", "showAllRows", "showRow", "showRow"]);
+    expect(kinds(items)).toEqual([
+      "entry",
+      "entry",
+      "shortcutHelp",
+      "showAllRows",
+      "showRow",
+      "showRow",
+    ]);
     expect(items.filter((item) => item.kind === "showRow").map((item) => item.slug)).toEqual([
       "atlas",
       "kanri",

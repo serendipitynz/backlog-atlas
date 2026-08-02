@@ -202,14 +202,20 @@ export function only<E extends Element>(host: ParentNode, selector: string): E {
 }
 
 /**
- * `element`'s text with its `aria-hidden` descendants left out — what a screen reader would announce.
+ * `element`'s accessible name, as far as this app's controls need one: `aria-label` when it has one,
+ * otherwise its text with the `aria-hidden` descendants left out.
  *
  * Needed because several controls print something beside their name that is decorative and marked as
- * such: the header entries append the chord from the 割り当て一覧 (doc-7 §2.1), which differs between
- * macOS and the rest, and the menu button carries a ☰ glyph. Matching on `textContent` would tie a
- * test to the platform it happened to run on.
+ * such: a menu line appends the chord from the 割り当て一覧 (doc-7 §2.1), which differs between macOS and
+ * the rest. Matching on `textContent` would tie a test to the platform it happened to run on.
+ *
+ * `aria-label` comes first because that is the order the accessible name computation has, and because
+ * an アイコンのみのボタン (doc-11 §2.4) has no text at all — its figure is `aria-hidden`, so its name is
+ * *only* the label, and a test that fell back to content would be matching the empty string.
  */
 function announced(element: Element): string {
+  const label = element.getAttribute("aria-label");
+  if (label !== null) return label.trim();
   let text = "";
   for (const node of element.childNodes) {
     if (node.nodeType === node.TEXT_NODE) text += node.textContent ?? "";

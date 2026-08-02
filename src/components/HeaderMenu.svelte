@@ -8,14 +8,11 @@
   // - **The per-row 行非表示 list.** doc-11 §4 names this case as its example of 縮約: the 帯 keeps the
   //   count and its own すべて戻す, and 個々のレーンはメニューの一覧から戻す — which is this list.
   //
-  // The 割り当て一覧 (doc-7 §2.1) is readable from here too. §2.1 asks for it in 1 箇所 and beside each
-  // operation; `shortcuts.ts` is the one place, every hint below is printed from it, and this is where a
-  // user can read the whole of it without a manual.
+  // The 割り当て一覧 (doc-7 §2.1) is *reached* from here and no longer drawn here: TASK-67 moved the table
+  // into the 一覧モーダル (`ShortcutHelp.svelte`), leaving this menu one line that opens it. §2.1 asks for
+  // the list in 1 箇所 — that is `shortcuts.ts`, which every hint below is printed from as well.
   import {
-    SCOPE_LABEL,
-    SHORTCUTS,
     ariaKeyShortcuts,
-    chordLabel,
     matchShortcut,
     shortcutHint,
     textEntryFocused,
@@ -116,34 +113,6 @@
       </li>
     {/each}
   </ul>
-
-  <details class="keys">
-    <summary>キーボード操作の一覧</summary>
-    <!-- doc-7 §2.1 の 4 列: キー・操作・発火する画面・入力欄内で発火するか。打ち消す既定動作も同じ行に
-         出す — §2.1 requires preventDefault を割り当て一覧に明記する, and this is that list. -->
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">キー</th>
-          <th scope="col">操作</th>
-          <th scope="col">発火する画面</th>
-          <th scope="col">入力欄内</th>
-          <th scope="col">打ち消す既定動作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each SHORTCUTS as binding (binding.action)}
-          <tr>
-            <td class="chord">{chordLabel(binding.chord, MAC_KEYBOARD)}</td>
-            <td>{binding.operation}</td>
-            <td>{SCOPE_LABEL[binding.scope]}</td>
-            <td>{binding.firesInTextEntry ? "発火する" : "発火しない"}</td>
-            <td>{binding.preventsDefault ?? "—"}</td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </details>
 </div>
 
 <style lang="scss">
@@ -152,7 +121,9 @@
     z-index: 3;
     top: calc(100% + 0.25rem);
     right: 0;
-    width: min(30rem, 90vw);
+    // Narrower since TASK-67 took the 割り当て一覧 out: the 5-column table was what needed 30rem, and the
+    // widest thing left is a 保留理由 sentence, which reads better wrapped than spread across a panel.
+    width: min(24rem, 90vw);
     max-height: 70vh;
     padding: 0.35rem;
     border: 1px solid var(--line-strong);
@@ -219,45 +190,5 @@
     color: var(--muted);
     font-size: 0.68rem;
     line-height: 1.3;
-  }
-
-  .keys {
-    margin-top: 0.3rem;
-    padding-top: 0.3rem;
-    border-top: 1px solid var(--line);
-
-    summary {
-      padding: 0.15rem 0.35rem;
-      color: var(--muted);
-      font-size: 0.68rem;
-      cursor: pointer;
-    }
-
-    table {
-      width: 100%;
-      margin-top: 0.2rem;
-      border-collapse: collapse;
-      font-size: 0.66rem;
-    }
-
-    th,
-    td {
-      padding: 0.15rem 0.3rem;
-      border-bottom: 1px solid var(--line);
-      text-align: left;
-      vertical-align: top;
-    }
-
-    th {
-      // 区画見出し (doc-11 §2.2).
-      color: var(--muted);
-      font-weight: 650;
-      letter-spacing: 0.05em;
-    }
-
-    .chord {
-      white-space: nowrap;
-      font-variant-numeric: tabular-nums;
-    }
   }
 </style>
