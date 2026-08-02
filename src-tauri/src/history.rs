@@ -22,12 +22,21 @@
 //! [`PrCommitSource`], so the gating and the local⇄remote commit matching stay testable without a
 //! network. [`HostReferences`] is the production implementation: it dispatches on the target's
 //! host kind and, for GitHub, asks the `gh` CLI (decision-14).
+//!
+//! Three bounds sit on the reference means, whichever host kind it serves (decision-19, doc-6 §6):
+//! a [`GH_DEADLINE`] on each 照会, a [`Cancel`] the caller may set when it stops wanting the answer,
+//! and [`CONCURRENT_LOOKUPS`] on how many run at once. They are on the *means*, not on GitHub's
+//! implementation of it: [`PrCommitSource`] takes the cancel handle, so a host kind added later
+//! cannot be plugged in without one.
 
 use crate::ledger::ProjectEntry;
+use crate::subprocess::{self, Cancel, Stopped};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 /// A remote host kind judged from a Git remote URL's host, or from a Pull Request URL's host
 /// (doc-6 §1, §5). Only kinds Atlas can act on are named; an unrecognized host yields `None`
@@ -118,10 +127,11 @@ pub enum RelationOutcome {
 }
 
 /// Why a Pull Request's commit set could not be fetched (doc-6 §6). Typed rather than folded into the
-/// message, because the three differ in what would clear them: a missing tool is cleared by installing
-/// it, a malformed reference by editing the task's References, while a query that ran and failed could
-/// be authentication, permission, a deleted Pull Request or the network — which its exit status does
-/// not tell apart, and which the screen must therefore not promise a recovery path for.
+/// message, because the four differ in what would clear them: a missing tool is cleared by installing
+/// it, a malformed reference by editing the task's References, a 照会期限到達 may well clear on a
+/// retry, while a query that ran and failed could be authentication, permission, a deleted Pull
+/// Request or the network — which its exit status does not tell apart, and which the screen must
+/// therefore not promise a recovery path for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LookupFailure {
@@ -131,6 +141,11 @@ pub enum LookupFailure {
     InvalidReference,
     /// The query ran and did not succeed. Its cause is not decidable here.
     QueryFailed,
+    /// 照会期限到達 (decision-19): the 照会 was still running at [`GH_DEADLINE`], so Atlas ended it
+    /// without a commit set for this Pull Request. Distinct from [`LookupFailure::QueryFailed`]
+    /// because Atlas caused it and therefore knows what it was — and because a retry can change the
+    /// answer, which is what doc-8 §5 asks the screen to be able to say.
+    TimedOut,
 }
 
 /// Why a Git read could not produce a commit list. Kept distinct from an *empty* list because
@@ -487,7 +502,32 @@ impl RelationError {
             detail: detail.into(),
         }
     }
+
+    /// 照会期限到達 (decision-19). `observed` is whatever the bounded wait noticed while ending the
+    /// 照会 — normally nothing. The sentence says Atlas stopped waiting, never that the `gh` process
+    /// is gone: the kill is attempted, not guaranteed.
+    pub fn timed_out(observed: Option<String>) -> Self {
+        let mut detail = format!(
+            "gh が {} 秒で応答しなかったので照会を打ち切りました",
+            GH_DEADLINE.as_secs()
+        );
+        if let Some(observed) = observed {
+            detail.push_str(&format!("（{observed}）"));
+        }
+        RelationError {
+            reason: LookupFailure::TimedOut,
+            detail,
+        }
+    }
 }
+
+/// 履歴読取の取消 (decision-19): the caller set its [`Cancel`] while the read was running, so there
+/// is no answer to return — not an empty one, not a failed one. A type of its own rather than a
+/// [`RelationOutcome`], because a cancelled read is never displayed: every path that produces it
+/// ends at a caller that already stopped wanting it, and giving it a display value would mean
+/// inventing something for the screen to show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cancelled;
 
 impl std::fmt::Display for RelationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -513,11 +553,21 @@ pub struct PullRequestTarget {
 /// is chosen by the target's `host` kind — the one structural point doc-6 §6 fixes. The GitHub
 /// network implementation is a later, per-kind addition (with its own dependency decision), which
 /// is why this is a trait rather than a hardcoded HTTP call.
-pub trait PrCommitSource {
+///
+/// `Sync` because [`CONCURRENT_LOOKUPS`] resolves several Pull Requests at once and they share one
+/// source (decision-19). A source that needs interior mutability therefore needs a lock, not a
+/// `Cell` — which is the point: the production one holds no state at all, and a test one that
+/// records its calls has to be safe to call from two threads because that is how it will be called.
+pub trait PrCommitSource: Sync {
     /// The commit SHAs that belong to the Pull Request named by `target`. Read-only.
+    ///
+    /// `cancel` is the caller's 履歴読取の取消 handle (decision-19). An implementation that waits on
+    /// anything has to honour it — that is what stops a 見捨てられた照会 outliving the screen that
+    /// asked for it — and one that cannot be cancelled mid-flight must at least not start.
     fn commits_for_pull_request(
         &self,
         target: &PullRequestTarget,
+        cancel: &Cancel,
     ) -> Result<Vec<String>, RelationError>;
 }
 
@@ -537,13 +587,19 @@ pub fn resolve_task_relations(
     commits: &[Commit],
     pull_requests: &[PullRequestRef],
     source: &dyn PrCommitSource,
-) -> Vec<PrRelation> {
+    cancel: &Cancel,
+) -> Result<Vec<PrRelation>, Cancelled> {
     // `None` covers both a missing remote (git_remote_present false — no Git call was even made)
     // and an unrecognized host kind.
     if remote.is_none() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    resolve_relations(commits, pull_requests, source)
+    // Checked before anything starts, not only inside the wait: a read cancelled while コミット検索
+    // was still running must not go on to launch a `gh` at all (decision-19).
+    if cancel.is_cancelled() {
+        return Err(Cancelled);
+    }
+    resolve_relations(commits, pull_requests, source, cancel)
 }
 
 /// Resolve commit⇄PR relations against the local commits (doc-6 §6). Private on purpose: the AC #3
@@ -565,21 +621,80 @@ pub fn resolve_task_relations(
 /// `/pull/5` beside `/pull/5/files`. Resolving each occurrence would query the same PR twice and make
 /// 関連 PR m 件 count references rather than Pull Requests (doc-8 §5), so occurrences are folded here
 /// on [`relation_key`], keeping the first URL as the one the screen shows.
+/// Distinct Pull Requests are resolved [`CONCURRENT_LOOKUPS`] at a time (decision-19), not one after
+/// the other: with a deadline on each 照会, 直列照会 would make one history read wait "PR 件数 ×
+/// 期限" in the worst case. Results are placed back by index, so the order the screen sees is the
+/// order the References gave, whatever order the answers arrive in.
 fn resolve_relations(
     commits: &[Commit],
     pull_requests: &[PullRequestRef],
     source: &dyn PrCommitSource,
-) -> Vec<PrRelation> {
+    cancel: &Cancel,
+) -> Result<Vec<PrRelation>, Cancelled> {
     let mut seen = BTreeSet::new();
-    pull_requests
+    let distinct: Vec<&PullRequestRef> = pull_requests
         .iter()
         .filter(|pr| seen.insert(relation_key(pr)))
-        .map(|pr| PrRelation {
-            pull_request: pr.url.clone(),
-            outcome: resolve_one(commits, pr, source),
+        .collect();
+
+    let next = AtomicUsize::new(0);
+    let (send, receive) = std::sync::mpsc::channel();
+    // Scoped threads so `commits`, `source` and `cancel` are borrowed rather than cloned into each
+    // worker — and so the scope's own join is the one place this function waits. The workers
+    // themselves only wait inside a bounded launch.
+    std::thread::scope(|scope| {
+        for _ in 0..CONCURRENT_LOOKUPS.min(distinct.len()) {
+            let send = send.clone();
+            let next = &next;
+            let distinct = &distinct;
+            scope.spawn(move || {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(pr) = distinct.get(index) else { break };
+                    // A cancel that lands mid-run stops the queue as well as the wait: the 照会
+                    // already in flight is ended by its own `cancel`, and the ones not yet started
+                    // are never started.
+                    let outcome = if cancel.is_cancelled() {
+                        Err(Cancelled)
+                    } else {
+                        resolve_one(commits, pr, source, cancel)
+                    };
+                    // The receiver outlives the scope, so a send cannot fail; if it somehow did,
+                    // the missing index is caught below rather than silently dropped.
+                    let _ = send.send((index, outcome));
+                }
+            });
+        }
+        // The workers hold the only senders that matter; this one would keep the channel open.
+        drop(send);
+    });
+
+    let mut outcomes: Vec<Option<RelationOutcome>> = vec![None; distinct.len()];
+    for (index, outcome) in receive {
+        outcomes[index] = Some(outcome?);
+    }
+    distinct
+        .iter()
+        .zip(outcomes)
+        .map(|(pr, outcome)| {
+            // Every index is written by exactly one worker before the scope joins, so a `None` here
+            // would mean a worker vanished without sending — which `thread::scope` turns into a
+            // panic rather than letting it reach this line.
+            let outcome = outcome.ok_or(Cancelled)?;
+            Ok(PrRelation {
+                pull_request: pr.url.clone(),
+                outcome,
+            })
         })
         .collect()
 }
+
+/// 同時照会上限 (decision-19): how many Pull Requests are looked up at once within one history read.
+/// Two, because a task's References normally name one or two Pull Requests (decision-14), so the
+/// usual read does not queue at all, while a task that names more does not multiply the deadline by
+/// its count. An upper bound exists at all because the count comes from the task's own content —
+/// without one, Atlas could not say how many processes and connections a single read opens.
+const CONCURRENT_LOOKUPS: usize = 2;
 
 /// The identity a Pull Request is resolved under. Its coordinates when they are all known — that is
 /// what a lookup is keyed on, so two URLs with the same coordinates are the same PR — and otherwise
@@ -599,14 +714,15 @@ fn resolve_one(
     commits: &[Commit],
     pr: &PullRequestRef,
     source: &dyn PrCommitSource,
-) -> RelationOutcome {
+    cancel: &Cancel,
+) -> Result<RelationOutcome, Cancelled> {
     // A PR is resolvable only when its own host kind is recognized and owner/repo/number are all
     // known; anything less would force a query against the wrong repo (or no repo at all), so it
     // is excluded from resolution rather than guessed (doc-6 §6 "対象外").
     let (Some(host), Some(owner), Some(repo), Some(number)) =
         (pr.host, pr.owner.clone(), pr.repo.clone(), pr.number)
     else {
-        return RelationOutcome::HostUnsupported;
+        return Ok(RelationOutcome::HostUnsupported);
     };
     let target = PullRequestTarget {
         host,
@@ -614,19 +730,23 @@ fn resolve_one(
         repo,
         number,
     };
-    match source.commits_for_pull_request(&target) {
+    match source.commits_for_pull_request(&target, cancel) {
         Ok(remote_shas) => {
             let commit_ids = commits
                 .iter()
                 .filter(|c| remote_shas.iter().any(|r| sha_relates(&c.id, r)))
                 .map(|c| c.id.clone())
                 .collect();
-            RelationOutcome::Resolved { commit_ids }
+            Ok(RelationOutcome::Resolved { commit_ids })
         }
-        Err(e) => RelationOutcome::LookupFailed {
+        // A cancel ends the 照会 the same way the deadline does, and the source cannot tell the two
+        // apart — it does not hold the handle. Asking here is what keeps 照会期限到達 from being
+        // reported for a read the caller itself stopped.
+        Err(_) if cancel.is_cancelled() => Err(Cancelled),
+        Err(e) => Ok(RelationOutcome::LookupFailed {
             reason: e.reason,
             detail: e.detail,
-        },
+        }),
     }
 }
 
@@ -651,12 +771,21 @@ impl PrCommitSource for HostReferences {
     fn commits_for_pull_request(
         &self,
         target: &PullRequestTarget,
+        cancel: &Cancel,
     ) -> Result<Vec<String>, RelationError> {
         match target.host {
-            RemoteHostKind::GitHub => github_pull_request_commits(target),
+            RemoteHostKind::GitHub => github_pull_request_commits(target, cancel),
         }
     }
 }
+
+/// gh 照会期限 (doc-6 §6, decision-19): how long one `gh api` launch may take before Atlas stops
+/// waiting and ends it. 30 seconds, the same value decision-18 fixed for the Backlog CLI, so the
+/// bound Atlas puts on waiting for an external program is one number with one rationale rather than
+/// two. It is ~40× the slowest launch measured for decision-19 (0.73 s, six single-page lookups on
+/// 2026-08-02), and GitHub pages a PR's commit listing at 100 with a 250 cap — three round trips at
+/// the very most — so a merely slow connection cannot reach it.
+pub const GH_DEADLINE: Duration = Duration::from_secs(30);
 
 /// The `gh` invocation used for GitHub (decision-14): `gh api` with a fixed subcommand and an
 /// argument array, the same rule every other external program in Atlas is run under (AGENTS).
@@ -671,10 +800,15 @@ impl PrCommitSource for HostReferences {
 /// `--hostname` pins the request to github.com so a user's `GH_HOST` cannot redirect a github.com PR
 /// to an enterprise host. Read-only: `gh api` defaults to GET, and nothing here writes.
 ///
-/// There is deliberately no timeout: `std` cannot wait on a child with one without a new dependency,
-/// and the caller already tolerates a slow read — the command runs off the UI thread and the panel's
-/// loader supersedes a stale answer, with 再取得 as the manual retry.
-fn github_pull_request_commits(target: &PullRequestTarget) -> Result<Vec<String>, RelationError> {
+/// The wait is bounded by [`GH_DEADLINE`] and ended early by `cancel` (decision-19), both through
+/// `subprocess` — the same bounded launch the Backlog CLI uses. Until 2026-08-02 there was no bound
+/// here, and the reason given was that `std` could not wait on a child with one without a new
+/// dependency; that was false (`Child::try_wait` has been stable since Rust 1.18.0) and decision-18
+/// corrected it.
+fn github_pull_request_commits(
+    target: &PullRequestTarget,
+    cancel: &Cancel,
+) -> Result<Vec<String>, RelationError> {
     // owner/repo reach here from a *task's* References URL, and they are interpolated into an API
     // path. Restricting them to GitHub's own name charset stops a crafted reference (`.`, `..`, an
     // encoded slash) from steering the request at another endpoint.
@@ -689,19 +823,30 @@ fn github_pull_request_commits(target: &PullRequestTarget) -> Result<Vec<String>
         ".[].sha".to_string(),
         format!("repos/{owner}/{repo}/pulls/{}/commits", target.number),
     ];
-    let out = Command::new("gh")
+    let mut command = Command::new("gh");
+    command
         .args(&args)
         // gh must never stop on a prompt here — there is no terminal to answer it — and its update
         // notice would otherwise land in the stderr we report as the failure reason.
         .env("GH_PROMPT_DISABLED", "1")
-        .env("GH_NO_UPDATE_NOTIFIER", "1")
-        .output()
-        .map_err(|e| RelationError::tool_missing(format!("gh を起動できません（{e}）")))?;
+        .env("GH_NO_UPDATE_NOTIFIER", "1");
+    let out = match subprocess::launch(&mut command, GH_DEADLINE, cancel) {
+        Ok(completed) => completed,
+        Err(Stopped::Spawn(e)) => {
+            return Err(RelationError::tool_missing(format!(
+                "gh を起動できません（{e}）"
+            )))
+        }
+        // Which bound ended the wait is not something `subprocess` reports: the handle is this
+        // caller's. A cancelled 照会 is reported as 照会期限到達 here and re-read as 取消 by
+        // `resolve_one`, which is the layer that knows the read as a whole was abandoned.
+        Err(Stopped::Ended { detail }) => return Err(RelationError::timed_out(detail)),
+    };
     if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        return Err(RelationError::query_failed(first_line(&stderr)));
+        return Err(RelationError::query_failed(first_line(&out.stderr)));
     }
-    Ok(String::from_utf8_lossy(&out.stdout)
+    Ok(out
+        .stdout
         .lines()
         .map(str::trim)
         .filter(|line| is_sha(line))
@@ -802,10 +947,24 @@ fn host_kind_of(host: &str) -> Option<RemoteHostKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::AtomicU64;
+    use std::sync::Mutex;
+
+    /// The lookups a [`FakeSource`] recorded, in the order it was called.
+    fn queried(source: &FakeSource) -> Vec<(RemoteHostKind, String, String, u64)> {
+        source
+            .queried
+            .lock()
+            .expect("no test panics holding it")
+            .clone()
+    }
+
+    /// A cancel handle nothing will ever set — what a test that is not about 取消 passes.
+    fn never_cancelled() -> Cancel {
+        Cancel::new()
+    }
 
     // --- word-boundary commit matching (AC #1, doc-6 §3) -----------------------------------
 
@@ -911,7 +1070,9 @@ mod tests {
         by_target: BTreeMap<(RemoteHostKind, String, String, u64), Vec<String>>,
         fail: bool,
         /// Every lookup, in order — so a test can assert what was *not* queried as well as what was.
-        queried: RefCell<Vec<(RemoteHostKind, String, String, u64)>>,
+        /// A `Mutex`, not a `Cell`: [`CONCURRENT_LOOKUPS`] calls this from more than one thread, and
+        /// the recording has to be safe under exactly the conditions the production path runs in.
+        queried: Mutex<Vec<(RemoteHostKind, String, String, u64)>>,
     }
 
     impl FakeSource {
@@ -931,7 +1092,7 @@ mod tests {
             FakeSource {
                 by_target,
                 fail: false,
-                queried: RefCell::new(Vec::new()),
+                queried: Mutex::new(Vec::new()),
             }
         }
     }
@@ -940,6 +1101,7 @@ mod tests {
         fn commits_for_pull_request(
             &self,
             target: &PullRequestTarget,
+            _cancel: &Cancel,
         ) -> Result<Vec<String>, RelationError> {
             if self.fail {
                 return Err(RelationError::query_failed("offline"));
@@ -950,7 +1112,10 @@ mod tests {
                 target.repo.clone(),
                 target.number,
             );
-            self.queried.borrow_mut().push(key.clone());
+            self.queried
+                .lock()
+                .expect("no test panics holding it")
+                .push(key.clone());
             Ok(self.by_target.get(&key).cloned().unwrap_or_default())
         }
     }
@@ -985,7 +1150,8 @@ mod tests {
         // The remote reports one shared commit (abbreviated) and one unrelated one.
         let source = FakeSource::with(&[("o", "r", 5, &["aaaaaaa", "ffffffffffff9999"])]);
 
-        let relations = resolve_relations(&commits, &prs, &source);
+        let relations =
+            resolve_relations(&commits, &prs, &source, &never_cancelled()).expect("not cancelled");
         assert_eq!(relations.len(), 1);
         assert_eq!(relations[0].pull_request, "https://github.com/o/r/pull/5");
         // Only the shared commit relates; abbreviation is tolerated via prefix match.
@@ -1013,7 +1179,8 @@ mod tests {
             ("fork", "r", 7, &["aaaaaaa"]),
         ]);
 
-        let relations = resolve_relations(&commits, &prs, &source);
+        let relations =
+            resolve_relations(&commits, &prs, &source, &never_cancelled()).expect("not cancelled");
         assert_eq!(
             relations[0].outcome,
             RelationOutcome::Resolved { commit_ids: vec![] },
@@ -1037,7 +1204,8 @@ mod tests {
         // Success with no intersection → Resolved{ empty }.
         let ok = FakeSource::with(&[("o", "r", 9, &["ffffffffffff9999"])]);
         assert_eq!(
-            resolve_relations(&commits, &prs, &ok)[0].outcome,
+            resolve_relations(&commits, &prs, &ok, &never_cancelled()).expect("not cancelled")[0]
+                .outcome,
             RelationOutcome::Resolved { commit_ids: vec![] }
         );
 
@@ -1045,7 +1213,8 @@ mod tests {
         let mut down = FakeSource::with(&[]);
         down.fail = true;
         assert_eq!(
-            resolve_relations(&commits, &prs, &down)[0].outcome,
+            resolve_relations(&commits, &prs, &down, &never_cancelled()).expect("not cancelled")[0]
+                .outcome,
             RelationOutcome::LookupFailed {
                 reason: LookupFailure::QueryFailed,
                 detail: "offline".into()
@@ -1069,12 +1238,13 @@ mod tests {
         ];
         let source = FakeSource::with(&[("o", "r", 5, &["aaaaaaa"]), ("o", "r", 6, &[])]);
 
-        let relations = resolve_relations(&commits, &prs, &source);
+        let relations =
+            resolve_relations(&commits, &prs, &source, &never_cancelled()).expect("not cancelled");
         assert_eq!(relations.len(), 2);
         // The first URL of the folded group is the one the screen shows.
         assert_eq!(relations[0].pull_request, "https://github.com/o/r/pull/5");
         assert_eq!(relations[1].pull_request, "https://github.com/o/r/pull/6");
-        assert_eq!(source.queried.borrow().len(), 2, "each PR queried once");
+        assert_eq!(queried(&source).len(), 2, "each PR queried once");
     }
 
     #[test]
@@ -1093,7 +1263,8 @@ mod tests {
             generic("https://example.test/team/proj/pull-requests/42"),
             generic("https://example.test/other/proj/pull-requests/42"),
         ];
-        let relations = resolve_relations(&[], &prs, &FakeSource::with(&[]));
+        let relations = resolve_relations(&[], &prs, &FakeSource::with(&[]), &never_cancelled())
+            .expect("not cancelled");
         assert_eq!(relations.len(), 2);
         assert!(relations
             .iter()
@@ -1111,7 +1282,8 @@ mod tests {
         ];
         let mut source = FakeSource::with(&[]);
         source.fail = true;
-        let relations = resolve_relations(&commits, &prs, &source);
+        let relations =
+            resolve_relations(&commits, &prs, &source, &never_cancelled()).expect("not cancelled");
         assert_eq!(relations.len(), 2);
         assert!(relations
             .iter()
@@ -1136,11 +1308,13 @@ mod tests {
             fn commits_for_pull_request(
                 &self,
                 _t: &PullRequestTarget,
+                _cancel: &Cancel,
             ) -> Result<Vec<String>, RelationError> {
                 panic!("unsupported-host PR must not be queried");
             }
         }
-        let relations = resolve_relations(&commits, &prs, &NeverCalled);
+        let relations = resolve_relations(&commits, &prs, &NeverCalled, &never_cancelled())
+            .expect("not cancelled");
         assert_eq!(relations[0].outcome, RelationOutcome::HostUnsupported);
     }
 
@@ -1169,13 +1343,18 @@ mod tests {
             fn commits_for_pull_request(
                 &self,
                 _t: &PullRequestTarget,
+                _cancel: &Cancel,
             ) -> Result<Vec<String>, RelationError> {
                 panic!("source must not be queried when the project-remote gate fails");
             }
         }
         let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
         let prs = vec![github_pr("https://github.com/o/r/pull/5", "o", "r", 5)];
-        assert!(resolve_task_relations(None, &commits, &prs, &NeverCalled).is_empty());
+        assert!(
+            resolve_task_relations(None, &commits, &prs, &NeverCalled, &never_cancelled())
+                .expect("not cancelled")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1191,7 +1370,9 @@ mod tests {
             owner: "o".into(),
             repo: "r".into(),
         };
-        let relations = resolve_task_relations(Some(&remote), &commits, &prs, &source);
+        let relations =
+            resolve_task_relations(Some(&remote), &commits, &prs, &source, &never_cancelled())
+                .expect("not cancelled");
         assert_eq!(
             relations[0].outcome,
             RelationOutcome::Resolved {
@@ -1199,7 +1380,203 @@ mod tests {
             }
         );
         // No PR URL on the task → no relation, with the gate still open.
-        assert!(resolve_task_relations(Some(&remote), &commits, &[], &source).is_empty());
+        assert!(
+            resolve_task_relations(Some(&remote), &commits, &[], &source, &never_cancelled())
+                .expect("not cancelled")
+                .is_empty()
+        );
+    }
+
+    // --- 照会期限・取消・同時照会上限 (doc-6 §6, decision-19, TASK-87) ------------------------
+
+    /// A source whose answer per PR number is scripted, and which reports the largest number of
+    /// callers it ever had at once. Both are needed: the cap is only meaningful beside the fact that
+    /// more than one really did run.
+    struct ScriptedSource {
+        answers: BTreeMap<u64, Result<Vec<String>, LookupFailure>>,
+        /// Set while a lookup is inside the source, so the peak is observed rather than inferred.
+        inside: Mutex<usize>,
+        peak: Mutex<usize>,
+        /// Set by the source itself on its first call, to model a 取消 arriving mid-read.
+        cancel_on_first_call: bool,
+    }
+
+    impl ScriptedSource {
+        fn new(answers: &[(u64, Result<Vec<&str>, LookupFailure>)]) -> Self {
+            ScriptedSource {
+                answers: answers
+                    .iter()
+                    .map(|(number, answer)| {
+                        let answer = match answer {
+                            Ok(shas) => Ok(shas.iter().map(|s| (*s).to_string()).collect()),
+                            Err(reason) => Err(*reason),
+                        };
+                        (*number, answer)
+                    })
+                    .collect(),
+                inside: Mutex::new(0),
+                peak: Mutex::new(0),
+                cancel_on_first_call: false,
+            }
+        }
+
+        fn peak(&self) -> usize {
+            *self.peak.lock().expect("no test panics holding it")
+        }
+    }
+
+    impl PrCommitSource for ScriptedSource {
+        fn commits_for_pull_request(
+            &self,
+            target: &PullRequestTarget,
+            cancel: &Cancel,
+        ) -> Result<Vec<String>, RelationError> {
+            {
+                let mut inside = self.inside.lock().expect("no test panics holding it");
+                *inside += 1;
+                let mut peak = self.peak.lock().expect("no test panics holding it");
+                *peak = (*peak).max(*inside);
+            }
+            if self.cancel_on_first_call {
+                cancel.cancel();
+            }
+            // Long enough that a second worker reaches the counter above while this one is still
+            // holding it — without a sleep the two would interleave by luck and the peak would say
+            // nothing. Short enough that six of them cost a few tens of milliseconds.
+            std::thread::sleep(Duration::from_millis(20));
+            *self.inside.lock().expect("no test panics holding it") -= 1;
+            match self.answers.get(&target.number) {
+                Some(Ok(shas)) => Ok(shas.clone()),
+                Some(Err(LookupFailure::TimedOut)) => Err(RelationError::timed_out(None)),
+                Some(Err(_)) | None => Err(RelationError::query_failed("scripted failure")),
+            }
+        }
+    }
+
+    fn numbered_prs(numbers: &[u64]) -> Vec<PullRequestRef> {
+        numbers
+            .iter()
+            .map(|n| github_pr(&format!("https://github.com/o/r/pull/{n}"), "o", "r", *n))
+            .collect()
+    }
+
+    #[test]
+    fn no_more_than_the_concurrent_lookup_cap_run_at_once() {
+        // AC #2. Six distinct Pull Requests, one source: at no instant may more than
+        // CONCURRENT_LOOKUPS of them be inside it.
+        let prs = numbered_prs(&[1, 2, 3, 4, 5, 6]);
+        let source = ScriptedSource::new(&[
+            (1, Ok(vec![])),
+            (2, Ok(vec![])),
+            (3, Ok(vec![])),
+            (4, Ok(vec![])),
+            (5, Ok(vec![])),
+            (6, Ok(vec![])),
+        ]);
+        let relations = resolve_relations(&[], &prs, &source, &never_cancelled())
+            .expect("nothing cancelled this read");
+
+        assert_eq!(relations.len(), 6, "every PR still gets an entry");
+        assert!(
+            source.peak() <= CONCURRENT_LOOKUPS,
+            "at most {CONCURRENT_LOOKUPS} 照会 at once, saw {}",
+            source.peak()
+        );
+        // The positive counterpart: without it the assertion above also passes for 直列照会, which is
+        // the very thing decision-19 replaced.
+        assert!(
+            source.peak() > 1,
+            "the lookups must actually overlap, saw a peak of {}",
+            source.peak()
+        );
+    }
+
+    #[test]
+    fn a_timed_out_lookup_fails_only_its_own_pull_request() {
+        // AC #4. 照会期限到達 is a per-PR outcome: the other PR's resolved commit set survives it,
+        // and the reason reaching the screen is TimedOut rather than the undecidable QueryFailed.
+        let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
+        let prs = numbered_prs(&[1, 2]);
+        let source =
+            ScriptedSource::new(&[(1, Err(LookupFailure::TimedOut)), (2, Ok(vec!["aaaaaaa"]))]);
+        let relations = resolve_relations(&commits, &prs, &source, &never_cancelled())
+            .expect("a deadline is not a cancel");
+
+        let RelationOutcome::LookupFailed { reason, detail } = &relations[0].outcome else {
+            panic!("the first PR reached its deadline: {:?}", relations[0]);
+        };
+        assert_eq!(*reason, LookupFailure::TimedOut);
+        assert!(
+            detail.contains(&GH_DEADLINE.as_secs().to_string()),
+            "the reason must name the bound that was reached: {detail}"
+        );
+        assert_eq!(
+            relations[1].outcome,
+            RelationOutcome::Resolved {
+                commit_ids: vec!["aaaaaaaaaaaa1111".into()],
+            },
+            "one PR's 期限到達 must not take the others' answers with it"
+        );
+    }
+
+    #[test]
+    fn a_cancel_mid_read_yields_no_answer_at_all() {
+        // AC #1/#3 at this layer: once the screen has cancelled, the read produces `Cancelled` rather
+        // than a partial list — a list would be indistinguishable on the wire from an answer about
+        // the task the screen has moved to.
+        let prs = numbered_prs(&[1, 2, 3, 4]);
+        let mut source = ScriptedSource::new(&[
+            (1, Ok(vec![])),
+            (2, Ok(vec![])),
+            (3, Ok(vec![])),
+            (4, Ok(vec![])),
+        ]);
+        source.cancel_on_first_call = true;
+        let cancel = Cancel::new();
+
+        assert_eq!(
+            resolve_relations(&[], &prs, &source, &cancel),
+            Err(Cancelled)
+        );
+        // And the queue stopped: the PRs that had not started are never looked up. At most the
+        // CONCURRENT_LOOKUPS already in flight when the flag was set can have run.
+        assert!(
+            source.peak() <= CONCURRENT_LOOKUPS,
+            "a cancelled read must not start the rest of the queue"
+        );
+    }
+
+    #[test]
+    fn a_read_cancelled_before_it_starts_launches_nothing() {
+        // The check that is not inside the wait (decision-19): a read cancelled while コミット検索 was
+        // still running must not reach the reference means at all.
+        struct NeverCalled;
+        impl PrCommitSource for NeverCalled {
+            fn commits_for_pull_request(
+                &self,
+                _t: &PullRequestTarget,
+                _cancel: &Cancel,
+            ) -> Result<Vec<String>, RelationError> {
+                panic!("a cancelled read must not launch a 照会");
+            }
+        }
+        let remote = RemoteHost {
+            kind: RemoteHostKind::GitHub,
+            owner: "o".into(),
+            repo: "r".into(),
+        };
+        let cancel = Cancel::new();
+        cancel.cancel();
+        assert_eq!(
+            resolve_task_relations(
+                Some(&remote),
+                &[],
+                &numbered_prs(&[1]),
+                &NeverCalled,
+                &cancel
+            ),
+            Err(Cancelled)
+        );
     }
 
     // --- GitHub の参照手段 (doc-6 §6, decision-14) -------------------------------------------
@@ -1241,7 +1618,9 @@ mod tests {
             repo: "backlog-atlas".into(),
             number: 28,
         };
-        let shas = HostReferences.commits_for_pull_request(&target).unwrap();
+        let shas = HostReferences
+            .commits_for_pull_request(&target, &never_cancelled())
+            .unwrap();
         assert!(!shas.is_empty());
         assert!(shas.iter().all(|sha| is_sha(sha)));
         // One commit that is in that PR, matched the way relation resolution matches (prefix).
@@ -1311,7 +1690,7 @@ mod tests {
             number: 1,
         };
         let error = HostReferences
-            .commits_for_pull_request(&target)
+            .commits_for_pull_request(&target, &never_cancelled())
             .unwrap_err();
         assert_eq!(error.reason, LookupFailure::InvalidReference);
         assert!(error.detail.contains(".."));

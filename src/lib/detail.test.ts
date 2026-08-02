@@ -16,7 +16,7 @@ import {
 } from "./detail";
 import { CANONICAL_COLUMN_LABEL } from "./swimlane";
 import { commit, entry, history, pullRequest, relation, snapshot, taskView } from "./fixtures";
-import type { TaskHistory } from "./wire";
+import type { LookupFailure, TaskHistory } from "./wire";
 
 const PR_URL = "https://github.com/serendipitynz/backlog-atlas/pull/10";
 const DOC_URL = "https://example.com/spec";
@@ -289,7 +289,7 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
     // [P2] review finding: the backend maps a missing tool, a malformed reference and a query that
     // ran and failed to the same 参照不能, and they do not clear the same way. doc-8 §5 asks for
     // whether a cause can be cleared, so the reason travels with it.
-    const accountFor = (reason: "toolMissing" | "invalidReference" | "queryFailed") =>
+    const accountFor = (reason: LookupFailure) =>
       relationAccounts(
         loaded(history({ relations: [relation(PR_URL, { state: "lookupFailed", reason, detail: "x" })] })),
       )[0].text;
@@ -300,6 +300,13 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
     const query = accountFor("queryFailed");
     expect(query).toContain("この結果からは分かりません");
     expect(query).not.toContain("すれば解消できます");
+    // 照会期限到達 (decision-19) is the fourth: Atlas ended the 照会 itself, so unlike `queryFailed`
+    // it can say what happened — and unlike the first two it still promises no fix, only that a
+    // retry may answer differently.
+    const timedOut = accountFor("timedOut");
+    expect(timedOut).toContain("Atlas が照会を打ち切りました");
+    expect(timedOut).toContain("再取得で解消することがあります");
+    expect(timedOut).not.toContain("すれば解消できます");
   });
 });
 

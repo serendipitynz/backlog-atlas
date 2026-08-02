@@ -225,12 +225,18 @@ export type CommitSearch =
   | { state: "unreadable"; detail: string };
 
 /**
- * Why a Pull Request's commit set could not be fetched (doc-6 §6). Typed because the three differ in
+ * Why a Pull Request's commit set could not be fetched (doc-6 §6). Typed because the four differ in
  * what would clear them, which doc-8 §5 asks the screen to state: `toolMissing` clears by installing
- * the reference means, `invalidReference` by editing the task's References, and `queryFailed` is a
- * query that ran and failed — auth, permission, a deleted PR or the network, undecidable from here.
+ * the reference means, `invalidReference` by editing the task's References, `timedOut` is a 照会
+ * Atlas itself ended at the gh 照会期限 (decision-19) and may well differ on a retry, and
+ * `queryFailed` is a query that ran and failed — auth, permission, a deleted PR or the network,
+ * undecidable from here.
  */
-export type LookupFailure = "toolMissing" | "invalidReference" | "queryFailed";
+export type LookupFailure =
+  | "toolMissing"
+  | "invalidReference"
+  | "queryFailed"
+  | "timedOut";
 
 /**
  * What became of one Pull Request during コミット・PR 関連解決 (doc-6 §6). `resolved` with an empty
@@ -378,7 +384,11 @@ export type CommandError =
   // method you chose" from "the launcher existed and the OS refused it".
   | { kind: "unknownTaskFile"; slug: string; path: string }
   | { kind: "editorUnavailable"; detail: string }
-  | { kind: "editorLaunchFailed"; method: LaunchMethod; program: string; detail: string };
+  | { kind: "editorLaunchFailed"; method: LaunchMethod; program: string; detail: string }
+  // 履歴読取の取消 (decision-19): the screen cancelled this read, so there is no answer. Carries only
+  // the 読取識別子 — the screen that gets it has already stopped displaying that read, so there is
+  // nothing here for it to show.
+  | { kind: "historyCancelled"; read_id: string };
 
 // --- 外部エディタ経路 (doc-8 §7, TASK-37) ----------------------------------------------------
 

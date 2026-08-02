@@ -413,6 +413,12 @@ fn command_errors_are_recorded() {
                 slug: "atlas".to_string(),
                 path: PathBuf::from("/elsewhere/evil.md"),
             },
+            // 履歴読取の取消 (decision-19). Its payload is the 読取識別子: the screen's loader
+            // generation and call number, which is a *string* precisely because a bare number is
+            // only unique within one loader.
+            CommandError::HistoryCancelled {
+                read_id: "3f2a1c-7".to_string(),
+            },
             CommandError::EditorLaunchFailed {
                 method: LaunchMethod::Configured,
                 program: "code".to_string(),
@@ -692,12 +698,14 @@ fn every_lookup_failure() -> Vec<LookupFailure> {
         LookupFailure::ToolMissing,
         LookupFailure::InvalidReference,
         LookupFailure::QueryFailed,
+        LookupFailure::TimedOut,
     ];
     for value in &all {
         match value {
             LookupFailure::ToolMissing
             | LookupFailure::InvalidReference
-            | LookupFailure::QueryFailed => {}
+            | LookupFailure::QueryFailed
+            | LookupFailure::TimedOut => {}
         }
     }
     all
@@ -1031,6 +1039,7 @@ fn every_command_error() -> Vec<CommandError> {
             program: blank(),
             detail: blank(),
         },
+        CommandError::HistoryCancelled { read_id: blank() },
     ];
     for value in &all {
         match value {
@@ -1049,7 +1058,8 @@ fn every_command_error() -> Vec<CommandError> {
             | CommandError::WatchFailed { .. }
             | CommandError::UnknownTaskFile { .. }
             | CommandError::EditorUnavailable { .. }
-            | CommandError::EditorLaunchFailed { .. } => {}
+            | CommandError::EditorLaunchFailed { .. }
+            | CommandError::HistoryCancelled { .. } => {}
         }
     }
     all

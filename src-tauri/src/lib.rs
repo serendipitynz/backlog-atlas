@@ -32,6 +32,11 @@ pub mod settings;
 // its own but the one write path `ledger` and `settings` share, so neither can be made durable
 // without the other. Public because `settings::save_with` names its boundary in a public signature.
 pub mod store;
+// Public: 期限付きの子プロセス実行 (decision-18, decision-19). Not a layer either — the one place
+// that launches an external program and waits for it, shared by the Backlog CLI (`update`) and the
+// `gh` 照会 (`history`) so that the bound on the wait, and the two cleanups that could each hand
+// that wait straight back, exist once rather than once per caller.
+pub mod subprocess;
 // Public: same-root freshness — file watch, read-version index, pre-update conflict detection, and
 // the shared reload path (TASK-32 / doc-9). The read/update layers' freshness counterpart: it keeps
 // the domain model in step with a Backlog root other processes may also write, detecting external
@@ -76,6 +81,7 @@ pub fn run() {
             commands::project_watch_start,
             commands::project_watch_stop,
             commands::task_history_read,
+            commands::task_history_cancel,
             // アプリ設定 (decision-13): display defaults, in Atlas's own config dir.
             commands::settings_read,
             commands::settings_save,

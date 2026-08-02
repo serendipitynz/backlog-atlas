@@ -30,14 +30,13 @@
 //!   Operations v1.48.0 cannot perform (milestone description update, emptying references) are
 //!   unrepresentable or refused *before* any process starts.
 
+use crate::subprocess::{self, Cancel, Stopped};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::ffi::OsStr;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
 // --- version probe / capability (doc-5 §3.2, decision-7, AC #6) ---------------------------------
 
@@ -1071,54 +1070,31 @@ impl BacklogCli for SystemBacklog {
         if let Some(dir) = current_dir {
             cmd.current_dir(dir);
         }
-        // stdin is closed rather than inherited, as `Command::output` also does: a CLI that decided
-        // to prompt would otherwise wait on a terminal nobody is attached to, and the deadline would
-        // be the only thing that ever ended it.
-        cmd.args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        // `std::io::Error` from a spawn names the errno and nothing else. Naming what we tried to run
-        // is what makes a mistyped `backlog_cli` fixable: decision-16 uses that setting as written, so
-        // the path in it is exactly the thing the user has to correct.
-        let mut child = cmd.spawn().map_err(|e| {
-            RunError::Spawn(std::io::Error::new(
+        cmd.args(args);
+        // Nothing here can be cancelled: the handle is made on this line and never leaves it, so the
+        // deadline is this launch's only bound. An 更新操作 has no caller waiting to change its mind
+        // — the screen that issued it is blocked on the answer — which is what separates this from
+        // the `gh` 照会 (decision-19 履歴読取の取消).
+        match subprocess::launch(&mut cmd, self.deadline, &Cancel::new()) {
+            Ok(completed) => Ok(CliRun {
+                success: completed.status.success(),
+                code: completed.status.code(),
+                stdout: completed.stdout,
+                stderr: completed.stderr,
+            }),
+            // `std::io::Error` from a spawn names the errno and nothing else. Naming what we tried to
+            // run is what makes a mistyped `backlog_cli` fixable: decision-16 uses that setting as
+            // written, so the path in it is exactly the thing the user has to correct.
+            Err(Stopped::Spawn(e)) => Err(RunError::Spawn(std::io::Error::new(
                 e.kind(),
                 format!("{}: {e}", program.display()),
-            ))
-        })?;
-        // Both pipes are drained by their own thread for the whole life of the child. Reading them
-        // only after the wait — the shape a `try_wait` loop invites — deadlocks the moment the child
-        // writes more than one pipe buffer: it blocks on the write, never exits, and the deadline
-        // turns a working CLI into a 期限到達. `Command::output` avoids this by reading concurrently;
-        // so does this.
-        let stdout = drain(child.stdout.take());
-        let stderr = drain(child.stderr.take());
-        let status = match wait_until(&mut child, self.deadline, CLEANUP_GRACE) {
-            Waited::Exited(status) => status,
-            Waited::Killed { detail } => {
-                // Nothing is waited on here. A pipe reaches EOF only when *every* writer has closed
-                // it, and killing the direct child closes only the direct child's end — a descendant
-                // that inherited the pipe keeps it open for as long as it likes. Waiting for the
-                // readers would therefore hand back the unbounded wait the deadline just ended. The
-                // threads are left to finish on their own (see [`drain`]), and this call's output is
-                // dropped: there is no verdict to explain, only a deadline that was reached.
-                return Err(RunError::TimedOut {
-                    after: self.deadline,
-                    detail,
-                });
-            }
-        };
-        // The child exited, so its own ends are closed — but a descendant may still hold them, so
-        // even here the drain gets a bound rather than a join. One shared instant for both pipes:
-        // two sequential graces would double the bound for no gain.
-        let until = Instant::now() + CLEANUP_GRACE;
-        Ok(CliRun {
-            success: status.success(),
-            code: status.code(),
-            stdout: text(stdout.take(until)),
-            stderr: text(stderr.take(until)),
-        })
+            ))),
+            // The only bound in force is the deadline, so reaching this arm means it elapsed.
+            Err(Stopped::Ended { detail }) => Err(RunError::TimedOut {
+                after: self.deadline,
+                detail,
+            }),
+        }
     }
 }
 
@@ -1128,166 +1104,6 @@ impl BacklogCli for SystemBacklog {
 /// merely slow machine cannot reach it, while an unresponsive CLI can hold one project's backend for
 /// at most this long.
 pub const CLI_DEADLINE: Duration = Duration::from_secs(30);
-
-/// How often the wait loop asks whether the child has exited. There is no timed wait in `std`
-/// (`Child::wait` blocks, `Child::try_wait` does not wait at all), so the bound is a poll — 20 ms is
-/// under a sixth of the fastest invocation measured (117 ms), which keeps the added latency below
-/// what the measurement can distinguish.
-const WAIT_POLL: Duration = Duration::from_millis(20);
-
-/// 後始末猶予 (doc-5 §5, decision-18): how long the two cleanups that follow the wait may take.
-///
-/// Both would otherwise be unbounded, and each would put back the wait the deadline removed:
-///
-/// - **Reaping a killed child.** `Child::wait` blocks until the process exits, and a kill that did
-///   not land leaves a process that may never do so.
-/// - **Finishing the drain.** A pipe reaches EOF only when every writer has closed it, and a
-///   descendant that inherited the pipe holds it open for as long as it likes.
-///
-/// One second is far more than either needs when nothing is wrong, and the whole of it is spent only
-/// when something really is still holding on.
-const CLEANUP_GRACE: Duration = Duration::from_secs(1);
-
-/// What became of the wait (decision-18).
-enum Waited {
-    Exited(std::process::ExitStatus),
-    Killed { detail: Option<String> },
-}
-
-/// The two things the bounded wait does to a running process.
-///
-/// A trait rather than [`std::process::Child`] directly, for one failure only a fake can produce: a
-/// kill that does not land. `SIGKILL` cannot be refused for one's own child, so the path where the
-/// process survives the kill is unreachable with a real one — and it is the path where an unbounded
-/// reap would quietly restore the wait the deadline exists to end.
-trait Reapable {
-    /// Whether the process has exited, without waiting for it to.
-    fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>>;
-    fn kill(&mut self) -> std::io::Result<()>;
-}
-
-impl Reapable for std::process::Child {
-    fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
-        self.try_wait()
-    }
-
-    fn kill(&mut self) -> std::io::Result<()> {
-        std::process::Child::kill(self)
-    }
-}
-
-/// Wait for `process` for at most `deadline`; if it outlives that, kill it and reap it within
-/// `grace`. Every step is bounded, so this returns after `deadline + grace` at the very worst.
-///
-/// Nothing here is required to succeed. The kill may fail, the reap may find the process still
-/// running, and a poll may error — each is recorded in the detail rather than turned into a longer
-/// wait, because the only claim Atlas can always support is that it stopped waiting.
-fn wait_until<P: Reapable>(process: &mut P, deadline: Duration, grace: Duration) -> Waited {
-    let mut failed_poll: Option<String> = None;
-    if let Some(status) = poll_until(process, Instant::now() + deadline, &mut failed_poll) {
-        return Waited::Exited(status);
-    }
-    let mut notes: Vec<String> = failed_poll.take().into_iter().collect();
-    if let Err(error) = process.kill() {
-        notes.push(format!("terminating it failed: {error}"));
-    }
-    // Reaped so the deadline leaves no zombie behind for the rest of the run — but on a bound, since
-    // a process that survived the kill is exactly what a blocking `wait` would sit on forever.
-    if poll_until(process, Instant::now() + grace, &mut failed_poll).is_none() {
-        notes.push(
-            failed_poll
-                .take()
-                .unwrap_or_else(|| "it was still running after being terminated".to_string()),
-        );
-    }
-    Waited::Killed {
-        detail: (!notes.is_empty()).then(|| notes.join("; ")),
-    }
-}
-
-/// Poll until the process has exited or `until` has passed.
-///
-/// A poll that errors is not treated as terminal: it means this attempt learned nothing, not that
-/// the process is gone (on Unix a signal arriving during `waitpid` surfaces here as `EINTR`). The
-/// last such error is left in `failed` for the caller to report.
-fn poll_until<P: Reapable>(
-    process: &mut P,
-    until: Instant,
-    failed: &mut Option<String>,
-) -> Option<std::process::ExitStatus> {
-    loop {
-        match process.poll() {
-            Ok(Some(status)) => return Some(status),
-            Ok(None) => {}
-            Err(error) => *failed = Some(format!("waiting on it failed: {error}")),
-        }
-        if Instant::now() >= until {
-            return None;
-        }
-        std::thread::sleep(WAIT_POLL);
-    }
-}
-
-/// One pipe being read on its own thread, with what has been read so far reachable *without* waiting
-/// for EOF (decision-18). That is the whole point: joining the thread would mean waiting for the last
-/// writer to close, and the last writer is not necessarily the process Atlas launched.
-struct Drain {
-    /// Bytes rather than a `String`: the CLI's output is not promised to be UTF-8, and the caller
-    /// replaces what is not (as `Command::output` also leaves it to the caller to decide).
-    buffer: Arc<Mutex<Vec<u8>>>,
-    finished: std::sync::mpsc::Receiver<()>,
-}
-
-impl Drain {
-    /// Wait until `until` for the pipe to end, then take what has been read by then. A drain that has
-    /// not finished is abandoned, not stopped — see [`drain`] for what its thread does after that.
-    fn take(self, until: Instant) -> Vec<u8> {
-        let _ = self
-            .finished
-            .recv_timeout(until.saturating_duration_since(Instant::now()));
-        std::mem::take(&mut *bytes(&self.buffer))
-    }
-}
-
-fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> Drain {
-    let buffer = Arc::new(Mutex::new(Vec::new()));
-    let (done, finished) = std::sync::mpsc::channel();
-    // Weak, so the thread can tell whether anyone is still going to read what it stores.
-    let sink = Arc::downgrade(&buffer);
-    std::thread::spawn(move || {
-        if let Some(mut pipe) = pipe {
-            let mut chunk = [0u8; 8 * 1024];
-            while let Ok(read) = pipe.read(&mut chunk) {
-                if read == 0 {
-                    break;
-                }
-                // Once the caller has taken its answer and moved on, keep *reading* — a writer must
-                // never block on a pipe Atlas stopped emptying — but stop accumulating output nobody
-                // will look at, which a descendant writing forever would otherwise grow without end.
-                if let Some(buffer) = sink.upgrade() {
-                    bytes(&buffer).extend_from_slice(&chunk[..read]);
-                }
-            }
-        }
-        // A closed receiver means the caller already gave up on this pipe; there is nobody to tell.
-        let _ = done.send(());
-    });
-    Drain { buffer, finished }
-}
-
-/// The drained bytes as text.
-fn text(bytes: Vec<u8>) -> String {
-    String::from_utf8_lossy(&bytes).into_owned()
-}
-
-/// Reach the shared buffer, recovering a poisoned lock. A panicked reader must not turn a CLI failure
-/// into a panic in the command boundary: the exit code is the verdict (doc-5 §5), and the worst a
-/// poisoned buffer costs is the reason text.
-fn bytes(buffer: &Mutex<Vec<u8>>) -> std::sync::MutexGuard<'_, Vec<u8>> {
-    buffer
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
 
 /// What became of a screen action's plan (doc-5 §5). `Succeeded` means every invocation exited 0.
 /// `Failed` carries which sub-command failed, its stderr, and how much of the plan already ran so a
@@ -1412,6 +1228,7 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::VecDeque;
     use std::path::PathBuf;
+    use std::time::Instant;
 
     // --- 実行ファイル解決の順序 (doc-5 §4, decision-16) ------------------------------------------
 
@@ -1722,64 +1539,8 @@ mod tests {
     ///
     /// Unix only, because building such a descendant is the shell's business, not this code's, and a
     /// Windows equivalent written here could not be run on this host — a stated gap is worth more than
-    /// an unverified branch. What is under test is platform-independent ([`Drain::take`] bounds the
-    /// wait everywhere); only the way to construct the situation is not.
-    /// A process that never exits and whose kill never lands. Unreachable with a real child —
-    /// `SIGKILL` cannot be refused for one's own process — and the only path where the reap could
-    /// still be unbounded, so it is the one the fake exists for.
-    struct SurvivesTheKill {
-        kill_attempted: bool,
-    }
-
-    impl Reapable for SurvivesTheKill {
-        fn poll(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
-            Ok(None)
-        }
-
-        fn kill(&mut self) -> std::io::Result<()> {
-            self.kill_attempted = true;
-            Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "refused",
-            ))
-        }
-    }
-
-    #[test]
-    fn a_kill_that_does_not_land_still_ends_the_wait() {
-        let mut process = SurvivesTheKill {
-            kill_attempted: false,
-        };
-        let started = Instant::now();
-        let waited = wait_until(
-            &mut process,
-            Duration::from_millis(100),
-            Duration::from_millis(100),
-        );
-        let elapsed = started.elapsed();
-
-        let Waited::Killed { detail } = waited else {
-            panic!("a process that never exits cannot be observed exiting");
-        };
-        // Positive counterpart to the bound: the kill really was attempted, so this is not passing
-        // because the deadline path was skipped altogether.
-        assert!(process.kill_attempted, "the kill must be attempted");
-        assert!(
-            elapsed < Duration::from_secs(5),
-            "a reap that cannot succeed must not become the wait the deadline just ended \
-             ({elapsed:?})"
-        );
-        let detail = detail.expect("a kill that did not land has to be reported");
-        assert!(
-            detail.contains("terminating it failed"),
-            "the failed kill must be named: {detail}"
-        );
-        assert!(
-            detail.contains("still running"),
-            "so must the process outliving it: {detail}"
-        );
-    }
-
+    /// an unverified branch. What is under test is platform-independent (`subprocess` bounds
+    /// the drain everywhere); only the way to construct the situation is not.
     #[cfg(unix)]
     #[test]
     fn a_descendant_holding_the_pipes_does_not_extend_the_wait() {

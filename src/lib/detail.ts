@@ -329,7 +329,7 @@ export function relationAccounts(history: HistoryState): RelationAccount[] {
       case "lookupFailed":
         return {
           pullRequest,
-          // 「関連が無い」ではなく「今は確かめられない」であることは 3 つの原因に共通し、解消の
+          // 「関連が無い」ではなく「今は確かめられない」であることは 4 つの原因に共通し、解消の
           // 手掛かりだけが原因ごとに違う (doc-8 §5). 解消経路を payload から確定できない
           // `queryFailed` に、確定できるかのような文言を当てない。
           text: `参照不能: ${outcome.detail}。今は確かめられないだけで、関連が無いという意味ではありません。${lookupRemedy(outcome.reason)}`,
@@ -348,6 +348,10 @@ function lookupRemedy(reason: LookupFailure): string {
       return "この参照からは照会先を決められないため、References の URL を直せば解消できます。";
     case "queryFailed":
       return "照会は実行され、失敗しました。認証・権限・PR の不在・ネットワークのいずれかで、どれかはこの結果からは分かりません。再取得で解消することがあります。";
+    case "timedOut":
+      // `queryFailed` と別に書ける唯一の理由: 打ち切ったのは Atlas 自身なので、何が起きたかは
+      // 分かっている (decision-19)。解消は約束しないが、再取得で変わり得ることは言える。
+      return "期限内に応答が無かったので Atlas が照会を打ち切りました。通信か GitHub 側が遅いときに起き、再取得で解消することがあります。";
   }
 }
 
