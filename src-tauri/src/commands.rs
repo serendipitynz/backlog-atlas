@@ -90,7 +90,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 // --- wire types (AC #3/#5) ----------------------------------------------------------------------
@@ -791,11 +791,26 @@ pub struct AtlasState {
     ledger_writes: Mutex<()>,
     settings_writes: Mutex<()>,
     watches: Mutex<BTreeMap<String, WatchHandle>>,
-    /// 履歴読取の取消 (decision-19): the [`Cancel`] of every history read still running, by
-    /// 読取識別子. A read registers on entry and removes itself on the way out, so what is in here
-    /// is what a cancel can still reach. Not a lock — nothing waits on it; it is held only long
-    /// enough to insert, remove, or set a flag.
-    history_reads: Mutex<BTreeMap<u64, HistoryRead>>,
+    /// 履歴読取の取消 (decision-19). Not a lock — nothing waits on it; it is held only long enough
+    /// to insert, remove, or set a flag.
+    history_reads: Mutex<HistoryReads>,
+}
+
+/// What the 取消 needs to reach a read, by 読取識別子.
+#[derive(Default)]
+struct HistoryReads {
+    /// The [`Cancel`] of every read still running. A read registers on entry and removes itself on
+    /// the way out, so what is in here is what a cancel can still reach *now*.
+    running: BTreeMap<u64, HistoryRead>,
+    /// 読取識別子 whose 取消 arrived before the read itself registered, and when it arrived.
+    ///
+    /// `task_history_read` and `task_history_cancel` are separate `(async)` commands, so Tauri
+    /// schedules them independently: closing the panel or switching task right after a read starts
+    /// can run the cancel first. Dropping such an id would leave the read to register a fresh,
+    /// uncancelled handle and wait out its deadline — and a switch to a *different* task has no
+    /// 引き継ぎ to catch it ([P1], PR #44 round 1). So the cancel is kept, and the registration
+    /// consumes it.
+    early: BTreeMap<u64, Instant>,
 }
 
 /// One history read in flight (decision-19). The key it is filed under is the frontend's 読取識別子;
@@ -804,6 +819,18 @@ struct HistoryRead {
     task: (String, String),
     cancel: Cancel,
 }
+
+/// How long an early 取消 is kept before it is discarded unconsumed.
+///
+/// What it has to cover is the gap between two invokes dispatched back to back — scheduling
+/// latency, not work, since registration is the first thing `task_history_read` does and sits ahead
+/// of every lock it takes. Five seconds is far beyond that. It is bounded at all because a 読取識別子
+/// counts from one loader instance: a webview reload starts a fresh loader at 1, so an entry kept
+/// indefinitely could one day meet a *different* read wearing the same number. Keeping it short does
+/// not make that impossible — a reload inside the window would still hit it, and the cost is one
+/// history read reported as cancelled, which 再取得 clears — but it keeps the window to the one the
+/// race actually needs.
+const EARLY_CANCEL_RETENTION: Duration = Duration::from_secs(5);
 
 /// The プロジェクト単位ロック for one slug, held (decision-18). Carries the slug it was taken for, so
 /// the ledger accessors below can read *that* project's entry and no other: pairing the wrong entry
@@ -1396,7 +1423,8 @@ pub fn task_history_read(
     // Registered before anything runs, so a cancel arriving while the ledger lock below is still
     // held already has something to set (decision-19). The guard removes the registration on every
     // exit from this function, the `?` paths included.
-    let (_registered, cancel) = begin_history_read(&state, read_id, &slug, &task_id);
+    let (_registered, cancel) =
+        begin_history_read(&state, read_id, &slug, &task_id, Instant::now());
     // Everything that needs a lock happens in this block, and the guard is dropped at its end —
     // `read_history` below spawns `git` and `gh`, and must not do so holding it. decision-18 keeps
     // this split after the lock was narrowed to one project: a network wait has no more reason to sit
@@ -1426,18 +1454,33 @@ pub fn task_history_read(
 /// screen deciding and this arriving, and there is nothing to report about that.
 #[tauri::command(async)]
 pub fn task_history_cancel(state: State<'_, AtlasState>, read_id: u64) {
-    cancel_history_read(&state, read_id);
+    cancel_history_read(&state, read_id, Instant::now());
 }
 
 /// The body of [`task_history_cancel`], reachable without Tauri so the 取消 can be tested against a
 /// bare [`AtlasState`] — the same reason decision-18 moved the exclusion structure off `AppHandle`.
-fn cancel_history_read(state: &AtlasState, read_id: u64) {
+/// `now` is a parameter so a test can age an early 取消 without waiting for one.
+fn cancel_history_read(state: &AtlasState, read_id: u64, now: Instant) {
+    let mut reads = lock(&state.history_reads);
     // The registration is left in place: the read that owns it removes it on its way out, and
     // removing it here would let a *later* cancel for the same id find nothing while the read it
     // meant to stop is still going.
-    if let Some(read) = lock(&state.history_reads).get(&read_id) {
+    if let Some(read) = reads.running.get(&read_id) {
         read.cancel.cancel();
+        return;
     }
+    // Nothing is running under that id. Either it already finished — in which case the entry below
+    // expires unread — or it has not registered yet, and this is the race the entry exists for.
+    forget_stale_cancels(&mut reads, now);
+    reads.early.insert(read_id, now);
+}
+
+/// Drop early 取消 nothing came to claim. Called on both sides of the race, so the map cannot grow
+/// with ids that never register whichever of the two runs.
+fn forget_stale_cancels(reads: &mut HistoryReads, now: Instant) {
+    reads
+        .early
+        .retain(|_, at| now.duration_since(*at) < EARLY_CANCEL_RETENTION);
 }
 
 /// Register a history read and hand back its [`Cancel`], plus a guard that unregisters it.
@@ -1451,14 +1494,21 @@ fn begin_history_read<'a>(
     read_id: u64,
     slug: &str,
     task_id: &str,
+    now: Instant,
 ) -> (HistoryReadGuard<'a>, Cancel) {
     let task = (slug.to_string(), task_id.to_string());
     let cancel = Cancel::new();
     let mut reads = lock(&state.history_reads);
-    for superseded in reads.values().filter(|read| read.task == task) {
+    for superseded in reads.running.values().filter(|read| read.task == task) {
         superseded.cancel.cancel();
     }
-    reads.insert(
+    // A 取消 that arrived before this line ran is this read's, and is honoured now. Without it the
+    // read would start uncancelled and wait out its deadline for a screen that has already left.
+    forget_stale_cancels(&mut reads, now);
+    if reads.early.remove(&read_id).is_some() {
+        cancel.cancel();
+    }
+    reads.running.insert(
         read_id,
         HistoryRead {
             task,
@@ -1480,7 +1530,9 @@ struct HistoryReadGuard<'a> {
 
 impl Drop for HistoryReadGuard<'_> {
     fn drop(&mut self) {
-        lock(&self.state.history_reads).remove(&self.read_id);
+        lock(&self.state.history_reads)
+            .running
+            .remove(&self.read_id);
     }
 }
 
@@ -1917,22 +1969,23 @@ ordinal: 1000\n\
         // what ends the previous one's `gh` — the frontend's own 取消 is a second route, not the only
         // one, so this must hold with no cancel command sent at all.
         let state = AtlasState::default();
-        let (_first, first) = begin_history_read(&state, 1, "alpha", "TASK-1");
+        let now = Instant::now();
+        let (_first, first) = begin_history_read(&state, 1, "alpha", "TASK-1", now);
         assert!(!first.is_cancelled(), "a read starts uncancelled");
 
         // 再取得: the same task read again.
-        let (_second, second) = begin_history_read(&state, 2, "alpha", "TASK-1");
+        let (_second, second) = begin_history_read(&state, 2, "alpha", "TASK-1", now);
         assert!(first.is_cancelled(), "the older read of the task is ended");
         assert!(!second.is_cancelled(), "the read that replaced it is not");
 
         // タスク切替: a different task is a different read, and must not end this one.
-        let (_other, other) = begin_history_read(&state, 3, "alpha", "TASK-2");
+        let (_other, other) = begin_history_read(&state, 3, "alpha", "TASK-2", now);
         assert!(
             !second.is_cancelled(),
             "another task's read must not cancel this one"
         );
         // Nor must a different project's read of the same TASK-ID — ids repeat across projects.
-        let (_elsewhere, _) = begin_history_read(&state, 4, "beta", "TASK-2");
+        let (_elsewhere, _) = begin_history_read(&state, 4, "beta", "TASK-2", now);
         assert!(
             !other.is_cancelled(),
             "a same-id read in another project is a different read"
@@ -1944,16 +1997,17 @@ ordinal: 1000\n\
         // AC #1 フロントエンドからの取消: the route the 引き継ぎ cannot cover — a detail panel closing,
         // where no next read arrives to supersede the one running.
         let state = AtlasState::default();
-        let (_a, a) = begin_history_read(&state, 1, "alpha", "TASK-1");
-        let (_b, b) = begin_history_read(&state, 2, "alpha", "TASK-2");
+        let now = Instant::now();
+        let (_a, a) = begin_history_read(&state, 1, "alpha", "TASK-1", now);
+        let (_b, b) = begin_history_read(&state, 2, "alpha", "TASK-2", now);
 
-        cancel_history_read(&state, 1);
+        cancel_history_read(&state, 1, now);
         assert!(a.is_cancelled(), "the named read is ended");
         assert!(!b.is_cancelled(), "another read is not");
 
         // Cancelling an id nobody is running is silent: the read may have finished on its own
         // between the screen deciding and this arriving.
-        cancel_history_read(&state, 9999);
+        cancel_history_read(&state, 9999, now);
     }
 
     #[test]
@@ -1961,18 +2015,67 @@ ordinal: 1000\n\
         // The guard is what keeps the registry to the reads still running. Without it a later cancel
         // would set a flag nobody reads, and the map would grow for the life of the process.
         let state = AtlasState::default();
+        let now = Instant::now();
         let cancel = {
-            let (_registered, cancel) = begin_history_read(&state, 1, "alpha", "TASK-1");
+            let (_registered, cancel) = begin_history_read(&state, 1, "alpha", "TASK-1", now);
             cancel
         };
         assert!(
-            lock(&state.history_reads).is_empty(),
+            lock(&state.history_reads).running.is_empty(),
             "a read that returned is unregistered"
         );
-        cancel_history_read(&state, 1);
+        cancel_history_read(&state, 1, now);
         assert!(
             !cancel.is_cancelled(),
             "a read that already finished cannot be cancelled after the fact"
+        );
+    }
+
+    #[test]
+    fn a_cancel_that_arrives_before_its_read_still_ends_it() {
+        // [P1], PR #44 round 1. `task_history_read` and `task_history_cancel` are independent
+        // `(async)` commands, so closing the panel right after a read starts can run the cancel
+        // first. Dropping the unknown id would leave the read to register uncancelled and wait out
+        // its deadline — and a switch to a different task has no 引き継ぎ to catch it.
+        let state = AtlasState::default();
+        let now = Instant::now();
+
+        cancel_history_read(&state, 1, now);
+        let (_registered, cancel) = begin_history_read(&state, 1, "alpha", "TASK-1", now);
+
+        assert!(
+            cancel.is_cancelled(),
+            "a read whose 取消 got there first must start already cancelled"
+        );
+        // Consumed, not left behind: the next read is a different call, and an entry that outlived
+        // its read would cancel whatever reused the number.
+        assert!(lock(&state.history_reads).early.is_empty());
+        let (_next, next) = begin_history_read(&state, 1, "alpha", "TASK-1", now);
+        assert!(
+            !next.is_cancelled(),
+            "one early 取消 cancels one read, not every later one"
+        );
+    }
+
+    #[test]
+    fn an_early_cancel_nothing_claims_is_forgotten() {
+        // The other half: an id that never registers must not stay. What bounds the wait is the
+        // race's own scale — the gap between two invokes — so an entry older than that is one whose
+        // read is not coming, and keeping it would let it meet a later loader's identical number.
+        let state = AtlasState::default();
+        let arrived = Instant::now();
+        cancel_history_read(&state, 1, arrived);
+
+        let much_later = arrived + EARLY_CANCEL_RETENTION + Duration::from_secs(1);
+        let (_registered, cancel) = begin_history_read(&state, 1, "alpha", "TASK-1", much_later);
+
+        assert!(
+            !cancel.is_cancelled(),
+            "a stale 取消 must not end a read that had nothing to do with it"
+        );
+        assert!(
+            lock(&state.history_reads).early.is_empty(),
+            "and is dropped"
         );
     }
 
