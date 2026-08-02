@@ -262,9 +262,18 @@ fn parse_task(path: &Path, text: &str, slug: &str, dir: ScanDir, config: &Config
         check_task_id(id, dir, config, &mut events);
     }
 
-    let (type_labels, labels) =
+    let (mut type_candidates, labels) =
         split_labels(parse::string_list_field(&front, "labels", &mut events));
-    task.type_labels = type_labels;
+    // decision-20: `type` is the second Type 導出元, appended after the kind labels so a task
+    // without it reads exactly as it did before. Blank is not a Type named blank — the CLI's own
+    // clear removes the key, so an empty value is what hand-editing leaves behind.
+    if let Some(field) = parse::string_field(&front, "type", &mut events) {
+        let value = field.trim();
+        if !value.is_empty() {
+            type_candidates.push(value.to_string());
+        }
+    }
+    task.type_candidates = type_candidates;
     task.labels = labels;
     task.assignee = parse::string_list_field(&front, "assignee", &mut events);
     task.priority = parse::string_field(&front, "priority", &mut events);
@@ -655,7 +664,7 @@ fn empty_task(path: &Path, slug: &str, storage_state: Option<StorageState>) -> T
         id: None,
         title: None,
         status: None,
-        type_labels: Vec::new(),
+        type_candidates: Vec::new(),
         labels: Vec::new(),
         assignee: Vec::new(),
         priority: None,
@@ -1049,8 +1058,58 @@ updated_date: '2026-07-22 12:25'\n\
         let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
         let model = read(&source);
         let task = only_task(&model);
-        assert_eq!(task.type_labels, ["feature"]);
+        assert_eq!(task.type_candidates, ["feature"]);
         assert_eq!(task.labels, ["ui"]);
+    }
+
+    // decision-20: `type` is the second Type 導出元. Before it, a task written by
+    // `backlog task create --type bug` reached the screen as 未設定 — the field fell into
+    // doc-4 §4's "未知フィールドは保持または無視" and nothing showed it.
+    #[test]
+    fn the_type_field_becomes_a_type_candidate() {
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nlabels: []\ntype: bug\n---\n";
+        let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
+        let model = read(&source);
+        let task = only_task(&model);
+        assert_eq!(task.type_candidates, ["bug"]);
+        // A known frontmatter key now, so reading it is not a schema surprise.
+        assert!(!task.health.is_degraded());
+    }
+
+    // Type の二重指定: both 導出元 hold values, and neither wins. The order is the one doc-4 §3.3
+    // fixes — kind labels in label order, then the field — so a task without a `type` field reads
+    // exactly as it did before decision-20.
+    #[test]
+    fn both_type_origins_are_kept_with_kind_labels_first() {
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nlabels:\n  - 'kind:research'\n  - ui\n  - 'kind:writing'\ntype: chore\n---\n";
+        let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
+        let model = read(&source);
+        let task = only_task(&model);
+        assert_eq!(task.type_candidates, ["research", "writing", "chore"]);
+        assert_eq!(task.labels, ["ui"]);
+    }
+
+    // The model keeps what the file said. Folding 同値の重複 is the display's job (decision-20),
+    // so both candidates survive the read even though the screen shows one.
+    #[test]
+    fn a_repeated_value_is_still_two_candidates_in_the_model() {
+        let text =
+            "---\nid: TASK-1\ntitle: t\nstatus: To Do\nlabels:\n  - 'kind:bug'\ntype: bug\n---\n";
+        let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
+        let model = read(&source);
+        assert_eq!(only_task(&model).type_candidates, ["bug", "bug"]);
+    }
+
+    // An empty `type` is what hand-editing leaves behind — the CLI's own clear removes the key —
+    // so it is 導出元なし, not a Type named blank (decision-20).
+    #[test]
+    fn a_blank_type_field_yields_no_candidate() {
+        let text = "---\nid: TASK-1\ntitle: t\nstatus: To Do\nlabels: []\ntype: '   '\n---\n";
+        let source = MemorySource::new().file(ScanDir::Tasks, "task-1 - a.md", text);
+        let model = read(&source);
+        let task = only_task(&model);
+        assert!(task.type_candidates.is_empty());
+        assert!(!task.health.is_degraded());
     }
 
     #[test]

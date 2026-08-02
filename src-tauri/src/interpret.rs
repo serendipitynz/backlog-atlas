@@ -57,9 +57,9 @@ pub fn interpret_task(
             .status
             .as_deref()
             .map(|raw| map_status(raw, config, aliases)),
-        // The task's `type` slot already holds the text after `kind:` (split at the read
-        // boundary); this only classifies it against 既知 Type 集合.
-        types: derive_types(&task.type_labels),
+        // The task's `type` slot already holds the Type 候補 both 導出元 gave, in order (collected
+        // at the read boundary); this classifies them against 既知 Type 集合 and folds 同値の重複.
+        types: derive_types(&task.type_candidates),
         pull_requests: extract_pull_requests(&task.references),
     }
 }
@@ -86,7 +86,7 @@ mod tests {
         }
     }
 
-    fn task(status: Option<&str>, type_labels: &[&str], labels: &[&str]) -> Task {
+    fn task(status: Option<&str>, type_candidates: &[&str], labels: &[&str]) -> Task {
         Task {
             source_path: PathBuf::from("tasks/task-1.md"),
             project: "atlas".into(),
@@ -94,7 +94,7 @@ mod tests {
             id: Some("TASK-1".into()),
             title: Some("a title".into()),
             status: status.map(Into::into),
-            type_labels: type_labels.iter().map(|s| (*s).to_string()).collect(),
+            type_candidates: type_candidates.iter().map(|s| (*s).to_string()).collect(),
             labels: labels.iter().map(|s| (*s).to_string()).collect(),
             assignee: vec![],
             priority: None,
@@ -125,6 +125,26 @@ mod tests {
         assert_eq!(status.declaration, StatusDeclaration::Declared);
         assert_eq!(interpreted.types.values()[0].value, "feature");
         assert!(!t.labels.iter().any(|l| l.starts_with("kind:")));
+    }
+
+    // decision-20: the interpretation is what the screen reads, so the two 導出元 have already
+    // merged here and 同値の重複 is gone — the model's own slot still holds both (read.rs).
+    #[test]
+    fn the_interpretation_merges_both_type_origins_and_folds_repeats() {
+        // As the read layer builds the slot: kind labels first, then the `type` field.
+        let t = task(Some("In Progress"), &["research", "chore", "Research"], &[]);
+        let interpreted = interpret_task(&t, &config(), &BTreeMap::new());
+        assert_eq!(
+            interpreted
+                .types
+                .values()
+                .iter()
+                .map(|v| &v.value)
+                .collect::<Vec<_>>(),
+            ["research", "chore"]
+        );
+        // `chore` is 既知 only because decision-20 widened the set to the CLI's vocabulary.
+        assert!(!interpreted.types.has_unknown());
     }
 
     // A 解析不能 task has no status to map; it must not be handed a column by default.

@@ -61,7 +61,12 @@ export interface Task {
   title: string | null;
   /** Raw frontmatter status; the canonical-column mapping is in `TaskInterpretation`. */
   status: string | null;
-  /** kind-label-derived Type candidates. Named `type` on the wire by doc-4 §3.1. */
+  /**
+   * Type 候補 from both Type 導出元 — kind labels first, then the frontmatter `type` field
+   * (decision-20). What the file said, not what the screen shows: `TaskInterpretation.types`
+   * is the folded, classified list, so this one can be longer. Named `type` on the wire by
+   * doc-4 §3.1.
+   */
   type: string[];
   /** Normal labels only — kind labels are split out at the read layer (doc-4 §3.3). */
   labels: string[];
