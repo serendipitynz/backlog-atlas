@@ -15,6 +15,7 @@
     UNMAPPED_LABEL,
     columnTotal,
     laneCounts,
+    laneScrollDelta,
     rowFoldable,
     visibleCount,
     type SwimlaneRow,
@@ -104,22 +105,67 @@
     onfocused,
   }: Props = $props();
 
+  /** The scrollport both header rows are stuck to, and the box a 着地 scrolls. */
+  let grid = $state<HTMLElement>();
+
   /**
-   * The レーンヘッダ行 elements, by slug, so a row can be scrolled to. Held here rather than resolved
-   * with a DOM query, because the grid is the only thing that knows which element is which row.
+   * The レーンヘッダ行 elements and the zero-height markers that sit immediately above them, by slug.
+   * Held here rather than resolved with a DOM query, because the grid is the only thing that knows
+   * which element is which row.
+   *
+   * The pair exists because the header is sticky: its position stops being the row's position as
+   * soon as it is held at the top, so the marker — which nothing moves — is what says where the row
+   * begins, and the header is only measured for its height (`laneScrollDelta`).
    */
   let laneHeads = $state<Record<string, HTMLElement>>({});
+  let laneMarks = $state<Record<string, HTMLElement>>({});
+
+  /**
+   * The 列ヘッダ行 elements, by column, so the レーンヘッダ行 can be stuck to the row's lower edge.
+   *
+   * Its height is not a constant: 畳んだ列 stacks its name, count and control (doc-7 §2.2) and the
+   * 未対応列 carries the two sentences that say what it does not offer, either of which makes the row
+   * taller than an open column's one line. So the offset is measured rather than written down — a
+   * fixed one would leave a strip of scrolled cards between the two rows the moment a column is
+   * folded, which is exactly what 受入条件 #3 forbids.
+   */
+  let columnHeads = $state<Record<string, HTMLElement>>({});
+  let headHeight = $state(0);
+
+  $effect(() => {
+    const elements = Object.values(columnHeads).filter((element) => element !== undefined);
+    if (elements.length === 0) return;
+    // Every head is measured, not just one, so the offset does not depend on the grid stretching
+    // them to a common height. `getBoundingClientRect` rather than `offsetHeight`: the row's height
+    // is fractional at most font sizes, and the rounded integer would leave a hairline of scrolled
+    // content showing through the seam half the time.
+    const observer = new ResizeObserver(() => {
+      headHeight = Math.max(...elements.map((element) => element.getBoundingClientRect().height));
+    });
+    for (const element of elements) observer.observe(element);
+    return () => observer.disconnect();
+  });
 
   // 「このプロジェクトのレーンへ」の着地 (doc-10 §2). Runs after the row exists — a project detail
   // screen can be left for a row that was scrolled out, and returning to the grid puts it back in
-  // view rather than at wherever the grid happened to be. `smooth` is deliberately not used: the
-  // point is that the row is *there* when the grid appears, not that it travels.
+  // view rather than at wherever the grid happened to be. The scroll is written rather than asked
+  // for with `scrollIntoView`: a sticky header held at the top is *on screen* by that method's
+  // reckoning, so a row scrolled above the view would not be returned to at all. Not smooth, for the
+  // same reason as before: the point is that the row is *there* when the grid appears.
   $effect(() => {
     const slug = focusSlug;
     if (slug === null) return;
-    const element = laneHeads[slug];
-    if (element === undefined) return;
-    element.scrollIntoView({ block: "nearest" });
+    const mark = laneMarks[slug];
+    const head = laneHeads[slug];
+    const container = grid;
+    if (mark === undefined || head === undefined || container === undefined) return;
+    // The grid has neither border nor padding, so its border box and its scrollport share an edge.
+    container.scrollTop += laneScrollDelta({
+      offset: mark.getBoundingClientRect().top - container.getBoundingClientRect().top,
+      headHeight,
+      laneHeight: head.getBoundingClientRect().height,
+      viewportHeight: container.clientHeight,
+    });
     onfocused();
   });
 
@@ -192,10 +238,14 @@
   const COLUMN_UNFOLD_HINT = "列折畳みを解き、この列のカードを全行で戻します。";
 </script>
 
-<div class="grid" style="--columns: {columnTemplate}">
+<div
+  class="grid"
+  style="--columns: {columnTemplate}; --lane-top: {headHeight}px"
+  bind:this={grid}
+>
   {#each CANONICAL_COLUMNS as column (column)}
     {@const folded = collapsedColumns.includes(column)}
-    <div class="head" class:folded>
+    <div class="head" class:folded bind:this={columnHeads[column]}>
       <span class="label">{CANONICAL_COLUMN_LABEL[column]}</span>
       {#if folded}
         <!-- 畳んだ列は列名と件数を残す (doc-7 §2.2): the band keeps the column's own total, and each
@@ -216,7 +266,7 @@
     <!-- 未対応列は列折畳みの対象にしない (doc-7 §2.2). The control is not placed, and the reason is
          written beside where it would have been — the same treatment doc-7 §4.1 gives an entry it
          does not offer, which is not the 無効化 of doc-11 §5. -->
-    <div class="head unmapped">
+    <div class="head unmapped" bind:this={columnHeads.unmapped}>
       <span class="label">{UNMAPPED_LABEL}</span>
       <span class="withheld" title={UNMAPPED_FOLD_ABSENT_REASON}>正準列ではないため列折畳みなし</span>
       <!-- 未対応列には列内新規タスク入力を置かない (doc-7 §4.1). In the column head, once, rather than in
@@ -242,6 +292,10 @@
          is kept rather than cleared, so the row folds back the way the user left it if a later read
          succeeds. -->
     {@const folded = rowFoldable(row) && foldedRows.includes(row.slug)}
+    <!-- Where the row begins, for a 着地 to scroll to (doc-10 §2). Nothing is drawn: it takes no
+         height, and the header below it is the row's visible start. It exists because that header
+         is sticky and therefore cannot report where its row is (see `laneMarks`). -->
+    <div class="lane-mark" bind:this={laneMarks[row.slug]}></div>
     <!-- レーンヘッダ行 (doc-7 §2.3): the row's own full-width line. There is no fixed project column
          at the left edge, so the name never has to be traded against the width the four columns get. -->
     <div
@@ -444,10 +498,14 @@
     overflow: auto;
   }
 
+  // 2 層スティッキー (doc-7 §2.3): the 列ヘッダ行 holds the top of the scrollport and the レーンヘッダ行
+  // of whichever row is being read holds the line just below it. The layer numbers are relative and
+  // local — the two rows only have to sit above the cards and below the popovers and the 中央モーダル
+  // layer, which are 3 and up across the app.
   .head {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 2;
     display: flex;
     align-items: baseline;
     gap: 0.3rem;
@@ -509,14 +567,27 @@
   // the width is the reason this方式 was chosen over a fixed column, so a header that wrapped would
   // give back what it bought. What can lose room does: the folded row's counts scroll inside
   // themselves, and the name ellipsises, while the counts and the controls keep their size.
+  // Takes no height and paints nothing: the row's start, for the 着地 to measure (see `laneMarks`).
+  .lane-mark {
+    grid-column: 1 / -1;
+    height: 0;
+  }
+
   .lane-head {
     grid-column: 1 / -1;
+    // Stuck to the 列ヘッダ行's lower edge, at whatever height that row currently has (the script
+    // measures it). Every row's header is stuck to the same line, so the one on top is the last row
+    // whose start has passed — the row whose cards are being read.
+    position: sticky;
+    top: var(--lane-top);
+    z-index: 1;
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
     gap: 0.45rem;
     padding: 0.3rem 0.5rem;
     border-top: 1px solid var(--line);
+    // Opaque, because the cards of the row above scroll underneath it (decision-12 の色値).
     background: var(--inset);
 
     // 読取不能 as 問題の縁 (doc-11 §2.3) rather than as a tint over the whole row header. The tint
