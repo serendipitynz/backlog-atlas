@@ -19,10 +19,9 @@ import type { TaskHistory } from "./wire";
 /**
  * One Git 履歴 read: what it is about, which call made it, and where that call got to.
  *
- * `token` is also the 読取識別子 the backend files the call under (decision-19): the screen's
- * "which call is this" and the backend's "which call is being cancelled" are the same question
- * about the same call, so numbering it twice would let the two disagree about which read a 取消
- * reaches.
+ * `token` is the screen's own "which call is this", and [`readIdOf`] turns it into the 読取識別子 the
+ * backend files the call under (decision-19). One number, two uses: numbering the call twice would
+ * let the screen and the backend disagree about which read a 取消 reaches.
  */
 export interface HistoryRead {
   /** The task the read belongs to — [`historyKeyOf`]'s value. */
@@ -62,14 +61,36 @@ export function historyKeyOf(slug: string, taskId: string, inputs: HistoryInputs
   ]);
 }
 
+/**
+ * What tells one loader instance from another, for the length of the backend's memory.
+ *
+ * The per-call token alone is not an identity the backend can key on. A reload of the webview builds
+ * a new loader whose token starts at 1 again, while the Rust side and any read still waiting on `gh`
+ * live on — so the new loader's first read would arrive under a number an older read still holds,
+ * replacing its registration and then being removed by the older read's guard (PR #44 round 2).
+ * Stamping each loader distinguishes them; `crypto.randomUUID` where the environment has it, and a
+ * clock-plus-random string where it does not, since the only property needed is that two loaders in
+ * one process's lifetime do not collide.
+ */
+function newGeneration(): string {
+  const uuid = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
+  if (uuid) return uuid();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** The 読取識別子 for one call: which loader asked, and which of its calls this is. */
+function readIdOf(generation: string, token: number): string {
+  return `${generation}:${token}`;
+}
+
 export interface HistoryLoaderPorts {
-  read: (slug: string, taskId: string, readId: number) => Promise<TaskHistory>;
+  read: (slug: string, taskId: string, readId: string) => Promise<TaskHistory>;
   /**
    * 履歴読取の取消 (decision-19): tell the backend that the read `readId` names is no longer wanted,
    * so it ends the `gh` it has in flight. Dropping the answer on this side does not stop that
    * process — this is the only thing that does.
    */
-  cancel: (readId: number) => Promise<void>;
+  cancel: (readId: string) => Promise<void>;
   /** The record the screen holds right now. */
   peek: () => HistoryRead | null;
   store: (read: HistoryRead) => void;
@@ -95,9 +116,10 @@ export interface HistoryLoader {
  * screen that has moved (decision-19).
  */
 export function createHistoryLoader(ports: HistoryLoaderPorts): HistoryLoader {
+  const generation = newGeneration();
   let calls = 0;
   /** The 読取識別子 of the read still waiting for an answer, or `null` when none is. */
-  let running: number | null = null;
+  let running: string | null = null;
 
   function stopRunning(): void {
     if (running === null) return;
@@ -116,16 +138,17 @@ export function createHistoryLoader(ports: HistoryLoaderPorts): HistoryLoader {
       // the task and so cannot help when the next read is about a different one.
       stopRunning();
       const token = ++calls;
-      running = token;
+      const readId = readIdOf(generation, token);
+      running = readId;
       ports.store({ key, token, value: { state: "loading" } });
 
       let value: HistoryState;
       try {
-        value = { state: "loaded", history: await ports.read(slug, taskId, token) };
+        value = { state: "loaded", history: await ports.read(slug, taskId, readId) };
       } catch (error) {
         value = { state: "failed", detail: ports.describeError(error) };
       }
-      if (running === token) running = null;
+      if (running === readId) running = null;
 
       // Every call stamps the record before awaiting, so "the stored token is still mine" is exactly
       // "no later call has started" — including a later call for the same task.

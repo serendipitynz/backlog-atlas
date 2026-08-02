@@ -27,8 +27,8 @@ function loader(reads: Promise<TaskHistory>[]) {
   let stored: HistoryRead | null = null;
   let index = 0;
   /** Every 読取識別子 the loader read under, and every one it cancelled, in order. */
-  const started: number[] = [];
-  const cancelled: number[] = [];
+  const started: string[] = [];
+  const cancelled: string[] = [];
   const loader = createHistoryLoader({
     read: (_slug, _taskId, readId) => {
       started.push(readId);
@@ -162,8 +162,12 @@ describe("one task's Git history read never lands on another's panel", () => {
     // The read that replaced it is not cancelled by its own start — the positive counterpart,
     // without which "cancel everything on every load" would pass just as well.
     expect(l.cancelled).not.toContain(l.started[1]);
-    // The identifier the backend files a read under is the one the screen reads it with.
-    expect(l.started).toEqual([1, 2]);
+    // Two calls, two identifiers — and both carry this loader's generation, so a loader built after
+    // a reload cannot name a read this one is still waiting on (PR #44 round 2).
+    expect(new Set(l.started).size).toBe(2);
+    const generation = l.started[0].split(":")[0];
+    expect(l.started.every((id) => id.startsWith(`${generation}:`))).toBe(true);
+    expect(l.started).toEqual([`${generation}:1`, `${generation}:2`]);
   });
 
   it("cancels the read in flight when the panel leaves with no next read", async () => {
@@ -205,5 +209,38 @@ describe("one task's Git history read never lands on another's panel", () => {
     const value = current()?.value;
     if (value?.state !== "failed") throw new Error("expected the read to be reported as failed");
     expect(value.detail).toContain("projectNotOpen");
+  });
+});
+
+describe("読取識別子 は loader 世代をまたいで衝突しない", () => {
+  it("gives two loaders in one process distinct identifiers for their first call", () => {
+    // PR #44 round 2 [P1]: the backend keys its cancellation registry on this value, and a webview
+    // reload builds a new loader while the Rust side — and any read still waiting on `gh` — lives
+    // on. If both loaders' first call were named `1`, the new read's registration would replace the
+    // old one's and the old read's guard would then remove the new one, leaving a running `gh`
+    // nothing can reach.
+    const first: string[] = [];
+    const second: string[] = [];
+    const build = (into: string[]) =>
+      createHistoryLoader({
+        read: (_slug, _taskId, readId) => {
+          into.push(readId);
+          return new Promise<TaskHistory>(() => {});
+        },
+        cancel: () => Promise.resolve(),
+        peek: () => null,
+        store: () => {},
+        describeError: () => "",
+      });
+
+    void build(first).load("atlas", "TASK-1", INPUTS);
+    void build(second).load("atlas", "TASK-1", INPUTS);
+
+    expect(first[0]).not.toBe(second[0]);
+    // Both are their loader's first call, so what differs is the generation and only that — the
+    // assertion above would also pass for a counter that merely never restarts, which is not what
+    // survives a reload.
+    expect(first[0].split(":")[1]).toBe("1");
+    expect(second[0].split(":")[1]).toBe("1");
   });
 });

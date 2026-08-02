@@ -388,7 +388,7 @@ export type CommandError =
   // 履歴読取の取消 (decision-19): the screen cancelled this read, so there is no answer. Carries only
   // the 読取識別子 — the screen that gets it has already stopped displaying that read, so there is
   // nothing here for it to show.
-  | { kind: "historyCancelled"; read_id: number };
+  | { kind: "historyCancelled"; read_id: string };
 
 // --- 外部エディタ経路 (doc-8 §7, TASK-37) ----------------------------------------------------
 

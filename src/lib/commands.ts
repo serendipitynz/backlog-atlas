@@ -145,14 +145,14 @@ export function projectWatchStop(slug: string): Promise<void> {
  * for Git reasons — Git 対象不在 arrives inside `commits` so the PR 区画 survives it (decision-6).
  * The project must be open: the References it extracts PR URLs from come from the read model.
  *
- * `readId` is the 読取識別子 (decision-19): the caller's own number for this call, which
+ * `readId` is the 読取識別子 (decision-19): the caller's own name for this call, which
  * `taskHistoryCancel` names to stop it. Rejects with a `historyCancelled` error when it is
  * cancelled — there is no answer then, and the caller that cancelled has stopped waiting for one.
  */
 export function taskHistoryRead(
   slug: string,
   taskId: string,
-  readId: number,
+  readId: string,
 ): Promise<TaskHistory> {
   return invoke<TaskHistory>("task_history_read", { slug, taskId, readId });
 }
@@ -162,7 +162,7 @@ export function taskHistoryRead(
  * Never rejects and never reports whether anything was running — a read that finished on its own
  * between the screen deciding and this arriving is not a failure of either side.
  */
-export function taskHistoryCancel(readId: number): Promise<void> {
+export function taskHistoryCancel(readId: string): Promise<void> {
   return invoke<void>("task_history_cancel", { readId });
 }
 

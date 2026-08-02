@@ -237,7 +237,7 @@ export const commandFakes = {
   projectWatchStop: (slug: string): Promise<void> =>
     record("project_watch_stop", [slug], () => Promise.resolve()),
 
-  taskHistoryRead: (slug: string, taskId: string, readId: number): Promise<TaskHistory> =>
+  taskHistoryRead: (slug: string, taskId: string, readId: string): Promise<TaskHistory> =>
     record("task_history_read", [slug, taskId, readId], () => {
       if (answers.historyNeverAnswers) return new Promise<TaskHistory>(() => {});
       const found = answers.history.get(`${slug}:${taskId}`);
@@ -246,7 +246,7 @@ export const commandFakes = {
         : Promise.resolve(found);
     }),
 
-  taskHistoryCancel: (readId: number): Promise<void> =>
+  taskHistoryCancel: (readId: string): Promise<void> =>
     record("task_history_cancel", [readId], () => Promise.resolve()),
 
   settingsRead: (): Promise<LoadedSettings> =>

@@ -810,7 +810,7 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
       { kind: "updatesUnavailable", readiness: { state: "unsupported", version: "1.20.0", minimum: "1.48.0" } },
       { kind: "taskNotFound", slug: "atlas", task_id: "TASK-99" },
       { kind: "unknownTaskFile", slug: "atlas", path: "/elsewhere/evil.md" },
-      { kind: "historyCancelled", read_id: 7 },
+      { kind: "historyCancelled", read_id: "3f2a1c-7" },
       { kind: "editorLaunchFailed", method: "configured", program: "code", detail: "d" },
     ];
     expect(errors).toHaveLength(exemplars.length);
