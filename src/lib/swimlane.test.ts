@@ -13,6 +13,7 @@ import {
   laneCounts,
   laneNeighbourLabel,
   laneNeighbours,
+  laneScrollDelta,
   rowFoldable,
   visibleCount,
   type SwimlaneRow,
@@ -494,5 +495,47 @@ describe("AC #5・#6 折畳みの対象にしないもの", () => {
     expect(laneCounts(row(swimlane(["atlas"], loadMap(loaded("atlas", []))), "atlas"), true).at(-1)
       ?.column).toBeNull();
     expect(UNMAPPED_FOLD_ABSENT_REASON).not.toBe("");
+  });
+});
+
+// TASK-61. Only the arithmetic is here: whether the two rows *look* right when stuck is a matter of
+// the stylesheet, which no environment these tests run in lays out (AGENTS の テスト節).
+describe("2 層スティッキーの下への着地", () => {
+  const grid = { headHeight: 32, laneHeight: 24, viewportHeight: 300 };
+
+  it("leaves a lane alone when its header is already whole and clear of the 列ヘッダ行", () => {
+    expect(laneScrollDelta({ ...grid, offset: 100 })).toBe(0);
+    // Sitting exactly on the 列ヘッダ行's lower edge is where a 着地 puts it, so it is not a move.
+    expect(laneScrollDelta({ ...grid, offset: 32 })).toBe(0);
+    // The last position at which the whole header still fits above the lower edge.
+    expect(laneScrollDelta({ ...grid, offset: 276 })).toBe(0);
+  });
+
+  it("returns to a lane the grid has scrolled past", () => {
+    // −500 is 500 above the scrollport's top; the landing is 32 below it, hence 532 back.
+    expect(laneScrollDelta({ ...grid, offset: -500 })).toBe(-532);
+  });
+
+  it("returns to a lane whose header is behind the 列ヘッダ行 rather than off the screen", () => {
+    // The whole reason the test is against `headHeight` and not against 0: at offset 8 the lane's
+    // header is within the scrollport, and every "is it visible" answer that reads a rect says yes,
+    // while what the user sees at that line is the 列ヘッダ行.
+    expect(laneScrollDelta({ ...grid, offset: 8 })).toBe(-24);
+  });
+
+  it("brings up a lane below the fold, and one the fold cuts in half", () => {
+    expect(laneScrollDelta({ ...grid, offset: 900 })).toBe(868);
+    // 290 + 24 > 300: the header is on screen but clipped, which is not 見えている.
+    expect(laneScrollDelta({ ...grid, offset: 290 })).toBe(258);
+  });
+
+  it("follows the 列ヘッダ行's height rather than a written-down one", () => {
+    // 受入条件 #3: 列折畳み makes that row taller, and the landing has to move with it — the same
+    // lane position lands differently only by the difference in the height it is stuck below.
+    const folded = { ...grid, headHeight: 56 };
+    expect(laneScrollDelta({ ...folded, offset: 8 })).toBe(-48);
+    expect(laneScrollDelta({ ...folded, offset: 40 })).toBe(-16);
+    // …and what was already in place under a 32px head is not under a 56px one.
+    expect(laneScrollDelta({ ...grid, offset: 40 })).toBe(0);
   });
 });

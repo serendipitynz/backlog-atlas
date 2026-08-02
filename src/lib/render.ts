@@ -30,6 +30,7 @@ export interface Mounted {
 /** What `cleanup` has to undo. */
 const opened: Mounted[] = [];
 let restoreLayout: (() => void) | null = null;
+let restoreObserver: (() => void) | null = null;
 
 /**
  * Report a box for elements that are rendered, so `getClientRects` answers in a test what it
@@ -58,6 +59,29 @@ function stubLayout(): () => void {
   };
   return () => {
     proto.getClientRects = original;
+  };
+}
+
+/**
+ * Give the page a `ResizeObserver` that never reports, so a component that measures itself mounts.
+ *
+ * jsdom has no such class at all, and `Swimlane.svelte` constructs one to keep the レーンヘッダ行 stuck
+ * below the 列ヘッダ行's current height — without it, every test that mounts the app dies in that
+ * effect. The stub observes nothing because there is nothing to observe: jsdom runs no layout, so no
+ * element ever changes size, and a callback firing here would deliver the zeros of `stubLayout`'s
+ * neighbours rather than a measurement. What the app does with the number is a matter for the screen
+ * (受入条件 #1–#3 of TASK-61), and no test may assert on it — the same rule as `getClientRects`.
+ */
+function stubResizeObserver(): () => void {
+  if ("ResizeObserver" in window) return () => {};
+  class Stub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  Object.defineProperty(window, "ResizeObserver", { value: Stub, configurable: true, writable: true });
+  return () => {
+    Reflect.deleteProperty(window, "ResizeObserver");
   };
 }
 
@@ -94,6 +118,7 @@ export function render<C extends Component<any, any>>(
   props: ComponentProps<C>,
 ): Mounted {
   restoreLayout ??= stubLayout();
+  restoreObserver ??= stubResizeObserver();
   const host = document.createElement("div");
   document.body.append(host);
   const instance = mount(component, { target: host, props });
@@ -121,6 +146,8 @@ export function cleanup(): void {
   while (opened.length > 0) opened.pop()?.destroy();
   restoreLayout?.();
   restoreLayout = null;
+  restoreObserver?.();
+  restoreObserver = null;
 }
 
 /**
