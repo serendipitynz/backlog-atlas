@@ -1,10 +1,10 @@
 ---
 id: TASK-87
 title: gh 照会に終了期限・取消・同時実行上限を設ける
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-02 01:01'
+updated_date: '2026-08-02 02:50'
 labels:
   - robustness
   - rust
@@ -34,7 +34,7 @@ history.rs は抽出した PR を iterator の map で 1 件ずつ同期的に�
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-2026-08-02 に実装した。
+2026-08-02 に実装した。PR #44 は外部レビュー 2 ラウンド (いずれも [P1] 1 件) を経て APPROVED、同日マージ。
 
 **先に確定したこと（決定先行）**: 本タスクは対応順の表に決 印が無かったが、指示書の定義
 （既存 decision・doc の契約を変える）に当たるので、実装より先に **decision-19** を書いて
@@ -69,13 +69,30 @@ PR 件数の小さいほうだけ立て、結果は添字で元の順へ戻す�
 supertrait として足した（テスト用 fake の `RefCell` は `Mutex` にした — 本番と同じ条件で
 呼ばれるべきなので）。
 
-**AC #3 取消の 2 経路**: `AtlasState` に `history_reads: Mutex<BTreeMap<u64, HistoryRead>>` を
-足し、`task_history_read` が読取識別子で登録し guard で必ず外す。
+**AC #3 取消の 2 経路**: `AtlasState` に `history_reads: Mutex<HistoryReads>` を足し、
+`task_history_read` が読取識別子で登録し guard で必ず外す。
 (1) 新しい読取が始まると同じ (slug, TASK-ID) の古い読取を取り消す（引き継ぎ）。
 (2) `task_history_cancel(read_id)` が読取識別子で名指しの読取だけを取り消す。
 画面側は `createHistoryLoader` が `load` の直前と `abandon()`（詳細を閉じたとき）で送る。
-**読取識別子はフロントの呼出しトークンそのもの**で、別に採番しない — 対応表 第 2 版で
-「同一対象の二役」と直した箇所。別々に数えると取消が別の呼出しへ届き得る。
+
+**読取識別子は `<generation>:<call>` の文字列**（レビュー 2 ラウンドで 2 度直した箇所）。
+当初は「フロントの呼出しトークンそのもの」にしたが、それだと **webview の再読込**で
+呼出し番号が 1 から数え直され、`AtlasState` に残る旧読取と同じ名前が生じる。同じ名前の登録は
+旧エントリを置換し、旧読取の guard が落ちるときに**新しいほうのエントリ**を外すので、
+その画面の取消は走っている `gh` へ届かず、置換された旧照会にも届かない — decision-19 と AC #3 が
+無くすはずの放置照会が、レジストリではなく識別子の側から戻ってくる。有効期限では直らず、
+**重複しない名前**だけが直せる。そこで `createHistoryLoader` が自分を generation で刻む
+（`crypto.randomUUID`、無い環境では時刻＋乱数。必要な性質は「1 プロセス内の 2 つのローダが
+衝突しない」ことだけ）。識別子が一意なら、挿入が他の読取のエントリを置換することも、guard が
+他人のエントリを外すことも、検査ではなく構成として起こらない。
+
+**早着した取消を捨てない**: `task_history_read` と `task_history_cancel` は別々の `(async)`
+コマンドなので Tauri は独立にスケジュールする。読取開始の直後に詳細を閉じる／タスクを切り替えると
+**取消が先に走る**。走っているものだけを見るレジストリはその識別子を捨て、続く登録は取消済みでない
+新しいハンドルを作って、既に去った画面のために期限まで待つ。**別のタスク**への切替には引き継ぎが
+無いので、これを拾うものが他に無い。そこで宛先の無い取消を `HistoryReads::early` へ残し、登録が
+それを消費する。保持は `EARLY_CANCEL_RETENTION`（5 秒）で切る — 識別子が一意になった後は
+正しさではなくメモリを縛るだけの上限で、コメントにもそう書いた。
 
 **AC #4 期限到達は PR 単位**: `LookupFailure::TimedOut` を足し、`detail.ts` の
 `lookupRemedy` に 4 つ目の文言を書いた（「Atlas が照会を打ち切りました…再取得で解消する
@@ -89,25 +106,27 @@ supertrait として足した（テスト用 fake の `RefCell` は `Mutex` に�
 **コミット検索（`git log`）と `git remote` には期限も取消も置いていない** — ローカルで
 完結し通信を伴わないため。これは見落としではなく decision-19 に明記した除外である。
 
-**検証**: `cargo test` 331 件、`cargo test -- --include-ignored` 335 件、
-`cargo fmt --check`・`cargo clippy --all-targets` 無指摘。`pnpm test` 512 件、
-`pnpm run check` 0 errors、`pnpm run build` 成功。
+**検証（マージ時点。レビュー 2 ラウンド後に測り直した値）**: `cargo test` 334 件（ignored 4）、
+`cargo test -- --include-ignored` 338 件、`cargo fmt --check`・`cargo clippy --all-targets`
+無指摘。`pnpm test` 513 件、`pnpm run check` 282 ファイル・0 errors。
 wire fixture は `ATLAS_RECORD_WIRE_FIXTURES=1 cargo test` で再記録してコミットした
 （`wire_tokens.json` に `timedOut`・`historyCancelled`、`command_errors.json` に
-`historyCancelled` の標本。読取識別子は数値で、他の変種のフィールドが全て文字列なので
-型を記録で固定する必要があった）。
+`historyCancelled` の標本。**読取識別子は文字列**なので、数値だった当初の記録は
+round 2 の修正に合わせて録り直してある）。
 
-**gh の実測（decision-19 の根拠）**: `gh api --hostname github.com --paginate --jq '.[].sha'
-repos/<owner>/<repo>/pulls/<n>/commits` が **0.48〜0.73 秒**（2026-08-02、この機・認証済み。
-serendipitynz/backlog-atlas #41〜#43 と tauri-apps/tauri #15788〜#15790 の計 6 件、
-コミット 1〜10 件で 1 ページ）。30 秒は約 40 倍。
-
-**主張を壊して確かめた 3 件**: (1) `CONCURRENT_LOOKUPS` を 1 に戻すと
+**主張を壊して確かめた 5 件**: (1) `CONCURRENT_LOOKUPS` を 1 に戻すと
 `no_more_than_the_concurrent_lookup_cap_run_at_once` の「実際に重なる」側が落ちる。
 (2) `poll_until` から取消の判定を外すと、取消の試験が 600 秒の期限まで戻らなくなる。
-(3) ローダの `load` から先行読取の取消を外すと
-`cancels the read it supersedes` が落ちる。
+(3) ローダの `load` から先行読取の取消を外すと `cancels the read it supersedes` が落ちる。
+(4) 識別子から generation を落とすと
+`two_loader_generations_reusing_a_call_number_stay_separate_reads` と
+「1 プロセスの 2 ローダが最初の呼出しを別名で呼ぶ」の 2 件が落ちる。
+(5) 早着取消の保持を外すと、取消が先に届いた読取が期限まで走る側の試験が落ちる。
 
 **未測定として残したこと**: 強制終了が `gh` の孫プロセスへ届くかどうか。decision-18 が
 `backlog` について残したのと同じ項で、decision-19 にも「残らないとは書かない」として記録した。
+
+**レビューの教訓**: round 1 の修正コメントに自分で書いた「これで不可能になるわけではない」が、
+そのまま round 2 の [P1] になった。限界を正直に書けたということは、その欠陥を理解している
+ということである。**書けるなら直す** — 正直な但し書きは残った欠陥の説明であって、免責ではない。
 <!-- SECTION:NOTES:END -->
