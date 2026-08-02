@@ -132,15 +132,29 @@
   let columnHeads = $state<Record<string, HTMLElement>>({});
   let headHeight = $state(0);
 
+  /**
+   * The 列ヘッダ行's height as it is right now.
+   *
+   * Every head is measured, not just one, so the offset does not depend on the grid stretching them
+   * to a common height. `getBoundingClientRect` rather than `offsetHeight`: the row's height is
+   * fractional at most font sizes, and the rounded integer would leave a hairline of scrolled
+   * content showing through the seam half the time.
+   */
+  function measureHead(): number {
+    const elements = Object.values(columnHeads).filter((element) => element !== undefined);
+    if (elements.length === 0) return 0;
+    return Math.max(...elements.map((element) => element.getBoundingClientRect().height));
+  }
+
   $effect(() => {
     const elements = Object.values(columnHeads).filter((element) => element !== undefined);
     if (elements.length === 0) return;
-    // Every head is measured, not just one, so the offset does not depend on the grid stretching
-    // them to a common height. `getBoundingClientRect` rather than `offsetHeight`: the row's height
-    // is fractional at most font sizes, and the rounded integer would leave a hairline of scrolled
-    // content showing through the seam half the time.
+    // Measured once here as well as from the callback: a `ResizeObserver` reports asynchronously, so
+    // without this the grid's first paint would put every レーンヘッダ行 at the top of the scrollport,
+    // behind the 列ヘッダ行, until the callback arrived.
+    headHeight = measureHead();
     const observer = new ResizeObserver(() => {
-      headHeight = Math.max(...elements.map((element) => element.getBoundingClientRect().height));
+      headHeight = measureHead();
     });
     for (const element of elements) observer.observe(element);
     return () => observer.disconnect();
@@ -159,10 +173,16 @@
     const head = laneHeads[slug];
     const container = grid;
     if (mark === undefined || head === undefined || container === undefined) return;
+    // The head is measured here rather than read from `headHeight`, because this effect can run
+    // before the observer has reported for the first time — and it does exactly that on the path the
+    // landing exists for: 「このプロジェクトのレーンへ」 mounts the grid with `focusSlug` already set,
+    // and a landing computed against a height of 0 puts the row's start at the top of the scrollport,
+    // which is behind both header rows. The request is cleared right after, so nothing would correct
+    // it later (PR #47 の [P1]).
     // The grid has neither border nor padding, so its border box and its scrollport share an edge.
     container.scrollTop += laneScrollDelta({
       offset: mark.getBoundingClientRect().top - container.getBoundingClientRect().top,
-      headHeight,
+      headHeight: measureHead(),
       laneHeight: head.getBoundingClientRect().height,
       viewportHeight: container.clientHeight,
     });
