@@ -317,10 +317,20 @@ describe("タスク詳細の離脱と保存中状態", () => {
 // -------------------------------------------------------------------------------------------------
 
 describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", () => {
-  /** Open 設定 from the fixed header — the entry point doc-7 §2.1 puts it behind. */
+  /**
+   * Take one 共通入口 the way the screen offers it: through the ☰, which is the header's only control
+   * since TASK-66 folded the per-entry buttons away (doc-7 §2.1). Two presses rather than one, and the
+   * first unmounts the line the second pressed — which is exactly the route the focus-return depends
+   * on being handled.
+   */
+  function openEntry(host: HTMLElement, label: string): void {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', label));
+  }
+
   async function openSettings(): Promise<HTMLElement> {
     const host = await startWith([loaded("atlas", [TASK])]);
-    click(byLabel(host, "button.header-entry", "設定"));
+    openEntry(host, "設定");
     return host;
   }
 
@@ -344,14 +354,14 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
 
   it("プロジェクト登録も同じ 2 経路で閉じる", async () => {
     const byEscape = await startWith([loaded("atlas", [TASK])]);
-    click(byLabel(byEscape, "button.header-entry", "プロジェクトを登録"));
+    openEntry(byEscape, "プロジェクトを登録");
     press(only(byEscape, '[role="dialog"][aria-label="プロジェクトを登録"]'), "Escape");
     expect(byEscape.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
 
     cleanup();
 
     const byControl = await startWith([loaded("atlas", [TASK])]);
-    click(byLabel(byControl, "button.header-entry", "プロジェクトを登録"));
+    openEntry(byControl, "プロジェクトを登録");
     click(byText(byControl, "button", "閉じる"));
     expect(byControl.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
   });

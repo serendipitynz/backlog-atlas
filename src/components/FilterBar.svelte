@@ -30,9 +30,6 @@
     facets: Facets;
     /** 既定の保存区分 (decision-13): the state 全解除 puts the filter back to. */
     defaultStorage: readonly StorageSelection[];
-    /** 表示 n / m 件 (doc-7 §5.2): cards the grid is showing, and cards its rows hold in all. */
-    shown: number;
-    total: number;
     /**
      * Whether the 値一覧 is open. Held by the shell, not here, because a key opens it as well
      * (`shortcuts.ts`'s `addFilter`) — with the state in this component the chord would need a second
@@ -47,8 +44,6 @@
     filter,
     facets,
     defaultStorage,
-    shown,
-    total,
     popoverOpen,
     onpopover,
     onchange,
@@ -187,10 +182,8 @@
       <span class="blocked-note" id={BLOCKED_ID}>{blockedReason}</span>
     {/if}
   </div>
-
-  <!-- 総計は帯の右端に常設 (doc-7 §5.2). The per-row 内訳 stays on each レーンヘッダ行 and this is
-       their sum, so the two never disagree: both count the rows the grid is drawing. -->
-  <span class="total">表示 {shown} / {total} 件</span>
+  <!-- 総計 is not here (doc-7 §5.2, TASK-66): it is beside the 画面名 in the 固定ヘッダ, which is the one
+       place that prints it. The per-row 内訳 on each レーンヘッダ行 stays where it is. -->
 </div>
 
 <style lang="scss">
@@ -345,11 +338,4 @@
     font-size: 0.65rem;
   }
 
-  .total {
-    align-self: center;
-    margin-left: auto;
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
 </style>

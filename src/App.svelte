@@ -44,12 +44,7 @@
   import { refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
   import { topBands } from "./lib/band";
-  import {
-    HEADER_ENTRIES,
-    headerMenu,
-    type HeaderEntryId,
-    type MenuItem,
-  } from "./lib/header";
+  import { headerMenu, type HeaderEntryId, type MenuItem } from "./lib/header";
   import {
     ariaKeyShortcuts,
     matchShortcut,
@@ -99,8 +94,9 @@
     CANONICAL_COLUMN_LABEL,
     buildSwimlane,
     laneNeighbours,
+    swimlaneTotals,
+    totalsLabel,
     unreadableDetail,
-    visibleCount,
   } from "./lib/swimlane";
   import type {
     AppSettings,
@@ -143,14 +139,15 @@
   let registerOpen = $state(false);
   /** Whether the fixed header's メニュー is open (doc-7 §2.1). */
   let menuOpen = $state(false);
-  /** The ☰ and the box it hangs off, so the menu can be closed back onto the control it came from. */
+  /**
+   * The ☰ and the box it hangs off, so the menu can be closed back onto the control it came from.
+   *
+   * The ☰ is also what a モーダル hands focus back to (`openEntry`). It is the header's only control, so
+   * it is on screen whichever route was taken into the modal — unlike the menu line that was pressed,
+   * which the modal unmounts on its way up.
+   */
   let menuAnchor = $state<HTMLDivElement | null>(null);
   let menuButton = $state<HTMLButtonElement | null>(null);
-  /**
-   * The header's own button per 共通入口. Held so that every route into a モーダル — the button, a menu
-   * line, or the chord — leaves the same control focused for the modal to return to (`openEntry`).
-   */
-  let entryButtons = $state<Partial<Record<HeaderEntryId, HTMLButtonElement>>>({});
   /**
    * Whether the フィルタ帯's 値一覧 is open (doc-7 §5.2). Held by the shell rather than by the bar
    * because a key opens it as well (`addFilter`), and a second opener would need its own way in.
@@ -309,15 +306,10 @@
   );
   let facets = $derived(collectFacets(allViews));
   /**
-   * 総計 for the filter bar's right end (doc-7 §5.2). Summed over the rows the grid is drawing, so it
-   * is exactly the sum of the per-row 内訳 the レーンヘッダ行 show — the two are meant to be read
-   * together, and a total counting rows that are not on screen (行非表示) would not add up to them.
-   * The 行非表示 band is where those rows are accounted for (doc-7 §5.3 ⑥).
+   * 総件数 for the 固定ヘッダ, beside the 画面名 (doc-7 §2.1). `order` rather than `rows` for the lane
+   * side: the ledger is what 全件 counts, so a hidden row leaves 表示数 and stays in it.
    */
-  let shownCards = $derived(rows.reduce((sum, row) => sum + visibleCount(row), 0));
-  let totalCards = $derived(
-    rows.reduce((sum, row) => sum + (row.state === "loaded" ? row.totalBeforeFilter : 0), 0),
-  );
+  let gridTotals = $derived(swimlaneTotals(rows, order.length));
   /** 既定の保存区分 (decision-13) — the state 全解除 returns the filter to. */
   let defaultStorage = $derived(
     settings?.settings.default_storage_filter ?? DEFAULT_FILTER.storage,
@@ -1318,12 +1310,13 @@
     // the other out of reach in any case.
     menuOpen = false;
     filterPopoverOpen = false;
-    // The header's own button for this entry takes focus *before* the modal mounts, so that whichever
-    // route was taken — that button, a menu line, or the chord — the modal captures a control that is
-    // still on screen and hands focus back to it on close (doc-7 §2.1 閉じたら開く前の操作へフォーカスを
-    // 戻す). Without this the menu line the user pressed is already unmounted by then, and a press of the
-    // chord from the grid would have nothing but `body` to go back to.
-    entryButtons[id]?.focus();
+    // The ☰ takes focus *before* the modal mounts, so that whichever route was taken — a menu line or
+    // the chord — the modal captures a control that is still on screen and hands focus back to it on
+    // close (doc-7 §2.1 閉じたら開く前の操作へフォーカスを戻す). The menu line the user pressed is
+    // unmounted by the line above, and a press of the chord from the grid would otherwise have nothing
+    // but `body` to go back to. The ☰ is the entry's own place in the header now, so returning there is
+    // returning to where the operation was taken from.
+    menuButton?.focus();
     if (id === "register") registerOpen = true;
     else settingsOpen = true;
   }
@@ -1439,30 +1432,17 @@
 <main class="screen">
   <header class="top">
     <h1>{screen === "swimlane" ? "プロジェクト別スイムレーン" : "プロジェクト詳細"}</h1>
-    <!-- Only entry points that apply to every project belong on the fixed header (doc-7 §2.1). What
-         is closed on one project — editing its 台帳エントリ, 登録解除, documents, milestones, the
-         detailed 新規タスク作成 — is collected in プロジェクト詳細画面 (doc-10), so operations of
-         different granularity do not share a place.
-         The two are drawn from `HEADER_ENTRIES` rather than written out here, because the same list is
-         what the menu draws: §2.1 requires ヘッダに出している操作はメニューにも同じものを置く, and two
-         literals would let a third entry appear in one place only. -->
-    {#each HEADER_ENTRIES as entry (entry.id)}
-      <button
-        type="button"
-        class="header-entry"
-        bind:this={entryButtons[entry.id]}
-        aria-keyshortcuts={ariaKeyShortcuts(entry.action, MAC_KEYBOARD)}
-        title={entry.note}
-        onclick={() => openEntry(entry.id)}
-      >
-        {entry.label}
-        <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). `aria-hidden` because `aria-keyshortcuts` above
-             carries the chord as data; read aloud it would rename the button. -->
-        <span class="hint" aria-hidden="true">{shortcutHint(entry.action, MAC_KEYBOARD)}</span>
-      </button>
-    {/each}
-    <!-- メニュー (doc-7 §2.1): the same two entries plus 行非表示 を戻す, for the widths where the
-         header's own buttons do not fit. -->
+    {#if screen === "swimlane"}
+      <!-- 総件数 (doc-7 §2.1), beside the 画面名 and nowhere else: the フィルタ帯 used to carry the card
+           ratio as well, and two places printing the same numbers invite them to disagree. Only on the
+           swimlane, because both ratios describe the grid — on プロジェクト詳細画面 they would be
+           counting a screen that is not up. -->
+      <span class="totals">{totalsLabel(gridTotals)}</span>
+    {/if}
+    <!-- メニュー (doc-7 §2.1): the 共通入口 and 行非表示 を戻す. It is the header's only control — 登録
+         and 設定 no longer have a button of their own beside it, since the menu already held both and
+         a header that offers each entry twice spends its width saying the same thing. Their chords
+         still reach them directly, and the menu is the 併置 §2.1 requires of a shortcut. -->
     <div class="menu-anchor" bind:this={menuAnchor}>
       <button
         type="button"
@@ -1526,8 +1506,6 @@
       {filter}
       {facets}
       {defaultStorage}
-      shown={shownCards}
-      total={totalCards}
       popoverOpen={filterPopoverOpen}
       onpopover={setFilterPopover}
       onchange={(next) => (filter = next)}
@@ -1751,9 +1729,17 @@
     cursor: pointer;
   }
 
-  // The fixed header's entry points (doc-7 §2.1): 登録・設定・メニュー. All three open a layer over the
-  // screen rather than switching to one, so they are drawn unlike a tab that says which screen is
-  // current.
+  // 総件数 (doc-7 §2.1). 副次 (doc-11 §2.1), because it describes the 画面名 beside it rather than being
+  // read on its own, and `tabular-nums` so a changing count does not shift the words after it.
+  .totals {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  // The fixed header's one entry point (doc-7 §2.1): the ☰, which opens the menu holding 登録 and 設定.
+  // It opens a layer over the screen rather than switching to one, so it is drawn unlike a tab that
+  // says which screen is current.
   .header-entry {
     display: inline-flex;
     gap: 0.3rem;
