@@ -1,11 +1,11 @@
 /**
- * 固定ヘッダの入口とメニュー (doc-7 §2.1, TASK-56) as one derivation. doc-7 §2.1 puts two rules on
- * this header that only hold if one list feeds both places:
+ * 固定ヘッダの入口とメニュー (doc-7 §2.1, TASK-56) as one derivation.
  *
- * - **ヘッダに出している操作はメニューにも同じものを置く** (so a narrow window still reaches them).
- *   [`HEADER_ENTRIES`] is that list, and the header and the menu each draw *it* rather than their own
- *   copy — with two literals, adding a third entry to the header and forgetting the menu is a diff that
- *   compiles and looks finished.
+ * - **The menu is where the 共通入口 are.** TASK-66 folded the header's per-entry buttons away, so
+ *   [`HEADER_ENTRIES`] now has exactly one place that draws it. §2.1's ヘッダに出している操作はメニューに
+ *   も同じものを置く still holds — nothing is on the header that the menu lacks — and the list stays a
+ *   list rather than two literals because the chord for each entry has to name the same operation the
+ *   menu line does, and the 割り当て一覧 check below is what keeps those in step.
  * - **1 プロジェクトに閉じた操作を置かない** (they belong to プロジェクト詳細画面, doc-10). Being a
  *   closed list of two is what makes that checkable at all: a per-project entry cannot appear in the
  *   header without appearing here first.
@@ -16,7 +16,7 @@
  *
  * | term | here | is |
  * |---|---|---|
- * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the fixed header and the menu both show — 登録 and 設定 |
+ * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the fixed header offers through its メニュー — 登録 and 設定 |
  * | doc-7 §2.1 メニュー | [`MenuItem`] + [`headerMenu`] | メニュー項目: one line of the menu, and the whole list in order |
  * | doc-7 §5.1 行非表示 / doc-11 §4 ⑥ | [`SHOW_ALL_ROWS_LABEL`] + the `showRow` items | すべて戻す, and the per-row list doc-11 §4 puts in the menu rather than in the 帯 |
  * | doc-11 §5 無効化提示 | [`showAllRowsHeld`] | 保留理由: why すべて戻す cannot be pressed, or `null` when it can |
@@ -42,14 +42,18 @@ export type HeaderEntryId = "register" | "settings";
 export interface HeaderEntry {
   id: HeaderEntryId;
   label: string;
-  /** The assignment that opens it, so the header button and the menu item print the same hint. */
+  /** The assignment that opens it, so the chord and the menu item name the same operation. */
   action: ShortcutAction;
-  /** What the entry reaches, in one line — the `title` on the header button. */
+  /**
+   * What the entry reaches, in one line — the `title` on the menu line. It sat on the header button
+   * until TASK-66 folded that button away; moving it rather than dropping it is why the entries can
+   * lose their buttons without the screen losing what they said.
+   */
   note: string;
 }
 
 /**
- * 共通入口とは、固定ヘッダとメニューの両方に必ず現れる入口 (プロジェクトを登録・設定) の列を指す。
+ * 共通入口とは、固定ヘッダのメニューに必ず現れる入口 (プロジェクトを登録・設定) の列を指す。
  * Ordered as doc-7 §2.1 lists them: 登録 (台帳全体) then 設定 (アプリ設定).
  */
 export const HEADER_ENTRIES: readonly HeaderEntry[] = [

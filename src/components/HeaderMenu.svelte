@@ -1,9 +1,10 @@
 <script lang="ts">
   // 固定ヘッダのメニュー (doc-7 §2.1, TASK-56). Two things live here and nowhere else:
   //
-  // - **The same entries the header shows.** §2.1: ヘッダに出している操作はメニューにも同じものを置く
-  //   （ヘッダの幅が狭いときにも到達できるようにするため）. Both draw `headerMenu`'s list, so neither can
-  //   grow an entry the other lacks.
+  // - **The 共通入口 themselves.** They had a button apiece on the header until TASK-66 folded those
+  //   away, so this is now the only place either is drawn. §2.1's ヘッダに出している操作はメニューにも
+  //   同じものを置く is met by there being nothing on the header that is not here; each entry's own
+  //   one-line 説明 came along with it, as the line's `title`.
   // - **The per-row 行非表示 list.** doc-11 §4 names this case as its example of 縮約: the 帯 keeps the
   //   count and its own すべて戻す, and 個々のレーンはメニューの一覧から戻す — which is this list.
   //
@@ -96,6 +97,7 @@
           aria-disabled={item.held !== null}
           aria-describedby={item.held === null ? undefined : reasonId(index)}
           aria-keyshortcuts={item.kind === "entry" ? ariaKeyShortcuts(item.entry.action, MAC_KEYBOARD) : undefined}
+          title={item.kind === "entry" ? item.entry.note : undefined}
           onclick={() => item.held === null && onchoose(item)}
         >
           <span class="label">{item.kind === "entry" ? item.entry.label : item.label}</span>

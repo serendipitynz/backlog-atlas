@@ -16,6 +16,7 @@
  * | §1 タスクカード | a `TaskView` inside a cell | the display unit; `TaskCard.svelte` renders it |
  * | §2 未対応区画 | `SwimlaneRow.unmapped` | the row's tasks whose status maps to no column |
  * | §1 レーンヘッダ行 | `Swimlane.svelte` の `.lane-head` | the row's own full-width line: name, slug, counts, row-level controls |
+ * | §2.1 総件数 | [`SwimlaneTotals`] と [`totalsLabel`] | the whole grid's two ratios, beside the 画面名 |
  * | §1 列折畳み | `columnFoldable` / a collapsed `StatusColumn` | one column narrowed to a band in every row at once, keeping name and count |
  * | §1 行折畳み | `rowFoldable` / `laneCounts` | one row's cells folded away, keeping the per-column counts |
  * | §2.3 2 層スティッキー | `Swimlane.svelte` の `.head` / `.lane-head` と `--lane-top` | the two header rows held at the top, the lower one against the upper one's current height |
@@ -247,6 +248,72 @@ export function laneCounts(row: SwimlaneRow, withUnmapped: boolean): LaneCount[]
 /** The whole grid's cards in one column — the count a 畳んだ列 keeps in its head (doc-7 §2.2). */
 export function columnTotal(rows: readonly SwimlaneRow[], column: StatusColumn): number {
   return rows.reduce((sum, row) => sum + cellCount(row, column), 0);
+}
+
+// --- 総件数 (doc-7 §2.1) -----------------------------------------------------------------------
+
+/**
+ * 総件数とは、画面名の横に出す 2 つの比 — タスク数（表示数 / 全件）とプロジェクト数（表示数 / 全件）
+ * — を指す。
+ *
+ * The two ratios are counted over different populations on purpose, and the difference is the whole
+ * reason both are shown:
+ *
+ * - **The cards are counted over the rows the grid is drawing.** 行非表示のレーンは表示数からも全件
+ *   からも外れる, so this total is exactly the sum of the per-row 内訳 on the レーンヘッダ行 — the two
+ *   are read together, and a total counting rows that are not on screen would not add up to them.
+ *   Those rows are accounted for by the 行非表示 帯 instead (doc-7 §5.3 ⑥).
+ * - **The lanes are counted against the ledger.** 全件 is every registered entry, so hiding a row
+ *   moves 表示数 alone and the pair says how many are put away. Counting hidden rows out of both
+ *   would make the two numbers equal and the ratio would say nothing.
+ */
+export interface SwimlaneTotals {
+  /** Cards on screen after filtering, over the drawn rows. */
+  shownCards: number;
+  /** Cards those same rows hold before filtering. */
+  totalCards: number;
+  /** Rows the grid is drawing. */
+  shownLanes: number;
+  /** 台帳エントリ数 (doc-3 §2.2) — every registered project, hidden or not. */
+  totalLanes: number;
+}
+
+/**
+ * Count the grid (doc-7 §2.1). `registered` is the ledger's entry count rather than something derived
+ * from `rows`, because the rows a hide took away are exactly what the lane ratio is about.
+ *
+ * A 読取不能行 counts as a shown lane and contributes no cards. It is on screen and it is a registered
+ * project, so leaving it out of 表示数 would report fewer lanes than the user can see; its cards are a
+ * separate matter — there are none to count, and 全件 is a card count, not a claim about the root.
+ */
+export function swimlaneTotals(
+  rows: readonly SwimlaneRow[],
+  registered: number,
+): SwimlaneTotals {
+  return {
+    shownCards: rows.reduce((sum, row) => sum + visibleCount(row), 0),
+    totalCards: rows.reduce(
+      (sum, row) => sum + (row.state === "loaded" ? row.totalBeforeFilter : 0),
+      0,
+    ),
+    shownLanes: rows.length,
+    totalLanes: registered,
+  };
+}
+
+/**
+ * 総件数 as the one line the 固定ヘッダ prints (doc-7 §2.1).
+ *
+ * 画面設計案 01 writes the lane side as a single `{laneCount} レーン`; this puts a ratio there instead,
+ * which the user chose on 2026-08-01 knowing the difference (doc-7 §2.1 records why). The word is
+ * プロジェクト rather than レーン because that is the ledger's unit (doc-1) and the number now counts
+ * ledger entries, not rows on screen.
+ */
+export function totalsLabel(totals: SwimlaneTotals): string {
+  return (
+    `表示 ${totals.shownCards} / ${totals.totalCards} 件` +
+    ` ・ ${totals.shownLanes} / ${totals.totalLanes} プロジェクト`
+  );
 }
 
 /**

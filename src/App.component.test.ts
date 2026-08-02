@@ -317,11 +317,34 @@ describe("タスク詳細の離脱と保存中状態", () => {
 // -------------------------------------------------------------------------------------------------
 
 describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", () => {
-  /** Open 設定 from the fixed header — the entry point doc-7 §2.1 puts it behind. */
+  /**
+   * Take one 共通入口 the way the screen offers it: through the ☰, which is the header's only control
+   * since TASK-66 folded the per-entry buttons away (doc-7 §2.1). Two presses rather than one, and the
+   * first unmounts the line the second pressed — which is exactly the route the focus-return depends
+   * on being handled.
+   */
+  function openEntry(host: HTMLElement, label: string): void {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', label));
+  }
+
   async function openSettings(): Promise<HTMLElement> {
     const host = await startWith([loaded("atlas", [TASK])]);
-    click(byLabel(host, "button.header-entry", "設定"));
+    openEntry(host, "設定");
     return host;
+  }
+
+  /**
+   * 閉じたら開く前の操作へフォーカスを戻す (doc-7 §2.1), as the caller has to arrange it.
+   *
+   * `Modal.svelte` returns focus to whatever was active when it mounted, and `Modal.component.test.ts`
+   * fixes that much — but what was active is the caller's doing, and on this route the control the user
+   * pressed is a menu line the opening unmounts. So the shell focuses the ☰ first, and only a test that
+   * runs the whole route can tell that step from its absence: without it every assertion above still
+   * passes while focus lands on `body`.
+   */
+  function expectFocusBackOnMenu(host: HTMLElement): void {
+    expect(document.activeElement).toBe(byLabel(host, "button.header-entry", "メニュー"));
   }
 
   it("Escape と Settings 自身の閉じるが、どちらも同じ 1 つの出口へ届く", async () => {
@@ -333,6 +356,7 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
     const dialog = only(byEscape, '[role="dialog"][aria-label="設定"]');
     press(dialog, "Escape");
     expect(byEscape.querySelector('[aria-label="設定"]')).toBeNull();
+    expectFocusBackOnMenu(byEscape);
 
     cleanup();
 
@@ -340,20 +364,23 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
     expect(byControl.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
     click(byText(byControl, "button.mini", "閉じる"));
     expect(byControl.querySelector('[aria-label="設定"]')).toBeNull();
+    expectFocusBackOnMenu(byControl);
   });
 
   it("プロジェクト登録も同じ 2 経路で閉じる", async () => {
     const byEscape = await startWith([loaded("atlas", [TASK])]);
-    click(byLabel(byEscape, "button.header-entry", "プロジェクトを登録"));
+    openEntry(byEscape, "プロジェクトを登録");
     press(only(byEscape, '[role="dialog"][aria-label="プロジェクトを登録"]'), "Escape");
     expect(byEscape.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
+    expectFocusBackOnMenu(byEscape);
 
     cleanup();
 
     const byControl = await startWith([loaded("atlas", [TASK])]);
-    click(byLabel(byControl, "button.header-entry", "プロジェクトを登録"));
+    openEntry(byControl, "プロジェクトを登録");
     click(byText(byControl, "button", "閉じる"));
     expect(byControl.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
+    expectFocusBackOnMenu(byControl);
   });
 });
 

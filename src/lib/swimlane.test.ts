@@ -15,6 +15,8 @@ import {
   laneNeighbours,
   laneScrollDelta,
   rowFoldable,
+  swimlaneTotals,
+  totalsLabel,
   visibleCount,
   type SwimlaneRow,
 } from "./swimlane";
@@ -495,6 +497,61 @@ describe("AC #5・#6 折畳みの対象にしないもの", () => {
     expect(laneCounts(row(swimlane(["atlas"], loadMap(loaded("atlas", []))), "atlas"), true).at(-1)
       ?.column).toBeNull();
     expect(UNMAPPED_FOLD_ABSENT_REASON).not.toBe("");
+  });
+});
+
+// TASK-66.
+describe("AC #2・#3 見出し横の総件数", () => {
+  const three = loadMap(
+    loaded("atlas", [
+      taskView({ id: "TASK-1", sourcePath: "a.md", column: "toDo", title: "parser" }),
+      taskView({ id: "TASK-2", sourcePath: "b.md", column: "done" }),
+    ]),
+    loaded("geomyth", [taskView({ id: "TASK-3", sourcePath: "c.md", column: "toDo" })]),
+    loaded("kanri", [taskView({ id: "TASK-4", sourcePath: "d.md", column: "inReview" })]),
+  );
+
+  it("counts every card of every drawn row, and every registered project", () => {
+    const totals = swimlaneTotals(swimlane(["atlas", "geomyth", "kanri"], three), 3);
+
+    expect(totals).toEqual({ shownCards: 4, totalCards: 4, shownLanes: 3, totalLanes: 3 });
+    expect(totalsLabel(totals)).toBe("表示 4 / 4 件 ・ 3 / 3 プロジェクト");
+  });
+
+  it("moves 表示数 alone when the filter takes cards away", () => {
+    // 絞り込みはカードの取捨のみを行う (doc-7 §5.2), so 全件 and both lane numbers stand still and the
+    // pair says how much of the grid the filter is keeping back.
+    const totals = swimlaneTotals(
+      swimlane(["atlas", "geomyth", "kanri"], three, { text: "parser" }),
+      3,
+    );
+
+    expect(totals).toEqual({ shownCards: 1, totalCards: 4, shownLanes: 3, totalLanes: 3 });
+  });
+
+  it("takes a hidden row out of both card numbers but only out of 表示数 for the lanes", () => {
+    // The card totals are the sum of the per-row 内訳 on the drawn レーンヘッダ行 (doc-7 §5.2), so a row
+    // that is not drawn is in neither. The lane pair is the opposite: 全件 is the ledger, which is what
+    // makes the hidden row readable as the difference.
+    const totals = swimlaneTotals(swimlane(["atlas", "geomyth", "kanri"], three, {}, ["atlas"]), 3);
+
+    expect(totals).toEqual({ shownCards: 2, totalCards: 2, shownLanes: 2, totalLanes: 3 });
+    expect(totalsLabel(totals)).toBe("表示 2 / 2 件 ・ 2 / 3 プロジェクト");
+  });
+
+  it("counts a 読取不能行 as a lane on screen that contributes no cards", () => {
+    const totals = swimlaneTotals(
+      swimlane(
+        ["atlas", "broken"],
+        loadMap(
+          loaded("atlas", [taskView({ id: "TASK-1", sourcePath: "a.md", column: "toDo" })]),
+          unreadable("broken"),
+        ),
+      ),
+      2,
+    );
+
+    expect(totals).toEqual({ shownCards: 1, totalCards: 1, shownLanes: 2, totalLanes: 2 });
   });
 });
 

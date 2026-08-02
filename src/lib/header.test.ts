@@ -15,8 +15,8 @@ function kinds(items: MenuItem[]): string[] {
 describe("共通入口 (doc-7 §2.1)", () => {
   /**
    * doc-7 §2.1: 1 プロジェクトに閉じた操作（台帳エントリの編集・登録解除・文書・マイルストーン・詳細な
-   * 新規タスク作成）は固定ヘッダに置かず、プロジェクト詳細画面へ集める。The header draws this list and
-   * only this list, so the check is that the list stays the two ledger-wide entries.
+   * 新規タスク作成）は固定ヘッダに置かず、プロジェクト詳細画面へ集める。The header's メニュー draws this
+   * list and only this list, so the check is that the list stays the two ledger-wide entries.
    */
   it("holds the two 全プロジェクトに効く入口 and nothing per-project", () => {
     expect(HEADER_ENTRIES.map((entry) => entry.id)).toEqual(["register", "settings"]);
@@ -30,8 +30,8 @@ describe("共通入口 (doc-7 §2.1)", () => {
 });
 
 describe("メニュー項目 (doc-7 §2.1, doc-11 §4 ⑥)", () => {
-  /** doc-7 §2.1: ヘッダに出している操作はメニューにも同じものを置く。 */
-  it("repeats every 共通入口, in the header's order", () => {
+  /** doc-7 §2.1: メニューが 共通入口 を全部持つ — since TASK-66 it is the only place they are drawn. */
+  it("carries every 共通入口, in the order 共通入口 are listed", () => {
     const entries = headerMenu([]).flatMap((item) => (item.kind === "entry" ? [item.entry] : []));
     expect(entries).toEqual([...HEADER_ENTRIES]);
   });
