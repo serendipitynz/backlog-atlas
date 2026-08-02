@@ -81,6 +81,7 @@ pub fn run() {
             commands::project_watch_start,
             commands::project_watch_stop,
             commands::task_history_read,
+            commands::task_history_cancel,
             // アプリ設定 (decision-13): display defaults, in Atlas's own config dir.
             commands::settings_read,
             commands::settings_save,

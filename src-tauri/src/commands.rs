@@ -67,7 +67,9 @@ use crate::editor::{
     self, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod,
     Launcher, SystemEnv, SystemLauncher,
 };
-use crate::history::{self, Commit, HistoryError, PrCommitSource, PrRelation, RemoteHost};
+use crate::history::{
+    self, Cancelled, Commit, HistoryError, PrCommitSource, PrRelation, RemoteHost,
+};
 use crate::interpret::status::{create_status_candidates, ColumnCreateStatuses};
 use crate::interpret::{interpret_task, TaskInterpretation};
 use crate::ledger::{
@@ -76,6 +78,7 @@ use crate::ledger::{
 use crate::read::scan::{ScanSource, WorkingTree};
 use crate::read::RootError;
 use crate::settings::{self, AppSettings, LoadedSettings, SettingsError};
+use crate::subprocess::Cancel;
 use crate::sync::{
     FileVersions, FsVersions, GuardError, GuardedUpdate, ReloadReason, SyncState, WatchSession,
 };
@@ -355,6 +358,11 @@ pub enum CommandError {
         program: String,
         detail: String,
     },
+    /// 履歴読取の取消 (decision-19): the screen cancelled this read, so there is no answer. Not a
+    /// failure of the read — it is the caller's own decision coming back to it — and the screen it
+    /// reaches has already stopped displaying that read, so it carries only the 読取識別子 and no
+    /// sentence to show.
+    HistoryCancelled { read_id: u64 },
 }
 
 /// Which ledger operation refusal happened (doc-3 §3.1/§3.3/§4). One variant per refusal
@@ -772,12 +780,29 @@ struct WatchHandle {
 /// ファイルロック → `watches`, never the reverse. A watch thread takes the same order. The one rule
 /// that keeps it that way: a watch thread is never *joined* while its project's lock is held — see
 /// [`detach_project`].
+///
+/// `history_reads` is outside that order because it takes nothing while held: every use inserts,
+/// removes, or sets a flag and returns. It is a registry, not a serializer — the reads it lists run
+/// concurrently by design (decision-19), and what it exists for is to be reachable from the 取消
+/// command while one of them is waiting on `gh`.
 #[derive(Default)]
 pub struct AtlasState {
     projects: Mutex<BTreeMap<String, Arc<Mutex<ProjectState>>>>,
     ledger_writes: Mutex<()>,
     settings_writes: Mutex<()>,
     watches: Mutex<BTreeMap<String, WatchHandle>>,
+    /// 履歴読取の取消 (decision-19): the [`Cancel`] of every history read still running, by
+    /// 読取識別子. A read registers on entry and removes itself on the way out, so what is in here
+    /// is what a cancel can still reach. Not a lock — nothing waits on it; it is held only long
+    /// enough to insert, remove, or set a flag.
+    history_reads: Mutex<BTreeMap<u64, HistoryRead>>,
+}
+
+/// One history read in flight (decision-19). The key it is filed under is the frontend's 読取識別子;
+/// `task` is what lets a newer read of the same task cancel it without the frontend having to ask.
+struct HistoryRead {
+    task: (String, String),
+    cancel: Cancel,
 }
 
 /// The プロジェクト単位ロック for one slug, held (decision-18). Carries the slug it was taken for, so
@@ -1315,12 +1340,17 @@ pub fn project_watch_stop(state: State<'_, AtlasState>, slug: String) {
 /// `source` is the remote-host reference means (doc-6 §6), injected for the same reason [`ScanSource`]
 /// is: it is the one part of this read that leaves the machine, and tests must be able to exercise the
 /// read without a network.
+///
+/// `cancel` is the 履歴読取の取消 handle (decision-19). Setting it ends the 照会 in flight and stops
+/// the ones not yet started, and this returns [`Cancelled`] rather than a partial answer: the caller
+/// that cancelled is by definition no longer displaying one.
 pub fn read_history(
     entry: &ProjectEntry,
     task_id: &str,
     references: &[String],
     source: &dyn PrCommitSource,
-) -> TaskHistory {
+    cancel: &Cancel,
+) -> Result<TaskHistory, Cancelled> {
     // A Git failure is a value here, not an error: the rest of the detail screen — including the
     // References-derived PR 区画 — must survive a root that is not a Git repository (decision-6,
     // doc-8 §5).
@@ -1337,16 +1367,20 @@ pub fn read_history(
     // Resolving against a stand-in empty slice would spend a network lookup to report "no shared
     // commit" — a resolved state — for a comparison that never happened.
     let relations = match &commits {
-        CommitSearch::Searched { commits } => {
-            history::resolve_task_relations(remote.as_ref(), commits, &pull_requests, source)
-        }
+        CommitSearch::Searched { commits } => history::resolve_task_relations(
+            remote.as_ref(),
+            commits,
+            &pull_requests,
+            source,
+            cancel,
+        )?,
         CommitSearch::NoRepository { .. } | CommitSearch::Unreadable { .. } => Vec::new(),
     };
-    TaskHistory {
+    Ok(TaskHistory {
         commits,
         remote,
         relations,
-    }
+    })
 }
 
 /// One task's commits, Pull Request URLs and their relation (doc-6). Read-only: `git log`,
@@ -1357,7 +1391,12 @@ pub fn task_history_read(
     state: State<'_, AtlasState>,
     slug: String,
     task_id: String,
+    read_id: u64,
 ) -> Result<TaskHistory, CommandError> {
+    // Registered before anything runs, so a cancel arriving while the ledger lock below is still
+    // held already has something to set (decision-19). The guard removes the registration on every
+    // exit from this function, the `?` paths included.
+    let (_registered, cancel) = begin_history_read(&state, read_id, &slug, &task_id);
     // Everything that needs a lock happens in this block, and the guard is dropped at its end —
     // `read_history` below spawns `git` and `gh`, and must not do so holding it. decision-18 keeps
     // this split after the lock was narrowed to one project: a network wait has no more reason to sit
@@ -1368,12 +1407,81 @@ pub fn task_history_read(
         let references = project.state.task_references(&entry, &task_id)?;
         Ok::<_, CommandError>((entry, references))
     })?;
-    Ok(read_history(
+    read_history(
         &entry,
         &task_id,
         &references,
         &history::HostReferences,
-    ))
+        &cancel,
+    )
+    .map_err(|Cancelled| CommandError::HistoryCancelled { read_id })
+}
+
+/// 履歴読取の取消 (decision-19): stop waiting for a history read whose answer the screen no longer
+/// wants, and end the `gh` 照会 it has in flight.
+///
+/// Takes no `slug`/`task_id`: the 読取識別子 names one call, and a screen that has moved on wants
+/// *that* call stopped — not whatever read happens to be running for the same task now. Cancelling
+/// an id that is not running is not an error; the read may have finished on its own between the
+/// screen deciding and this arriving, and there is nothing to report about that.
+#[tauri::command(async)]
+pub fn task_history_cancel(state: State<'_, AtlasState>, read_id: u64) {
+    cancel_history_read(&state, read_id);
+}
+
+/// The body of [`task_history_cancel`], reachable without Tauri so the 取消 can be tested against a
+/// bare [`AtlasState`] — the same reason decision-18 moved the exclusion structure off `AppHandle`.
+fn cancel_history_read(state: &AtlasState, read_id: u64) {
+    // The registration is left in place: the read that owns it removes it on its way out, and
+    // removing it here would let a *later* cancel for the same id find nothing while the read it
+    // meant to stop is still going.
+    if let Some(read) = lock(&state.history_reads).get(&read_id) {
+        read.cancel.cancel();
+    }
+}
+
+/// Register a history read and hand back its [`Cancel`], plus a guard that unregisters it.
+///
+/// Registering is also where 引き継ぎ happens: a read that starts for a (slug, TASK-ID) cancels any
+/// older read of the same task. That covers what the frontend's own cancel cannot be relied on for —
+/// a route that forgets to send it, or one that never gets the chance — while the frontend's cancel
+/// covers what this cannot see, namely a detail panel closing with no next read to supersede it.
+fn begin_history_read<'a>(
+    state: &'a AtlasState,
+    read_id: u64,
+    slug: &str,
+    task_id: &str,
+) -> (HistoryReadGuard<'a>, Cancel) {
+    let task = (slug.to_string(), task_id.to_string());
+    let cancel = Cancel::new();
+    let mut reads = lock(&state.history_reads);
+    for superseded in reads.values().filter(|read| read.task == task) {
+        superseded.cancel.cancel();
+    }
+    reads.insert(
+        read_id,
+        HistoryRead {
+            task,
+            cancel: cancel.clone(),
+        },
+    );
+    drop(reads);
+    (HistoryReadGuard { state, read_id }, cancel)
+}
+
+/// Removes a history read's registration however its command returns. A guard rather than a call at
+/// the end, because the read has several `?` exits and an entry left behind would make a later
+/// cancel set a flag nobody reads — harmless, but it would also grow the map for the life of the
+/// process.
+struct HistoryReadGuard<'a> {
+    state: &'a AtlasState,
+    read_id: u64,
+}
+
+impl Drop for HistoryReadGuard<'_> {
+    fn drop(&mut self) {
+        lock(&self.state.history_reads).remove(&self.read_id);
+    }
 }
 
 // --- commands: アプリ設定 (decision-13) ------------------------------------------------------------
@@ -1629,6 +1737,7 @@ ordinal: 1000\n\
         fn commits_for_pull_request(
             &self,
             _target: &crate::history::PullRequestTarget,
+            _cancel: &Cancel,
         ) -> Result<Vec<String>, crate::history::RelationError> {
             panic!("the reference means must not be reached with the remote gate shut");
         }
@@ -1798,6 +1907,73 @@ ordinal: 1000\n\
             error,
             CommandError::RootUnreadable { ref slug, .. } if slug == "broken"
         ));
+    }
+
+    // --- 履歴読取の取消 (decision-19, TASK-87 AC #1/#3) -------------------------------------------
+
+    #[test]
+    fn a_newer_read_of_the_same_task_cancels_the_one_before_it() {
+        // AC #3 タスク切替と再取得: both arrive here as a *new* read of some task, and the 引き継ぎ is
+        // what ends the previous one's `gh` — the frontend's own 取消 is a second route, not the only
+        // one, so this must hold with no cancel command sent at all.
+        let state = AtlasState::default();
+        let (_first, first) = begin_history_read(&state, 1, "alpha", "TASK-1");
+        assert!(!first.is_cancelled(), "a read starts uncancelled");
+
+        // 再取得: the same task read again.
+        let (_second, second) = begin_history_read(&state, 2, "alpha", "TASK-1");
+        assert!(first.is_cancelled(), "the older read of the task is ended");
+        assert!(!second.is_cancelled(), "the read that replaced it is not");
+
+        // タスク切替: a different task is a different read, and must not end this one.
+        let (_other, other) = begin_history_read(&state, 3, "alpha", "TASK-2");
+        assert!(
+            !second.is_cancelled(),
+            "another task's read must not cancel this one"
+        );
+        // Nor must a different project's read of the same TASK-ID — ids repeat across projects.
+        let (_elsewhere, _) = begin_history_read(&state, 4, "beta", "TASK-2");
+        assert!(
+            !other.is_cancelled(),
+            "a same-id read in another project is a different read"
+        );
+    }
+
+    #[test]
+    fn the_cancel_command_ends_the_read_it_names_and_no_other() {
+        // AC #1 フロントエンドからの取消: the route the 引き継ぎ cannot cover — a detail panel closing,
+        // where no next read arrives to supersede the one running.
+        let state = AtlasState::default();
+        let (_a, a) = begin_history_read(&state, 1, "alpha", "TASK-1");
+        let (_b, b) = begin_history_read(&state, 2, "alpha", "TASK-2");
+
+        cancel_history_read(&state, 1);
+        assert!(a.is_cancelled(), "the named read is ended");
+        assert!(!b.is_cancelled(), "another read is not");
+
+        // Cancelling an id nobody is running is silent: the read may have finished on its own
+        // between the screen deciding and this arriving.
+        cancel_history_read(&state, 9999);
+    }
+
+    #[test]
+    fn a_finished_read_is_no_longer_cancellable() {
+        // The guard is what keeps the registry to the reads still running. Without it a later cancel
+        // would set a flag nobody reads, and the map would grow for the life of the process.
+        let state = AtlasState::default();
+        let cancel = {
+            let (_registered, cancel) = begin_history_read(&state, 1, "alpha", "TASK-1");
+            cancel
+        };
+        assert!(
+            lock(&state.history_reads).is_empty(),
+            "a read that returned is unregistered"
+        );
+        cancel_history_read(&state, 1);
+        assert!(
+            !cancel.is_cancelled(),
+            "a read that already finished cannot be cancelled after the fact"
+        );
     }
 
     #[test]
@@ -2687,7 +2863,8 @@ labels: []\n\
             references,
             vec!["https://github.com/o/r/pull/5".to_string()]
         );
-        let history = read_history(&entry, "TASK-1", &references, &NeverCalled);
+        let history = read_history(&entry, "TASK-1", &references, &NeverCalled, &Cancel::new())
+            .expect("nothing cancelled this read");
         assert!(history.remote.is_none());
         assert!(history.relations.is_empty());
         let json = serde_json::to_value(&history).unwrap();

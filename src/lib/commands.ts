@@ -144,9 +144,26 @@ export function projectWatchStop(slug: string): Promise<void> {
  * One task's コミット一覧・Pull Request URL・remote ホスト (doc-6). Read-only, and it does not fail
  * for Git reasons — Git 対象不在 arrives inside `commits` so the PR 区画 survives it (decision-6).
  * The project must be open: the References it extracts PR URLs from come from the read model.
+ *
+ * `readId` is the 読取識別子 (decision-19): the caller's own number for this call, which
+ * `taskHistoryCancel` names to stop it. Rejects with a `historyCancelled` error when it is
+ * cancelled — there is no answer then, and the caller that cancelled has stopped waiting for one.
  */
-export function taskHistoryRead(slug: string, taskId: string): Promise<TaskHistory> {
-  return invoke<TaskHistory>("task_history_read", { slug, taskId });
+export function taskHistoryRead(
+  slug: string,
+  taskId: string,
+  readId: number,
+): Promise<TaskHistory> {
+  return invoke<TaskHistory>("task_history_read", { slug, taskId, readId });
+}
+
+/**
+ * 履歴読取の取消 (decision-19): stop the read `readId` names and end the `gh` 照会 it has in flight.
+ * Never rejects and never reports whether anything was running — a read that finished on its own
+ * between the screen deciding and this arriving is not a failure of either side.
+ */
+export function taskHistoryCancel(readId: number): Promise<void> {
+  return invoke<void>("task_history_cancel", { readId });
 }
 
 /**

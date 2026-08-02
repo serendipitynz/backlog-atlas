@@ -35,6 +35,10 @@
     "path": "/elsewhere/evil.md"
   },
   {
+    "kind": "historyCancelled",
+    "read_id": 7
+  },
+  {
     "kind": "editorLaunchFailed",
     "method": "configured",
     "program": "code",

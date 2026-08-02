@@ -271,6 +271,7 @@ const LOOKUP_FAILURES = unionValues<LookupFailure>()(
   "toolMissing",
   "invalidReference",
   "queryFailed",
+  "timedOut",
 );
 
 // The variant tags. A tag is the field every consumer switches on, so a moved one is the change that
@@ -319,6 +320,7 @@ const ERROR_KINDS = unionValues<CommandError["kind"]>()(
   "unknownTaskFile",
   "editorUnavailable",
   "editorLaunchFailed",
+  "historyCancelled",
 );
 const REFUSAL_REASONS = unionValues<LedgerRefusal["reason"]>()(
   "readOnly",
@@ -808,6 +810,7 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
       { kind: "updatesUnavailable", readiness: { state: "unsupported", version: "1.20.0", minimum: "1.48.0" } },
       { kind: "taskNotFound", slug: "atlas", task_id: "TASK-99" },
       { kind: "unknownTaskFile", slug: "atlas", path: "/elsewhere/evil.md" },
+      { kind: "historyCancelled", read_id: 7 },
       { kind: "editorLaunchFailed", method: "configured", program: "code", detail: "d" },
     ];
     expect(errors).toHaveLength(exemplars.length);

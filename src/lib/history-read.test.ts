@@ -26,15 +26,31 @@ function deferred(): {
 function loader(reads: Promise<TaskHistory>[]) {
   let stored: HistoryRead | null = null;
   let index = 0;
-  const load = createHistoryLoader({
-    read: () => reads[index++],
+  /** Every 読取識別子 the loader read under, and every one it cancelled, in order. */
+  const started: number[] = [];
+  const cancelled: number[] = [];
+  const loader = createHistoryLoader({
+    read: (_slug, _taskId, readId) => {
+      started.push(readId);
+      return reads[index++];
+    },
+    cancel: (readId) => {
+      cancelled.push(readId);
+      return Promise.resolve();
+    },
     peek: () => stored,
     store: (read) => (stored = read),
     // Stands in for the screen's `unreadableDetail(asCommandError(...))`: what matters here is
     // that a rejection reaches the port at all, not how the screen words it.
     describeError: (error) => JSON.stringify(error),
   });
-  return { load, current: () => stored };
+  return {
+    load: loader.load,
+    abandon: loader.abandon,
+    current: () => stored,
+    started,
+    cancelled,
+  };
 }
 
 /** The read inputs a task carries when nothing about them is under test. */
@@ -130,6 +146,51 @@ describe("one task's Git history read never lands on another's panel", () => {
 
     expect(current()?.key).toBe(historyKeyOf("atlas", "TASK-1", after));
     expect(summaryOf(current())).toBe("PR#2 の読み");
+  });
+
+  // 履歴読取の取消 (decision-19). Dropping a response on this side leaves the `gh` behind it running;
+  // these fix that the loader also says so, and says it about the right read.
+  it("cancels the read it supersedes, naming that read's own 読取識別子", async () => {
+    const first = deferred();
+    const second = deferred();
+    const l = loader([first.promise, second.promise]);
+
+    void l.load("atlas", "TASK-1", INPUTS);
+    void l.load("atlas", "TASK-2", INPUTS);
+
+    expect(l.cancelled).toEqual([l.started[0]]);
+    // The read that replaced it is not cancelled by its own start — the positive counterpart,
+    // without which "cancel everything on every load" would pass just as well.
+    expect(l.cancelled).not.toContain(l.started[1]);
+    // The identifier the backend files a read under is the one the screen reads it with.
+    expect(l.started).toEqual([1, 2]);
+  });
+
+  it("cancels the read in flight when the panel leaves with no next read", async () => {
+    // The route the backend's 引き継ぎ cannot cover: closing the detail panel starts nothing that
+    // would supersede the read, so without this its `gh` outlives the screen that asked for it.
+    const open = deferred();
+    const l = loader([open.promise]);
+
+    void l.load("atlas", "TASK-1", INPUTS);
+    l.abandon();
+
+    expect(l.cancelled).toEqual([l.started[0]]);
+  });
+
+  it("does not cancel a read that already answered", async () => {
+    // A cancel for a finished read would reach the backend after its registration is gone. Harmless
+    // there, but sending it would mean this loader does not know what it is still waiting for — and
+    // the same confusion would let a *later* read be cancelled by an earlier abandon.
+    const done = deferred();
+    const l = loader([done.promise]);
+
+    void l.load("atlas", "TASK-1", INPUTS);
+    done.resolve(historyWith("answered"));
+    await settle();
+    l.abandon();
+
+    expect(l.cancelled).toEqual([]);
   });
 
   it("reports the newest read's own failure through the error port", async () => {

@@ -744,6 +744,12 @@ export function commandErrorDetail(error: CommandError): string {
     // it as what it is, so a settings write failure never reads as a failed edit.
     case "settings":
       return `設定を保存できませんでした: ${error.detail}`;
+    // 履歴読取の取消 (decision-19) cannot arise from an edit — it answers `task_history_read`, and
+    // only the read this screen itself abandoned. It is worded rather than left out because the
+    // switch is exhaustive, and a sentence that says what happened beats a variant name if a future
+    // route ever does route one here.
+    case "historyCancelled":
+      return "Git 履歴の読み取りは画面の側で取り消されました";
   }
 }
 

@@ -97,6 +97,12 @@ export const answers = {
   settingsPath: "/config/settings.toml",
   loads: [] as ProjectLoad[],
   history: new Map<string, TaskHistory>(),
+  /**
+   * Holds `task_history_read` open, for a test about a read that has *not* answered yet — 取消 is
+   * only about those. A flag rather than a per-task deferred: what the test needs is "this read is
+   * still running", and no test needs two of them in different states at once.
+   */
+  historyNeverAnswers: false,
   /** Answers `update_apply`. Replaced with a `deferred` when a test needs to watch 保存中. */
   update: (_slug: string, _action: UpdateOperation[]): Promise<UpdateResult> =>
     Promise.reject(new Error("update_apply was not expected in this test")),
@@ -147,6 +153,7 @@ export function reset(): void {
   answers.settingsPath = "/config/settings.toml";
   answers.loads = [];
   answers.history = new Map();
+  answers.historyNeverAnswers = false;
   answers.update = () => Promise.reject(new Error("update_apply was not expected in this test"));
   answers.watchStart = () => Promise.resolve();
   answers.subscribeFails = false;
@@ -230,13 +237,17 @@ export const commandFakes = {
   projectWatchStop: (slug: string): Promise<void> =>
     record("project_watch_stop", [slug], () => Promise.resolve()),
 
-  taskHistoryRead: (slug: string, taskId: string): Promise<TaskHistory> =>
-    record("task_history_read", [slug, taskId], () => {
+  taskHistoryRead: (slug: string, taskId: string, readId: number): Promise<TaskHistory> =>
+    record("task_history_read", [slug, taskId, readId], () => {
+      if (answers.historyNeverAnswers) return new Promise<TaskHistory>(() => {});
       const found = answers.history.get(`${slug}:${taskId}`);
       return found === undefined
         ? Promise.reject(new Error(`task_history_read with no answer for ${slug}:${taskId}`))
         : Promise.resolve(found);
     }),
+
+  taskHistoryCancel: (readId: number): Promise<void> =>
+    record("task_history_cancel", [readId], () => Promise.resolve()),
 
   settingsRead: (): Promise<LoadedSettings> =>
     record("settings_read", [], () =>

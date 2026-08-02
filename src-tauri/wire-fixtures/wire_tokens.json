@@ -25,7 +25,8 @@
     "watchFailed",
     "unknownTaskFile",
     "editorUnavailable",
-    "editorLaunchFailed"
+    "editorLaunchFailed",
+    "historyCancelled"
   ],
   "CommitSearch": [
     "searched",
@@ -69,7 +70,8 @@
   "LookupFailure": [
     "toolMissing",
     "invalidReference",
-    "queryFailed"
+    "queryFailed",
+    "timedOut"
   ],
   "ProjectLoad": [
     "loaded",

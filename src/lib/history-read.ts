@@ -16,7 +16,14 @@
 import type { HistoryState } from "./detail";
 import type { TaskHistory } from "./wire";
 
-/** One Git 履歴 read: what it is about, which call made it, and where that call got to. */
+/**
+ * One Git 履歴 read: what it is about, which call made it, and where that call got to.
+ *
+ * `token` is also the 読取識別子 the backend files the call under (decision-19): the screen's
+ * "which call is this" and the backend's "which call is being cancelled" are the same question
+ * about the same call, so numbering it twice would let the two disagree about which read a 取消
+ * reaches.
+ */
 export interface HistoryRead {
   /** The task the read belongs to — [`historyKeyOf`]'s value. */
   key: string;
@@ -56,7 +63,13 @@ export function historyKeyOf(slug: string, taskId: string, inputs: HistoryInputs
 }
 
 export interface HistoryLoaderPorts {
-  read: (slug: string, taskId: string) => Promise<TaskHistory>;
+  read: (slug: string, taskId: string, readId: number) => Promise<TaskHistory>;
+  /**
+   * 履歴読取の取消 (decision-19): tell the backend that the read `readId` names is no longer wanted,
+   * so it ends the `gh` it has in flight. Dropping the answer on this side does not stop that
+   * process — this is the only thing that does.
+   */
+  cancel: (readId: number) => Promise<void>;
   /** The record the screen holds right now. */
   peek: () => HistoryRead | null;
   store: (read: HistoryRead) => void;
@@ -64,32 +77,60 @@ export interface HistoryLoaderPorts {
   describeError: (error: unknown) => string;
 }
 
+/** What a loader offers its screen: start a read, and abandon the one running. */
+export interface HistoryLoader {
+  load: (slug: string, taskId: string, inputs: HistoryInputs) => Promise<void>;
+  /**
+   * Abandon the read in flight without starting another — what leaving the detail panel does
+   * (decision-19). Nothing supersedes such a read, so without this its `gh` would outlive the screen
+   * that asked for it. A no-op when the last read already finished.
+   */
+  abandon: () => void;
+}
+
 /**
  * A loader that stamps every call and stores only the newest call's result. A superseded call is
- * dropped in silence: its answer is not wrong, it is just no longer the one being asked for.
+ * dropped in silence: its answer is not wrong, it is just no longer the one being asked for — and
+ * since 2026-08-02 it is also cancelled, so the `gh` behind it stops rather than running on for a
+ * screen that has moved (decision-19).
  */
-export function createHistoryLoader(
-  ports: HistoryLoaderPorts,
-): (slug: string, taskId: string, inputs: HistoryInputs) => Promise<void> {
+export function createHistoryLoader(ports: HistoryLoaderPorts): HistoryLoader {
   let calls = 0;
-  return async function load(
-    slug: string,
-    taskId: string,
-    inputs: HistoryInputs,
-  ): Promise<void> {
-    const key = historyKeyOf(slug, taskId, inputs);
-    const token = ++calls;
-    ports.store({ key, token, value: { state: "loading" } });
+  /** The 読取識別子 of the read still waiting for an answer, or `null` when none is. */
+  let running: number | null = null;
 
-    let value: HistoryState;
-    try {
-      value = { state: "loaded", history: await ports.read(slug, taskId) };
-    } catch (error) {
-      value = { state: "failed", detail: ports.describeError(error) };
-    }
+  function stopRunning(): void {
+    if (running === null) return;
+    // Not awaited: the screen's next read must not queue behind a round trip whose only purpose is
+    // to stop something. A rejection is nothing to report either — the read is being abandoned, and
+    // an unhandled rejection here would be noise about a call whose answer nobody wanted.
+    void ports.cancel(running).catch(() => {});
+    running = null;
+  }
 
-    // Every call stamps the record before awaiting, so "the stored token is still mine" is exactly
-    // "no later call has started" — including a later call for the same task.
-    if (ports.peek()?.token === token) ports.store({ key, token, value });
+  return {
+    async load(slug: string, taskId: string, inputs: HistoryInputs): Promise<void> {
+      const key = historyKeyOf(slug, taskId, inputs);
+      // Cancelled before the next call starts, so the backend's own 引き継ぎ is a safety net rather
+      // than the mechanism: this names the exact read being abandoned, while 引き継ぎ can only key on
+      // the task and so cannot help when the next read is about a different one.
+      stopRunning();
+      const token = ++calls;
+      running = token;
+      ports.store({ key, token, value: { state: "loading" } });
+
+      let value: HistoryState;
+      try {
+        value = { state: "loaded", history: await ports.read(slug, taskId, token) };
+      } catch (error) {
+        value = { state: "failed", detail: ports.describeError(error) };
+      }
+      if (running === token) running = null;
+
+      // Every call stamps the record before awaiting, so "the stored token is still mine" is exactly
+      // "no later call has started" — including a later call for the same task.
+      if (ports.peek()?.token === token) ports.store({ key, token, value });
+    },
+    abandon: stopRunning,
   };
 }

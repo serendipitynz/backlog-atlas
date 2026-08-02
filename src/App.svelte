@@ -37,6 +37,7 @@
     settingsSave,
     taskFileOpen,
     taskHistoryRead,
+    taskHistoryCancel,
     updateApply,
     workspaceOpen,
   } from "./lib/commands";
@@ -1270,8 +1271,9 @@
   }
 
   /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
-  const loadHistory = createHistoryLoader({
+  const historyLoader = createHistoryLoader({
     read: taskHistoryRead,
+    cancel: taskHistoryCancel,
     peek: () => untrack(() => historyRead),
     store: (read) => (historyRead = read),
     describeError: (error) => unreadableDetail(asCommandError(error)),
@@ -1283,11 +1285,16 @@
   // watch reports a new one — so refreshing those is still the panel's 再取得 button. `historyKey` is
   // the whole dependency; reading the view here would re-fetch on every unrelated root's reload.
   $effect(() => {
-    if (historyKey === null) return;
+    if (historyKey === null) {
+      // Nothing to read means the panel closed (or lost its id): no next read will supersede the one
+      // in flight, so the 取消 is the only thing that ends its `gh` (decision-19).
+      historyLoader.abandon();
+      return;
+    }
     const view = untrack(() => selectedView);
     const inputs = untrack(() => historyInputs);
     if (view === null || view.task.id === null || inputs === null) return;
-    void loadHistory(view.task.project, view.task.id, inputs);
+    void historyLoader.load(view.task.project, view.task.id, inputs);
   });
 
   function hide(slug: string): void {
@@ -1694,7 +1701,7 @@
       onreloadHistory={() =>
         view.task.id === null || historyInputs === null
           ? undefined
-          : void loadHistory(view.task.project, view.task.id, historyInputs)}
+          : void historyLoader.load(view.task.project, view.task.id, historyInputs)}
       ondirty={(dirty) => (detailDirty = dirty)}
       onconfirmDiscard={(proceed) => guardDiscard(true, proceed)}
       onclose={closeDetail}

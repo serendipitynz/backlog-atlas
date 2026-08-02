@@ -458,6 +458,28 @@ describe("再読込イベント後の選択・未保存・履歴の整合", () =
     expect(host.querySelector('[aria-label="タスク詳細"]')).not.toBeNull();
   });
 
+  it("詳細を閉じると走っている履歴読取を取り消す", async () => {
+    // 履歴読取の取消 (decision-19). This is the one route the backend's 引き継ぎ cannot cover: closing
+    // starts no next read of that task, so nothing supersedes the one in flight and the screen's own
+    // 取消 is what ends its `gh`. The 読取識別子 it names is the read it opened with.
+    // The read has to still be in flight: a 取消 for a read that already answered would name a
+    // registration the backend has removed, and this loader deliberately does not send one.
+    answers.historyNeverAnswers = true;
+    const host = await opened();
+    const reads = madeTo("task_history_read");
+    expect(reads).toHaveLength(1);
+
+    click(only(host, "button.close"));
+    await settled();
+
+    expect(host.querySelector('[aria-label="タスク詳細"]')).toBeNull();
+    // The third argument of `task_history_read` and the only argument of the cancel are the same
+    // 読取識別子 — a cancel naming a different read would leave the running one going.
+    expect(madeTo("task_history_cancel").map((call) => call.args)).toEqual([
+      [reads[0].args[2]],
+    ]);
+  });
+
   it("References が変わった再読込では履歴を読み直す", async () => {
     await opened();
     expect(madeTo("task_history_read")).toHaveLength(1);
