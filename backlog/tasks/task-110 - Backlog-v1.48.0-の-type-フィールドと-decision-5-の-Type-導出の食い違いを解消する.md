@@ -1,10 +1,10 @@
 ---
 id: TASK-110
 title: Backlog v1.48.0 の type フィールドと decision-5 の Type 導出の食い違いを解消する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-01 07:57'
-updated_date: '2026-08-02 03:20'
+updated_date: '2026-08-02 04:17'
 labels:
   - 'kind:feature'
 milestone: m-2
@@ -36,15 +36,15 @@ TASK-58 の実測により、Backlog CLI v1.48.0 が `task create --type` / `tas
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-2026-08-02 に実装した。
+2026-08-02 に実装した。PR #45 は 2 ラウンドのレビューを経て APPROVED、同日マージ済み。
 
 **先に確定したこと（決定先行）**: 対応順の表に元から決 印があるタスクで、実装より先に
 **decision-20** を書いてユーザーの確認を得た。対応表は
-`_sandbox/referent-table-task-110-type-field.md` 第 2 版に先行確定した（第 1 版から 1 行を
-直した。下の「畳み込みの範囲」を参照）。ユーザーが選んだのは **type フィールドを読んで
-kind ラベル由来と合流**・**既知 Type 集合を和集合 10 語へ**・**同値は畳む**・**編集経路は
-今回作らない** の 4 点。AGENTS.md / AGENTS.ja.md は改訂していない（Type 導出に触れる記述が
-無いため。TASK-60・85・87 と同じ）。
+`_sandbox/referent-table-task-110-type-field.md` **第 3 版**に先行確定した（第 1 版 → 畳み込みの
+範囲を直した第 2 版 → レビュー指摘を受けて表示規則の発火条件と編集可否を立て直した第 3 版）。
+ユーザーが選んだのは **type フィールドを読んで kind ラベル由来と合流**・**既知 Type 集合を
+和集合 10 語へ**・**同値は畳む**・**編集経路は今回作らない** の 4 点。AGENTS.md / AGENTS.ja.md は
+改訂していない（Type 導出に触れる記述が無いため。TASK-60・85・87 と同じ）。
 
 **測り直した**: TASK-58 の記録に依存せず、使い捨ての Backlog ルートへ `backlog init` して
 `--type` の挙動を実測した（2026-08-02、backlog 1.48.0）。結果 4 件は decision-20 の Context に
@@ -65,13 +65,31 @@ Atlas は知らないこと。並び順は kind ラベル由来が先で、こ�
 **同値の重複** へ広げ、decision-20 の本文を書き直した。**これが decision-5 の挙動を変えた
 唯一の箇所**で、`kind:bug` と `kind:Bug` を持つタスクの表示が 2 値から 1 値になる。
 
+**表示規則の発火条件を値の個数で書き直した（レビュー round 1 の [P1]、対応表 第 3 版 表 C）**:
+decision-5 は境界事象 3 つのうち 2 つを **kind ラベルの個数** で書いていた（複数 kind = 2 つ以上・
+kind 無し = 0 個）。導出元が 2 つになるとその個数は表示すべき Type 値の個数と一致しなくなり、
+`labels: []` + `type: bug` について decision-5 は「Type 未設定」、decision-20 は `bug` を指示する、
+accepted な 2 つの decision が食い違う状態になっていた。当初の注記は「境界事象 3 つの表示規則は
+変えていない」と書いていたが、**変えていないのは表示の中身で、発火条件は変わっていた**。
+条件を Type 値の側で言い直し（**複数 Type 値**・**Type 候補なし**）、表示内容は decision-5 の
+文言のまま据え置いた。未知 Type は元から値で書かれていたので変更不要。実装
+（`is_unset`／`is_multiple`）は元から値を数えていたので、このラウンドで足したのは、その挙動を
+固定するテストと、違うことを書いていた文書の訂正である。
+
+**非対称の訂正（同 [P2]、対応表 第 3 版 表 D）**: doc-8 は「kind ラベル側はラベル編集で消せるが
+type フィールド側は消せない」と書いていたが、`src/lib/edit.ts` の `EditDraft.labels` は通常
+ラベルしか持たず、`TYPE_NOT_EDITABLE` が既に Type 編集の非提供を述べている。**どちらの導出元も
+Atlas からは編集できない**（理由が別なだけ）に直した。`TYPE_NOT_EDITABLE` の文面も、可視の
+Type をすべて kind ラベルとして説明していたので、2 つの根拠を述べる形へ改めた。
+
 **AC #3 doc 改訂**: doc-4 は用語に type フィールド・Type 導出元を足し、3.1 の `type` 行と
 3.3（表題を「Type 候補を集め、通常ラベルと分離する境界」へ）と §4 の任意フィールド列挙を
 直した。doc-8 は §3 の表の Type 行の由来と、§4 に「由来は画面に出さない」「Atlas は
 type フィールドを編集できない」の 2 項を足した。doc-5 §3.4 の `--type` が
 「この食い違いは TASK-110 で扱う」と予約していた箇所を decision-20 の参照へ置き換え、
 操作写像に足さない理由が製品判断であることを doc-10 §1 の規則に沿って書いた。
-decision-5 には注記を 2 箇所（Decision 節と既知 Type 集合の定義）入れた。
+decision-5 には注記を 2 箇所（Decision 節と既知 Type 集合の定義）入れた。レビュー後、
+この注記と doc-8・画面設計 03・doc-9 の該当箇所を上の発火条件の言い直しに合わせて改訂した。
 
 **AC #4 実装**: 読み取り層（`read.rs`）が frontmatter `type` を読み、kind ラベル由来の
 後ろへ足す。空文字列・空白だけは候補を生まない（CLI の解除はキーごと消すので、空値は
@@ -91,14 +109,14 @@ decision-5 には注記を 2 箇所（Decision 節と既知 Type 集合の定義
 いるので、件数合わせでは通らない）。(5) 空値の判定を外すと
 `a_blank_type_field_yields_no_candidate` が落ちる。
 
-**検証**: `cargo test` 343 件（ignored 4）、`cargo test -- --include-ignored` 347 件、
-`cargo fmt --check`・`cargo clippy --all-targets` 無指摘。`pnpm test` 513 件、
-`pnpm run check` 282 ファイル・0 errors、`pnpm run build` 成功。
+**検証（マージ時点の main で再実測）**: `cargo test` 345 件（ignored 4）、
+`cargo test -- --include-ignored` 349 件、`cargo fmt --check`・`cargo clippy --all-targets`
+無指摘。`pnpm test` 513 件、`pnpm run check` 282 ファイル・0 errors、`pnpm run build` 成功。
 **wire fixture の再記録は不要だった** — ワイヤの型も union のトークン集合も増減しておらず、
 `Task.type` は `string[]` のままである（`wire.ts` の説明文だけを直した）。
 
 **自動検査で届いていない範囲**: 画面に実際に Type チップが 2 つ並ぶところは見ていない。
-Svelte 側は 1 行も触っておらず、`TaskCard`／`TaskDetail` は以前から
+Svelte 側は `TYPE_NOT_EDITABLE` の文面以外を触っておらず、`TaskCard`／`TaskDetail` は以前から
 `interpretation.types` を並びとして描いているので経路は変わっていないが、この環境は
 `screencapture` が使えないので目視の確認はユーザーへ依頼する。
 <!-- SECTION:NOTES:END -->
