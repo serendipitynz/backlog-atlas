@@ -150,7 +150,7 @@
   /**
    * The ☰ and the box it hangs off, so the menu can be closed back onto the control it came from.
    *
-   * The ☰ is also what a モーダル hands focus back to (`openEntry`). It is the header's only control, so
+   * The ☰ is also what a モーダル hands focus back to (`raiseModal`). It is the header's only control, so
    * it is on screen whichever route was taken into the modal — unlike the menu line that was pressed,
    * which the modal unmounts on its way up.
    */
@@ -1343,7 +1343,7 @@
 
   function openMenu(): void {
     menuOpen = true;
-    // 被せ層 は 1 枚だけ (see `openEntry`).
+    // 被せ層 は 1 枚だけ (see `raiseModal`).
     filterPopoverOpen = false;
   }
 
@@ -1357,7 +1357,7 @@
   /** Open or close the 値一覧 (doc-7 §5.2), from the フィルタ帯's button or from its chord. */
   function setFilterPopover(open: boolean): void {
     filterPopoverOpen = open;
-    // 被せ層 は 1 枚だけ (see `openEntry`).
+    // 被せ層 は 1 枚だけ (see `raiseModal`).
     if (open) menuOpen = false;
   }
 

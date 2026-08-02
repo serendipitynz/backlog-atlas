@@ -1,12 +1,13 @@
 <script lang="ts">
-  // モーダル (doc-7 §2.1, TASK-56): the layer 登録 and 設定 open in. §2.1 gives it three obligations and
-  // this component is where all three are met once, rather than in each thing it opens —
+  // モーダル (doc-7 §2.1, TASK-56): the layer 登録・設定・キーボード操作の一覧 open in (the third since
+  // TASK-67). §2.1 gives it three obligations and this component is where all three are met once, rather
+  // than in each thing it opens —
   // 開いている間フォーカスを内側に留め、Escape で閉じ、閉じたら開く前の操作へフォーカスを戻す.
   //
   // It is a layer and not a screen (AC #2 モーダルの外に画面遷移を作らない): the screen behind keeps its
-  // rows, filter and selection, because neither 登録 nor 設定 is somewhere to work — they are answered and
-  // dismissed. Nothing is unmounted to show them, so no route into them can lose 未保存入力 and none of
-  // them needs the 破棄前確認 (doc-8 §6.3).
+  // rows, filter and selection, because none of the three is somewhere to work — they are answered, or
+  // read, and dismissed. Nothing is unmounted to show them, so no route into them can lose 未保存入力 and
+  // none of them needs the 破棄前確認 (doc-8 §6.3).
   //
   // Both keys it answers come from the 割り当て一覧 (`shortcuts.ts`), including the Tab it holds inside:
   // doc-7 §2.1 requires every key whose default is stopped to be entered in that list, and the trap
@@ -17,7 +18,7 @@
   // the grid area alone (`App.svelte`) so a 破棄前確認 stays answerable behind it. The difference is
   // deliberate: doc-7 §2.1 requires *this* layer to keep focus inside, and a trap that let Tab reach a
   // control outside would not be one. Nothing becomes unreachable — Escape closes this modal and gives
-  // focus back, so an unanswered ① is one key away, and neither 登録 nor 設定 can raise a 破棄前確認 of its
+  // focus back, so an unanswered ① is one key away, and none of the three can raise a 破棄前確認 of its
   // own, since opening them unmounts nothing that holds 未保存入力.
   import type { Snippet } from "svelte";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";

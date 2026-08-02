@@ -75,9 +75,11 @@ export const HEADER_ENTRIES: readonly HeaderEntry[] = [
 // --- メニュー項目 (doc-7 §2.1, doc-11 §4 ⑥) ----------------------------------------------------
 
 /**
- * The line that opens the 一覧モーダル (doc-7 §2.1). Named with a `…` like every other label in this app
- * that opens a layer rather than acting (`選択…`), which is also how it reads as a way *to* the list
- * rather than as the list itself — the entry above it opens a modal too, and both say so the same way.
+ * The line that opens the 一覧モーダル (doc-7 §2.1). The `…` follows `ProjectRegister`'s 選択… — the app's
+ * one existing precedent for it — and says the line leads to the list rather than being it. The two
+ * 共通入口 above open modals without one, and stay as they are: they are named for the thing they open
+ * (プロジェクトを登録・設定), while this line is named for the *display* of something, which is the case an
+ * ellipsis is for. Adding one to those two would be a rename this task was not asked for.
  */
 export const SHORTCUT_HELP_LABEL = "キーボード操作表示…";
 

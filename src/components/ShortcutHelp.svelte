@@ -1,7 +1,7 @@
 <script lang="ts">
   // 割り当て一覧 (doc-7 §2.1) as the screen shows it — the contents of the 一覧モーダル that TASK-67 moved
-  // this table into. On screen it is called キーボード操作の一覧; the doc's term for the same thing is
-  // 割り当て一覧, and `shortcuts.ts` is its 正本 (`_sandbox/referent-table-task-67-icons.md`).
+  // this table into. On screen it is called キーボード操作の一覧 and the doc's term is 割り当て一覧: one
+  // thing with two words for it, so the two are tied together here. `shortcuts.ts` is its 正本.
   //
   // **Why it left the menu.** It used to sit inside the header menu as a closed `details`, which made the
   // menu two things at once: the entries a user picks from, and a reference table folded up underneath
@@ -22,7 +22,15 @@
 </script>
 
 <section>
-  <h2>キーボード操作の一覧</h2>
+  <!-- 閉じる sits beside the heading, as `Settings.svelte` and `ProjectRegister.svelte` both do, and for
+       a reason this modal has more of than either: `Modal.svelte` focuses the first focusable control on
+       mount, and `focus()` scrolls it into the backdrop's scroll area. With the only control below a
+       nine-row table, a window shorter than the dialog would open the list already scrolled past its own
+       heading and first rows. -->
+  <header>
+    <h2>キーボード操作の一覧</h2>
+    <button type="button" class="close" onclick={onclose}>閉じる</button>
+  </header>
   <p class="lead">
     修飾キーはこの OS の表記で出しています。入力欄・編集部品の内側では、単独キーの割り当ては発火しません。
   </p>
@@ -51,10 +59,6 @@
       {/each}
     </tbody>
   </table>
-
-  <div class="actions">
-    <button type="button" onclick={onclose}>閉じる</button>
-  </div>
 </section>
 
 <style lang="scss">
@@ -62,11 +66,22 @@
     padding: 0.75rem;
   }
 
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
   h2 {
     // 画面見出し (doc-11 §2.2).
-    margin: 0 0 0.25rem;
+    margin: 0;
     font-size: 0.92rem;
     font-weight: 650;
+  }
+
+  .close {
+    margin-left: auto;
   }
 
   // 副次 (doc-11 §2.1): it describes the table rather than being read on its own.
@@ -108,12 +123,6 @@
   // which is what pushes the long sentences in the two columns beside it out of one screen.
   .fires {
     white-space: nowrap;
-  }
-
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 0.6rem;
   }
 
   button {

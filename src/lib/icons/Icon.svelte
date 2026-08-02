@@ -11,7 +11,7 @@
   // **The size is `1em`.** The icon then follows the font-size of the button it sits in, which is the
   // knob that already exists — an icon with a size prop of its own is a second knob that can disagree
   // with the text beside it.
-  import { ICONS, ICON_STROKE_WIDTH, ICON_VIEWBOX, type IconName } from "./lucide";
+  import { ICONS, ICON_STROKE_WIDTH, ICON_VIEWBOX, drawnShape, type IconName } from "./lucide";
 
   interface Props {
     name: IconName;
@@ -31,10 +31,12 @@
   stroke-linejoin="round"
   aria-hidden="true"
 >
+  <!-- Every shape is drawn by whatever `drawnShape` names, so no kind can be silently skipped here —
+       the exhaustiveness lives in that function, where the compiler holds it (see `lucide.ts`). Inside
+       an `<svg>` the element is created in the SVG namespace, which is what makes this a real `<path>`. -->
   {#each ICONS[name] as shape}
-    {#if shape.shape === "path"}
-      <path d={shape.d} />
-    {/if}
+    {@const drawn = drawnShape(shape)}
+    <svelte:element this={drawn.tag} {...drawn.attrs} />
   {/each}
 </svg>
 
