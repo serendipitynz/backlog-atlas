@@ -18,6 +18,8 @@
  * | §1 レーンヘッダ行 | `Swimlane.svelte` の `.lane-head` | the row's own full-width line: name, slug, counts, row-level controls |
  * | §1 列折畳み | `columnFoldable` / a collapsed `StatusColumn` | one column narrowed to a band in every row at once, keeping name and count |
  * | §1 行折畳み | `rowFoldable` / `laneCounts` | one row's cells folded away, keeping the per-column counts |
+ * | §2.3 2 層スティッキー | `Swimlane.svelte` の `.head` / `.lane-head` と `--lane-top` | the two header rows held at the top, the lower one against the upper one's current height |
+ * | §2.3 着地 | [`laneScrollDelta`] と `Swimlane.svelte` の `.lane-mark` | where the grid scrolls to for 「このプロジェクトのレーンへ」, and the marker it measures from |
  * | §5 セル内の安定並び | `compareCards` | priority 降順 → ordinal 昇順 → updated_date 新しい順 |
  * | §6 ルート読取不能 | `SwimlaneRow` state `"unreadable"` | the row stays, with the reason instead of cards |
  * | doc-3 §5.3 横断タスクID | `crossTaskId` (`card.ts`) | `<slug>:<TASK-ID>`, always slug-prefixed on this screen |
@@ -268,6 +270,39 @@ export const ROW_FOLD_ABSENT_REASON =
 /** Why the 未対応列 gets no 列折畳み (doc-7 §2.2). Same 置かない, same reason-beside-it treatment. */
 export const UNMAPPED_FOLD_ABSENT_REASON =
   "未対応列は正準ステータス列ではないため、列折畳みの対象にしません（doc-7 §2.2）。";
+
+// --- 2 層スティッキーへの着地 (doc-7 §2.3, doc-10 §2) -----------------------------------------
+
+/** What the grid measures before it scrolls a lane into view. All lengths are CSS pixels. */
+export interface LaneLanding {
+  /**
+   * The lane's start, from the top of the grid's scrollport — negative once it has scrolled past.
+   * Read from the row's anchor rather than from its レーンヘッダ行: the header is sticky, so while it
+   * is held at the top its own position reads as `headHeight` however far the row is above.
+   */
+  offset: number;
+  /** The 列ヘッダ行's current height, which is what the レーンヘッダ行 is stuck below. */
+  headHeight: number;
+  /** The レーンヘッダ行's own height. Sticky does not change it, so it can be measured anywhere. */
+  laneHeight: number;
+  /** The scrollport's height. */
+  viewportHeight: number;
+}
+
+/**
+ * How far the grid must scroll for a lane's header to be whole and unobscured, or 0 when it already
+ * is — the 着地 of 「このプロジェクトのレーンへ」 (doc-10 §2).
+ *
+ * Both header rows are sticky (doc-7 §2.3), so the two ways a lane header can be unreadable are not
+ * symmetric: above, it is *behind* the 列ヘッダ行 rather than off the screen, which no scroll position
+ * reports as out of view. That is why the test is against `headHeight` and not against 0, and why the
+ * landing puts the lane's start exactly at the 列ヘッダ行's lower edge instead of at the scrollport's.
+ */
+export function laneScrollDelta(landing: LaneLanding): number {
+  const behindTheHead = landing.offset < landing.headHeight;
+  const pastTheBottom = landing.offset + landing.laneHeight > landing.viewportHeight;
+  return behindTheHead || pastTheBottom ? landing.offset - landing.headHeight : 0;
+}
 
 // --- 前後移動 (doc-8 §2.2) ------------------------------------------------------------------
 
