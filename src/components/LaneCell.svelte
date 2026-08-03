@@ -51,12 +51,25 @@
 
 <div class="cell" class:unmapped class:collapsed>
   {#if collapsed}
-    <!-- 畳んだ列は件数を残す (doc-7 §2.2): the number is the cell's whole content, and the column name
-         travels with it in the label so the band is readable without the column head beside it. Zero
-         is written as `0`, not as the 空セル's `—`: in a folded column the cell *is* the count, and a
-         band mixing dashes with numbers cannot be read down the grid, which is the reading the count
-         was kept for. `—` stays the form of an 空セル in an open column (doc-11 §6), where the absence
-         is what has to be shown rather than a number. -->
+    <!-- 畳んだ列は、カード 1 枚を小さな四角 1 つに置き換えて並べ、その下に件数を出す (doc-7 §2.2).
+         The squares are how much work is in the cell at a glance — the reading a 5rem band cannot give
+         with cards — and the number below them is the exact figure. They carry no colour: a coloured
+         square here would read as one of the 4 系統 of chip (doc-11 §3), which say something *about*
+         a task, while these say only how many there are.
+         `aria-hidden`, because they add nothing a screen reader cannot get from the count. -->
+    {#if tasks.length > 0}
+      <div class="tally" aria-hidden="true">
+        {#each tasks as view (view.task.sourcePath)}
+          <span class="pip"></span>
+        {/each}
+      </div>
+    {/if}
+    <!-- 件数 (doc-7 §2.2): the exact number, and the column name travels with it in the label so the
+         band is readable without the column head beside it. Zero is written as `0`, not as the 空セル's
+         `—`: in a folded column the cell *is* the count, and a band mixing dashes with numbers cannot
+         be read down the grid, which is the reading the count was kept for. `—` stays the form of an
+         空セル in an open column (doc-11 §6), where the absence is what has to be shown rather than a
+         number. -->
     <span class="count" aria-label="{label} {tasks.length} 件">{tasks.length}</span>
   {:else}
     {#if tasks.length === 0}
@@ -105,6 +118,26 @@
   .collapsed {
     align-items: center;
     padding: 0.4rem 0.2rem;
+  }
+
+  // カード 1 枚ぶんの四角の列 (doc-7 §2.2). Wraps and fills the band from its left edge, so the shape
+  // of the block is itself the quantity; it is not a fixed-width gauge and never truncates, because a
+  // capped row of squares would say the same thing for 20 cards as for 200.
+  .tally {
+    display: flex;
+    flex-wrap: wrap;
+    align-self: stretch;
+    gap: 0.16rem;
+  }
+
+  // No border, no radius worth the name: at this size a 1px frame is most of the figure. The colour is
+  // the 強い罫線 (doc-11 §2.1) — the most neutral ink on the theme, and pointedly not a 族の色
+  // (decision-6: nothing here is a problem being reported).
+  .pip {
+    width: 0.35rem;
+    height: 0.35rem;
+    border-radius: 1px;
+    background: var(--line-strong);
   }
 
   .count {
