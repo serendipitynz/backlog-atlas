@@ -461,7 +461,8 @@ describe("AC #4 行折畳みと行非表示は件数が読めるか否かで分�
   });
 });
 
-describe("AC #5・#6 折畳みの対象にしないもの", () => {
+// TASK-50 の AC #5 と、TASK-69 が上書きした AC #6 (未対応列は列折畳みの対象にしない) の現在の姿。
+describe("折畳みの対象にしないもの、および TASK-69 が対象にしたもの", () => {
   it("withholds 行折畳み from a row with no cells to fold, with the reason spelled out", () => {
     const rows = swimlane(
       ["broken", "waiting", "atlas"],
@@ -500,6 +501,9 @@ describe("AC #5・#6 折畳みの対象にしないもの", () => {
     expect(columnFoldable([], "unmapped")).toBe(true);
     // Three status columns folded: 未対応 may still be folded — doing so takes no status column away.
     expect(columnFoldable(["toDo", "inProgress", "inReview"], "unmapped")).toBe(true);
+    // 常に畳める is asserted at the one input that separates it from ほぼ常に: a state the screen cannot
+    // reach (the fourth column's control is refused), but this function is exported and says "always".
+    expect(columnFoldable(["toDo", "inProgress", "inReview", "done"], "unmapped")).toBe(true);
     // …and it does not stand in for the one left open: 'done' is still refused with 未対応 open, since
     // the 未対応区画 disappears once no row has such a task (doc-7 §2.2).
     expect(columnFoldable(["toDo", "inProgress", "inReview"], "done")).toBe(false);
@@ -593,8 +597,9 @@ describe("2 層スティッキーの下への着地", () => {
   });
 
   it("follows the 列ヘッダ行's height rather than a written-down one", () => {
-    // 受入条件 #3: 列折畳み makes that row taller, and the landing has to move with it — the same
-    // lane position lands differently only by the difference in the height it is stuck below.
+    // 受入条件 #3: the 列ヘッダ行's height is not a constant — the root font-size scales its one line,
+    // and anything later added to a head moves it — so the landing follows the measured height. The
+    // same lane position lands differently only by the difference in the height it is stuck below.
     const folded = { ...grid, headHeight: 56 };
     expect(laneScrollDelta({ ...folded, offset: 8 })).toBe(-48);
     expect(laneScrollDelta({ ...folded, offset: 40 })).toBe(-16);

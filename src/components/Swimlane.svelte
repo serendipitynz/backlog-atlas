@@ -125,11 +125,13 @@
   /**
    * The 列ヘッダ行 elements, by column, so the レーンヘッダ行 can be stuck to the row's lower edge.
    *
-   * Its height is not a constant: 畳んだ列 stacks its name, count and control (doc-7 §2.2) and the
-   * 未対応列 carries the two sentences that say what it does not offer, either of which makes the row
-   * taller than an open column's one line. So the offset is measured rather than written down — a
-   * fixed one would leave a strip of scrolled cards between the two rows the moment a column is
-   * folded, which is exactly what 受入条件 #3 forbids.
+   * Its height is not a constant, even though every head is now one line (doc-7 §2.2): the line is as
+   * tall as the root font-size makes it, which the OS and the browser both scale, and anything later
+   * added to a head moves it again. So the offset is measured rather than written down — a fixed one
+   * would leave a strip of scrolled cards between the two rows as soon as the real height differed
+   * from it, which is exactly what 受入条件 #3 forbids. (Until TASK-69 the folded head stacked its
+   * parts and the 未対応列 carried two sentences, so folding a column moved this by two lines; those
+   * two causes are gone, the measurement is not.)
    */
   let columnHeads = $state<Record<string, HTMLElement>>({});
   let headHeight = $state(0);
@@ -766,14 +768,14 @@
 
   // 折畳みの控え (doc-7 §2.2・§2.3), アイコンのみのボタン (doc-11 §2.4). The `font-size` is the .7rem
   // its neighbours read at and it is also what sizes the figure, since an icon draws at 1em — the icon
-  // gets no size of its own (doc-11 §2.4). Centred both ways because there is no text for the box to
-  // sit beside, and horizontally because the folded column stretches this button to the band's width.
+  // gets no size of its own (doc-11 §2.4). Centred vertically because the height is stated rather than
+  // taken from a text line, so the figure has to be placed inside it; nothing widens this box (it is
+  // `flex: none` in both an open head and a folded one), so there is nothing to centre horizontally.
   .fold {
     box-sizing: border-box;
     display: inline-flex;
     flex: none;
     align-items: center;
-    justify-content: center;
     height: var(--head-control);
     padding: 0 0.35rem;
     border: 1px solid var(--line-strong);

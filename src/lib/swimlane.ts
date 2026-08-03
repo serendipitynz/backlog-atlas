@@ -263,10 +263,13 @@ export type GridColumn = StatusColumn | "unmapped";
  * **The 未対応区画 does not count as the column left open**, even though it holds cards: it disappears
  * of its own accord once no row has an 未対応 status task left (doc-7 §2.2), which would leave a grid
  * whose four bands can no longer be forced open by this rule. It can itself always be folded, since
- * folding it never takes the last status column away.
+ * folding it never takes a status column away — said as its own line below rather than left to fall
+ * out of the canonical test, which would answer `false` for it once all four were folded. That state
+ * is unreachable through the screen, but this is an exported rule and "always" has to mean always.
  */
 export function columnFoldable(collapsed: readonly GridColumn[], column: GridColumn): boolean {
   if (collapsed.includes(column)) return true;
+  if (column === "unmapped") return true;
   return CANONICAL_COLUMNS.some((other) => other !== column && !collapsed.includes(other));
 }
 
