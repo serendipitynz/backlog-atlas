@@ -99,6 +99,9 @@
 </script>
 
 <div class="bar">
+  <!-- 属性名 beside the box rather than above it: stacked, this one control was 41px against the
+       22px everything else in the row is, and a row whose height one member decides is the 崩れ this
+       task is about (画面設計案 03 案A は帯を常に 1 行と置く). -->
   <label class="text">
     <span class="caption">テキスト</span>
     <input
@@ -188,46 +191,62 @@
 
 <style lang="scss">
   .bar {
-    // The one row a token occupies. Named here because two rules depend on it agreeing: the token's
-    // own height and the two-row cap computed from it.
-    --token-line: 1.25rem;
+    /*
+     * The height every control in the row is drawn to (画面設計案 03 案A: 帯は常に 1 行).
+     *
+     * One value rather than each control sizing itself, because two separate things depend on them
+     * agreeing. Vertically, controls of unequal height in a `center` row put their contents on
+     * different lines — the 崩れ this task fixes was three of them at 17.39 / 17.78 / 27.08 (WebKit,
+     * measured). And the two-row cap on `.tokens` below is computed from this: when the cap was
+     * derived from a *content* height instead, the 1px borders it left out made two rows 47.2px
+     * against a 43.2px cap, and 折り返し 2 行で頭打ち (doc-7 §5.2) clipped its own second row.
+     * Every control here therefore takes `box-sizing: border-box` as well — there is no global
+     * reset, and a border-box height is the only one the cap can be arithmetic on.
+     */
+    --bar-control: 1.4rem;
+    // The gap between two token rows, named for the same reason `--bar-control` is: the cap below
+    // adds one of these to two control heights, so a literal here and a literal there could drift
+    // apart — which is the shape of the defect this task fixed, not a shape to leave behind.
+    --bar-gap: 0.3rem;
 
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.3rem 0.6rem;
-    padding: 0.4rem 0.75rem;
+    // 中央揃え (画面設計案 03 案A・01。baseline ではない — アイコンや枠を持つ控えは baseline を
+    // 持たないので、揃うのは文字だけになる)。
+    align-items: center;
+    gap: var(--bar-gap);
+    padding: 0.3rem 0.75rem;
     border-bottom: 1px solid var(--line);
     font-size: 0.72rem;
   }
 
   .text {
     display: inline-flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.1rem;
+    align-items: center;
+    gap: 0.25rem;
   }
 
   .caption {
-    font-size: 0.62rem;
+    font-size: 0.64rem;
     color: var(--muted);
   }
 
   input[type="search"] {
-    padding: 0.15rem 0.35rem;
+    box-sizing: border-box;
+    height: var(--bar-control);
+    padding: 0 0.3rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: var(--bg);
     color: inherit;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
   }
 
   .add {
     // The popover is positioned against this box, so it opens under ＋ 絞り込み wherever the bar's
     // wrapping has put it.
     position: relative;
-    align-self: center;
   }
 
   /*
@@ -238,23 +257,30 @@
    */
   .tokens {
     display: flex;
-    max-height: calc(var(--token-line) * 2 + 0.2rem);
+    // Two rows of `--bar-control` and the one gap between them, both read from the same variables
+    // the rows themselves use — so the cap is the height of exactly two rows rather than a number
+    // that happens to be near it.
+    max-height: calc(var(--bar-control) * 2 + var(--bar-gap));
     flex: 1;
     flex-wrap: wrap;
     align-content: flex-start;
-    gap: 0.2rem;
+    gap: var(--bar-gap);
     overflow-y: auto;
   }
 
   .token {
+    box-sizing: border-box;
     display: inline-flex;
-    height: var(--token-line);
+    height: var(--bar-control);
     max-width: 14rem;
     align-items: center;
     gap: 0.25rem;
-    padding: 0 0.15rem 0 0.3rem;
+    padding: 0 0.16rem 0 0.3rem;
     border: 1px solid var(--line-strong);
-    border-radius: 3px;
+    // ボタンの角丸 (doc-11 §2.2). 絞り込みトークン is not one of doc-11 §3's 印チップ — it is a
+    // control with its own 解除 button inside it — so it takes the 4px the section gives controls
+    // rather than the 3px it gives chips.
+    border-radius: 4px;
     background: var(--inset);
     font-size: 0.68rem;
     white-space: nowrap;
@@ -269,7 +295,7 @@
 
   .facet {
     color: var(--muted);
-    font-size: 0.62rem;
+    font-size: 0.64rem;
   }
 
   .value {
@@ -284,7 +310,9 @@
     align-items: center;
     justify-content: center;
     border: 0;
-    border-radius: 3px;
+    // ボタンの角丸 (doc-11 §2.2), like the token it sits in — a chip's 3px would be the one value
+    // in this bar that says a pressable thing is a label.
+    border-radius: 4px;
     background: transparent;
     color: var(--muted);
     font: inherit;
@@ -310,17 +338,28 @@
   }
 
   .control {
+    box-sizing: border-box;
     display: inline-flex;
+    height: var(--bar-control);
     gap: 0.3rem;
-    align-items: baseline;
-    padding: 0.15rem 0.5rem;
+    align-items: center;
+    padding: 0 0.45rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
+    // A fixed height cannot absorb a wrapped label — the second line would leave the 22.39px box.
+    // The same reason `.token` carries it; these controls only gained a fixed height here.
+    white-space: nowrap;
     cursor: pointer;
+  }
+
+  // 解除の 2 つは、条件を足す ＋ 絞り込み より一段静かに置く (画面設計案 03 案A が 既定に戻す に
+  // 与えた大きさ)。帯で先に読まれるべきなのは、いま効いている条件と、条件を足す入口である。
+  .actions .control {
+    font-size: 0.66rem;
   }
 
   // The chord beside its operation (doc-7 §2.1 / AC #4). Quiet, and outside the accessible name — the
