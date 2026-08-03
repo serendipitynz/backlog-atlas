@@ -12,6 +12,7 @@
   // 保存区分 is the one facet that starts from a 既定 rather than from "off" (doc-7 §5.2), so its
   // tokens are standing before the user has done anything — doc-12 §4 の常設トークン.
   import FilterPopover from "./FilterPopover.svelte";
+  import Icon from "../lib/icons/Icon.svelte";
   import { defaultFilter, type CardFilter, type Facets } from "../lib/filter";
   import {
     filterTokens,
@@ -99,13 +100,22 @@
 </script>
 
 <div class="bar">
-  <!-- 属性名 beside the box rather than above it: stacked, this one control was 41px against the
-       22px everything else in the row is, and a row whose height one member decides is the 崩れ this
-       task is about (画面設計案 03 案A は帯を常に 1 行と置く). -->
+  <!-- 帯全体の目印 (doc-7 §5.2): 操作に属さないアイコン, so it takes no `aria-label`, no `title` and
+       no focus — it is not a control, and one that announced itself would be a thing a keyboard can
+       reach and pressing does nothing. What it says in a figure, the bar also says in words (＋ 絞り込み,
+       全解除, and the box's own `aria-label`), which is what doc-11 §2.4 requires of an `aria-hidden`
+       figure: the icon repeats the meaning rather than being the only place it exists. -->
+  <span class="marker"><Icon name="funnel" /></span>
+
+  <!-- No visible 属性名 (doc-7 §5.2, TASK-112). 「テキスト」 named the box without saying what it
+       filters, so the word is gone and the two halves of naming are split: `aria-label` is the name a
+       screen reader reads, the placeholder is what the box takes. The funnel is *not* inside this
+       `<label>` — it points at the whole bar, and a figure in here would name this one box instead
+       (doc-11 §2.4). -->
   <label class="text">
-    <span class="caption">テキスト</span>
     <input
       type="search"
+      aria-label="テキストで絞り込み"
       placeholder="横断タスクID・title"
       bind:value={text}
       oninput={commitText}
@@ -220,15 +230,20 @@
     font-size: 0.72rem;
   }
 
+  // 操作に属さないアイコン (doc-11 §2.4). No size of its own: the figure is 1em, so the bar's own
+  // font-size decides it — the same knob the words beside it take, which is why the marker cannot
+  // drift away from them. `flex` only to keep the 1em box from sitting on a text baseline the row
+  // does not use (the bar centres, and an inline box would add the line's descender to the height).
+  .marker {
+    display: flex;
+    // 副次 (doc-11 §2.1), like the 属性名 this replaced. `Icon.svelte` draws in `currentColor`, so
+    // this is the whole of the icon's colour.
+    color: var(--muted);
+  }
+
   .text {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-  }
-
-  .caption {
-    font-size: 0.64rem;
-    color: var(--muted);
   }
 
   input[type="search"] {

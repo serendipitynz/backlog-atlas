@@ -6,10 +6,13 @@
  * before a production dependency. So the geometry is written out below and [`Icon.svelte`] draws it —
  * `pnpm ls` shows nothing new, and the icons cost the bundle their own path data and nothing else.
  *
- * Source: lucide v1.17.0, ISC licence, `dist/esm/icons/<name>.mjs` (`__iconNode`) with the shared
- * attributes from `dist/esm/defaultAttributes.mjs`. Whether the ISC notice has to be reproduced in a
- * shipped LICENSE file is TASK-97's question, not this module's; the attribution needed to *find* the
- * original is this paragraph.
+ * Source: **lucide-react** v1.17.0, ISC licence, `dist/esm/icons/<name>.mjs` (`__iconNode`) with the
+ * shared attributes from `dist/esm/defaultAttributes.mjs`. The package name matters: lucide ships the
+ * same figures through several packages, and only naming the one the coordinates were read from lets a
+ * later reader diff them against anything (this header said "lucide" until TASK-112 checked, and
+ * `menu.mjs`'s `__iconNode` there is character-for-character [`ICONS.menu`] below). Whether the ISC
+ * notice has to be reproduced in a shipped LICENSE file is TASK-97's question, not this module's; the
+ * attribution needed to *find* the original is this paragraph.
  *
  * **The figures are copied, never redrawn.** A path written by hand — or a `rect` flattened into a
  * path so that this file could hold one shape kind — would be a figure that resembles lucide rather
@@ -33,7 +36,7 @@
  */
 
 /** The icons drawn so far. Closed, so a name cannot be used before its figure is written out. */
-export type IconName = "menu";
+export type IconName = "menu" | "funnel";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -85,5 +88,13 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M4 5h16" },
     { shape: "path", d: "M4 12h16" },
     { shape: "path", d: "M4 19h16" },
+  ],
+  // lucide `funnel`. The 目印 at the head of フィルタ帯 (doc-7 §5.2) — 操作に属さないアイコン, so
+  // nothing about the figure changes, only where `Icon.svelte` is placed.
+  funnel: [
+    {
+      shape: "path",
+      d: "M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z",
+    },
   ],
 };
