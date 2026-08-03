@@ -102,6 +102,7 @@
   import {
     CANONICAL_COLUMN_LABEL,
     NO_LANE_CELL_REASON,
+    laneGroupLabel,
     laneNeighbourLabel,
     type LaneNeighbours,
   } from "../lib/swimlane";
@@ -719,8 +720,10 @@
          id copy is the only way to point at this task from outside Atlas, and the move is what makes
          the panel a place to read a cell from rather than a single stop. -->
     <div class="line nav">
-      <!-- 端での無効化の理由は、隣の位置表示（セル内 n / m 件）がそのまま担う。読めない位置に理由を
-           隠さない、が doc-11 §5 の要求である。 -->
+      <!-- 端での無効化の理由は、隣の位置表示がそのまま担う。読めない位置に理由を隠さない、が
+           doc-11 §5 の要求である。**群の名前は `laneGroupLabel` だけが決める** (doc-8 §2.2): この 3 つと
+           位置表示が同じ行に並ぶので、片方が「セル」と刷って片方が「未分類区画」と刷ると、同じ群を
+           2 つの語で呼ぶことになる。未分類区画はレーンセルではない (doc-7 §1)。 -->
       <button
         type="button"
         class="mini"
@@ -728,14 +731,14 @@
         title={neighbours === null
           ? NO_LANE_CELL_REASON
           : neighbours.previous === null
-            ? "セルの先頭です"
-            : "セル内のひとつ前のタスクへ"}
+            ? `${laneGroupLabel(neighbours.group)}の先頭です`
+            : `${laneGroupLabel(neighbours.group)}内のひとつ前のタスクへ`}
         onclick={() => moveTo(neighbours?.previous ?? null)}
       >
         ← 前のタスク
       </button>
       <span class="position">
-        {neighbours === null ? "セル内の位置不明" : laneNeighbourLabel(neighbours)}
+        {neighbours === null ? "スイムレーン上の位置不明" : laneNeighbourLabel(neighbours)}
       </span>
       <button
         type="button"
@@ -744,8 +747,8 @@
         title={neighbours === null
           ? NO_LANE_CELL_REASON
           : neighbours.next === null
-            ? "セルの末尾です"
-            : "セル内のひとつ次のタスクへ"}
+            ? `${laneGroupLabel(neighbours.group)}の末尾です`
+            : `${laneGroupLabel(neighbours.group)}内のひとつ次のタスクへ`}
         onclick={() => moveTo(neighbours?.next ?? null)}
       >
         次のタスク →

@@ -354,7 +354,10 @@ describe("AC #5 同一レーンセル内の前後タスクへ位置つきで移�
 
     const first = laneNeighbours(rows, { slug: "atlas", sourcePath: "a.md" });
     expect(first?.group).toEqual({ kind: "unmapped" });
-    expect(laneNeighbourLabel(first!)).toBe("未分類 セル内 1 / 2 件");
+    // 未分類区画はレーンセルではない (doc-7 §1), so the 位置表示 does not call it one — asserted both
+    // ways because the wording it must not use is the one it had (doc-8 §2.2).
+    expect(laneNeighbourLabel(first!)).toBe("未分類区画内 1 / 2 件");
+    expect(laneNeighbourLabel(first!)).not.toContain("セル");
     expect(first?.next?.task.id).toBe("TASK-2");
   });
 
@@ -461,7 +464,9 @@ describe("AC #4 行折畳みと行非表示は件数が読めるか否かで分�
   });
 });
 
-// TASK-50 の AC #5 と、TASK-69 が上書きした AC #6 (未分類列は列折畳みの対象にしない) の現在の姿。
+// TASK-50 の AC #5, and what became of its AC #6. That one excluded the 未分類列 from 列折畳み;
+// TASK-69 replaced it, and doc-7 §2.2 now folds the 未分類列 like any other column. The現行契約 is the
+// one the tests below pin — the exclusion is history, not the rule.
 describe("折畳みの対象にしないもの、および TASK-69 が対象にしたもの", () => {
   it("withholds 行折畳み from a row with no cells to fold, with the reason spelled out", () => {
     const rows = swimlane(

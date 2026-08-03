@@ -1,5 +1,8 @@
 <script lang="ts">
-  // レーンセル (doc-7 §1): one project row × one canonical column, or the row's 未分類区画.
+  // Draws either of the two runs of cards a プロジェクト行 holds: a レーンセル (doc-7 §1 — the row ×
+  // one 正準ステータス列) or the row's 未分類区画, **which is not a レーンセル**. One component for
+  // both because what a run of cards looks like is the same; the two are named apart wherever a
+  // name reaches the screen (`laneGroupLabel`, doc-8 §2.2).
   // An empty cell is drawn empty and says so — "該当タスクが無い" is a different fact from
   // "ルートが読めない", which is a row-level state (doc-7 §6).
   import TaskCard from "./TaskCard.svelte";

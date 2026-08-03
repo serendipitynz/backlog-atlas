@@ -412,7 +412,7 @@ export interface LaneNeighbours {
    * it is the same operation, and naming it apart keeps the position label honest.
    */
   group: { kind: "column"; column: StatusColumn } | { kind: "unmapped" };
-  /** 1-based position within the group, and how many cards it holds — doc-8 §2.2's セル内 n / m 件. */
+  /** 1-based position within the group, and how many cards it holds — doc-8 §2.2's 位置表示. */
   position: number;
   total: number;
   previous: TaskView | null;
@@ -453,13 +453,22 @@ export function laneNeighbours(
   return null;
 }
 
-/** doc-8 §2.2 の位置表示: which cell, and where in it. */
+/**
+ * What the group holding this task is called on screen (doc-8 §2.2). **The 未分類区画 is not a
+ * レーンセル** — doc-7 §1 makes a cell a プロジェクト行 × 正準ステータス列 — so the noun differs by
+ * group, and every string that names the group takes it from here: the 位置表示 below and the two
+ * 前後移動 controls in the heading. Spelling セル in each of them is what let the panel call the
+ * 区画 a cell while doc-7 said it is not one.
+ */
+export function laneGroupLabel(group: LaneNeighbours["group"]): string {
+  return group.kind === "column"
+    ? `${CANONICAL_COLUMN_LABEL[group.column]} セル`
+    : `${UNMAPPED_LABEL}区画`;
+}
+
+/** doc-8 §2.2 の位置表示: which group, and where in it. */
 export function laneNeighbourLabel(neighbours: LaneNeighbours): string {
-  const where =
-    neighbours.group.kind === "column"
-      ? CANONICAL_COLUMN_LABEL[neighbours.group.column]
-      : UNMAPPED_LABEL;
-  return `${where} セル内 ${neighbours.position} / ${neighbours.total} 件`;
+  return `${laneGroupLabel(neighbours.group)}内 ${neighbours.position} / ${neighbours.total} 件`;
 }
 
 /** Why 前後移動 is not offered, when it is not (doc-11 §5: a withheld control says why). */
