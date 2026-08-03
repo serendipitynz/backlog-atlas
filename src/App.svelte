@@ -14,8 +14,10 @@
   import ProjectDetail from "./components/ProjectDetail.svelte";
   import ProjectRegister from "./components/ProjectRegister.svelte";
   import Settings from "./components/Settings.svelte";
+  import ShortcutHelp from "./components/ShortcutHelp.svelte";
   import Swimlane from "./components/Swimlane.svelte";
   import TaskDetail from "./components/TaskDetail.svelte";
+  import Icon from "./lib/icons/Icon.svelte";
   import {
     asCommandError,
     cliProbe,
@@ -140,9 +142,15 @@
   /** Whether the fixed header's メニュー is open (doc-7 §2.1). */
   let menuOpen = $state(false);
   /**
+   * Whether the 一覧モーダル is open — the 割り当て一覧 (doc-7 §2.1) as something read. It is a モーダル and
+   * not part of the menu since TASK-67: the table is the longest thing the menu held, and a reference
+   * folded under the entries pushed the entries themselves out of the menu's own height.
+   */
+  let shortcutHelpOpen = $state(false);
+  /**
    * The ☰ and the box it hangs off, so the menu can be closed back onto the control it came from.
    *
-   * The ☰ is also what a モーダル hands focus back to (`openEntry`). It is the header's only control, so
+   * The ☰ is also what a モーダル hands focus back to (`raiseModal`). It is the header's only control, so
    * it is on screen whichever route was taken into the modal — unlike the menu line that was pressed,
    * which the modal unmounts on its way up.
    */
@@ -400,16 +408,16 @@
     }),
   );
   /**
-   * The メニュー's lines (doc-7 §2.1): the same 共通入口 the header shows, followed by 行非表示 — すべて
-   * 戻す and one line per hidden row, which is where doc-11 §4 puts the per-row list the 帯 ⑥ used to
-   * carry. Given the unfiltered `hiddenRows`, so a slug that left the ledger is not offered.
+   * The メニュー's lines (doc-7 §2.1): the 共通入口, then the line that opens the 割り当て一覧, then
+   * 行非表示 — すべて戻す and one line per hidden row, which is where doc-11 §4 puts the per-row list the
+   * 帯 ⑥ used to carry. Given the unfiltered `hiddenRows`, so a slug that left the ledger is not offered.
    */
   let menuItems = $derived(headerMenu(hiddenRows));
   /**
    * Whether a モーダル is up. While one is, the shell answers no chord at all: doc-7 §2.1 keeps a modal's
    * focus inside itself, and the modal is what answers Escape and Tab there (`Modal.svelte`).
    */
-  let modalOpen = $derived(registerOpen || settingsOpen);
+  let modalOpen = $derived(registerOpen || settingsOpen || shortcutHelpOpen);
 
   /**
    * The open 列内新規タスク入力's cell as the *current* read of its root has it (doc-7 §4.1). Resolved
@@ -1300,30 +1308,42 @@
   // --- 固定ヘッダ・メニュー・ショートカット (doc-7 §2.1, TASK-56) -------------------------------
 
   /**
+   * What every モーダル this header opens does first. Two things, and both are the header's business
+   * rather than the modal's:
+   *
+   * - 被せ層 は 1 枚だけ (`shortcuts.ts`): モーダル・メニュー・値一覧 all answer Escape where they are, so
+   *   two open at once leaves it undecided which one a press belongs to — and a modal's trap would put
+   *   the other out of reach in any case.
+   * - The ☰ takes focus *before* the modal mounts, so that whichever route was taken — a menu line or a
+   *   chord — the modal captures a control that is still on screen and hands focus back to it on close
+   *   (doc-7 §2.1 閉じたら開く前の操作へフォーカスを戻す). The menu line the user pressed is unmounted by
+   *   the line above, and a press of the chord from the grid would otherwise have nothing but `body` to
+   *   go back to. The ☰ is where these operations live in the header now, so returning there is
+   *   returning to where the operation was taken from.
+   *
+   * Held in one function because a third modal (the 一覧モーダル) arrived with TASK-67 and the second copy
+   * of these two lines is where they start to differ.
+   */
+  function raiseModal(): void {
+    menuOpen = false;
+    filterPopoverOpen = false;
+    menuButton?.focus();
+  }
+
+  /**
    * Open one 共通入口 (doc-7 §2.1). Both are モーダル over the screen that is up, never a screen of their
    * own (AC #2): the swimlane behind keeps its rows, filter and selection, and nothing is unmounted, so
    * no route in can lose 未保存入力.
    */
   function openEntry(id: HeaderEntryId): void {
-    // 被せ層 は 1 枚だけ (`shortcuts.ts`): モーダル・メニュー・値一覧 all answer Escape where they are, so
-    // two open at once leaves it undecided which one a press belongs to — and this one's trap would put
-    // the other out of reach in any case.
-    menuOpen = false;
-    filterPopoverOpen = false;
-    // The ☰ takes focus *before* the modal mounts, so that whichever route was taken — a menu line or
-    // the chord — the modal captures a control that is still on screen and hands focus back to it on
-    // close (doc-7 §2.1 閉じたら開く前の操作へフォーカスを戻す). The menu line the user pressed is
-    // unmounted by the line above, and a press of the chord from the grid would otherwise have nothing
-    // but `body` to go back to. The ☰ is the entry's own place in the header now, so returning there is
-    // returning to where the operation was taken from.
-    menuButton?.focus();
+    raiseModal();
     if (id === "register") registerOpen = true;
     else settingsOpen = true;
   }
 
   function openMenu(): void {
     menuOpen = true;
-    // 被せ層 は 1 枚だけ (see `openEntry`).
+    // 被せ層 は 1 枚だけ (see `raiseModal`).
     filterPopoverOpen = false;
   }
 
@@ -1337,7 +1357,7 @@
   /** Open or close the 値一覧 (doc-7 §5.2), from the フィルタ帯's button or from its chord. */
   function setFilterPopover(open: boolean): void {
     filterPopoverOpen = open;
-    // 被せ層 は 1 枚だけ (see `openEntry`).
+    // 被せ層 は 1 枚だけ (see `raiseModal`).
     if (open) menuOpen = false;
   }
 
@@ -1346,6 +1366,10 @@
     switch (item.kind) {
       case "entry":
         openEntry(item.entry.id);
+        break;
+      case "shortcutHelp":
+        raiseModal();
+        shortcutHelpOpen = true;
         break;
       case "showAllRows":
         showAllRows();
@@ -1439,23 +1463,28 @@
            counting a screen that is not up. -->
       <span class="totals">{totalsLabel(gridTotals)}</span>
     {/if}
-    <!-- メニュー (doc-7 §2.1): the 共通入口 and 行非表示 を戻す. It is the header's only control — 登録
-         and 設定 no longer have a button of their own beside it, since the menu already held both and
-         a header that offers each entry twice spends its width saying the same thing. Their chords
-         still reach them directly, and the menu is the 併置 §2.1 requires of a shortcut. -->
+    <!-- メニュー (doc-7 §2.1): the 共通入口, the 割り当て一覧, and 行非表示 を戻す. It is the header's only
+         control — 登録 and 設定 no longer have a button of their own beside it, since the menu already
+         held both and a header that offers each entry twice spends its width saying the same thing.
+         Their chords still reach them directly, and the menu is the 併置 §2.1 requires of a shortcut.
+
+         アイコンのみのボタン (doc-11 §2.4): the figure carries no words, so the button names itself with
+         `aria-label`, and its chord is 併記 in the `title` and as `aria-keyshortcuts` data — §2.1's form
+         for a control with no label to print beside. The 一覧モーダル the menu opens is where the chord
+         can also be read as text. -->
     <div class="menu-anchor" bind:this={menuAnchor}>
       <button
         type="button"
         class="header-entry"
         bind:this={menuButton}
+        aria-label="メニュー"
         aria-expanded={menuOpen}
         aria-haspopup="dialog"
         aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
-        title="ヘッダの入口と、行非表示を戻す操作をまとめて開きます"
+        title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— ヘッダの入口と、キーボード操作の一覧と、行非表示を戻す操作をまとめて開きます`}
         onclick={() => (menuOpen ? closeMenu() : openMenu())}
       >
-        <span aria-hidden="true">☰</span> メニュー
-        <span class="hint" aria-hidden="true">{shortcutHint("toggleMenu", MAC_KEYBOARD)}</span>
+        <Icon name="menu" />
       </button>
       {#if menuOpen}
         <HeaderMenu
@@ -1498,6 +1527,15 @@
         onsave={saveSettings}
         onclose={() => (settingsOpen = false)}
       />
+    </Modal>
+  {/if}
+
+  {#if shortcutHelpOpen}
+    <!-- 割り当て一覧 (doc-7 §2.1) as something read: a モーダル like the two 共通入口, because it is a
+         reference rather than a place to work — nothing behind it is unmounted, so a グリッド mid-filter
+         and an open 編集セッション are both still there when it closes. -->
+    <Modal label="キーボード操作の一覧" onclose={() => (shortcutHelpOpen = false)}>
+      <ShortcutHelp onclose={() => (shortcutHelpOpen = false)} />
     </Modal>
   {/if}
 
@@ -1737,35 +1775,34 @@
     font-variant-numeric: tabular-nums;
   }
 
-  // The fixed header's one entry point (doc-7 §2.1): the ☰, which opens the menu holding 登録 and 設定.
-  // It opens a layer over the screen rather than switching to one, so it is drawn unlike a tab that
-  // says which screen is current.
+  // The fixed header's one entry point (doc-7 §2.1): the ☰, which opens the menu holding 登録・設定・
+  // キーボード操作の一覧. It opens a layer over the screen rather than switching to one, so it is drawn
+  // unlike a tab that says which screen is current.
+  //
+  // アイコンのみのボタン (doc-11 §2.4): `font-size` is what sizes the figure, since the icon draws at 1em —
+  // 1rem here, so the 24-unit drawing lands on a 16px box, which is the size the ☰ glyph it replaced
+  // read at. The padding is even on all four sides because there is no text for it to sit beside.
   .header-entry {
     display: inline-flex;
-    gap: 0.3rem;
-    align-items: baseline;
-    padding: 0.1rem 0.5rem;
+    align-items: center;
+    padding: 0.25rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;
-    font: inherit;
-    font-size: 0.72rem;
+    font-size: 1rem;
     cursor: pointer;
-  }
-
-  // The chord beside its operation (doc-7 §2.1 / AC #4), quiet: it is a reminder, and the label it sits
-  // next to is the entry itself (§2.1 ショートカットだけが入口の操作を作らない).
-  .hint {
-    color: var(--muted);
-    font-size: 0.65rem;
-    font-variant-numeric: tabular-nums;
   }
 
   // The menu hangs off this box, so its own absolute position is against the ☰ and not the window — and
   // a press on the ☰ counts as inside, which is what keeps opening from closing it again.
+  //
+  // Centred rather than left on the header's `baseline`: a button whose only child is an icon has no text
+  // to take a baseline from, so the row would align the box's bottom edge with the 画面名's baseline and
+  // hang the figure below the words.
   .menu-anchor {
     position: relative;
+    align-self: center;
     margin-left: auto;
   }
 

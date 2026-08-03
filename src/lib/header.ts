@@ -18,6 +18,7 @@
  * |---|---|---|
  * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the fixed header offers through its メニュー — 登録 and 設定 |
  * | doc-7 §2.1 メニュー | [`MenuItem`] + [`headerMenu`] | メニュー項目: one line of the menu, and the whole list in order |
+ * | doc-7 §2.1 割り当て一覧 | [`SHORTCUT_HELP_LABEL`] + the `shortcutHelp` item | the line that opens the 一覧モーダル. The list itself is `shortcuts.ts`; this is the way to it |
  * | doc-7 §5.1 行非表示 / doc-11 §4 ⑥ | [`SHOW_ALL_ROWS_LABEL`] + the `showRow` items | すべて戻す, and the per-row list doc-11 §4 puts in the menu rather than in the 帯 |
  * | doc-11 §5 無効化提示 | [`showAllRowsHeld`] | 保留理由: why すべて戻す cannot be pressed, or `null` when it can |
  *
@@ -73,6 +74,15 @@ export const HEADER_ENTRIES: readonly HeaderEntry[] = [
 
 // --- メニュー項目 (doc-7 §2.1, doc-11 §4 ⑥) ----------------------------------------------------
 
+/**
+ * The line that opens the 一覧モーダル (doc-7 §2.1). The `…` follows `ProjectRegister`'s 選択… — the app's
+ * one existing precedent for it — and says the line leads to the list rather than being it. The two
+ * 共通入口 above open modals without one, and stay as they are: they are named for the thing they open
+ * (プロジェクトを登録・設定), while this line is named for the *display* of something, which is the case an
+ * ellipsis is for. Adding one to those two would be a rename this task was not asked for.
+ */
+export const SHORTCUT_HELP_LABEL = "キーボード操作表示…";
+
 /** 行非表示をすべて戻す (doc-7 §5.1). The band's own operation, echoed here like the two 共通入口. */
 export const SHOW_ALL_ROWS_LABEL = "行非表示をすべて戻す";
 
@@ -98,12 +108,17 @@ export function showAllRowsHeld(hiddenRowCount: number): string | null {
  */
 export type MenuItem =
   | { kind: "entry"; key: string; entry: HeaderEntry; held: null }
+  | { kind: "shortcutHelp"; key: string; label: string; held: null }
   | { kind: "showAllRows"; key: string; label: string; held: string | null }
   | { kind: "showRow"; key: string; slug: string; label: string; held: null };
 
 /**
- * The menu in order: the 共通入口 first (they are what the header itself offers), then 行非表示 — すべて
- * 戻す, then one line per hidden row.
+ * The menu in order: the 共通入口 first (they are what the header itself offers), then the 割り当て一覧,
+ * then 行非表示 — すべて戻す, then one line per hidden row.
+ *
+ * The 割り当て一覧 line sits above the 行非表示 group rather than at the end, because the group below it is
+ * as long as the number of hidden rows: a fixed line placed after a variable list moves every time a row
+ * is hidden, and the menu is walked with the keyboard.
  *
  * The 行非表示 lines are offered on both screens rather than only on the swimlane, unlike the 帯 ⑥ which
  * the shell raises for the grid alone. The band names rows on screen and has nothing to point at while
@@ -116,6 +131,12 @@ export function headerMenu(hiddenRows: readonly string[]): MenuItem[] {
     ...HEADER_ENTRIES.map(
       (entry): MenuItem => ({ kind: "entry", key: `entry:${entry.id}`, entry, held: null }),
     ),
+    {
+      kind: "shortcutHelp",
+      key: "shortcutHelp",
+      label: SHORTCUT_HELP_LABEL,
+      held: null,
+    },
     {
       kind: "showAllRows",
       key: "showAllRows",

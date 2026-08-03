@@ -31,6 +31,8 @@ import {
   reset,
 } from "./lib/fake-boundary";
 import { entry, history, loaded, snapshot, taskView, unreadable } from "./lib/fixtures";
+import { SHORTCUT_HELP_LABEL } from "./lib/header";
+import { SHORTCUTS } from "./lib/shortcuts";
 import type { ProjectLoad, UpdateResult } from "./lib/wire";
 
 /**
@@ -318,19 +320,22 @@ describe("タスク詳細の離脱と保存中状態", () => {
 
 describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", () => {
   /**
-   * Take one 共通入口 the way the screen offers it: through the ☰, which is the header's only control
-   * since TASK-66 folded the per-entry buttons away (doc-7 §2.1). Two presses rather than one, and the
-   * first unmounts the line the second pressed — which is exactly the route the focus-return depends
-   * on being handled.
+   * Take one line of the menu the way the screen offers it: through the ☰, which is the header's only
+   * control since TASK-66 folded the per-entry buttons away (doc-7 §2.1). Two presses rather than one,
+   * and the first unmounts the line the second pressed — which is exactly the route the focus-return
+   * depends on being handled.
+   *
+   * The ☰ is found by its `aria-label`: TASK-67 made it an アイコンのみのボタン (doc-11 §2.4), so it has no
+   * text of its own to match on.
    */
-  function openEntry(host: HTMLElement, label: string): void {
+  function chooseFromMenu(host: HTMLElement, label: string): void {
     click(byLabel(host, "button.header-entry", "メニュー"));
     click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', label));
   }
 
   async function openSettings(): Promise<HTMLElement> {
     const host = await startWith([loaded("atlas", [TASK])]);
-    openEntry(host, "設定");
+    chooseFromMenu(host, "設定");
     return host;
   }
 
@@ -369,7 +374,7 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
 
   it("プロジェクト登録も同じ 2 経路で閉じる", async () => {
     const byEscape = await startWith([loaded("atlas", [TASK])]);
-    openEntry(byEscape, "プロジェクトを登録");
+    chooseFromMenu(byEscape, "プロジェクトを登録");
     press(only(byEscape, '[role="dialog"][aria-label="プロジェクトを登録"]'), "Escape");
     expect(byEscape.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
     expectFocusBackOnMenu(byEscape);
@@ -377,9 +382,39 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
     cleanup();
 
     const byControl = await startWith([loaded("atlas", [TASK])]);
-    openEntry(byControl, "プロジェクトを登録");
+    chooseFromMenu(byControl, "プロジェクトを登録");
     click(byText(byControl, "button", "閉じる"));
     expect(byControl.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
+    expectFocusBackOnMenu(byControl);
+  });
+
+  /**
+   * The 割り当て一覧 (doc-7 §2.1) moved out of the menu and into a モーダル of its own (TASK-67), so the
+   * check names where it went: it is the modal that holds the table now, and the menu that does not.
+   * A test that only pressed the line and looked for a dialog would pass with the table still folded
+   * into the menu underneath — which is the shape this change was made to end.
+   */
+  it("キーボード操作の一覧はメニューではなくモーダルが持ち、同じ 2 経路で閉じる", async () => {
+    const byEscape = await startWith([loaded("atlas", [TASK])]);
+
+    click(byLabel(byEscape, "button.header-entry", "メニュー"));
+    expect(only(byEscape, '[role="dialog"][aria-label="メニュー"]').querySelector("table")).toBeNull();
+    click(byLabel(byEscape, '[role="dialog"][aria-label="メニュー"] button', SHORTCUT_HELP_LABEL));
+
+    // Printed from `SHORTCUTS` (doc-7 §2.1 の 1 箇所), so a row missing here means a row missing there.
+    const list = only(byEscape, '[role="dialog"][aria-label="キーボード操作の一覧"]');
+    expect(list.querySelectorAll("tbody tr")).toHaveLength(SHORTCUTS.length);
+
+    press(list, "Escape");
+    expect(byEscape.querySelector('[aria-label="キーボード操作の一覧"]')).toBeNull();
+    expectFocusBackOnMenu(byEscape);
+
+    cleanup();
+
+    const byControl = await startWith([loaded("atlas", [TASK])]);
+    chooseFromMenu(byControl, SHORTCUT_HELP_LABEL);
+    click(byText(byControl, '[aria-label="キーボード操作の一覧"] button', "閉じる"));
+    expect(byControl.querySelector('[aria-label="キーボード操作の一覧"]')).toBeNull();
     expectFocusBackOnMenu(byControl);
   });
 });
