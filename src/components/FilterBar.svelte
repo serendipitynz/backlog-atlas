@@ -204,13 +204,17 @@
      * reset, and a border-box height is the only one the cap can be arithmetic on.
      */
     --bar-control: 1.4rem;
+    // The gap between two token rows, named for the same reason `--bar-control` is: the cap below
+    // adds one of these to two control heights, so a literal here and a literal there could drift
+    // apart — which is the shape of the defect this task fixed, not a shape to leave behind.
+    --bar-gap: 0.3rem;
 
     display: flex;
     flex-wrap: wrap;
     // 中央揃え (画面設計案 03 案A・01。baseline ではない — アイコンや枠を持つ控えは baseline を
     // 持たないので、揃うのは文字だけになる)。
     align-items: center;
-    gap: 0.3rem;
+    gap: var(--bar-gap);
     padding: 0.3rem 0.75rem;
     border-bottom: 1px solid var(--line);
     font-size: 0.72rem;
@@ -253,13 +257,14 @@
    */
   .tokens {
     display: flex;
-    // Two rows of `--bar-control` and the one gap between them — the same gap the rule below sets,
-    // so the cap is the height of exactly two rows rather than a number that happens to be near it.
-    max-height: calc(var(--bar-control) * 2 + 0.3rem);
+    // Two rows of `--bar-control` and the one gap between them, both read from the same variables
+    // the rows themselves use — so the cap is the height of exactly two rows rather than a number
+    // that happens to be near it.
+    max-height: calc(var(--bar-control) * 2 + var(--bar-gap));
     flex: 1;
     flex-wrap: wrap;
     align-content: flex-start;
-    gap: 0.3rem;
+    gap: var(--bar-gap);
     overflow-y: auto;
   }
 
@@ -305,7 +310,9 @@
     align-items: center;
     justify-content: center;
     border: 0;
-    border-radius: 3px;
+    // ボタンの角丸 (doc-11 §2.2), like the token it sits in — a chip's 3px would be the one value
+    // in this bar that says a pressable thing is a label.
+    border-radius: 4px;
     background: transparent;
     color: var(--muted);
     font: inherit;
@@ -343,6 +350,9 @@
     color: inherit;
     font: inherit;
     font-size: 0.68rem;
+    // A fixed height cannot absorb a wrapped label — the second line would leave the 22.39px box.
+    // The same reason `.token` carries it; these controls only gained a fixed height here.
+    white-space: nowrap;
     cursor: pointer;
   }
 

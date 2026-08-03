@@ -227,6 +227,10 @@
 
 <style lang="scss">
   .popover {
+    // Without this the padding and the border are added to the 15rem below and the panel renders at
+    // 16.02rem — the same content-box-versus-border-box slip the bar's two-row cap had, and there is
+    // no global reset here to catch either.
+    box-sizing: border-box;
     position: absolute;
     z-index: 3;
     top: calc(100% + 0.25rem);
