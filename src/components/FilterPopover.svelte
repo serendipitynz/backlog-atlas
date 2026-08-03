@@ -232,7 +232,10 @@
     top: calc(100% + 0.25rem);
     left: 0;
     display: flex;
-    width: 19rem;
+    // 画面設計案 03 案A の値一覧ポップオーバー幅。The list's own entries are elided at the width
+    // (`.name`), so a wider panel would buy reach for long values at the cost of covering more of the
+    // grid it opens over — and the count beside each value is what the width has to keep readable.
+    width: 15rem;
     flex-direction: column;
     gap: 0.3rem;
     padding: 0.45rem;
