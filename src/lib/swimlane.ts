@@ -17,7 +17,7 @@
  * | §2 未対応区画 | `SwimlaneRow.unmapped` | the row's tasks whose status maps to no column |
  * | §1 レーンヘッダ行 | `Swimlane.svelte` の `.lane-head` | the row's own full-width line: name, slug, counts, row-level controls |
  * | §2.1 総件数 | [`SwimlaneTotals`] と [`totalsLabel`] | the whole grid's two ratios, beside the 画面名 |
- * | §1 列折畳み | `columnFoldable` / a collapsed `StatusColumn` | one column narrowed to a band in every row at once, keeping name and count |
+ * | §1 列折畳み | [`columnFoldable`] / a collapsed [`GridColumn`] | one column narrowed to a band in every row at once, keeping its name |
  * | §1 行折畳み | `rowFoldable` / `laneCounts` | one row's cells folded away, keeping the per-column counts |
  * | §2.3 2 層スティッキー | `Swimlane.svelte` の `.head` / `.lane-head` と `--lane-top` | the two header rows held at the top, the lower one against the upper one's current height |
  * | §2.3 着地 | [`laneScrollDelta`] と `Swimlane.svelte` の `.lane-mark` | where the grid scrolls to for 「このプロジェクトのレーンへ」, and the marker it measures from |
@@ -245,9 +245,32 @@ export function laneCounts(row: SwimlaneRow, withUnmapped: boolean): LaneCount[]
   return counts;
 }
 
-/** The whole grid's cards in one column — the count a 畳んだ列 keeps in its head (doc-7 §2.2). */
-export function columnTotal(rows: readonly SwimlaneRow[], column: StatusColumn): number {
-  return rows.reduce((sum, row) => sum + cellCount(row, column), 0);
+/**
+ * One column of the grid: a 正準ステータス列, or the 未対応区画 while it is showing. 列折畳み reaches
+ * both (doc-7 §2.2), so both need one name — the 未対応区画 is `"unmapped"` rather than a fifth member
+ * of [`CANONICAL_COLUMNS`], because it is not a status and only exists while some row has a task in it.
+ */
+export type GridColumn = StatusColumn | "unmapped";
+
+/**
+ * Whether 列折畳み may be applied to this column, given the ones already folded (doc-7 §2.2).
+ *
+ * Folding is refused only for the **last open 正準ステータス列**: with all four folded there is no
+ * status column left to read cards in, and the screen is a set of bands whose only way back is the
+ * controls that folded them. Unfolding is never refused, so a folded column's control always works —
+ * the rule blocks one direction, which is why this takes the column and not just a count.
+ *
+ * **The 未対応区画 does not count as the column left open**, even though it holds cards: it disappears
+ * of its own accord once no row has an 未対応 status task left (doc-7 §2.2), which would leave a grid
+ * whose four bands can no longer be forced open by this rule. It can itself always be folded, since
+ * folding it never takes a status column away — said as its own line below rather than left to fall
+ * out of the canonical test, which would answer `false` for it once all four were folded. That state
+ * is unreachable through the screen, but this is an exported rule and "always" has to mean always.
+ */
+export function columnFoldable(collapsed: readonly GridColumn[], column: GridColumn): boolean {
+  if (collapsed.includes(column)) return true;
+  if (column === "unmapped") return true;
+  return CANONICAL_COLUMNS.some((other) => other !== column && !collapsed.includes(other));
 }
 
 // --- 総件数 (doc-7 §2.1) -----------------------------------------------------------------------
@@ -334,9 +357,13 @@ export function rowFoldable(row: SwimlaneRow): boolean {
 export const ROW_FOLD_ABSENT_REASON =
   "ルートが読めず畳む対象のセルがないため、この行に行折畳みは置きません（doc-7 §6）。行非表示は使えます。";
 
-/** Why the 未対応列 gets no 列折畳み (doc-7 §2.2). Same 置かない, same reason-beside-it treatment. */
-export const UNMAPPED_FOLD_ABSENT_REASON =
-  "未対応列は正準ステータス列ではないため、列折畳みの対象にしません（doc-7 §2.2）。";
+/**
+ * Why the last open column's 列折畳み is blocked (doc-7 §2.2). This one *is* placed and disabled —
+ * unlike the two above, the control exists in every canonical column head and only its last instance
+ * is refused, so removing it would make the heads differ in what they hold (doc-11 §5).
+ */
+export const LAST_COLUMN_FOLD_BLOCKED_REASON =
+  "残り 1 列は畳めません。すべて畳むと、どの列のカードも読めない画面になります（doc-7 §2.2）。";
 
 // --- 2 層スティッキーへの着地 (doc-7 §2.3, doc-10 §2) -----------------------------------------
 

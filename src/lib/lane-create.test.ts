@@ -7,7 +7,6 @@ import { DEFAULT_FILTER } from "./filter";
 import { CREATE_STATUS_CANDIDATES, loadMap, loaded, taskView, unreadable } from "./fixtures";
 import {
   NO_STATUS_TO_PASS_REASON,
-  UNMAPPED_ABSENT_REASON,
   buildLaneTaskCreate,
   laneCreate,
   laneCreateHold,
@@ -75,13 +74,6 @@ describe("入口を置くか置かないか", () => {
       state: "absent",
       reason: noCandidateAbsentReason("toDo"),
     });
-  });
-
-  // The 未対応区画 is not a 正準ステータス列 in any project, so its reason is grid-wide rather than a
-  // column's — nothing about a project changes it.
-  it("states the 未対応列's reason as 候補集合を定義できない (AC #2)", () => {
-    expect(UNMAPPED_ABSENT_REASON).toContain("正準ステータス列ではなく");
-    expect(UNMAPPED_ABSENT_REASON).toContain("置きません");
   });
 });
 

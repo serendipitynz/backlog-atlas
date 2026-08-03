@@ -5,19 +5,21 @@
   // (doc-7 §2 プロジェクト横断の縦読み).
   import LaneCell from "./LaneCell.svelte";
   import LaneCreate from "./LaneCreate.svelte";
-  import { UNMAPPED_ABSENT_REASON, laneCreate } from "../lib/lane-create";
+  import Icon from "../lib/icons/Icon.svelte";
+  import { laneCreate } from "../lib/lane-create";
   import { UNWATCHED_MARK, type VersionConflict } from "../lib/mark";
   import {
     CANONICAL_COLUMNS,
     CANONICAL_COLUMN_LABEL,
+    LAST_COLUMN_FOLD_BLOCKED_REASON,
     ROW_FOLD_ABSENT_REASON,
-    UNMAPPED_FOLD_ABSENT_REASON,
     UNMAPPED_LABEL,
-    columnTotal,
+    columnFoldable,
     laneCounts,
     laneScrollDelta,
     rowFoldable,
     visibleCount,
+    type GridColumn,
     type SwimlaneRow,
   } from "../lib/swimlane";
   import type { CardDensity, StatusColumn, TaskView } from "../lib/wire";
@@ -123,11 +125,13 @@
   /**
    * The 列ヘッダ行 elements, by column, so the レーンヘッダ行 can be stuck to the row's lower edge.
    *
-   * Its height is not a constant: 畳んだ列 stacks its name, count and control (doc-7 §2.2) and the
-   * 未対応列 carries the two sentences that say what it does not offer, either of which makes the row
-   * taller than an open column's one line. So the offset is measured rather than written down — a
-   * fixed one would leave a strip of scrolled cards between the two rows the moment a column is
-   * folded, which is exactly what 受入条件 #3 forbids.
+   * Its height is not a constant, even though every head is now one line (doc-7 §2.2): the line is as
+   * tall as the root font-size makes it, which the OS and the browser both scale, and anything later
+   * added to a head moves it again. So the offset is measured rather than written down — a fixed one
+   * would leave a strip of scrolled cards between the two rows as soon as the real height differed
+   * from it, which is exactly what 受入条件 #3 forbids. (Until TASK-69 the folded head stacked its
+   * parts and the 未対応列 carried two sentences, so folding a column moved this by two lines; those
+   * two causes are gone, the measurement is not.)
    */
   let columnHeads = $state<Record<string, HTMLElement>>({});
   let headHeight = $state(0);
@@ -197,6 +201,7 @@
    * that is what makes the binding reachable from the keyboard and from a screen reader.
    */
   const REORDER_REASON_ID = "swimlane-reorder-blocked";
+  const LAST_COLUMN_REASON_ID = "swimlane-last-column-fold-blocked";
   const REORDER_BLOCKED_REASON =
     "台帳が読み取り専用のため、行の並べ替えはできません（doc-3 §2.2）。台帳画面で理由を確認できます。";
 
@@ -212,10 +217,10 @@
    * are computed from the rows the shell already passes in — so they live here rather than in the
    * shell beside 行非表示, which the 上部帯 does have to see.
    */
-  let collapsedColumns = $state<StatusColumn[]>([]);
+  let collapsedColumns = $state<GridColumn[]>([]);
   let foldedRows = $state<string[]>([]);
 
-  function toggleColumn(column: StatusColumn): void {
+  function toggleColumn(column: GridColumn): void {
     collapsedColumns = collapsedColumns.includes(column)
       ? collapsedColumns.filter((candidate) => candidate !== column)
       : [...collapsedColumns, column];
@@ -243,7 +248,9 @@
       ...CANONICAL_COLUMNS.map((column) =>
         collapsedColumns.includes(column) ? FOLDED_COLUMN : OPEN_COLUMN,
       ),
-      ...(hasUnmapped ? [UNMAPPED_COLUMN] : []),
+      ...(hasUnmapped
+        ? [collapsedColumns.includes("unmapped") ? FOLDED_COLUMN : UNMAPPED_COLUMN]
+        : []),
     ].join(" "),
   );
 
@@ -254,7 +261,7 @@
   const ROW_UNFOLD_HINT = "行折畳みを解き、レーンセルを戻します。";
   const HIDE_HINT =
     "行非表示: この行を画面から取り除きます（件数も読めなくなります）。上部の一覧から戻せます。";
-  const COLUMN_FOLD_HINT = "列折畳み: この列を全行同時に畳み、列名と件数を残します。";
+  const COLUMN_FOLD_HINT = "列折畳み: この列を全行同時に畳み、列名を残します（件数は行ごとに残ります）。";
   const COLUMN_UNFOLD_HINT = "列折畳みを解き、この列のカードを全行で戻します。";
 </script>
 
@@ -263,41 +270,69 @@
   style="--columns: {columnTemplate}; --lane-top: {headHeight}px"
   bind:this={grid}
 >
-  {#each CANONICAL_COLUMNS as column (column)}
+  <!-- 列ヘッダ 1 つ。正準ステータス列と 未対応区画 が同じものを描く (doc-7 §2.2): 列折畳みはどちらにも
+       効くので、控えとその 4 つの aria 属性を 2 か所に書くと片方だけが後から変わりうる。`name` を別に
+       取るのは、読み上げが「To Do 列の」と「未対応区画の」で分かれるためで、`label` は画面に出る語。 -->
+  {#snippet columnHead(column: GridColumn, label: string, name: string)}
     {@const folded = collapsedColumns.includes(column)}
-    <div class="head" class:folded bind:this={columnHeads[column]}>
-      <span class="label">{CANONICAL_COLUMN_LABEL[column]}</span>
-      {#if folded}
-        <!-- 畳んだ列は列名と件数を残す (doc-7 §2.2): the band keeps the column's own total, and each
-             row keeps its own count in the cell, so folding never makes 何件あるか unreadable. -->
-        <span class="total">{columnTotal(rows, column)} 件</span>
-      {/if}
+    {@const foldable = columnFoldable(collapsedColumns, column)}
+    <div
+      class="head"
+      class:folded
+      class:unmapped={column === "unmapped"}
+      bind:this={columnHeads[column]}
+    >
+      <!-- アイコンのみのボタン (doc-11 §2.4): the figure carries no words, so 列折畳み is named by
+           `aria-label` and explained by `title`. ＜ / ＞ point at what the press does rather than at
+           the column's current width — sideways there is no 開いている / 畳んである to point at
+           (doc-7 §2.2), which is the one place this screen's two folds differ.
+           **Before the name, at the head's left edge**, so the control sits at the same x whatever the
+           name's length — a 畳んだ列 is 5rem wide and a name that ellipsises there would otherwise push
+           the control around (doc-7 §2.2).
+           残り 1 列は畳めない (doc-7 §2.2): `aria-disabled` and focusable rather than `disabled`, with
+           the reason in the line below the heads — the form doc-11 §5 requires when the reason would
+           otherwise live only on a `title` a keyboard never reaches. -->
       <button
         type="button"
         class="fold"
         aria-expanded={!folded}
-        aria-label="{CANONICAL_COLUMN_LABEL[column]} 列の列折畳みを{folded ? '解く' : '行う'}"
-        title={folded ? COLUMN_UNFOLD_HINT : COLUMN_FOLD_HINT}
-        onclick={() => toggleColumn(column)}>{folded ? "展開" : "畳む"}</button
+        aria-disabled={!foldable}
+        aria-describedby={foldable ? undefined : LAST_COLUMN_REASON_ID}
+        aria-label="{name}の列折畳みを{folded ? '解く' : '行う'}"
+        title={foldable
+          ? folded
+            ? COLUMN_UNFOLD_HINT
+            : COLUMN_FOLD_HINT
+          : LAST_COLUMN_FOLD_BLOCKED_REASON}
+        onclick={() => foldable && toggleColumn(column)}
       >
+        <Icon name={folded ? "chevron-right" : "chevron-left"} />
+      </button>
+      <!-- 畳んだ列は列名を残す (doc-7 §2.2). One line in both states: the name gives up its tail to an
+           ellipsis rather than wrapping, because a head that grew a second line would push every row
+           of the grid down for a word the `title` already carries in full. 件数はここに出さない —
+           each row's own count travels with the cards in the cell (`LaneCell.svelte`). -->
+      <span class="label" title={label}>{label}</span>
     </div>
+  {/snippet}
+
+  {#each CANONICAL_COLUMNS as column (column)}
+    {@render columnHead(column, CANONICAL_COLUMN_LABEL[column], `${CANONICAL_COLUMN_LABEL[column]} 列`)}
   {/each}
   {#if hasUnmapped}
-    <!-- 未対応列は列折畳みの対象にしない (doc-7 §2.2). The control is not placed, and the reason is
-         written beside where it would have been — the same treatment doc-7 §4.1 gives an entry it
-         does not offer, which is not the 無効化 of doc-11 §5. -->
-    <div class="head unmapped" bind:this={columnHeads.unmapped}>
-      <span class="label">{UNMAPPED_LABEL}</span>
-      <span class="withheld" title={UNMAPPED_FOLD_ABSENT_REASON}>正準列ではないため列折畳みなし</span>
-      <!-- 未対応列には列内新規タスク入力を置かない (doc-7 §4.1). In the column head, once, rather than in
-           every row's 未対応 cell: unlike a canonical column's 候補 0 件, this reason is identical for
-           every project — the 未対応区画 is not a 正準ステータス列 anywhere — so a per-cell copy would put
-           the same sentence on screen as many times as there are rows (the reason the reorder block
-           below is written once too). Abbreviated with the full sentence on the `title`, like the
-           列折畳みなし note beside it: the head is one line for the whole grid, and two full sentences
-           in a 10rem column would raise it for every row. -->
-      <span class="withheld" title={UNMAPPED_ABSENT_REASON}>候補集合を定義できないため新規入力なし</span>
-    </div>
+    <!-- 未対応区画も列折畳みの対象 (doc-7 §2.2). It holds cards like any column, and the reason it used
+         to be excluded was only that it is not a 正準ステータス列 — which says nothing about folding.
+         What stays apart is [`columnFoldable`]'s guarantee: this one never counts as the column left
+         open, because it vanishes on its own once no row has an 未対応 status task. -->
+    {@render columnHead("unmapped", UNMAPPED_LABEL, "未対応区画")}
+  {/if}
+
+  {#if !CANONICAL_COLUMNS.every((column) => columnFoldable(collapsedColumns, column))}
+    <!-- The reason the last open column's control is refused, on its own line under the heads and
+         spanning them all (the same treatment the 並べ替え block below gets). Present only while the
+         state holds, since a reason for a block that is not in force reads as a warning about
+         nothing. -->
+    <p class="blocked-note" id={LAST_COLUMN_REASON_ID}>{LAST_COLUMN_FOLD_BLOCKED_REASON}</p>
   {/if}
 
   {#if !canReorder}
@@ -324,6 +359,10 @@
       bind:this={laneHeads[row.slug]}
     >
       {#if rowFoldable(row)}
+        <!-- アイコンのみのボタン (doc-11 §2.4): 行折畳み is named by `aria-label` and explained by
+             `title`, since the figure has no words. ∨ / ∧ point at whether the row's cells are open
+             or folded, not at what the press does (doc-7 §2.3) — with the words gone the figure is
+             the only thing left saying which state the row is in. -->
         <button
           type="button"
           class="fold"
@@ -332,7 +371,7 @@
           title={folded ? ROW_UNFOLD_HINT : ROW_FOLD_HINT}
           onclick={() => toggleRow(row.slug)}
         >
-          <span aria-hidden="true">{folded ? "▲" : "▼"}</span>{folded ? "展開" : "畳む"}
+          <Icon name={folded ? "chevron-up" : "chevron-down"} />
         </button>
       {/if}
       <div class="names">
@@ -474,6 +513,7 @@
             tasks={row.unmapped}
             label={UNMAPPED_LABEL}
             unmapped
+            collapsed={collapsedColumns.includes("unmapped")}
             {density}
             {showStorageMark}
             {selectedPath}
@@ -498,6 +538,17 @@
 
 <style lang="scss">
   .grid {
+    /*
+     * One height for every 控え on the two header rows, stated rather than taken from a text line box
+     * (the same reason `FilterBar.svelte` has `--bar-control`, doc-12 §4.3). 折畳み now draws a figure
+     * and its neighbours draw words, and a figure's box is its own 1em — 11.2px against the ~18.8px a
+     * .7rem line box gives, measured — so the two would no longer end up the same height on their own.
+     * In `rem`, so the value does not move with the font-size of whichever head the control sits in,
+     * and with `box-sizing: border-box` on the controls, because there is no global reset and a 1px
+     * border either side would otherwise land outside the stated height.
+     */
+    --head-control: 1.2rem;
+
     display: grid;
     // The four canonical columns at equal width so the same status sits at the same x for every
     // project, with the 未対応 column narrower and last. No project column at the left: the row's
@@ -527,7 +578,9 @@
     top: 0;
     z-index: 2;
     display: flex;
-    align-items: baseline;
+    // Centred rather than on a baseline: the 列折畳み control holds a figure, and a box with no text
+    // in it has no baseline to share with the name beside it (`App.svelte` has the same note for ☰).
+    align-items: center;
     gap: 0.3rem;
     padding: 0.4rem 0.5rem;
     border-bottom: 1px solid var(--line-strong);
@@ -542,39 +595,22 @@
       white-space: nowrap;
     }
 
-    // 畳んだ列 (doc-7 §2.2): a band 5rem wide, so the name, the count and the way back stack
-    // instead of sitting side by side. Nothing but the width changes about the column.
+    // 畳んだ列 (doc-7 §2.2): a band 5rem wide, and **still one line** — the control keeps its size and
+    // the name gives up its tail to the ellipsis above. Stacking the parts instead (what this used to
+    // do) made the head three lines tall, and because every head is as tall as the tallest, folding
+    // one column pushed the whole grid down by two lines.
     &.folded {
-      flex-direction: column;
-      align-items: stretch;
       gap: 0.16rem;
       padding: 0.4rem 0.25rem;
       font-size: 0.7rem;
-      text-align: center;
     }
   }
 
-  .head .fold {
-    margin-left: auto;
-  }
-
-  .head.folded .fold {
-    margin-left: 0;
-  }
-
-  .total {
-    color: var(--muted);
-    font-size: 0.65rem;
-    font-weight: 400;
-    font-variant-numeric: tabular-nums;
-  }
-
-  // 未対応列 has no 畳む to put on the right, and the sentence that says why stands under the name
-  // rather than beside it — side by side, the name is what gives up room and 未対応 would ellipsise.
+  // 未対応列 draws the same head as the four (doc-7 §2.2) — one line, control then name — and is set
+  // apart only by being dimmer, the same 中立 treatment its cells get. The two sentences that used to
+  // stand under its name are now the line below the heads (doc-7 §4.1), which is what lets this head
+  // be one line like the others.
   .head.unmapped {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.1rem;
     opacity: 0.75;
   }
 
@@ -730,11 +766,17 @@
     line-height: 1.25;
   }
 
+  // 折畳みの控え (doc-7 §2.2・§2.3), アイコンのみのボタン (doc-11 §2.4). The `font-size` is the .7rem
+  // its neighbours read at and it is also what sizes the figure, since an icon draws at 1em — the icon
+  // gets no size of its own (doc-11 §2.4). Centred vertically because the height is stated rather than
+  // taken from a text line, so the figure has to be placed inside it; nothing widens this box (it is
+  // `flex: none` in both an open head and a folded one), so there is nothing to centre horizontally.
   .fold {
+    box-sizing: border-box;
     display: inline-flex;
     flex: none;
-    gap: 0.2rem;
     align-items: center;
+    height: var(--head-control);
     padding: 0 0.35rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
@@ -752,6 +794,8 @@
     margin-left: auto;
 
     button {
+      box-sizing: border-box;
+      height: var(--head-control);
       padding: 0 0.35rem;
       border: 1px solid var(--line-strong);
       border-radius: 4px;

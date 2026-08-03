@@ -3,12 +3,12 @@ import { DEFAULT_FILTER, type CardFilter } from "./filter";
 import { loadMap, loaded, taskView, unreadable } from "./fixtures";
 import {
   CANONICAL_COLUMNS,
+  LAST_COLUMN_FOLD_BLOCKED_REASON,
   ROW_FOLD_ABSENT_REASON,
-  UNMAPPED_FOLD_ABSENT_REASON,
   UNMAPPED_LABEL,
   buildSwimlane,
   cellCount,
-  columnTotal,
+  columnFoldable,
   compareCards,
   laneCounts,
   laneNeighbourLabel,
@@ -21,6 +21,7 @@ import {
   type SwimlaneRow,
 } from "./swimlane";
 import { cardIdentity, crossTaskId } from "./card";
+import type { StatusColumn } from "./wire";
 
 function swimlane(
   order: string[],
@@ -372,25 +373,7 @@ describe("AC #5 同一レーンセル内の前後タスクへ位置つきで移�
 
 // TASK-50: 折畳み (doc-7 §2.2・§2.3・§5.1). The counts are what a fold keeps, so they are what the
 // tests are about — the widths and the toggles are the component's, the numbers are here.
-describe("AC #2 列折畳みは全行同時にのみ効き、畳んだ列が列名と件数を残す", () => {
-  it("counts a column across every row, which is what a folded column can still show", () => {
-    const rows = swimlane(
-      ["atlas", "geomyth"],
-      loadMap(
-        loaded("atlas", [
-          taskView({ id: "TASK-1", sourcePath: "a.md", column: "toDo" }),
-          taskView({ id: "TASK-2", sourcePath: "b.md", column: "toDo" }),
-          taskView({ id: "TASK-3", sourcePath: "c.md", column: "done" }),
-        ]),
-        loaded("geomyth", [taskView({ id: "TASK-4", sourcePath: "d.md", column: "toDo" })]),
-      ),
-    );
-
-    expect(columnTotal(rows, "toDo")).toBe(3);
-    expect(columnTotal(rows, "done")).toBe(1);
-    expect(columnTotal(rows, "inReview")).toBe(0);
-  });
-
+describe("AC #2 列折畳みは全行同時にのみ効き、畳んだ列が列名と行ごとの件数を残す", () => {
   it("keeps each row's own count in the folded column, so the 縦読み survives the fold", () => {
     const rows = swimlane(
       ["atlas", "geomyth"],
@@ -478,7 +461,8 @@ describe("AC #4 行折畳みと行非表示は件数が読めるか否かで分�
   });
 });
 
-describe("AC #5・#6 折畳みの対象にしないもの", () => {
+// TASK-50 の AC #5 と、TASK-69 が上書きした AC #6 (未対応列は列折畳みの対象にしない) の現在の姿。
+describe("折畳みの対象にしないもの、および TASK-69 が対象にしたもの", () => {
   it("withholds 行折畳み from a row with no cells to fold, with the reason spelled out", () => {
     const rows = swimlane(
       ["broken", "waiting", "atlas"],
@@ -491,12 +475,38 @@ describe("AC #5・#6 折畳みの対象にしないもの", () => {
     expect(ROW_FOLD_ABSENT_REASON).not.toBe("");
   });
 
-  it("leaves 未対応 out of the columns 列折畳み can reach", () => {
-    // 列折畳み is offered per `CANONICAL_COLUMNS` entry, and 未対応 is not one of them (doc-7 §2.2).
+  // TASK-69: 残り 1 列は畳めない (doc-7 §2.2). The rule is about a direction, not a count, so both
+  // directions are asserted from the same states.
+  it("refuses 列折畳み for the last open column, and never refuses unfolding", () => {
+    expect(columnFoldable([], "toDo")).toBe(true);
+    expect(columnFoldable(["inProgress", "inReview"], "toDo")).toBe(true);
+
+    // Three folded: the one left open is the only place a card can be read, so it cannot be folded.
+    const threeFolded: StatusColumn[] = ["inProgress", "inReview", "done"];
+    expect(columnFoldable(threeFolded, "toDo")).toBe(false);
+    // Its own control still works — that press unfolds rather than folds.
+    for (const folded of threeFolded) {
+      expect(columnFoldable(threeFolded, folded)).toBe(true);
+    }
+    expect(LAST_COLUMN_FOLD_BLOCKED_REASON).not.toBe("");
+  });
+
+  it("folds 未対応 like any column, but never lets it be the column left open", () => {
+    // 未対応 is not a 正準ステータス列 (it has no entry among them and its 列別件数 carry a null column),
+    // and since TASK-69 that no longer keeps it out of 列折畳み (doc-7 §2.2).
     expect(CANONICAL_COLUMNS).not.toContain(UNMAPPED_LABEL);
     expect(laneCounts(row(swimlane(["atlas"], loadMap(loaded("atlas", []))), "atlas"), true).at(-1)
       ?.column).toBeNull();
-    expect(UNMAPPED_FOLD_ABSENT_REASON).not.toBe("");
+
+    expect(columnFoldable([], "unmapped")).toBe(true);
+    // Three status columns folded: 未対応 may still be folded — doing so takes no status column away.
+    expect(columnFoldable(["toDo", "inProgress", "inReview"], "unmapped")).toBe(true);
+    // 常に畳める is asserted at the one input that separates it from ほぼ常に: a state the screen cannot
+    // reach (the fourth column's control is refused), but this function is exported and says "always".
+    expect(columnFoldable(["toDo", "inProgress", "inReview", "done"], "unmapped")).toBe(true);
+    // …and it does not stand in for the one left open: 'done' is still refused with 未対応 open, since
+    // the 未対応区画 disappears once no row has such a task (doc-7 §2.2).
+    expect(columnFoldable(["toDo", "inProgress", "inReview"], "done")).toBe(false);
   });
 });
 
@@ -587,8 +597,9 @@ describe("2 層スティッキーの下への着地", () => {
   });
 
   it("follows the 列ヘッダ行's height rather than a written-down one", () => {
-    // 受入条件 #3: 列折畳み makes that row taller, and the landing has to move with it — the same
-    // lane position lands differently only by the difference in the height it is stuck below.
+    // 受入条件 #3: the 列ヘッダ行's height is not a constant — the root font-size scales its one line,
+    // and anything later added to a head moves it — so the landing follows the measured height. The
+    // same lane position lands differently only by the difference in the height it is stuck below.
     const folded = { ...grid, headHeight: 56 };
     expect(laneScrollDelta({ ...folded, offset: 8 })).toBe(-48);
     expect(laneScrollDelta({ ...folded, offset: 40 })).toBe(-16);

@@ -35,8 +35,18 @@
  * decided by [`Icon.svelte`], so an icon needs no token of its own (decision-12 stays as it is).
  */
 
-/** The icons drawn so far. Closed, so a name cannot be used before its figure is written out. */
-export type IconName = "menu" | "funnel";
+/**
+ * The icons drawn so far. Closed, so a name cannot be used before its figure is written out. The names
+ * are lucide's own, hyphens and all: a renamed copy would have to be looked up twice to be diffed
+ * against the source this file names.
+ */
+export type IconName =
+  | "menu"
+  | "funnel"
+  | "chevron-up"
+  | "chevron-down"
+  | "chevron-left"
+  | "chevron-right";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -97,4 +107,11 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
       d: "M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z",
     },
   ],
+  // The four 折畳み controls (doc-7 §2.2・§2.3). Two axes, two pairs: 行折畳み takes the vertical pair
+  // and 列折畳み the horizontal one, and which of a pair a control shows is doc-7's rule, not this
+  // module's — nothing here knows what a fold is.
+  "chevron-up": [{ shape: "path", d: "m18 15-6-6-6 6" }],
+  "chevron-down": [{ shape: "path", d: "m6 9 6 6 6-6" }],
+  "chevron-left": [{ shape: "path", d: "m15 18-6-6 6-6" }],
+  "chevron-right": [{ shape: "path", d: "m9 18 6-6-6-6" }],
 };
