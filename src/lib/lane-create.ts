@@ -14,7 +14,6 @@
  * | 入口を置く／置かない | [`LaneCreate`] | one cell's entry: offered with its candidates, or absent with its reason |
  * | 渡す値は入力欄で読める | [`laneCreateStatus`] | the candidate the entry shows and will pass, for both the 1 件 and 複数件 cases |
  * | 候補 0 件の列には入口を置かない | [`NO_CANDIDATE_ABSENT_REASON`] | why a column this project declares nothing for has no entry |
- * | 未対応列には入口を置かない | [`UNMAPPED_ABSENT_REASON`] | why the 未対応区画 has none either |
  * | title は必須 | `TASK_TITLE_REQUIRED_REASON` (`manage.ts`) | the same requirement the 新規タスク区画 states, in the same words |
  * | 発行するのは同じ task create | [`buildLaneTaskCreate`] over `buildTaskCreate` | one `task create`, built by the 新規タスク区画's own builder |
  *
@@ -50,14 +49,6 @@ export function noCandidateAbsentReason(column: StatusColumn): string {
     "宣言していないため、作成時の初期値を決められません。新規タスク入力は置きません（doc-7 §4.1）。"
   );
 }
-
-/**
- * Why the 未対応区画 has no entry (doc-7 §4.1). Grid-wide rather than per project: the 未対応区画 is
- * not a 正準ステータス列 in any project, so no 候補集合 is defined for it at all.
- */
-export const UNMAPPED_ABSENT_REASON =
-  `${UNMAPPED_LABEL}列は正準ステータス列ではなく、作成時 status 候補の集合を定義できないため、` +
-  "新規タスク入力は置きません（doc-7 §4.1）。";
 
 /**
  * Whether this cell's column offers the entry, and with which candidates (doc-7 §4.1).
