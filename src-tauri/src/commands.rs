@@ -1864,7 +1864,7 @@ ordinal: 1000\n\
 
     // TASK-42 AC #1/#3: the whole load→interpret path, driven from a hand-edited projects.toml
     // rather than from an entry built in the test. doc-3 §3.3 makes an alias whose value is not a
-    // canonical column invalid *and* leaves the status it names 未対応; the bug this pins was in
+    // canonical column invalid *and* leaves the status it names 未分類; the bug this pins was in
     // what `LoadedLedger::load` handed over (it deleted the pair, so 名称一致 rescued `Done` into
     // the Done column), which no unit test of `map_status` alone could see.
     #[test]
@@ -1911,8 +1911,8 @@ ordinal: 1000\n\
             status.column, None,
             "an invalid alias must not fall back to 名称一致"
         );
-        assert_eq!(status.raw, "Done", "未対応区画 shows the original string");
-        // `Done` is declared in config.yml, so this stays the ordinary 未対応 case: decision-4
+        assert_eq!(status.raw, "Done", "未分類区画 shows the original string");
+        // `Done` is declared in config.yml, so this stays the ordinary 未分類 case: decision-4
         // reserves the stronger 想定外スキーマ mark for a status config.yml does not declare, and
         // the fault here is in Atlas's own ledger, not in the task file.
         assert_eq!(status.declaration, StatusDeclaration::Declared);

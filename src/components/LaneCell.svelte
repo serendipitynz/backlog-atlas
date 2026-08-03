@@ -1,5 +1,5 @@
 <script lang="ts">
-  // レーンセル (doc-7 §1): one project row × one canonical column, or the row's 未対応区画.
+  // レーンセル (doc-7 §1): one project row × one canonical column, or the row's 未分類区画.
   // An empty cell is drawn empty and says so — "該当タスクが無い" is a different fact from
   // "ルートが読めない", which is a row-level state (doc-7 §6).
   import TaskCard from "./TaskCard.svelte";
@@ -11,7 +11,7 @@
     tasks: TaskView[];
     /** The column this cell belongs to, for the count a 畳んだ列 announces (doc-7 §2.2). */
     label: string;
-    /** 未対応区画 shows each card's original status string (doc-7 §2). */
+    /** 未分類区画 shows each card's original status string (doc-7 §2). */
     unmapped?: boolean;
     /**
      * 列折畳み (doc-7 §2.2): the column is a narrow band in *every* row, so the cell keeps its count

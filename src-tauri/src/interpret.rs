@@ -196,7 +196,7 @@ mod tests {
     fn serializes_with_camel_case_names() {
         let t = task(Some("Doing"), &["feature"], &[]);
         // `Doing` must be a declared project-specific status for its alias to apply — an alias
-        // does not rescue a status absent from config.yml (that stays 未対応).
+        // does not rescue a status absent from config.yml (that stays 未分類).
         let mut config = config();
         config.statuses.push("Doing".into());
         let aliases: BTreeMap<String, String> =

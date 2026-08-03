@@ -130,7 +130,7 @@
    * added to a head moves it again. So the offset is measured rather than written down — a fixed one
    * would leave a strip of scrolled cards between the two rows as soon as the real height differed
    * from it, which is exactly what 受入条件 #3 forbids. (Until TASK-69 the folded head stacked its
-   * parts and the 未対応列 carried two sentences, so folding a column moved this by two lines; those
+   * parts and the 未分類列 carried two sentences, so folding a column moved this by two lines; those
    * two causes are gone, the measurement is not.)
    */
   let columnHeads = $state<Record<string, HTMLElement>>({});
@@ -205,7 +205,7 @@
   const REORDER_BLOCKED_REASON =
     "台帳が読み取り専用のため、行の並べ替えはできません（doc-3 §2.2）。台帳画面で理由を確認できます。";
 
-  // 未対応区画は常設ではない (doc-7 §2.2): the column appears only while some row has a task in
+  // 未分類区画は常設ではない (doc-7 §2.2): the column appears only while some row has a task in
   // it, and disappears again once none does.
   let hasUnmapped = $derived(
     rows.some((row) => row.state === "loaded" && row.unmapped.length > 0),
@@ -232,7 +232,7 @@
       : [...foldedRows, slug];
   }
 
-  // 列の幅. A folded column is a narrow band; the 未対応 column stays narrower than the four and last
+  // 列の幅. A folded column is a narrow band; the 未分類 column stays narrower than the four and last
   // (doc-7 §2.2). The band has to hold the column name at 0.7rem, which is what fixes it at 5rem.
   const OPEN_COLUMN = "minmax(13rem, 1fr)";
   const FOLDED_COLUMN = "5rem";
@@ -270,9 +270,9 @@
   style="--columns: {columnTemplate}; --lane-top: {headHeight}px"
   bind:this={grid}
 >
-  <!-- 列ヘッダ 1 つ。正準ステータス列と 未対応区画 が同じものを描く (doc-7 §2.2): 列折畳みはどちらにも
+  <!-- 列ヘッダ 1 つ。正準ステータス列と 未分類区画 が同じものを描く (doc-7 §2.2): 列折畳みはどちらにも
        効くので、控えとその 4 つの aria 属性を 2 か所に書くと片方だけが後から変わりうる。`name` を別に
-       取るのは、読み上げが「To Do 列の」と「未対応区画の」で分かれるためで、`label` は画面に出る語。 -->
+       取るのは、読み上げが「To Do 列の」と「未分類区画の」で分かれるためで、`label` は画面に出る語。 -->
   {#snippet columnHead(column: GridColumn, label: string, name: string)}
     {@const folded = collapsedColumns.includes(column)}
     {@const foldable = columnFoldable(collapsedColumns, column)}
@@ -320,11 +320,11 @@
     {@render columnHead(column, CANONICAL_COLUMN_LABEL[column], `${CANONICAL_COLUMN_LABEL[column]} 列`)}
   {/each}
   {#if hasUnmapped}
-    <!-- 未対応区画も列折畳みの対象 (doc-7 §2.2). It holds cards like any column, and the reason it used
+    <!-- 未分類区画も列折畳みの対象 (doc-7 §2.2). It holds cards like any column, and the reason it used
          to be excluded was only that it is not a 正準ステータス列 — which says nothing about folding.
          What stays apart is [`columnFoldable`]'s guarantee: this one never counts as the column left
-         open, because it vanishes on its own once no row has an 未対応 status task. -->
-    {@render columnHead("unmapped", UNMAPPED_LABEL, "未対応区画")}
+         open, because it vanishes on its own once no row has an 未分類 status task. -->
+    {@render columnHead("unmapped", UNMAPPED_LABEL, "未分類区画")}
   {/if}
 
   {#if !CANONICAL_COLUMNS.every((column) => columnFoldable(collapsedColumns, column))}
@@ -505,7 +505,7 @@
           </LaneCell>
         {/each}
         {#if hasUnmapped}
-          <!-- No `createEntry`: 未対応列には入口を置かない (doc-7 §4.1), and the 置かない理由 is in the
+          <!-- No `createEntry`: 未分類列には入口を置かない (doc-7 §4.1), and the 置かない理由 is in the
                column head rather than in each row's cell (see the head above). Deliberately absent,
                not forgotten — passing a disabled entry here is the presentation doc-11 §5 separates
                from this one. -->
@@ -551,7 +551,7 @@
 
     display: grid;
     // The four canonical columns at equal width so the same status sits at the same x for every
-    // project, with the 未対応 column narrower and last. No project column at the left: the row's
+    // project, with the 未分類 column narrower and last. No project column at the left: the row's
     // identity is on its レーンヘッダ行 (doc-7 §2.3), which frees the whole width for the columns.
     // The script builds the template so that folding a column is one edit for the whole grid.
     grid-template-columns: var(--columns);
@@ -606,7 +606,7 @@
     }
   }
 
-  // 未対応列 draws the same head as the four (doc-7 §2.2) — one line, control then name — and is set
+  // 未分類列 draws the same head as the four (doc-7 §2.2) — one line, control then name — and is set
   // apart only by being dimmer, the same 中立 treatment its cells get. The two sentences that used to
   // stand under its name are now the line below the heads (doc-7 §4.1), which is what lets this head
   // be one line like the others.

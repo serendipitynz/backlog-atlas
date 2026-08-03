@@ -814,9 +814,9 @@
           <span class="mark" data-kind="degraded">status を読めません</span>
         {:else}
           <span class="raw">{status.raw}</span>
-          <!-- 正準対応を併記 (AC #1): 未対応 status is stated as such rather than shown blank. -->
+          <!-- 正準対応を併記 (AC #1): 未分類 status is stated as such rather than shown blank. -->
           {#if status.column === null}
-            <span class="mark unmapped">正準列 未対応</span>
+            <span class="mark unmapped">正準列 未分類</span>
           {:else}
             <span class="column">正準列: {CANONICAL_COLUMN_LABEL[status.column]}</span>
           {/if}
@@ -1960,7 +1960,7 @@
     cursor: help;
   }
 
-  // 解析縮退・版ずれ・未対応・中立の印を混ぜない (decision-6): each family takes its own colour from
+  // 解析縮退・版ずれ・未分類・中立の印を混ぜない (decision-6): each family takes its own colour from
   // the 表示テーマ's one definition in `app.scss` (`lib/mark.ts` の MarkKind), an unmapped or dangling
   // reference is outlined, and a merely-informative state stays plain.
   //

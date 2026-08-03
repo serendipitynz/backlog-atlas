@@ -23,7 +23,7 @@
  *   would let the column a task is *placed* in and the column it can be *created* in drift apart
  *   (`interpret::status::create_status_candidates` is the one definition).
  * - **置かない と 無効化 are different presentations** (doc-11 §5). A column with no candidate gets no
- *   control and a sentence saying why; the 未対応区画 gets no control and no sentence either, since the
+ *   control and a sentence saying why; the 未分類区画 gets no control and no sentence either, since the
  *   four columns having an entry while it has none is on screen already (doc-7 §4.1); a CLI 縮退 gets
  *   the control, disabled, with its reason (`issueAvailability`, doc-5 §5).
  */

@@ -187,7 +187,7 @@ export const ALIAS_EFFECT_NOTES: Record<AliasEffect, AliasEffectNote> = {
   undeclared: {
     label: "宣言なし → 効果なし",
     note:
-      "どこにも宣言が無い status です。別名を書いてもこの status のタスクは未対応区画に残ります" +
+      "どこにも宣言が無い status です。別名を書いてもこの status のタスクは未分類区画に残ります" +
       "（decision-4）。台帳からは削除しません。",
     ineffective: true,
   },

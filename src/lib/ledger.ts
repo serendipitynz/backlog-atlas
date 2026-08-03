@@ -284,7 +284,7 @@ export function aliasTable(rows: readonly AliasRow[]): Record<string, string> {
 /**
  * Whether an alias keyed `key` would have any effect, given the project's declared status set
  * (`config.yml`'s `statuses`). decision-4 makes an alias's subject a status the project *declares*,
- * so an alias for a value declared nowhere leaves its tasks 未対応 regardless — which looks like the
+ * so an alias for a value declared nowhere leaves its tasks 未分類 regardless — which looks like the
  * alias was ignored. Advisory only: `interpret::status` is where the rule is applied.
  *
  * - `declared` … the project declares this status; the alias applies.

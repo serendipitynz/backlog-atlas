@@ -206,7 +206,7 @@ describe("別名が効くかの提示", () => {
   });
 
   it("says the ineffective alias is kept in the ledger, not dropped (doc-3 §3.3, TASK-42)", () => {
-    expect(ALIAS_EFFECT_NOTES.undeclared.note).toContain("未対応区画");
+    expect(ALIAS_EFFECT_NOTES.undeclared.note).toContain("未分類区画");
     expect(ALIAS_EFFECT_NOTES.undeclared.note).toContain("台帳からは削除しません");
   });
 });

@@ -38,7 +38,7 @@ export interface TaskViewOptions {
   id?: string | null;
   project?: string;
   title?: string | null;
-  /** The canonical column the interpretation resolved to; `null` is 未対応 status. */
+  /** The canonical column the interpretation resolved to; `null` is 未分類 status. */
   column?: StatusColumn | null;
   /** The raw frontmatter status. `null` means the task carries none at all (解析不能). */
   status?: string | null;
