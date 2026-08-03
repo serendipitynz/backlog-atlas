@@ -8,9 +8,10 @@
   // words: a screen reader given the `<svg>` to announce would read the button as unnamed, and the one
   // thing an アイコンのみのボタン must not be is unlabelled.
   //
-  // **The size is `1em`.** The icon then follows the font-size of the button it sits in, which is the
-  // knob that already exists — an icon with a size prop of its own is a second knob that can disagree
-  // with the text beside it.
+  // **The size is `1em`.** The icon then follows the font-size of whatever box it sits in — the button
+  // for an アイコンのみのボタン, the 帯 or 区画 for an 操作に属さないアイコン (doc-11 §2.4) — which is
+  // the knob that already exists. An icon with a size prop of its own is a second knob that can
+  // disagree with the text beside it.
   import { ICONS, ICON_STROKE_WIDTH, ICON_VIEWBOX, drawnShape, type IconName } from "./lucide";
 
   interface Props {
