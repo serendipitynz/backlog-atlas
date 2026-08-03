@@ -109,18 +109,17 @@
 
   <!-- No visible 属性名 (doc-7 §5.2, TASK-112). 「テキスト」 named the box without saying what it
        filters, so the word is gone and the two halves of naming are split: `aria-label` is the name a
-       screen reader reads, the placeholder is what the box takes. The funnel is *not* inside this
-       `<label>` — it points at the whole bar, and a figure in here would name this one box instead
-       (doc-11 §2.4). -->
-  <label class="text">
-    <input
-      type="search"
-      aria-label="テキストで絞り込み"
-      placeholder="横断タスクID・title"
-      bind:value={text}
-      oninput={commitText}
-    />
-  </label>
+       screen reader reads, the placeholder is what the box takes. **No `<label>` around it either** —
+       with the word gone the element would wrap nothing but the input and promise a caption that is
+       not there; `aria-label` names the box directly. The funnel is a sibling rather than a parent for
+       the same reason it is not a label: it points at the whole bar (doc-11 §2.4). -->
+  <input
+    type="search"
+    aria-label="テキストで絞り込み"
+    placeholder="横断タスクID・title"
+    bind:value={text}
+    oninput={commitText}
+  />
 
   <!-- 値の一覧は「＋ 絞り込み」から開くポップオーバーで選ぶ (doc-7 §5.2). Kept outside the token
        area so it stays put while the tokens scroll. -->
@@ -239,11 +238,6 @@
     // 副次 (doc-11 §2.1), like the 属性名 this replaced. `Icon.svelte` draws in `currentColor`, so
     // this is the whole of the icon's colour.
     color: var(--muted);
-  }
-
-  .text {
-    display: inline-flex;
-    align-items: center;
   }
 
   input[type="search"] {
