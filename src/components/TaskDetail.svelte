@@ -21,6 +21,7 @@
   import DetailSection from "./DetailSection.svelte";
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
+  import Icon from "../lib/icons/Icon.svelte";
   import { cardIdentity, crossTaskId } from "../lib/card";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
@@ -87,16 +88,17 @@
     type VersionConflict,
   } from "../lib/mark";
   import {
-    DEFAULT_PLACEMENT_MARK,
     MODAL_COLUMN_GAP_REM,
     MODAL_INSET_REM,
     MODAL_MAX_WIDTH_REM,
     MODAL_PADDING_REM,
     MODAL_SIDE_COLUMN_REM,
     PLACEMENTS,
+    PLACEMENT_ICON,
     layoutFor,
     placementPersistence,
     placementPersistenceNote,
+    placementSwitchName,
   } from "../lib/placement";
   import { DETAIL_PLACEMENT_LABEL } from "../lib/settings";
   import {
@@ -693,18 +695,22 @@
       <div class="frame">
         <div class="placement" role="group" aria-label="詳細配置">
           {#each PLACEMENTS as candidate (candidate)}
+            {@const isDefault = candidate === defaultPlacement}
+            <!-- アイコンのみのボタン (doc-11 §2.4): the figure is decorative, so `aria-label` carries
+                 the whole name — 配置名, and 既定 for the one the 下線 marks. Both come from
+                 `placementSwitchName`, since a label and a title that disagreed would be two answers
+                 to the same question. -->
             <button
               type="button"
               class="switch"
               class:on={candidate === placement}
+              class:is-default={isDefault}
               aria-pressed={candidate === placement}
+              aria-label={placementSwitchName(DETAIL_PLACEMENT_LABEL[candidate], isDefault)}
+              title={placementSwitchName(DETAIL_PLACEMENT_LABEL[candidate], isDefault)}
               onclick={() => onplacement(candidate)}
             >
-              {DETAIL_PLACEMENT_LABEL[candidate]}
-              {#if candidate === defaultPlacement}
-                <!-- 既定の配置がどれかを切替の見た目で示す (doc-8 §2.2). -->
-                <span class="default-mark">{DEFAULT_PLACEMENT_MARK}</span>
-              {/if}
+              <Icon name={PLACEMENT_ICON[candidate]} />
             </button>
           {/each}
         </div>
@@ -1729,6 +1735,16 @@
 
   // 配置の切替と閉じるは 1 つの操作群 (doc-8 §2.2).
   .frame {
+    /*
+     * The height and the text size of everything in this 操作群, as one value each — the same reason
+     * `Swimlane.svelte` has `--head-control`. Three of the four controls draw a figure and the fourth
+     * spells a word, and a figure is `1em` of its own box (doc-11 §2.4) rather than a line box handed
+     * down by the row: without one font-size taken by all of them the switches and 閉じる would only
+     * line up by coincidence, and the coincidence differs by engine.
+     */
+    --frame-control: 1.4rem;
+    --frame-text: 0.7rem;
+
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -1741,29 +1757,60 @@
   }
 
   .switch {
+    box-sizing: border-box;
+    position: relative;
     display: flex;
-    align-items: baseline;
-    gap: 0.25rem;
-    font-size: 0.68rem;
+    align-items: center;
+    justify-content: center;
+    // A step taller than the `--head-control` the 列・行折畳み use, because this control carries a
+    // mark below its figure and that one does not: measured at 1.2rem the 既定印 sat against the
+    // frame and read as part of it.
+    height: var(--frame-control);
+    // Square: an アイコンのみのボタン has nothing to be wider than its figure for, and three of them
+    // side by side read as one group of switches only if they are the same size.
+    width: var(--frame-control);
+    padding: 0;
+    font-size: var(--frame-text);
 
     &.on {
       border-color: var(--info);
       background: color-mix(in srgb, var(--info) 14%, transparent);
     }
-  }
 
-  // 既定の印は中立: 状態の族ではなく、次回起動時にどれで開くかという情報である (decision-6).
-  .default-mark {
-    padding: 0 0.25rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 3px;
-    font-size: 0.6rem;
-    opacity: 0.75;
+    /*
+     * 既定印 (doc-8 §2.2): the 下線 画面設計案 02 puts on the button of the placement the next start
+     * will open in (doc-12 §3). Its own element rather than a bottom border or an inset shadow —
+     * both of those follow the border radius and end up reading as the button's own frame, which the
+     * first measurement showed. Absolute, so it takes no part in the layout: the three switches stay
+     * the same size whichever of them is the 既定.
+     *
+     * `--fg` rather than the `--line-strong` of the frame around it: a mark that shares the frame's
+     * colour is a thicker frame. It stays 中立 (decision-6) all the same — being the 既定 is which
+     * placement is stored, not a 族 of state — and `.on`'s `--info` border is left to say the other
+     * thing, since いま出ている配置 と 次回開く配置 can be true of different buttons at once.
+     */
+    &.is-default::after {
+      content: "";
+      position: absolute;
+      right: 0.25rem;
+      bottom: 0.1rem;
+      left: 0.25rem;
+      height: 2px;
+      border-radius: 1px;
+      background: var(--fg);
+    }
   }
 
   .close {
+    // `border-box` because the height is written with a border and padding in play, and this file has
+    // no global reset to fold them in (doc-12 §4.3). `inline-flex` centres the word in that height —
+    // the switches beside it centre a figure the same way.
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    height: var(--frame-control);
     padding: 0 0.4rem;
-    font-size: 0.7rem;
+    font-size: var(--frame-text);
   }
 
   .facts {

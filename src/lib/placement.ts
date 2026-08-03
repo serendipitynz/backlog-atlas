@@ -19,6 +19,8 @@
  * | doc-8 §5 配置ごとの粒度 | [`HistoryDetail`] | how much of the Git 履歴欄 this placement shows |
  * | doc-8 §2.1 1280×800 でも 2 列 | [`modalMainColumnRem`] | what is left for the 主列 once the 脇列 is taken |
  * | doc-8 §2.2 既定の永続 | [`placementPersistence`] | whether the chosen placement could be stored, and why not |
+ * | doc-8 §2.2 既定印 | [`DEFAULT_PLACEMENT_MARK`] + [`placementSwitchName`] | the mark on the switch for the placement stored as the 既定 |
+ * | doc-8 §2.2 切替が刷る図形 | [`PLACEMENT_ICON`] | which lucide figure stands for each placement |
  *
  * Two rules run through the module:
  *
@@ -31,6 +33,7 @@
  *   user had closed it on the previous task.
  */
 
+import type { IconName } from "./icons/lucide";
 import type { DetailPlacement } from "./wire";
 
 /** The 区画 doc-8 §3's assignment table has rows for, in the table's own order. */
@@ -216,8 +219,37 @@ export function placementPersistence(
   return current === stored ? { state: "default" } : { state: "notDefault", stored };
 }
 
-/** The mark the switch carries on the placement stored as the 既定 (doc-8 §2.2 切替の見た目で示す). */
+/**
+ * 既定印 (doc-8 §2.2): the word that says a switch is the placement the next start will open in.
+ *
+ * **It is not printed on the button.** Since TASK-71 the three switches are アイコンのみのボタン
+ * (doc-11 §2.4), which by definition carry no visible text, and the 既定印 the screen shows is the
+ * underline 画面設計案 02 puts there (doc-12 §3). An underline reaches the eye and nothing else, so
+ * this word is what carries the same fact into the accessible name — see [`placementSwitchName`].
+ */
 export const DEFAULT_PLACEMENT_MARK = "既定";
+
+/**
+ * The name an アイコンのみのボタン for `placement` announces (doc-8 §2.2, doc-11 §2.4).
+ *
+ * One place decides it because the same string is the `aria-label` and the `title`, and because the
+ * 既定 half of it has to appear wherever the underline does — a screen reader offered the name without
+ * it would be told which placement the button chooses but never which one the app will open in.
+ */
+export function placementSwitchName(label: string, isDefault: boolean): string {
+  return isDefault ? `${label}（${DEFAULT_PLACEMENT_MARK}）` : label;
+}
+
+/**
+ * 3 配置の切替が刷る図形 (doc-8 §2.2, TASK-71). The assignment is doc-8's, so it lives beside the rest
+ * of doc-8's tables rather than in `lucide.ts`: that module holds figures and knows nothing about
+ * placements, and this record is what makes a placement without a figure fail to compile.
+ */
+export const PLACEMENT_ICON: Record<DetailPlacement, IconName> = {
+  sidebar: "panel-right",
+  modal: "panel-top-dashed",
+  full: "maximize",
+};
 
 /**
  * What the switch says about the 既定 beyond the mark, or `null` when the placement on screen *is*

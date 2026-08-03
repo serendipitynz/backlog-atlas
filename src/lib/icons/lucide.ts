@@ -19,7 +19,8 @@
  * than one that is lucide's, and nothing downstream could tell which had happened. So [`IconShape`] is
  * a closed union of the SVG elements lucide actually uses, and an icon that needs a new one adds a
  * member; [`drawnShape`] is then non-exhaustive and the build stops until the new kind is drawn.
- * (Verified by adding a `rect` member: `pnpm run check` reports [`drawnShape`] by name.)
+ * TASK-71 is where that happened for real rather than as a mutation: `panel-right` and
+ * `panel-top-dashed` open with a `rect`, and `pnpm run check` named [`drawnShape`] until it was drawn.
  *
  * ## Referent table (doc term → identifier here)
  *
@@ -46,14 +47,30 @@ export type IconName =
   | "chevron-up"
   | "chevron-down"
   | "chevron-left"
-  | "chevron-right";
+  | "chevron-right"
+  | "panel-right"
+  | "panel-top-dashed"
+  | "maximize";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
  * figures below actually use — see the module header for why a missing kind is added rather than
  * worked around.
+ *
+ * The attribute values are lucide's own strings rather than numbers: SVG reads either the same way,
+ * and keeping the spelling means a reader diffing this file against `__iconNode` compares characters
+ * instead of deciding whether a retyped coordinate is still the same coordinate.
  */
-export type IconShape = { shape: "path"; d: string };
+export type IconShape =
+  | { shape: "path"; d: string }
+  | {
+      shape: "rect";
+      width: string;
+      height: string;
+      x: string;
+      y: string;
+      rx: string;
+    };
 
 /** The frame the coordinates below are in (`defaultAttributes.mjs`). */
 export const ICON_VIEWBOX = "0 0 24 24";
@@ -78,16 +95,29 @@ export interface DrawnShape {
  * non-exhaustive and TypeScript then reports a function that can fall off its end. The template renders
  * whatever comes back, so there is no path where a shape kind is drawn by nothing.
  *
- * A bare `{#if shape.shape === "path"}` in the template cannot do this. TypeScript narrows by
- * discriminant only across a *union*, and a one-member [`IconShape`] is not one — so the `{:else}` arm
- * is typed as the shape itself rather than as `never`, an exhaustiveness call there does not compile
- * today, and leaving the arm out compiles happily while drawing an empty `<svg>`: a green build and a
- * blank button, which is exactly the failure this guards.
+ * A bare `{#if shape.shape === "path"}` in the template cannot do this, and the reason is worth keeping
+ * now that [`IconShape`] has grown a second member: a template arm is checked only for the members that
+ * exist when it is written, so the arm added for `rect` today would still compile — silently drawing an
+ * empty `<svg>`, a green build and a blank button — the day a third kind arrives. Back when
+ * [`IconShape`] had one member the template could not even be made to complain (TypeScript narrows by
+ * discriminant across a *union*, and a one-member type is not one, so the `{:else}` arm was typed as
+ * the shape itself rather than as `never`). The `switch` is what refuses in both situations.
  */
 export function drawnShape(shape: IconShape): DrawnShape {
   switch (shape.shape) {
     case "path":
       return { tag: "path", attrs: { d: shape.d } };
+    case "rect":
+      return {
+        tag: "rect",
+        attrs: {
+          width: shape.width,
+          height: shape.height,
+          x: shape.x,
+          y: shape.y,
+          rx: shape.rx,
+        },
+      };
   }
 }
 
@@ -114,4 +144,24 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
   "chevron-down": [{ shape: "path", d: "m6 9 6 6 6-6" }],
   "chevron-left": [{ shape: "path", d: "m15 18-6-6 6-6" }],
   "chevron-right": [{ shape: "path", d: "m9 18 6-6-6-6" }],
+  // The three 詳細配置 切替 (doc-8 §2.2). Which figure stands for which placement is doc-8's mapping,
+  // not this module's — `PLACEMENT_ICON` in `placement.ts` holds it, and nothing here knows what a
+  // 配置 is. These two are the first figures to need a `rect`, which is why `IconShape` has one.
+  "panel-right": [
+    { shape: "rect", width: "18", height: "18", x: "3", y: "3", rx: "2" },
+    { shape: "path", d: "M15 3v18" },
+  ],
+  "panel-top-dashed": [
+    { shape: "rect", width: "18", height: "18", x: "3", y: "3", rx: "2" },
+    { shape: "path", d: "M14 9h1" },
+    { shape: "path", d: "M19 9h2" },
+    { shape: "path", d: "M3 9h2" },
+    { shape: "path", d: "M9 9h1" },
+  ],
+  maximize: [
+    { shape: "path", d: "M8 3H5a2 2 0 0 0-2 2v3" },
+    { shape: "path", d: "M21 8V5a2 2 0 0 0-2-2h-3" },
+    { shape: "path", d: "M3 16v3a2 2 0 0 0 2 2h3" },
+    { shape: "path", d: "M16 21h3a2 2 0 0 0 2-2v-3" },
+  ],
 };

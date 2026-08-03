@@ -1,16 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { ICONS, drawnShape } from "./icons/lucide";
 import {
   DEFAULT_PLACEMENT_MARK,
   MODAL_MIN_MAIN_COLUMN_REM,
   MODAL_REQUIRED_VIEWPORT_PX,
   MODAL_SIDE_COLUMN_REM,
   PLACEMENTS,
+  PLACEMENT_ICON,
   RECENT_COMMIT_LIMIT,
   SECTION_COLUMN,
   layoutFor,
   modalMainColumnRem,
   placementPersistence,
   placementPersistenceNote,
+  placementSwitchName,
   type DetailSection,
   type Disposition,
 } from "./placement";
@@ -52,6 +55,46 @@ describe("AC #1 3 配置", () => {
     for (const placement of PLACEMENTS) {
       expect(DETAIL_PLACEMENT_LABEL[placement]).toBeTruthy();
     }
+  });
+
+  /*
+   * TASK-71 の割当, restated from the task's Description rather than read back from `PLACEMENT_ICON` —
+   * the assignment is a decision the user made about which figure means which placement, so a test
+   * that derived it from the record would agree with any assignment the record happened to hold.
+   */
+  it("gives each placement the lucide figure the assignment names", () => {
+    expect(PLACEMENT_ICON).toEqual({
+      sidebar: "panel-right",
+      modal: "panel-top-dashed",
+      full: "maximize",
+    });
+  });
+
+  it("has a figure written out for each of them, drawn by every element kind it uses", () => {
+    for (const placement of PLACEMENTS) {
+      const figure = ICONS[PLACEMENT_ICON[placement]];
+      expect([placement, figure.length > 0]).toEqual([placement, true]);
+      // `drawnShape` is the one mapping from kind to element (doc-11 §2.4), so running the figure
+      // through it is what says the `rect` these two open with reaches an element rather than the
+      // `{#each}`'s floor. A tag it left empty would be an icon that draws nothing.
+      for (const shape of figure) {
+        expect([placement, drawnShape(shape).tag]).toEqual([placement, shape.shape]);
+      }
+    }
+  });
+
+  it("draws a rect with all the geometry lucide gives it", () => {
+    // `panel-right` opens with lucide's 18×18 rounded rect; dropping an attribute here would shrink
+    // the panel outline to the SVG defaults (x/y 0, no corner radius) without failing to render.
+    const rect = ICONS["panel-right"].find((shape) => shape.shape === "rect");
+    expect(rect).toBeDefined();
+    expect(drawnShape(rect!).attrs).toEqual({
+      width: "18",
+      height: "18",
+      x: "3",
+      y: "3",
+      rx: "2",
+    });
   });
 });
 
@@ -125,11 +168,33 @@ describe("AC #7 中央モーダルは 1280×800 でも 2 列", () => {
 describe("AC #3 既定の永続と、既定がどれかの表示", () => {
   const label = (placement: DetailPlacement) => DETAIL_PLACEMENT_LABEL[placement];
 
-  it("says nothing beyond the mark while the placement on screen is the stored 既定", () => {
+  it("leaves the note silent while the placement on screen is the stored 既定", () => {
     const persistence = placementPersistence("modal", "modal", null);
     expect(persistence).toEqual({ state: "default" });
     expect(placementPersistenceNote(persistence, label)).toBeNull();
     expect(DEFAULT_PLACEMENT_MARK).toBe("既定");
+  });
+
+  /*
+   * TASK-71: the mark is a 下線 from here on (doc-8 §2.2, doc-12 §3), so the case above — the note is
+   * silent because "the mark alone says everything" — is exactly the case where the eye is the only
+   * sense the mark reaches. `placementSwitchName` is what puts it back, so these assert the two halves
+   * together: the silent note, and a name that still carries 既定.
+   */
+  it("carries 既定 in the switch's own name, since the 下線 reaches nothing but the eye", () => {
+    const stored = placementSwitchName(DETAIL_PLACEMENT_LABEL.modal, true);
+    expect(stored).toContain(DETAIL_PLACEMENT_LABEL.modal);
+    expect(stored).toContain(DEFAULT_PLACEMENT_MARK);
+    // And this is the case the note is silent for, so the name is the only place it is said at all.
+    expect(placementPersistenceNote(placementPersistence("modal", "modal", null), label)).toBeNull();
+  });
+
+  it("leaves the other two switches named by their placement alone", () => {
+    for (const placement of PLACEMENTS) {
+      const name = placementSwitchName(DETAIL_PLACEMENT_LABEL[placement], false);
+      expect([placement, name]).toEqual([placement, DETAIL_PLACEMENT_LABEL[placement]]);
+      expect([placement, name.includes(DEFAULT_PLACEMENT_MARK)]).toEqual([placement, false]);
+    }
   });
 
   it("names the placement the next start will use when the two differ", () => {
