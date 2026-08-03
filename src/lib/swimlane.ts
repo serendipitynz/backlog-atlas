@@ -1,7 +1,7 @@
 /**
  * The swimlane's skeleton, as data (doc-7 §2–§5). Everything here is a pure function of the
  * boundary's payloads plus the screen's own row/filter state, so the placement rule, the cell
- * ordering and the 未対応区画 can be tested without mounting a component.
+ * ordering and the 未分類区画 can be tested without mounting a component.
  *
  * ## Referent table (doc-7 term → identifier here)
  *
@@ -14,7 +14,7 @@
  * | §2 正準ステータス列 | `CANONICAL_COLUMNS` | the fixed four columns, identical across rows |
  * | §1 レーンセル | `LaneCell` | one row × one canonical column, holding that column's cards |
  * | §1 タスクカード | a `TaskView` inside a cell | the display unit; `TaskCard.svelte` renders it |
- * | §2 未対応区画 | `SwimlaneRow.unmapped` | the row's tasks whose status maps to no column |
+ * | §2 未分類区画 | `SwimlaneRow.unmapped` | the row's tasks whose status maps to no column |
  * | §1 レーンヘッダ行 | `Swimlane.svelte` の `.lane-head` | the row's own full-width line: name, slug, counts, row-level controls |
  * | §2.1 総件数 | [`SwimlaneTotals`] と [`totalsLabel`] | the whole grid's two ratios, beside the 画面名 |
  * | §1 列折畳み | [`columnFoldable`] / a collapsed [`GridColumn`] | one column narrowed to a band in every row at once, keeping its name |
@@ -62,11 +62,11 @@ export const CANONICAL_COLUMN_LABEL: Record<StatusColumn, string> = {
 };
 
 /**
- * What the 未対応区画 is called wherever it is named beside the four (doc-7 §2.2). It is not a
+ * What the 未分類区画 is called wherever it is named beside the four (doc-7 §2.2). It is not a
  * canonical column, so it has no entry in `CANONICAL_COLUMN_LABEL`; keeping the word here stops the
  * grid's column head, the folded row's counts and the detail panel's 位置表示 from drifting apart.
  */
-export const UNMAPPED_LABEL = "未対応";
+export const UNMAPPED_LABEL = "未分類";
 
 /** One row × one canonical column. Empty `tasks` is an empty cell — 該当タスク無し (doc-7 §6). */
 export interface LaneCell {
@@ -86,7 +86,7 @@ export type SwimlaneRow =
       /** `config.yml`'s project_name, for the row header beside the slug. */
       projectName: string | null;
       cells: LaneCell[];
-      /** 未対応区画 — only shown when non-empty; it is not a permanent fixture (doc-7 §5). */
+      /** 未分類区画 — only shown when non-empty; it is not a permanent fixture (doc-7 §5). */
       unmapped: TaskView[];
       /** Cards this row holds before filtering, so "filtered to nothing" stays distinguishable. */
       totalBeforeFilter: number;
@@ -176,7 +176,7 @@ function buildRow(
   for (const view of load.project.tasks) {
     if (!matchesFilter(view, filter)) continue;
     // doc-7 §4: placement is the interpretation's column, with no second rule here. No column
-    // — 未対応 status, or a 解析不能 task with no status at all — goes to the 未対応区画, never
+    // — 未分類 status, or a 解析不能 task with no status at all — goes to the 未分類区画, never
     // into a canonical column.
     const column = view.interpretation.status?.column ?? null;
     if (column === null) unmapped.push(view);
@@ -205,7 +205,7 @@ function buildRow(
  * given the numbers as data rather than leaving each call site to count the cells again.
  */
 export interface LaneCount {
-  /** `null` は 未対応区画: it holds cards but is not a 正準ステータス列 (doc-7 §1). */
+  /** `null` は 未分類区画: it holds cards but is not a 正準ステータス列 (doc-7 §1). */
   column: StatusColumn | null;
   label: string;
   count: number;
@@ -217,7 +217,7 @@ export function cellCount(row: SwimlaneRow, column: StatusColumn): number {
   return row.cells.find((cell) => cell.column === column)?.tasks.length ?? 0;
 }
 
-/** Cards the row shows after filtering, across every column and its 未対応区画 (doc-7 §5.2 の n). */
+/** Cards the row shows after filtering, across every column and its 未分類区画 (doc-7 §5.2 の n). */
 export function visibleCount(row: SwimlaneRow): number {
   if (row.state !== "loaded") return 0;
   return row.cells.reduce((sum, cell) => sum + cell.tasks.length, 0) + row.unmapped.length;
@@ -226,7 +226,7 @@ export function visibleCount(row: SwimlaneRow): number {
 /**
  * 列別の件数 for a folded row (doc-7 §2.3). The four canonical columns are always listed — a column
  * with no cards reads as 0 rather than disappearing, so the folded row and the unfolded grid line up
- * on the same four positions. The 未対応区画 joins them only while the grid is showing that column
+ * on the same four positions. The 未分類区画 joins them only while the grid is showing that column
  * (doc-7 §2.2: 該当がある間だけ現れる), which is what `withUnmapped` carries in.
  */
 export function laneCounts(row: SwimlaneRow, withUnmapped: boolean): LaneCount[] {
@@ -246,8 +246,8 @@ export function laneCounts(row: SwimlaneRow, withUnmapped: boolean): LaneCount[]
 }
 
 /**
- * One column of the grid: a 正準ステータス列, or the 未対応区画 while it is showing. 列折畳み reaches
- * both (doc-7 §2.2), so both need one name — the 未対応区画 is `"unmapped"` rather than a fifth member
+ * One column of the grid: a 正準ステータス列, or the 未分類区画 while it is showing. 列折畳み reaches
+ * both (doc-7 §2.2), so both need one name — the 未分類区画 is `"unmapped"` rather than a fifth member
  * of [`CANONICAL_COLUMNS`], because it is not a status and only exists while some row has a task in it.
  */
 export type GridColumn = StatusColumn | "unmapped";
@@ -260,8 +260,8 @@ export type GridColumn = StatusColumn | "unmapped";
  * controls that folded them. Unfolding is never refused, so a folded column's control always works —
  * the rule blocks one direction, which is why this takes the column and not just a count.
  *
- * **The 未対応区画 does not count as the column left open**, even though it holds cards: it disappears
- * of its own accord once no row has an 未対応 status task left (doc-7 §2.2), which would leave a grid
+ * **The 未分類区画 does not count as the column left open**, even though it holds cards: it disappears
+ * of its own accord once no row has an 未分類 status task left (doc-7 §2.2), which would leave a grid
  * whose four bands can no longer be forced open by this rule. It can itself always be folded, since
  * folding it never takes a status column away — said as its own line below rather than left to fall
  * out of the canonical test, which would answer `false` for it once all four were folded. That state
@@ -407,12 +407,12 @@ export function laneScrollDelta(landing: LaneLanding): number {
  */
 export interface LaneNeighbours {
   /**
-   * The group the task is in. 未対応区画 is not a レーンセル (doc-7 §1 makes a cell a row × a
+   * The group the task is in. 未分類区画 is not a レーンセル (doc-7 §1 makes a cell a row × a
    * canonical column), but it is the run of cards the task is actually shown in — so moving through
    * it is the same operation, and naming it apart keeps the position label honest.
    */
   group: { kind: "column"; column: StatusColumn } | { kind: "unmapped" };
-  /** 1-based position within the group, and how many cards it holds — doc-8 §2.2's セル内 n / m 件. */
+  /** 1-based position within the group, and how many cards it holds — doc-8 §2.2's 位置表示. */
   position: number;
   total: number;
   previous: TaskView | null;
@@ -453,13 +453,22 @@ export function laneNeighbours(
   return null;
 }
 
-/** doc-8 §2.2 の位置表示: which cell, and where in it. */
+/**
+ * What the group holding this task is called on screen (doc-8 §2.2). **The 未分類区画 is not a
+ * レーンセル** — doc-7 §1 makes a cell a プロジェクト行 × 正準ステータス列 — so the noun differs by
+ * group, and every string that names the group takes it from here: the 位置表示 below and the two
+ * 前後移動 controls in the heading. Spelling セル in each of them is what let the panel call the
+ * 区画 a cell while doc-7 said it is not one.
+ */
+export function laneGroupLabel(group: LaneNeighbours["group"]): string {
+  return group.kind === "column"
+    ? `${CANONICAL_COLUMN_LABEL[group.column]} セル`
+    : `${UNMAPPED_LABEL}区画`;
+}
+
+/** doc-8 §2.2 の位置表示: which group, and where in it. */
 export function laneNeighbourLabel(neighbours: LaneNeighbours): string {
-  const where =
-    neighbours.group.kind === "column"
-      ? CANONICAL_COLUMN_LABEL[neighbours.group.column]
-      : UNMAPPED_LABEL;
-  return `${where} セル内 ${neighbours.position} / ${neighbours.total} 件`;
+  return `${laneGroupLabel(neighbours.group)}内 ${neighbours.position} / ${neighbours.total} 件`;
 }
 
 /** Why 前後移動 is not offered, when it is not (doc-11 §5: a withheld control says why). */

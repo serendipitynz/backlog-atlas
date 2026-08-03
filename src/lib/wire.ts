@@ -133,9 +133,9 @@ export type StatusColumn = "toDo" | "inProgress" | "inReview" | "done";
 export type StatusDeclaration = "declared" | "draft" | "undeclared" | "noDeclaredSet";
 
 export interface StatusMapping {
-  /** The status exactly as the frontmatter wrote it — what the 未対応区画 shows (decision-4). */
+  /** The status exactly as the frontmatter wrote it — what the 未分類区画 shows (decision-4). */
   raw: string;
-  /** `null` is 未対応 status: the task belongs in the row's 未対応区画, never in a column. */
+  /** `null` is 未分類 status: the task belongs in the row's 未分類区画, never in a column. */
   column: StatusColumn | null;
   declaration: StatusDeclaration;
 }

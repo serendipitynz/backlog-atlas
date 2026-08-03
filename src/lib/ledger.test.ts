@@ -254,7 +254,7 @@ describe("aliasKeyEffect", () => {
   it("separates a declared status from one declared nowhere (decision-4)", () => {
     expect(aliasKeyEffect("Doing", declared)).toBe("declared");
     expect(aliasKeyEffect(" doing ", declared)).toBe("declared");
-    // An alias for a status config.yml does not declare leaves the task 未対応 regardless.
+    // An alias for a status config.yml does not declare leaves the task 未分類 regardless.
     expect(aliasKeyEffect("Ongoing", declared)).toBe("undeclared");
   });
 

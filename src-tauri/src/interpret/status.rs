@@ -6,8 +6,8 @@
 //!
 //! 1. **Which column does it go to?** — a status absent from `config.yml` is kept unmapped
 //!    outright (doc-7 §5, below); otherwise the alias table is tried first, then name matching
-//!    (case and surrounding whitespace ignored). No column means 未対応 status:
-//!    [`StatusMapping::column`] is `None` and the task must go to the row's 未対応区画, never into
+//!    (case and surrounding whitespace ignored). No column means 未分類 status:
+//!    [`StatusMapping::column`] is `None` and the task must go to the row's 未分類区画, never into
 //!    a canonical column.
 //! 2. **Is the value itself known?** — declared in `config.yml`, the draft-only `Draft`, or
 //!    declared nowhere. Only the last earns the stronger 想定外スキーマ mark (decision-4), so a
@@ -105,19 +105,19 @@ impl StatusDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusMapping {
-    /// The status exactly as the frontmatter wrote it. Carried because the 未対応区画 shows the
+    /// The status exactly as the frontmatter wrote it. Carried because the 未分類区画 shows the
     /// original string as is (decision-4) — normalization is a comparison device, never a
     /// replacement for the value.
     pub raw: String,
-    /// The column this status maps to; `None` is 未対応 status (AC #3).
+    /// The column this status maps to; `None` is 未分類 status (AC #3).
     pub column: Option<StatusColumn>,
     pub declaration: StatusDeclaration,
 }
 
 impl StatusMapping {
-    /// 未対応 status: this status has no placement column — no alias, no name match, or a value
+    /// 未分類 status: this status has no placement column — no alias, no name match, or a value
     /// absent from `config.yml` (which is kept out of a column even when its name matches one).
-    /// The swimlane shows these in the row's 未対応区画 rather than a canonical column (doc-7 §5).
+    /// The swimlane shows these in the row's 未分類区画 rather than a canonical column (doc-7 §5).
     pub fn is_unmapped(&self) -> bool {
         self.column.is_none()
     }
@@ -179,20 +179,20 @@ pub fn create_status_candidates(
 pub fn map_status(raw: &str, config: &Config, aliases: &BTreeMap<String, String>) -> StatusMapping {
     let declaration = StatusDeclaration::of(raw, config);
     // A status absent from `config.yml`'s declared set is 想定外スキーマ, and doc-7 §5 / decision-4
-    // keep it in the row's 未対応区画 with the stronger mark — never a real column, even when its
+    // keep it in the row's 未分類区画 with the stronger mark — never a real column, even when its
     // name matches one. This is checked *before* the alias lookup, with no alias exception:
     // decision-4 §13-19 defines an alias's subject as a project-specific status, i.e. one the
     // project *declares* in config.yml, so an alias for a value that appears nowhere in config.yml
     // does not make that inconsistency legitimate — decision-4 §65-68 admit no alias carve-out.
     // `column` means "where to place this task", so an undeclared value yields no placement
-    // column; the resembled column is not information any consumer needs (the 未対応区画 shows
+    // column; the resembled column is not information any consumer needs (the 未分類区画 shows
     // `raw`).
     let column = if declaration == StatusDeclaration::Undeclared {
         None
     } else {
         match alias_target(aliases, raw) {
             // An alias whose value is not a canonical column is invalid and ignored, and the
-            // status it names stays 未対応 (doc-3 §3.3) — it does not fall back to name matching,
+            // status it names stays 未分類 (doc-3 §3.3) — it does not fall back to name matching,
             // because a deliberate alias means the writer did not want the default reading of
             // that value. This is the only place that rule is applied: `LoadedLedger::load`
             // hands the invalid pair through untouched precisely so it can be seen here
@@ -321,7 +321,7 @@ mod tests {
     }
 
     // doc-3 §3.3: an alias pointing at something that is not a canonical column is invalid;
-    // the status it names is 未対応 rather than falling back to name matching.
+    // the status it names is 未分類 rather than falling back to name matching.
     #[test]
     fn invalid_alias_leaves_status_unmapped() {
         let config = default_config();
@@ -338,7 +338,7 @@ mod tests {
         let mapped = map_status("Draft", &config, &BTreeMap::new());
         assert_eq!(mapped.declaration, StatusDeclaration::Draft);
         assert!(!mapped.is_undeclared());
-        // It still matches no canonical column — known, but 未対応 unless aliased.
+        // It still matches no canonical column — known, but 未分類 unless aliased.
         assert!(mapped.is_unmapped());
     }
 
@@ -351,7 +351,7 @@ mod tests {
         assert_eq!(mapped.declaration, StatusDeclaration::Draft);
     }
 
-    // AC #3: a status matching neither an alias nor a column name is 未対応 status. Declared in
+    // AC #3: a status matching neither an alias nor a column name is 未分類 status. Declared in
     // config.yml, so it carries no stronger mark — the project formally runs this status.
     #[test]
     fn declared_but_unmappable_status_is_unmapped_without_strong_mark() {
@@ -360,12 +360,12 @@ mod tests {
         assert!(mapped.is_unmapped());
         assert_eq!(mapped.declaration, StatusDeclaration::Declared);
         assert!(!mapped.is_undeclared());
-        // The 未対応区画 shows the original string (decision-4).
+        // The 未分類区画 shows the original string (decision-4).
         assert_eq!(mapped.raw, "Blocked");
     }
 
-    // AC #3 / decision-4: a status absent from config.yml is 未対応 *and* earns the stronger
-    // 想定外スキーマ mark, which is what separates the two 未対応 cases.
+    // AC #3 / decision-4: a status absent from config.yml is 未分類 *and* earns the stronger
+    // 想定外スキーマ mark, which is what separates the two 未分類 cases.
     #[test]
     fn undeclared_status_is_unmapped_with_strong_mark() {
         let config = config(&["To Do", "Done"]);
@@ -376,7 +376,7 @@ mod tests {
 
     // AC #3 / doc-7 §5: an undeclared status stays out of a real column even when its name
     // matches one — otherwise `In Review` on a project declaring only ["To Do", "Done"] would be
-    // placed in the In Review column instead of the row's 未対応区画. It keeps the stronger mark.
+    // placed in the In Review column instead of the row's 未分類区画. It keeps the stronger mark.
     #[test]
     fn undeclared_status_is_unmapped_even_when_its_name_matches_a_column() {
         let config = config(&["To Do", "Done"]);
@@ -386,7 +386,7 @@ mod tests {
     }
 
     // An alias does not override the undeclared rule: decision-4 §65-68 keep every status absent
-    // from config.yml in the 未対応区画, and an alias's subject is defined as a *declared*
+    // from config.yml in the 未分類区画, and an alias's subject is defined as a *declared*
     // project-specific status — so aliasing a value that is not in config.yml does not place it
     // in a column. (A status a project truly runs belongs in config.yml, where it is Declared and
     // the alias applies normally, as `alias_table_maps_project_specific_statuses` shows.)
@@ -497,8 +497,8 @@ mod tests {
         );
     }
 
-    // A declared status that maps to no column (doc-7 §4.1 の未対応列の材料) is a candidate for
-    // nothing: it belongs to the 未対応区画, which is not a canonical column.
+    // A declared status that maps to no column (doc-7 §4.1 の未分類列の材料) is a candidate for
+    // nothing: it belongs to the 未分類区画, which is not a canonical column.
     #[test]
     fn declared_but_unmapped_status_is_nobodys_candidate() {
         let config = config(&["To Do", "Blocked", "Done"]);

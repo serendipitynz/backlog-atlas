@@ -105,7 +105,7 @@ describe("AC #1 rows × the four canonical columns, active by default", () => {
   });
 });
 
-describe("AC #2 未対応区画", () => {
+describe("AC #2 未分類区画", () => {
   it("collects tasks whose status maps to no column, keeping the raw status", () => {
     const rows = swimlane(
       ["atlas"],
@@ -127,7 +127,7 @@ describe("AC #2 未対応区画", () => {
     }
   });
 
-  it("puts a task with no status at all in the 未対応区画, not in a column", () => {
+  it("puts a task with no status at all in the 未分類区画, not in a column", () => {
     const rows = swimlane(
       ["atlas"],
       loadMap(
@@ -153,7 +153,7 @@ describe("AC #2 未対応区画", () => {
     expect(atlas.cells.every((cell) => cell.tasks.length === 0)).toBe(true);
   });
 
-  it("leaves the 未対応区画 empty when every status maps", () => {
+  it("leaves the 未分類区画 empty when every status maps", () => {
     const rows = swimlane(["atlas"], loadMap(loaded("atlas", [taskView()])));
     const atlas = row(rows, "atlas");
     if (atlas.state !== "loaded") throw new Error("expected a loaded row");
@@ -341,7 +341,7 @@ describe("AC #5 同一レーンセル内の前後タスクへ位置つきで移�
     expect(first?.next).toBeNull();
   });
 
-  it("counts the 未対応区画 as its own run of cards, named apart from a canonical column", () => {
+  it("counts the 未分類区画 as its own run of cards, named apart from a canonical column", () => {
     const rows = swimlane(
       ["atlas"],
       loadMap(
@@ -354,7 +354,10 @@ describe("AC #5 同一レーンセル内の前後タスクへ位置つきで移�
 
     const first = laneNeighbours(rows, { slug: "atlas", sourcePath: "a.md" });
     expect(first?.group).toEqual({ kind: "unmapped" });
-    expect(laneNeighbourLabel(first!)).toBe("未対応 セル内 1 / 2 件");
+    // 未分類区画はレーンセルではない (doc-7 §1), so the 位置表示 does not call it one — asserted both
+    // ways because the wording it must not use is the one it had (doc-8 §2.2).
+    expect(laneNeighbourLabel(first!)).toBe("未分類区画内 1 / 2 件");
+    expect(laneNeighbourLabel(first!)).not.toContain("セル");
     expect(first?.next?.task.id).toBe("TASK-2");
   });
 
@@ -412,7 +415,7 @@ describe("AC #3 行折畳みでレーンセル群が畳まれ、列別の件数�
     ]);
   });
 
-  it("adds 未対応 only while the grid is showing that column", () => {
+  it("adds 未分類 only while the grid is showing that column", () => {
     const rows = swimlane(
       ["atlas"],
       loadMap(
@@ -461,7 +464,9 @@ describe("AC #4 行折畳みと行非表示は件数が読めるか否かで分�
   });
 });
 
-// TASK-50 の AC #5 と、TASK-69 が上書きした AC #6 (未対応列は列折畳みの対象にしない) の現在の姿。
+// TASK-50 の AC #5, and what became of its AC #6. That one excluded the 未分類列 from 列折畳み;
+// TASK-69 replaced it, and doc-7 §2.2 now folds the 未分類列 like any other column. The現行契約 is the
+// one the tests below pin — the exclusion is history, not the rule.
 describe("折畳みの対象にしないもの、および TASK-69 が対象にしたもの", () => {
   it("withholds 行折畳み from a row with no cells to fold, with the reason spelled out", () => {
     const rows = swimlane(
@@ -491,21 +496,21 @@ describe("折畳みの対象にしないもの、および TASK-69 が対象に�
     expect(LAST_COLUMN_FOLD_BLOCKED_REASON).not.toBe("");
   });
 
-  it("folds 未対応 like any column, but never lets it be the column left open", () => {
-    // 未対応 is not a 正準ステータス列 (it has no entry among them and its 列別件数 carry a null column),
+  it("folds 未分類 like any column, but never lets it be the column left open", () => {
+    // 未分類 is not a 正準ステータス列 (it has no entry among them and its 列別件数 carry a null column),
     // and since TASK-69 that no longer keeps it out of 列折畳み (doc-7 §2.2).
     expect(CANONICAL_COLUMNS).not.toContain(UNMAPPED_LABEL);
     expect(laneCounts(row(swimlane(["atlas"], loadMap(loaded("atlas", []))), "atlas"), true).at(-1)
       ?.column).toBeNull();
 
     expect(columnFoldable([], "unmapped")).toBe(true);
-    // Three status columns folded: 未対応 may still be folded — doing so takes no status column away.
+    // Three status columns folded: 未分類 may still be folded — doing so takes no status column away.
     expect(columnFoldable(["toDo", "inProgress", "inReview"], "unmapped")).toBe(true);
     // 常に畳める is asserted at the one input that separates it from ほぼ常に: a state the screen cannot
     // reach (the fourth column's control is refused), but this function is exported and says "always".
     expect(columnFoldable(["toDo", "inProgress", "inReview", "done"], "unmapped")).toBe(true);
-    // …and it does not stand in for the one left open: 'done' is still refused with 未対応 open, since
-    // the 未対応区画 disappears once no row has such a task (doc-7 §2.2).
+    // …and it does not stand in for the one left open: 'done' is still refused with 未分類 open, since
+    // the 未分類区画 disappears once no row has such a task (doc-7 §2.2).
     expect(columnFoldable(["toDo", "inProgress", "inReview"], "done")).toBe(false);
   });
 });

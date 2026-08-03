@@ -63,7 +63,7 @@ pub struct ProjectEntry {
     //
     // Values reaching here through [`Ledger::update`] are canonical column names, but a
     // hand-edited file's are whatever was typed: a non-canonical value is kept as written and
-    // ignored during 列対応規則, which is what makes the status it names 未対応 (doc-3 §3.3;
+    // ignored during 列対応規則, which is what makes the status it names 未分類 (doc-3 §3.3;
     // see [`Ledger::validate`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub status_aliases: BTreeMap<String, String>,
@@ -434,7 +434,7 @@ impl Ledger {
     /// never operate on, or re-save, an inconsistent ledger.
     ///
     /// Non-canonical `status_aliases` values are deliberately *not* touched here. doc-3 §3.3
-    /// says such an alias is ignored **and the status it names becomes 未対応**; dropping the
+    /// says such an alias is ignored **and the status it names becomes 未分類**; dropping the
     /// key cannot express the second half, because an absent key is indistinguishable from
     /// "this project set no alias", which sends the status back to 名称一致 (TASK-42). The
     /// invalid pair is therefore carried through to 列対応規則, which is the layer that owns
@@ -1394,7 +1394,7 @@ mod tests {
     }
 
     // TASK-42 AC #2: load keeps a non-canonical alias instead of dropping the key. doc-3 §3.3's
-    // "ignore" also says the aliased status becomes 未対応, and only a surviving pair can say
+    // "ignore" also says the aliased status becomes 未分類, and only a surviving pair can say
     // that — a dropped key reads as "no alias here" and hands the status back to 名称一致.
     // Loading stays non-fatal either way: an invalid alias degrades one status, not the ledger.
     #[test]

@@ -27,7 +27,7 @@
      * carry no information.
      */
     showStorageMark: boolean;
-    /** In the 未対応区画 the card shows its original status string (doc-7 §2). */
+    /** In the 未分類区画 the card shows its original status string (doc-7 §2). */
     showRawStatus: boolean;
     onselect: (view: TaskView) => void;
   }
@@ -110,8 +110,8 @@
 
   {#if hasChips}
     <span class="line marks">
-      <!-- 未対応区画の原文 status と保存区分印 は状態の印であって、段では落とさない (doc-7 §3, AC #2):
-           どちらも「このタスクがどこに置かれているか」で、S で消すと未対応の status も draft の別も
+      <!-- 未分類区画の原文 status と保存区分印 は状態の印であって、段では落とさない (doc-7 §3, AC #2):
+           どちらも「このタスクがどこに置かれているか」で、S で消すと未分類の status も draft の別も
            読めないカードになる。 -->
       {#if showRawStatus}
         <span class="status">
@@ -327,7 +327,7 @@
     color: var(--muted);
   }
 
-  // 保存区分印 と 未対応区画の原文 status は族でも Type でもない中立の情報 (doc-11 §3): outline only,
+  // 保存区分印 と 未分類区画の原文 status は族でも Type でもない中立の情報 (doc-11 §3): outline only,
   // `--muted`, no family colour. They say どこに置かれているか・元の語は何か, not that anything is wrong.
   .status,
   .storage {

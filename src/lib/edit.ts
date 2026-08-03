@@ -1037,7 +1037,7 @@ export interface SelectOption {
 export function optionsFor(current: string | null, values: readonly string[]): SelectOption[] {
   const options = values.map((value) => ({ value, label: value }));
   // A value the file carries but config.yml does not declare still has to be selectable as-is,
-  // otherwise opening the select would silently propose changing it (decision-4 未対応 status).
+  // otherwise opening the select would silently propose changing it (decision-4 未分類 status).
   if (current !== null && current !== "" && !values.includes(current)) {
     options.unshift({ value: current, label: `${current}（config.yml 未宣言）` });
   }
