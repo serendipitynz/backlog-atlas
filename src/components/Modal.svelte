@@ -139,21 +139,36 @@
 
 <style lang="scss">
   .backdrop {
+    /*
+     * How far the dialog is held off the window's top and bottom edges. Declared rather than written
+     * into `padding` alone because a child that bounds its own height has to subtract it (`Settings`
+     * does, so its 下部操作行 can stay outside the scroll), and the two numbers must be one number.
+     * It inherits, which is what lets a child read it without either file naming the other's value.
+     */
+    --modal-backdrop-inset: 2rem;
+
     position: fixed;
     inset: 0;
     z-index: 4;
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding: 2rem 1rem;
+    padding: var(--modal-backdrop-inset) 1rem;
     // The same wash the 中央モーダル詳細配置 uses (`App.svelte`), so the two read as one kind of layer.
     background: color-mix(in srgb, var(--fg) 28%, transparent);
     overflow-y: auto;
   }
 
   .dialog {
+    /*
+     * The border a child has to subtract as well when it bounds its own height. In `px` and not `rem`
+     * because that is what it is: a 1px rule does not scale with the root font, so it cannot be
+     * expressed in the same unit as the inset above (TASK-115 の幾何).
+     */
+    --modal-dialog-border: 1px;
+
     width: min(44rem, 100%);
-    border: 1px solid var(--line-strong);
+    border: var(--modal-dialog-border) solid var(--line-strong);
     // パネル 6px (doc-11 §2.2).
     border-radius: 6px;
     background: var(--panel);
