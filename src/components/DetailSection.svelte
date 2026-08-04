@@ -11,26 +11,40 @@
   // "既定で" meant an initial value. The 原文 settles it the other way.
   import type { Snippet } from "svelte";
   import Icon from "../lib/icons/Icon.svelte";
-  import { DISCLOSURE_ICON, type Disposition } from "../lib/placement";
+  import {
+    DISCLOSURE_ICON,
+    PROSE_SECTIONS,
+    type DetailSection,
+    type PlacementLayout,
+  } from "../lib/placement";
 
   interface Props {
     title: string;
-    disposition: Disposition;
+    /**
+     * どの 区画 か (doc-8 §3 の割当表の行). Everything this component varies by 区画 is derived from
+     * it — the disposition from the placement's layout, the 行長上限 from `PROSE_SECTIONS` — so a
+     * 区画 names itself once and cannot be given one 区画's disposition and another's width.
+     */
+    section: DetailSection;
+    /** The placement's whole layout (`layoutFor`), read for this 区画's row. */
+    layout: PlacementLayout;
     /**
      * 見出しに添える件数 (doc-8 §3: 折畳み（件数を見せる）). Shown open or closed — a count that
      * appears only while folded would vanish exactly when the list it counts is not on screen.
      */
     count?: string | null;
-    /**
-     * 行長上限 を掛ける区画かどうか (doc-8 §2.1, `PROSE_SECTIONS`). Caps the content only, never the
-     * heading: the 区画境界 has to keep running to the edge of the 区画 (doc-8 §3), and a rule that
-     * stopped where the text did would say the 区画 is narrower than it is.
-     */
-    prose?: boolean;
     children: Snippet;
   }
 
-  let { title, disposition, count = null, prose = false, children }: Props = $props();
+  let { title, section, layout, count = null, children }: Props = $props();
+
+  const disposition = $derived(layout.sections[section]);
+  /**
+   * 行長上限 を掛ける区画か (doc-8 §2.1). Caps the content only, never the heading: the 区画境界 has
+   * to keep running to the edge of the 区画 (doc-8 §3), and a rule that stopped where the text did
+   * would say the 区画 is narrower than it is.
+   */
+  const prose = $derived(PROSE_SECTIONS.includes(section));
 
   // Bound to the element so the 開閉印 can face the way the 区画 actually is, and re-seeded whenever
   // the placement moves this 区画: a placement is a whole set of folds rather than a starting point

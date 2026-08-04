@@ -18,7 +18,7 @@
   // URLs are text, not links, for the same reason inverted: an <a href> inside the Tauri WebView
   // would navigate the app window away from Atlas, and opening an external browser needs a
   // capability this build does not have.
-  import { onDestroy } from "svelte";
+  import { onDestroy, type Snippet } from "svelte";
   import DetailSection from "./DetailSection.svelte";
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
@@ -96,15 +96,19 @@
     MODAL_MAX_WIDTH_REM,
     MODAL_PADDING_REM,
     MODAL_SIDE_COLUMN_REM,
+    MAIN_COLUMN_ORDER,
     PLACEMENTS,
     PLACEMENT_ICON,
     PROSE_MAX_WIDTH_REM,
     SIDEBAR_WIDTH_REM,
+    SIDE_COLUMN_ORDER,
+    SINGLE_COLUMN_ORDER,
     layoutFor,
     placementPersistence,
     placementPersistenceNote,
     placementSwitchName,
-  } from "../lib/placement";
+      type DetailSection as SectionKey,
+} from "../lib/placement";
   import { DETAIL_PLACEMENT_LABEL } from "../lib/settings";
   import {
     CANONICAL_COLUMN_LABEL,
@@ -1163,7 +1167,7 @@
 
 <!-- Type と通常ラベルは別区画 (doc-8 §4): two sections, never one label list. -->
 {#snippet typeSection()}
-  <DetailSection title="Type" disposition={layout.sections.type}>
+  <DetailSection title="Type" section="type" {layout}>
     <ul class="chips">
       {#if types.length === 0}
         <!-- Type 未設定 は破線輪郭のチップ (doc-11 §3), カードと同じ形で. A sentence here and a chip on
@@ -1188,7 +1192,7 @@
      別のセルへ割くためで、assignee は編集セッションでだけ書き換える値なので、常に読める必要がある
      見出しの側に要らない。割当表にはこの区画自身の行がある (TASK-73 まで通常ラベルの行を借りていた)。 -->
 {#snippet assigneeSection()}
-  <DetailSection title="assignee" disposition={layout.sections.assignee}>
+  <DetailSection title="assignee" section="assignee" {layout}>
     {#if session === null}
       {#if task.assignee.length === 0}
         <p class="neutral">なし</p>
@@ -1215,7 +1219,7 @@
 {#snippet labelsSection()}
   <DetailSection
     title="通常ラベル"
-    disposition={layout.sections.labels}
+    section="labels" {layout}
     count={`${task.labels.length} 件`}
   >
     {#if session === null}
@@ -1242,7 +1246,7 @@
 {/snippet}
 
 {#snippet descriptionSection()}
-  <DetailSection title="Description" disposition={layout.sections.description} prose>
+  <DetailSection title="Description" section="description" {layout}>
     {#if session === null}
       {#if task.description}
         <pre class="body">{task.description}</pre>
@@ -1264,9 +1268,8 @@
 {#snippet acSection()}
   <DetailSection
     title="Acceptance Criteria"
-    disposition={layout.sections.ac}
+    section="ac" {layout}
     count={`${ac.checked} / ${ac.total}`}
-    prose
   >
     {#if session === null}
       {#if ac.total === 0}
@@ -1412,7 +1415,7 @@
 {/snippet}
 
 {#snippet planSection()}
-  <DetailSection title="実装計画" disposition={layout.sections.plan} prose>
+  <DetailSection title="実装計画" section="plan" {layout}>
     {#if session === null}
       {#if task.implementationPlan}
         <pre class="body">{task.implementationPlan}</pre>
@@ -1431,7 +1434,7 @@
 {/snippet}
 
 {#snippet notesSection()}
-  <DetailSection title="実装ノート" disposition={layout.sections.notes} prose>
+  <DetailSection title="実装ノート" section="notes" {layout}>
     {#if session === null}
       {#if task.implementationNotes}
         <pre class="body">{task.implementationNotes}</pre>
@@ -1470,7 +1473,7 @@
 {#snippet dependenciesSection()}
   <DetailSection
     title="dependencies"
-    disposition={layout.sections.dependencies}
+    section="dependencies" {layout}
     count={`${task.dependencies.length} 件`}
   >
     {#if session === null}
@@ -1513,7 +1516,7 @@
 {#snippet pullRequestSection()}
   <DetailSection
     title="Pull Request"
-    disposition={layout.sections.pullRequest}
+    section="pullRequest" {layout}
     count={`${references.pullRequests.length} 件`}
   >
     {#if references.pullRequests.length === 0}
@@ -1546,7 +1549,7 @@
        says how many there are. -->
   <DetailSection
     title="References"
-    disposition={layout.sections.references}
+    section="references" {layout}
     count={`${references.references.length} 件`}
   >
     {#if session === null}
@@ -1583,7 +1586,7 @@
 <!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行であり、同じ割当（併置・モーダルでは折畳み、全面では
      常設）で動く。2 つの区画に分けてあるのは操作の系統が違うためで、開き方は 1 つの規則に従う。 -->
 {#snippet transitionsSection()}
-  <DetailSection title="状態遷移" disposition={layout.sections.transitions}>
+  <DetailSection title="状態遷移" section="transitions" {layout}>
     {#if transitions.state === "none"}
       <!-- 提供しない理由であって不在ではない (doc-11 §5): 空表示の弱 (`--faint`) で描くと、読ませたい
            理由が一番読みにくい文字になる。 -->
@@ -1622,7 +1625,7 @@
      保存区分 and independently of the CLI probe: this is where doc-8 §6.5 and doc-5 §3.1 send the
      edits Atlas itself cannot issue. -->
 {#snippet externalEditorSection()}
-  <DetailSection title="外部エディタで開く" disposition={layout.sections.transitions}>
+  <DetailSection title="外部エディタで開く" section="transitions" {layout}>
     <!-- 管理ファイルのパス (doc-8 §7): 見出しから移した (TASK-72). 開く操作の隣がパスの置き場である —
          何を開こうとしているのかは押す前に読めていなければならない。画面でこのパスを出しているのは
          ここだけなので、縮退や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
@@ -1678,7 +1681,7 @@
 {/snippet}
 
 {#snippet gitHistorySection()}
-  <DetailSection title="Git 履歴欄" disposition={layout.sections.gitHistory}>
+  <DetailSection title="Git 履歴欄" section="gitHistory" {layout}>
     <GitHistory
       {history}
       {entry}
@@ -1689,37 +1692,46 @@
   </DetailSection>
 {/snippet}
 
-<!-- 主列 / 脇列 の並び (doc-8 §3.1、`MAIN_COLUMN_ORDER` / `SIDE_COLUMN_ORDER`)。見出しと編集卓だけが
-     どちらの列にも入らない — 列の上に固定される行だからである (doc-8 §2.2)。 -->
-{#snippet mainColumn()}
-  <!-- 縮退表示が主列の先頭に立つ (doc-8 §3.1)。原文は主列の末尾だが、「このタスクの表示は不完全で
-       ある」を内容を読み始める前に届けるために外れている。 -->
-  {@render degradePanel()}
-  {@render descriptionSection()}
-  {@render acSection()}
-  {@render planSection()}
-  {@render notesSection()}
-  {@render gitHistorySection()}
-{/snippet}
-
-{#snippet sideColumn()}
-  {@render typeSection()}
-  {@render labelsSection()}
-  {@render assigneeSection()}
-  {@render dependenciesSection()}
-  {@render pullRequestSection()}
-  {@render referencesSection()}
-  <!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行なので、2 つの snippet が並んで 1 区画を描く。 -->
+<!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行なので、2 つの snippet が 1 区画を描く。並びを引く側は
+     その行を 1 つの区画として扱えなければならないので、ここでまとめておく。 -->
+{#snippet transitionsRow()}
   {@render transitionsSection()}
   {@render externalEditorSection()}
 {/snippet}
 
-<!-- 1 列の並び (併置サイドバーだけ): 主列の並びの後ろへ脇列の並びを継いだもの (doc-8 §3.1、
-     `SINGLE_COLUMN_ORDER`)。第 3 の順を書き写さない — 画面設計案 02 の併置の図がまさに 2 列を
-     縦へ継いだものなので、ここで順を綴ると正本が 2 箇所に割れる。 -->
-{#snippet flowSections()}
-  {@render mainColumn()}
-  {@render sideColumn()}
+<!--
+  区画 1 つにつき snippet 1 つ。**ここに並びは無い** — 並びを持つのは `placement.ts` の
+  `MAIN_COLUMN_ORDER` / `SIDE_COLUMN_ORDER` / `SINGLE_COLUMN_ORDER` だけで、下の `{#each}` が
+  それを引いて描く。区画名から snippet への対応は並びではないので、ここに綴っても正本は割れない。
+  以前はこの位置に列ごとの呼び出し列があり、それが doc-8 §3.1 の並びの 2 つ目の写しになっていた —
+  片方だけ入れ替えてもテストは全部通る形だったので、写しを持たない形へ替えた。
+  `satisfies` が `Record<SectionKey, Snippet>` を要求するので、doc-8 §3 の割当表へ行が増えたら
+  この表もコンパイルが通らなくなる (`placement.ts` の割当表と同じ守り方)。`SectionKey` は
+  `DetailSection` 型の別名である — このファイルでは `DetailSection` は同名のコンポーネントを指す。
+  見出しと編集卓もここに居るが、どちらの並びにも入らない — 列の上に固定される行だからである
+  (doc-8 §2.2)。それは `SECTION_COLUMN` の `"wide"` としてテストが押さえている。
+-->
+{#snippet column(order: readonly SectionKey[])}
+  {@const draw = {
+    heading,
+    editConsole,
+    degrade: degradePanel,
+    description: descriptionSection,
+    ac: acSection,
+    plan: planSection,
+    notes: notesSection,
+    gitHistory: gitHistorySection,
+    type: typeSection,
+    labels: labelsSection,
+    assignee: assigneeSection,
+    dependencies: dependenciesSection,
+    pullRequest: pullRequestSection,
+    references: referencesSection,
+    transitions: transitionsRow,
+  } satisfies Record<SectionKey, Snippet>}
+  {#each order as section (section)}
+    {@render draw[section]()}
+  {/each}
 {/snippet}
 
 <aside
@@ -1737,11 +1749,13 @@
     <!-- 中央モーダルと全面シングルビューは 2 列を保つ (doc-8 §2.1): the 脇列 is a fixed 18rem and the
          主列 takes the rest, with no breakpoint that stacks them — 狭いからといって縦積みへ落とさない. -->
     <div class="columns">
-      <div class="col">{@render mainColumn()}</div>
-      <div class="col">{@render sideColumn()}</div>
+      <div class="col">{@render column(MAIN_COLUMN_ORDER)}</div>
+      <div class="col">{@render column(SIDE_COLUMN_ORDER)}</div>
     </div>
   {:else}
-    <div class="flow">{@render flowSections()}</div>
+    <!-- 併置サイドバーだけが列を持たない (doc-8 §2.1)。`SINGLE_COLUMN_ORDER` は主列の並びに脇列の
+         並びを継いだもので、`placement.ts` が連結して作る。 -->
+    <div class="flow">{@render column(SINGLE_COLUMN_ORDER)}</div>
   {/if}
 
   <footer class="note">
@@ -1800,14 +1814,15 @@
     gap: 0.6rem;
   }
 
-  // 1 列 (併置サイドバー・全面シングルビュー) と、モーダルの各列そのもの.
+  // 1 列 (併置サイドバーだけ。doc-8 §2.1) と、2 列配置の各列そのもの.
   // `minmax(0, 1fr)` は、長い 1 行が列幅を押し広げて隣の列を箱の外へ追い出すのを止める。
   .flow,
   .col {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  // 中央モーダルの 2 列 (doc-8 §2.1): 脇列は固定 18rem、主列が残りを取る。畳む分岐は無い。
+  // 2 列 (doc-8 §2.1): 中央モーダルと全面シングルビューが共に使う。脇列は固定 18rem、主列が残りを
+  // 取る。畳む分岐は無い。custom property の名は中央モーダル時代のままで、値の出所も同じである。
   .columns {
     grid-template-columns: minmax(0, 1fr) var(--modal-side-column);
     gap: var(--modal-column-gap);
