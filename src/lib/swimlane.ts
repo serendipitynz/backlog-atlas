@@ -64,7 +64,10 @@ export const CANONICAL_COLUMN_LABEL: Record<StatusColumn, string> = {
 /**
  * What the 未分類区画 is called wherever it is named beside the four (doc-7 §2.2). It is not a
  * canonical column, so it has no entry in `CANONICAL_COLUMN_LABEL`; keeping the word here stops the
- * grid's column head, the folded row's counts and the detail panel's 位置表示 from drifting apart.
+ * grid's column head, the folded row's counts and the detail panel's 前後移動 controls (through
+ * [`laneGroupLabel`]) from drifting apart.
+ *
+ * Not the detail panel's 位置表示: that prints a count alone and names no group (doc-8 §2.2, TASK-72).
  */
 export const UNMAPPED_LABEL = "未分類";
 
