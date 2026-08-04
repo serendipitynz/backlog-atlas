@@ -476,8 +476,19 @@
    * `box-sizing` because this box states a height in `rem` and carries padding (the repository has no
    * global reset — the height would otherwise be the content's and the padding would be added outside
    * it).
+   *
+   * **The side padding is on the three children, not here.** A scroll container clips what is painted
+   * to its padding box, and a focus ring is painted outside the control it belongs to — so with the
+   * scrolling moved into `.body`, a control flush against its content edge had its ring cut down the
+   * left side (the 表示テーマ `select`, reported from the real WKWebView). While this box was the one
+   * that scrolled, its own side padding was the room that ring needed; giving that padding to the box
+   * that scrolls now is putting the same room back where it was, rather than estimating how wide a
+   * ring the platform draws. One declaration, read by all three, so the row and the two rules under
+   * the heading and above the 下部操作行 cannot drift apart.
    */
   .settings {
+    --panel-inline: 0.75rem;
+
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -485,8 +496,14 @@
       100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2
     );
     gap: 0.6rem;
-    padding: 0.6rem 0.75rem 1rem;
+    padding: 0.6rem 0 1rem;
     font-size: 0.8rem;
+  }
+
+  header,
+  .body,
+  footer {
+    padding-inline: var(--panel-inline);
   }
 
   /*
