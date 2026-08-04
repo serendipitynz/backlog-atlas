@@ -249,8 +249,11 @@ export const SIDEBAR_WIDTH_REM = 30;
 export const MODAL_SIDE_COLUMN_REM = 18;
 /** Gap between the two columns. */
 export const MODAL_COLUMN_GAP_REM = 0.75;
-/** The modal's own left+right padding, together. */
-export const MODAL_PADDING_REM = 1.5;
+/**
+ * The panel's left+right padding, together — `.detail`'s, in all three placements rather than the
+ * 中央モーダル's alone (measured: 12px a side in each of them).
+ */
+export const PANEL_PADDING_REM = 1.5;
 /** Space kept between the modal and the window edge, left+right together. */
 export const MODAL_INSET_REM = 4;
 /** The modal stops growing here: past this, lines get too long to read. */
@@ -284,7 +287,7 @@ export function modalMainColumnRem(
 ): number {
   return (
     modalWidthRem(viewportWidthPx, rootFontPx) -
-    MODAL_PADDING_REM -
+    PANEL_PADDING_REM -
     MODAL_COLUMN_GAP_REM -
     MODAL_SIDE_COLUMN_REM
   );
