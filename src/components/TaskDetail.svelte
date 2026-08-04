@@ -90,6 +90,7 @@
     type VersionConflict,
   } from "../lib/mark";
   import {
+    DISCLOSURE_ICON,
     MODAL_COLUMN_GAP_REM,
     MODAL_INSET_REM,
     MODAL_MAX_WIDTH_REM,
@@ -1137,9 +1138,20 @@
       {#each degrade.danglingReferences as dangling, index (index)}
         <p>参照欠損: {REFERENCE_KIND_LABEL[dangling.kind]} {dangling.target}</p>
       {/each}
+      <!-- 未知セクション は区画ではなく縮退表示の中の項目だが、開閉の記号は折畳み区画に揃える
+           (doc-8 §3) — 同じ面の中で UA 既定マーカーと 開閉印 が並ぶと、同じ操作が 2 通りの記号で
+           出ることになる。向きは `[open]` から CSS で選ぶ: 開いているかを持つのは要素自身で、
+           それを写した変数を別に置くと、タスクを移った先の別のセクションへ前の開閉が付く
+           (この一覧の鍵は index であり、節の名前ではない)。 -->
       {#each task.unknownSections as section, index (index)}
-        <details>
-          <summary>未知セクション {section.name}（保持のみ）</summary>
+        <details class="unknown">
+          <summary>
+            <!-- `mark` ではない: そのクラスは 状態の印 チップ (doc-11 §3) が取っており、
+                 開閉印はその 4 系統のどれでもない。 -->
+            <span class="disclosure closed"><Icon name={DISCLOSURE_ICON.closed} /></span>
+            <span class="disclosure open"><Icon name={DISCLOSURE_ICON.open} /></span>
+            未知セクション {section.name}（保持のみ）
+          </summary>
           <pre class="body">{section.body}</pre>
         </details>
       {/each}
@@ -1172,9 +1184,9 @@
 <!-- assignee (doc-8 §3): 見出しから外して本文側の区画へ置いた (TASK-72). 画面設計案 02 の属性表には
      あるが、本書は意図的に外れている (doc-12 §3) — 属性表を 2 列に保ったまま created と updated を
      別のセルへ割くためで、assignee は編集セッションでだけ書き換える値なので、常に読める必要がある
-     見出しの側に要らない。割当は通常ラベルと同じ (併置=常設 / モーダル=脇列 / 全面=常設)。 -->
+     見出しの側に要らない。割当表にはこの区画自身の行がある (TASK-73 まで通常ラベルの行を借りていた)。 -->
 {#snippet assigneeSection()}
-  <DetailSection title="assignee" disposition={layout.sections.labels}>
+  <DetailSection title="assignee" disposition={layout.sections.assignee}>
     {#if session === null}
       {#if task.assignee.length === 0}
         <p class="neutral">なし</p>
@@ -2371,6 +2383,34 @@
     }
   }
 
+  .unknown {
+    summary {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      // 開閉印 が UA 既定マーカーの代わりに立つ (doc-8 §3). WebKit は擬似要素、Chromium は
+      // `list-style` に答えるので、両方を書かないと片方の webview で記号が 2 つ出る。
+      list-style: none;
+      cursor: pointer;
+
+      &::-webkit-details-marker {
+        display: none;
+      }
+    }
+
+    .disclosure.open {
+      display: none;
+    }
+
+    &[open] .disclosure.open {
+      display: block;
+    }
+
+    &[open] .disclosure.closed {
+      display: none;
+    }
+  }
+
   .note {
     font-size: 0.68rem;
     opacity: 0.55;
@@ -2383,6 +2423,15 @@
     padding: 0.4rem 0.45rem;
     border: 1px solid var(--line);
     border-radius: 4px;
+
+    // 述べることが無いときは枠ごと消す。TASK-72 が押しボタンを見出しへ移してから、この区画は文だけを
+    // 持つようになり、何も述べない状態 (編集できるタスクを編集していないとき) が通常になった — 空の枠は
+    // 読むものが 1 つあるように見えて何も無い。doc-11 §6 の 正常な不在 に当たらないので目印も置かない:
+    // そこが要求しているのは「空セル」のように不在そのものが情報である場合で、ここは言うことが無いだけ。
+    // 上の `{#if}` 群の条件を書き写さず要素の有無で見るのは、二重に持つと片方だけが動くためである。
+    &:not(:has(*)) {
+      display: none;
+    }
   }
 
   .buttons {
