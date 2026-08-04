@@ -212,12 +212,20 @@ export const OPEN_LOCATION_LABEL = "場所を開く";
 export const OPEN_LOCATION_TITLE =
   "設定ファイルのあるフォルダを OS のファイルマネージャで開きます（ファイルは選択されません）。";
 
+/** 起動を発行してから応答が返るまでの、場所を開く の理由。 */
+export const OPENING_LOCATION_REASON = "いま開いています（OS の応答を待っています）。";
+
 /**
  * 場所を開く が押せない理由 (TASK-75 AC #3)、または `null`。ファイルがまだ書かれていない状態
- * (`absent`) だけが理由になる。読めない・上位版のファイルは**存在する**ので、場所へは行ける — 手で直す
- * ならまさにそこを開く必要があり、読めないことを理由に閉ざすと直す手段まで閉ざすことになる。
+ * (`absent`) と、起動を発行してまだ応答が返っていない状態の 2 つが理由になる。読めない・上位版の
+ * ファイルは**存在する**ので、場所へは行ける — 手で直すならまさにそこを開く必要があり、読めないことを
+ * 理由に閉ざすと直す手段まで閉ざすことになる。
+ *
+ * 発行中を状態ではなく**理由**として持つのは doc-11 §5 のためで、控えが `aria-disabled` になる間ずっと
+ * `aria-describedby` の指す先が空だと、それは同節が禁じる理由の無い無効化そのものになる。
  */
-export function openLocationBlocked(status: SettingsStatus): string | null {
+export function openLocationBlocked(status: SettingsStatus, opening: boolean): string | null {
+  if (opening) return OPENING_LOCATION_REASON;
   return status.state === "absent"
     ? "設定ファイルはまだ作成されていないため、その場所を開けません（保存すると作成します）。"
     : null;

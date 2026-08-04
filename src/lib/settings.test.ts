@@ -8,6 +8,7 @@ import {
   emptyStorageWarning,
   isDirty,
   mergeDraft,
+  OPENING_LOCATION_REASON,
   openLocationBlocked,
   openLocationFailure,
   saveAvailability,
@@ -67,8 +68,21 @@ describe("saveAvailability", () => {
 });
 
 describe("場所を開く (TASK-75)", () => {
-  it("withholds the control only while the file has never been written (AC #3)", () => {
-    expect(openLocationBlocked({ state: "absent" })).toContain("まだ作成されていない");
+  it("withholds the control while the file has never been written (AC #3)", () => {
+    expect(openLocationBlocked({ state: "absent" }, false)).toContain("まだ作成されていない");
+  });
+
+  it("gives the launch in flight a reason of its own, whatever the file's state", () => {
+    // doc-11 §5: 押せない間ずっと `aria-describedby` の指す先が空になる形は、理由の無い無効化である。
+    // 発行中を状態ではなくこの関数の返す理由にしているのは、控えが黙って押せなくなるのを防ぐためで、
+    // ファイルが読める状態でも同じである。
+    for (const status of [
+      { state: "stored" },
+      { state: "absent" },
+      { state: "readOnly", version: 9 },
+    ] satisfies SettingsStatus[]) {
+      expect(openLocationBlocked(status, true)).toBe(OPENING_LOCATION_REASON);
+    }
   });
 
   it("opens the location for a file that exists but cannot be used", () => {
@@ -79,7 +93,7 @@ describe("場所を開く (TASK-75)", () => {
       { state: "unreadable", detail: "expected an equals" },
       { state: "readOnly", version: 9 },
     ] satisfies SettingsStatus[]) {
-      expect(openLocationBlocked(status)).toBeNull();
+      expect(openLocationBlocked(status, false)).toBeNull();
     }
   });
 

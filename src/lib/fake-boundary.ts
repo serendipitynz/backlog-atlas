@@ -120,6 +120,12 @@ export const answers = {
    * degrades a missing or unreadable file to the defaults: only an IPC failure can reach the shell.
    */
   settingsReadFails: false,
+  /**
+   * Holds `settings_save` open, for the tests about a write that is still unresolved (保存の発行中は
+   * どちらの出口も閉じない). A settable deferred rather than a flag, because the test has to end the
+   * write as well as start it, and `null` is the ordinary "answers at once" case.
+   */
+  settingsSaveHold: null as Deferred<void> | null,
 };
 
 /** The `project-reloaded` subscribers currently registered, in subscription order. */
@@ -158,6 +164,7 @@ export function reset(): void {
   answers.watchStart = () => Promise.resolve();
   answers.subscribeFails = false;
   answers.settingsReadFails = false;
+  answers.settingsSaveHold = null;
 }
 
 function record<T>(name: string, args: readonly unknown[], answer: () => T): T {
@@ -257,9 +264,10 @@ export const commandFakes = {
     ),
 
   settingsSave: (settings: AppSettings): Promise<LoadedSettings> =>
-    record("settings_save", [settings], () => {
+    record("settings_save", [settings], async () => {
+      if (answers.settingsSaveHold !== null) await answers.settingsSaveHold.promise;
       answers.settings = { settings, status: { state: "stored" } };
-      return Promise.resolve(answers.settings);
+      return answers.settings;
     }),
 
   settingsLocation: (): Promise<string> =>

@@ -73,14 +73,20 @@
      * `onsave`: the path is Atlas's own and is resolved at the boundary, never sent from here.
      */
     onopenLocation: () => Promise<string | null>;
+    /**
+     * Whether a save issued from here is still unresolved. Held by the shell rather than here, the way
+     * `ProjectRegister` takes `busy`: the same flag has to withhold this form's controls *and* stop the
+     * モーダル being dismissed out from under the write (`Modal.svelte`'s Escape reaches the shell, not
+     * this component), and one fact must not be two flags.
+     */
+    saving: boolean;
     onclose: () => void;
   }
 
-  let { loaded, path, onsave, onopenLocation, onclose }: Props = $props();
+  let { loaded, path, onsave, onopenLocation, saving, onclose }: Props = $props();
 
   /** The draft the form edits. Re-seeded whenever the boundary hands back a new value. */
   let draft = $state<AppSettings | null>(null);
-  let saving = $state(false);
   /** The result of the last 保存 attempt: its failure text, or `null` once it succeeded. */
   let failure = $state<string | null>(null);
   /**
@@ -183,22 +189,43 @@
     availability.reason ?? (saving ? SAVING_REASON : dirty ? null : NO_CHANGES_REASON),
   );
   /**
-   * Whether that reason is printed. 変更はありません is not (TASK-74 AC #3): the 下部操作行 shows both
+   * 変更せずに閉じる is withheld while a save is unresolved. Leaving then would take away the panel that
+   * is to report the write's outcome, and it would do it under a label that says nothing was written —
+   * while the write already issued goes on to store the draft. The shell holds the same flag and turns
+   * away Escape with it, so both ways out are closed by one fact.
+   */
+  let closeBlocked = $derived(saving ? SAVING_REASON : null);
+  /**
+   * The one line the 下部操作行 gives for a control it is withholding, and the one element both point at.
+   * One rather than two, because while a save is in flight *both* are withheld by the same one
+   * circumstance, and saying it twice in the same row would name one situation two ways.
+   */
+  let footerReason = $derived(closeBlocked ?? saveBlocked);
+  /**
+   * Whether that line is printed. 変更はありません is not (TASK-74 AC #3): the 下部操作行 shows both
    * exits at once, so spelling out "you have changed nothing" adds a line that says what the disabled
    * 保存する already shows. It is still *reachable* — `aria-disabled` keeps the button focusable and
    * `aria-describedby` points at the text (doc-11 §5 の 2 つ目の形), which is why the element stays in
    * the DOM and is only hidden visually. The obstacles that are not the user's own doing (a file this
-   * build must not overwrite) keep their printed line.
+   * build must not overwrite, a write still running) keep their printed line.
    */
-  let saveBlockedPrinted = $derived(saveBlocked !== null && saveBlocked !== NO_CHANGES_REASON);
-  const SAVE_BLOCKED_ID = "settings-save-blocked";
+  let footerReasonPrinted = $derived(footerReason !== null && footerReason !== NO_CHANGES_REASON);
+  const FOOTER_REASON_ID = "settings-footer-reason";
 
-  let locationBlocked = $derived(loaded === null ? null : openLocationBlocked(loaded.status));
-  const LOCATION_BLOCKED_ID = "settings-location-blocked";
   /** The failure of the last 場所を開く, or `null`. Reported beside the button, not as a 上部帯 通知:
    *  this モーダル covers the 上部帯 (`Modal.svelte`), so a 帯 would not be read until it closed. */
   let locationFailure = $state<string | null>(null);
+  /** Whether a launch has been issued and not yet answered. */
   let opening = $state(false);
+  /**
+   * Why 場所を開く cannot be pressed, or `null`. The launch in flight is one of the reasons, not a state
+   * beside them: a control that goes `aria-disabled` while its `aria-describedby` stays empty is the
+   * 理由の無い無効化 doc-11 §5 refuses, and a user who cannot see the pointer cannot tell it from a fault.
+   */
+  let locationBlocked = $derived(
+    loaded === null ? null : openLocationBlocked(loaded.status, opening),
+  );
+  const LOCATION_BLOCKED_ID = "settings-location-blocked";
 
   function setStorage(value: StorageSelection, on: boolean): void {
     if (draft === null) return;
@@ -227,17 +254,14 @@
     // settings are when the write is issued, so a 詳細配置 stored in the meantime survives this save.
     const value = $state.snapshot(pending);
     const base = baseline;
-    saving = true;
-    try {
-      failure = await onsave((current) => (base === null ? value : mergeDraft(base, value, current)));
-    } finally {
-      saving = false;
-    }
+    // `saving` is not set here: the shell raises it around the same call, because it also has to turn
+    // Escape away for as long as this is unresolved.
+    failure = await onsave((current) => (base === null ? value : mergeDraft(base, value, current)));
   }
 
   /** 場所を開く (TASK-75 AC #1). Nothing is read or written; the OS opens the directory or says why not. */
   async function openLocation(): Promise<void> {
-    if (locationBlocked !== null || opening) return;
+    if (locationBlocked !== null) return;
     opening = true;
     try {
       locationFailure = await onopenLocation();
@@ -373,7 +397,7 @@
                pointer (doc-11 §5). -->
           <button
             type="button"
-            aria-disabled={locationBlocked !== null || opening}
+            aria-disabled={locationBlocked !== null}
             aria-describedby={locationBlocked === null ? undefined : LOCATION_BLOCKED_ID}
             title={locationBlocked ?? OPEN_LOCATION_TITLE}
             onclick={openLocation}
@@ -405,17 +429,23 @@
            which a scrolled form would have carried out of sight at the moment 保存する was pressed. -->
       <p class="warn">保存できませんでした: {failure}</p>
     {/if}
-    <!-- 無効化の理由 (doc-11 §5). Kept in the DOM whether or not it is printed, because the withheld
-         保存する points at it with `aria-describedby` — a reason only rendered when it is visible
+    <!-- 無効化の理由 (doc-11 §5). Kept in the DOM whether or not it is printed, because a withheld
+         control points at it with `aria-describedby` — a reason only rendered when it is visible
          would leave the 変更はありません case with a described-by target that is not there. -->
-    <span class="hint" id={SAVE_BLOCKED_ID} class:unseen={!saveBlockedPrinted}>
-      {saveBlocked === null ? "" : `保存できません: ${saveBlocked}`}
+    <span class="hint" id={FOOTER_REASON_ID} class:unseen={!footerReasonPrinted}>
+      {footerReason === null ? "" : `いま押せません: ${footerReason}`}
     </span>
     <div class="actions">
       <!-- Not `.mini`: the two are peers in one row, and a smaller one drew 2px shorter than 保存する
            (and by different amounts in the two engines — the figure-less controls take their height
            from their own font size, doc-11 §2.4 の 1em と同じ理由). -->
-      <button type="button" onclick={onclose}>
+      <button
+        type="button"
+        aria-disabled={closeBlocked !== null}
+        aria-describedby={closeBlocked === null ? undefined : FOOTER_REASON_ID}
+        title={closeBlocked ?? "書き込まずに閉じます"}
+        onclick={() => closeBlocked === null && onclose()}
+      >
         {CLOSE_WITHOUT_SAVING_LABEL}
       </button>
       <!-- `aria-disabled` rather than `disabled`: doc-11 §5 keeps a withheld control focusable when its
@@ -423,7 +453,7 @@
       <button
         type="button"
         aria-disabled={saveBlocked !== null}
-        aria-describedby={saveBlocked === null ? undefined : SAVE_BLOCKED_ID}
+        aria-describedby={saveBlocked === null ? undefined : FOOTER_REASON_ID}
         title={saveBlocked ?? "設定を書き込んで閉じます"}
         onclick={saveAndClose}
       >

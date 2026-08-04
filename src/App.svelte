@@ -182,6 +182,12 @@
   let settingsPath = $state<string | null>(null);
   /** Whether the 設定画面 is open. Opened from the fixed header's 設定 (doc-7 §2.1). */
   let settingsOpen = $state(false);
+  /**
+   * Whether a 設定 save is still unresolved. Held here rather than in the form, because it has to close
+   * *both* ways out of the モーダル: the form withholds its own two controls with it, and Escape reaches
+   * this layer (`Modal.svelte`), not the form. One fact, one flag.
+   */
+  let settingsSaving = $state(false);
   let loadBySlug = $state<Record<string, ProjectLoad>>({});
   let hidden = $state<string[]>([]);
   let filter = $state<CardFilter>(DEFAULT_FILTER);
@@ -733,7 +739,13 @@
     change: (current: AppSettings) => AppSettings,
   ): Promise<string | null> {
     const before = watchEnabled;
-    const failure = await writeSettings(change);
+    settingsSaving = true;
+    let failure: string | null;
+    try {
+      failure = await writeSettings(change);
+    } finally {
+      settingsSaving = false;
+    }
     if (failure !== null) return failure;
     // 保存した旨 (TASK-74 AC #4) as the 上部帯 ⑤ 通知 (doc-11 §4 済んだ操作の結果). It is worth a 帯
     // because not every item shows itself: a 表示テーマ change is visible the moment the モーダル closes,
@@ -751,6 +763,18 @@
       notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
     return null;
+  }
+
+  /**
+   * Every way out of the 設定モーダル — its own 変更せずに閉じる, and the Escape `Modal.svelte` answers.
+   * Both are turned away while a save is unresolved: the panel is what reports the write's outcome, and
+   * leaving takes it away while the write already issued goes on to store the draft — under a control
+   * whose name says nothing was written. The form withholds its own controls with the same flag and
+   * states the reason (doc-11 §5); here there is no control to hang a reason on, so this only declines.
+   */
+  function closeSettings(): void {
+    if (settingsSaving) return;
+    settingsOpen = false;
   }
 
   /**
@@ -1544,13 +1568,14 @@
   {#if settingsOpen}
     <!-- Over the screen with the shell's state intact: an アプリ設定 change is about how the swimlane is
          shown, so losing the rows, filter and selection to open it would be backwards. -->
-    <Modal label="設定" onclose={() => (settingsOpen = false)}>
+    <Modal label="設定" onclose={closeSettings}>
       <Settings
         loaded={settings}
         path={settingsPath}
         onsave={saveSettings}
         onopenLocation={openSettingsLocation}
-        onclose={() => (settingsOpen = false)}
+        saving={settingsSaving}
+        onclose={closeSettings}
       />
     </Modal>
   {/if}
