@@ -164,6 +164,13 @@
       border: 1px solid var(--line-strong);
       resize: vertical;
       overflow: auto;
+      // Ace の内部レイヤをこの箱の中に閉じ込める。Ace 自身の CSS はこの要素を `position: relative` に
+      // するが z-index を与えないので、スタッキングコンテキストが立たず、`.ace_gutter` (z-index 4) と
+      // `.ace_scrollbar` (同 6) が外の文脈へ抜けて、`TaskDetail` の固定見出し (z-index 1) の上に描かれて
+      // いた — 編集中にスクロールすると、貼り付いた見出しの上をガターが横切る。**見出しの数字を
+      // 上げる形では直さない**: Ace が内部で使う値に依存することになり、その値が変わるたびに追いかける。
+      // 内部のレイヤはエディタの持ち物なので、外へ出さないのが正しい位置の直し方である。
+      isolation: isolate;
     }
   }
 
