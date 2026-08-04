@@ -27,6 +27,9 @@
  * - **The table is data, not markup** (doc-8 §3). One placement decides every 区画's disposition at
  *   once, so a placement cannot half-apply — which is what a per-section `{#if placement === …}` in
  *   the component would eventually become.
+ * - **A 区画 borrows no other 区画's row.** Every row doc-8 §3 has is a key here, even where two rows
+ *   currently carry the same three values: the day the document moves one of them, the borrower moves
+ *   with it silently. `assignee` was such a borrower until TASK-73 (it read `labels`).
  * - **縮退表示 is never collapsible** (doc-8 §3). It is `"always"` in all three placements, and the
  *   panel draws it as a plain section rather than a foldable one: doc-8 gives the reason — 折畳みへ
  *   落とすと問題のあるタスクが正常に見える — and an openable fold would still start closed once the
@@ -39,6 +42,7 @@ import type { DetailPlacement } from "./wire";
 /** The 区画 doc-8 §3's assignment table has rows for, in the table's own order. */
 export type DetailSection =
   | "heading"
+  | "assignee"
   | "editConsole"
   | "type"
   | "labels"
@@ -88,6 +92,7 @@ export const PLACEMENTS: readonly DetailPlacement[] = ["sidebar", "modal", "full
  */
 const DISPOSITIONS: Record<DetailSection, { sidebar: Disposition; modal: Disposition }> = {
   heading: { sidebar: "always", modal: "always" },
+  assignee: { sidebar: "always", modal: "always" },
   editConsole: { sidebar: "always", modal: "always" },
   type: { sidebar: "always", modal: "always" },
   labels: { sidebar: "always", modal: "always" },
@@ -121,6 +126,7 @@ export const SECTION_COLUMN: Record<DetailSection, SectionColumn> = {
   plan: "main",
   notes: "main",
   gitHistory: "main",
+  assignee: "side",
   type: "side",
   labels: "side",
   dependencies: "side",

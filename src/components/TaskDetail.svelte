@@ -1172,9 +1172,9 @@
 <!-- assignee (doc-8 §3): 見出しから外して本文側の区画へ置いた (TASK-72). 画面設計案 02 の属性表には
      あるが、本書は意図的に外れている (doc-12 §3) — 属性表を 2 列に保ったまま created と updated を
      別のセルへ割くためで、assignee は編集セッションでだけ書き換える値なので、常に読める必要がある
-     見出しの側に要らない。割当は通常ラベルと同じ (併置=常設 / モーダル=脇列 / 全面=常設)。 -->
+     見出しの側に要らない。割当表にはこの区画自身の行がある (TASK-73 まで通常ラベルの行を借りていた)。 -->
 {#snippet assigneeSection()}
-  <DetailSection title="assignee" disposition={layout.sections.labels}>
+  <DetailSection title="assignee" disposition={layout.sections.assignee}>
     {#if session === null}
       {#if task.assignee.length === 0}
         <p class="neutral">なし</p>

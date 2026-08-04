@@ -31,6 +31,7 @@ const DOC_8_SECTION_3: Record<
   { sidebar: Disposition; modal: Disposition; full: Disposition }
 > = {
   heading: { sidebar: "always", modal: "always", full: "always" },
+  assignee: { sidebar: "always", modal: "always", full: "always" },
   editConsole: { sidebar: "always", modal: "always", full: "always" },
   type: { sidebar: "always", modal: "always", full: "always" },
   labels: { sidebar: "always", modal: "always", full: "always" },
@@ -126,7 +127,15 @@ describe("AC #2 配置ごとの割当（doc-8 §3）", () => {
     for (const section of ["description", "ac", "plan"] as const) {
       expect([section, SECTION_COLUMN[section]]).toEqual([section, "main"]);
     }
-    for (const section of ["type", "labels", "dependencies", "references", "pullRequest"] as const) {
+    // assignee joins them: doc-8 §3's own row marks it 常設（脇列） (TASK-72 moved it out of the 見出し).
+    for (const section of [
+      "assignee",
+      "type",
+      "labels",
+      "dependencies",
+      "references",
+      "pullRequest",
+    ] as const) {
       expect([section, SECTION_COLUMN[section]]).toEqual([section, "side"]);
     }
   });
