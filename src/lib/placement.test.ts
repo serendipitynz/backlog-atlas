@@ -3,6 +3,7 @@ import { ICONS, drawnShape } from "./icons/lucide";
 import {
   DEFAULT_PLACEMENT_MARK,
   DISCLOSURE_ICON,
+  MAIN_COLUMN_ORDER,
   MODAL_MIN_MAIN_COLUMN_REM,
   MODAL_REQUIRED_VIEWPORT_PX,
   MODAL_SIDE_COLUMN_REM,
@@ -10,6 +11,8 @@ import {
   PLACEMENT_ICON,
   RECENT_COMMIT_LIMIT,
   SECTION_COLUMN,
+  SIDE_COLUMN_ORDER,
+  SINGLE_COLUMN_ORDER,
   layoutFor,
   modalMainColumnRem,
   placementPersistence,
@@ -171,10 +174,82 @@ describe("AC #6 縮退表示は 3 配置とも常設", () => {
     }
   });
 
-  it("keeps it out of both columns, so it cannot be missed by reading one of them", () => {
-    expect(SECTION_COLUMN.degrade).toBe("wide");
+  // Until TASK-113 the 縮退 spanned both columns, on the grounds that one column's reader would
+  // otherwise miss it. doc-8 §3.1 answers that with a position instead: at the head of the 主列 it is
+  // above both columns' contents, so neither can be read without passing it.
+  it("leads the 主列 rather than spanning the columns (doc-8 §3.1)", () => {
+    expect(SECTION_COLUMN.degrade).toBe("main");
+    expect(MAIN_COLUMN_ORDER[0]).toBe("degrade");
   });
 });
+
+describe("AC #1・#2・#3 区画の並びは doc-8 §3.1 の正本", () => {
+  // Written out from doc-8 §3.1 rather than from `placement.ts`, for the reason the assignment table
+  // above is: a test that reads the module cannot disagree with it.
+  const MAIN_FROM_DOC: DetailSection[] = [
+    "degrade",
+    "description",
+    "ac",
+    "plan",
+    "notes",
+    "gitHistory",
+  ];
+  const SIDE_FROM_DOC: DetailSection[] = [
+    "type",
+    "labels",
+    "assignee",
+    "dependencies",
+    "pullRequest",
+    "references",
+    "transitions",
+  ];
+
+  it("draws each column in the order doc-8 §3.1 transcribes", () => {
+    expect([...MAIN_COLUMN_ORDER]).toEqual(MAIN_FROM_DOC);
+    expect([...SIDE_COLUMN_ORDER]).toEqual(SIDE_FROM_DOC);
+  });
+
+  // 画面設計案 02's 併置 figure is the two columns run together (doc-8 §3.1), so 併置 must not carry an
+  // order of its own — a third list is a second 正本, and the day one moves the other stays.
+  it("runs the two columns together for the 併置サイドバー, with no third order", () => {
+    expect([...SINGLE_COLUMN_ORDER]).toEqual([...MAIN_FROM_DOC, ...SIDE_FROM_DOC]);
+  });
+
+  it("orders every 区画 that is in a column, and none that is not", () => {
+    const ordered = [...SINGLE_COLUMN_ORDER];
+    expect(new Set(ordered).size).toBe(ordered.length);
+    for (const [section, column] of Object.entries(SECTION_COLUMN) as [
+      DetailSection,
+      (typeof SECTION_COLUMN)[DetailSection],
+    ][]) {
+      expect([section, ordered.includes(section)]).toEqual([section, column !== "wide"]);
+    }
+  });
+
+  it("puts each ordered 区画 in the column its own order belongs to", () => {
+    for (const section of MAIN_COLUMN_ORDER) {
+      expect([section, SECTION_COLUMN[section]]).toEqual([section, "main"]);
+    }
+    for (const section of SIDE_COLUMN_ORDER) {
+      expect([section, SECTION_COLUMN[section]]).toEqual([section, "side"]);
+    }
+  });
+});
+
+describe("AC #4 全面シングルビューの列構成", () => {
+  // 画面設計案 02's 全面 figure is two columns (doc-12 §3), and doc-8 §2.1 now says so: what a wide
+  // window gives the 全面 is a wide 主列, not a wide 脇列.
+  it("gives 全面 the same two columns as the 中央モーダル", () => {
+    expect(layoutFor("full").columns).toBe(2);
+    expect(layoutFor("modal").columns).toBe(2);
+  });
+
+  it("leaves 併置サイドバー the only placement without columns", () => {
+    const single = PLACEMENTS.filter((placement) => layoutFor(placement).columns === 1);
+    expect(single).toEqual(["sidebar"]);
+  });
+});
+
 
 describe("AC #7 中央モーダルは 1280×800 でも 2 列", () => {
   it("keeps two columns at the size doc-8 §2.1 names", () => {

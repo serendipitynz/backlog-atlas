@@ -1686,28 +1686,12 @@
   </DetailSection>
 {/snippet}
 
-<!-- 1 列の並び (併置サイドバー・全面シングルビュー): doc-8 §3 の割当表の順。Type と通常ラベルが本文の
-     前に来るのは表のとおりで、Pull Request を References の前に置くのは、PR 区画の注記が「下の
-     References 欄へ足すと」と、その並びを指しているためである。 -->
-{#snippet flowSections()}
-  {@render typeSection()}
-  {@render labelsSection()}
-  {@render assigneeSection()}
-  {@render descriptionSection()}
-  {@render acSection()}
-  {@render planSection()}
-  {@render notesSection()}
-  {@render dependenciesSection()}
-  {@render pullRequestSection()}
-  {@render referencesSection()}
-  {@render gitHistorySection()}
-  {@render transitionsSection()}
-  {@render externalEditorSection()}
-{/snippet}
-
-<!-- 主列 / 脇列 (doc-8 §2.1). 見出し・編集卓・縮退表示 are drawn outside both: those three belong to
-     the panel rather than to a column (`SECTION_COLUMN` records the assignment). -->
+<!-- 主列 / 脇列 の並び (doc-8 §3.1、`MAIN_COLUMN_ORDER` / `SIDE_COLUMN_ORDER`)。見出しと編集卓だけが
+     どちらの列にも入らない — 列の上に固定される行だからである (doc-8 §2.2)。 -->
 {#snippet mainColumn()}
+  <!-- 縮退表示が主列の先頭に立つ (doc-8 §3.1)。原文は主列の末尾だが、「このタスクの表示は不完全で
+       ある」を内容を読み始める前に届けるために外れている。 -->
+  {@render degradePanel()}
   {@render descriptionSection()}
   {@render acSection()}
   {@render planSection()}
@@ -1722,8 +1706,17 @@
   {@render dependenciesSection()}
   {@render pullRequestSection()}
   {@render referencesSection()}
+  <!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行なので、2 つの snippet が並んで 1 区画を描く。 -->
   {@render transitionsSection()}
   {@render externalEditorSection()}
+{/snippet}
+
+<!-- 1 列の並び (併置サイドバーだけ): 主列の並びの後ろへ脇列の並びを継いだもの (doc-8 §3.1、
+     `SINGLE_COLUMN_ORDER`)。第 3 の順を書き写さない — 画面設計案 02 の併置の図がまさに 2 列を
+     縦へ継いだものなので、ここで順を綴ると正本が 2 箇所に割れる。 -->
+{#snippet flowSections()}
+  {@render mainColumn()}
+  {@render sideColumn()}
 {/snippet}
 
 <aside
@@ -1736,11 +1729,10 @@
   {@render heading()}
   {@render headingNotes()}
   {@render editConsole()}
-  {@render degradePanel()}
 
   {#if layout.columns === 2}
-    <!-- 中央モーダルは 2 列を保つ (doc-8 §2.1): the 脇列 is a fixed 18rem and the 主列 takes the
-         rest, with no breakpoint that stacks them — 狭いからといって縦積みへ落とさない. -->
+    <!-- 中央モーダルと全面シングルビューは 2 列を保つ (doc-8 §2.1): the 脇列 is a fixed 18rem and the
+         主列 takes the rest, with no breakpoint that stacks them — 狭いからといって縦積みへ落とさない. -->
     <div class="columns">
       <div class="col">{@render mainColumn()}</div>
       <div class="col">{@render sideColumn()}</div>
