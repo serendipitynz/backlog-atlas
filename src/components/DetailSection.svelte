@@ -9,11 +9,19 @@
   //
   // Until TASK-73 both were one `<details>` that differed only in `open`, on the reading that doc-8's
   // "既定で" meant an initial value. The 原文 settles it the other way.
+  //
+  // A fold's *starting* state is a separate question, and one the placement answers (doc-8 §3 既定開閉,
+  // TASK-114): the same 実装計画 opens closed in the 併置サイドバー and open in the 全面. So which element
+  // to draw and which state to start in are read through two functions rather than one comparison —
+  // `isFold` was `!== "always"` and `startsOpen` was the same test, which is exactly how they came to be
+  // one thing in the document.
   import type { Snippet } from "svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import {
     DISCLOSURE_ICON,
     PROSE_SECTIONS,
+    isFold,
+    startsOpen,
     type DetailSection,
     type PlacementLayout,
   } from "../lib/placement";
@@ -47,11 +55,11 @@
   const prose = $derived(PROSE_SECTIONS.includes(section));
 
   // Bound to the element so the 開閉印 can face the way the 区画 actually is, and re-seeded whenever
-  // the placement moves this 区画: a placement is a whole set of folds rather than a starting point
-  // that decays, so a 折畳み 区画 is 既定で閉じた every time one is chosen (doc-8 §3).
+  // the placement moves this 区画: a placement carries a whole set of 既定開閉 rather than a starting
+  // point that decays, so choosing one puts every 折畳み 区画 back at the state doc-8 §3 assigns it.
   let open = $state(false);
   $effect(() => {
-    open = disposition === "always";
+    open = startsOpen(disposition);
   });
 </script>
 
@@ -67,7 +75,7 @@
   </h3>
 {/snippet}
 
-{#if disposition === "always"}
+{#if !isFold(disposition)}
   <section class="section">
     {@render sectionTitle(true)}
     <div class="content" class:prose>
