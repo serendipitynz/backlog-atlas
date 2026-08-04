@@ -91,12 +91,12 @@
   } from "../lib/mark";
   import {
     DISCLOSURE_ICON,
+    MAIN_COLUMN_ORDER,
     MODAL_COLUMN_GAP_REM,
     MODAL_INSET_REM,
     MODAL_MAX_WIDTH_REM,
     MODAL_PADDING_REM,
     MODAL_SIDE_COLUMN_REM,
-    MAIN_COLUMN_ORDER,
     PLACEMENTS,
     PLACEMENT_ICON,
     PROSE_MAX_WIDTH_REM,
@@ -107,8 +107,9 @@
     placementPersistence,
     placementPersistenceNote,
     placementSwitchName,
-      type DetailSection as SectionKey,
-} from "../lib/placement";
+    // `DetailSection` is the component imported above; the type takes an alias here.
+    type DetailSection as SectionKey,
+  } from "../lib/placement";
   import { DETAIL_PLACEMENT_LABEL } from "../lib/settings";
   import {
     CANONICAL_COLUMN_LABEL,
