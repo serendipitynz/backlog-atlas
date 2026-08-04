@@ -35,29 +35,33 @@
   });
 </script>
 
+<!-- The 区画名 is an `<h3>` in both branches, so which one a placement chose never decides whether the
+     区画 has a heading at all: 実装計画 is a heading in 全面 and would stop being one in 併置. A
+     `<summary>` may hold one heading element, which is what lets the 折畳み branch keep it. -->
+{#snippet sectionTitle(ruled: boolean)}
+  <h3 class="section-title" class:ruled>
+    {title}
+    {#if count !== null}
+      <span class="count">{count}</span>
+    {/if}
+  </h3>
+{/snippet}
+
 {#if disposition === "always"}
   <section class="section">
-    <h3 class="section-title">
-      {title}
-      {#if count !== null}
-        <span class="count">{count}</span>
-      {/if}
-    </h3>
+    {@render sectionTitle(true)}
     <div class="content">
       {@render children()}
     </div>
   </section>
 {:else}
   <details class="section" bind:open>
-    <summary class="section-title">
+    <summary>
       <!-- 開閉印 (doc-8 §3): いまの状態を指す — chevron-down は開いている区画, chevron-right は
            閉じている区画. 可視の文言を持つ控えの中のアイコン (doc-11 §2.4) なので `aria-label` を
            与えない: 名前は区画名が持っており、開閉は `<summary>` 自身がツリーへ出している. -->
       <Icon name={DISCLOSURE_ICON[open ? "open" : "closed"]} />
-      {title}
-      {#if count !== null}
-        <span class="count">{count}</span>
-      {/if}
+      {@render sectionTitle(false)}
     </summary>
     <div class="content">
       {@render children()}
@@ -86,7 +90,7 @@
     color: var(--muted);
   }
 
-  h3.section-title::after {
+  .section-title.ruled::after {
     // 区画境界 (doc-12 §3): 区画名の右から幅いっぱいへ伸びる罫線 1 本. 常設区画にだけ引くので、
     // 罫線の有無が開閉印の有無と同じことを述べる — 折畳み区画には引かない.
     content: "";
@@ -95,7 +99,13 @@
     background: var(--line);
   }
 
-  summary.section-title {
+  summary {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    // 開閉印 の 1em を決めるのはこの箱で (doc-11 §2.4), 隣の 区画名 と同じ寸法でなければならない —
+    // `<h3>` が自分で `.68rem` を取るので、ここを既定のままにすると図形だけ 16px で描かれる.
+    font-size: 0.68rem;
     // The UA marker is what TASK-73 replaces; leaving it would print two 開閉印 side by side.
     // Both properties are needed — WebKit answers to the pseudo-element, Chromium to `list-style`.
     list-style: none;
