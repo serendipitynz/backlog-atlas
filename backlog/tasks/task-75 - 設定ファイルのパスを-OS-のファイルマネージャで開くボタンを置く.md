@@ -1,10 +1,10 @@
 ---
 id: TASK-75
 title: 設定ファイルのパスを OS のファイルマネージャで開くボタンを置く
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:31'
-updated_date: '2026-08-04 22:26'
+updated_date: '2026-08-04 23:16'
 labels:
   - ui
   - settings
@@ -97,7 +97,9 @@ doc-11 §5 が禁じる理由の無い無効化そのものだった（ポイン
 `aria-disabled="true"` と `aria-describedby="settings-location-blocked"` が付くことを実測した。
 `stored`・`unreadable`・`readOnly` では `false` で結び先も無い。
 
-**測っていないもの**: 実際に OS のファイルマネージャが開くこと。macOS の `open`・freedesktop の
-`xdg-open`・Windows の `ShellExecuteW` のいずれも、この環境からは起動そのものを確かめられない
-（テストは何を渡したかまでを固定している）。実機での確認は目視へ回す。
+**目視で確認済み（2026-08-05、macOS 実機）**: 「場所を開く」で Finder が設定ファイルのフォルダを
+実際に開く。**残る未測定は Windows と Linux の実機** — freedesktop の `xdg-open`、Windows の
+`ShellExecuteW` は、この環境からも macOS 実機からも起動そのものを確かめられない（テストが固定して
+いるのは何を渡したかまでである）。**実機の実 印は付けていない**ので、Windows・Linux の確認は
+TASK-96 など 実 印を持つタスクの実機確認と併せて行えばよい。
 <!-- SECTION:NOTES:END -->
