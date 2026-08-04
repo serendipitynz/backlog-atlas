@@ -480,8 +480,12 @@ export function laneGroupLabel(group: LaneNeighbours["group"]): string {
  * The group's *name* is not here (TASK-72). It sits in the heading's first row beside the id, the
  * marks, the 前後移動 controls, the 3 配置切替 and 閉じる, and that row is fixed — a second line there
  * is height the body never gets back. The name is the longest part of it and the least load-bearing:
- * the two ↑↓ controls immediately to the left say it in full in their accessible names, and 画面設計案
- * 02 itself prints only「セル内 3 / 7」(doc-12 §3).
+ * the two ↑↓ controls immediately to the left say it in full in their `title`, and 画面設計案 02 itself
+ * prints only「セル内 3 / 7」(doc-12 §3).
+ *
+ * `title`, not the accessible name: those controls carry `aria-label="前のタスクへ"`, and an
+ * `aria-label` outranks a `title` — so the group's name is their *description*, which is what
+ * doc-11 §2.4 wants (the label holds the operation's name and nothing else).
  */
 export function laneNeighbourLabel(neighbours: LaneNeighbours): string {
   return `${neighbours.position} / ${neighbours.total} 件`;
