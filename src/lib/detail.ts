@@ -50,6 +50,17 @@ import type {
 } from "./wire";
 
 /**
+ * Why 横断タスクID のコピー (doc-8 §2.2) cannot be offered for this task: the read layer could not get a
+ * TASK-ID out of the file (doc-4 §5 の解析不能), and the id is built from it (doc-3 §5.3).
+ *
+ * One string for the two places the screen says it — the control's `title` and the sentence beside it
+ * (doc-11 §5 wants the reason readable without hovering). Written out twice they would drift, and the
+ * same refusal would be worded two ways in one line.
+ */
+export const CROSS_ID_UNAVAILABLE =
+  "TASK-ID を読めないため横断タスクID を作れません（doc-4 §5 の解析不能）。";
+
+/**
  * The panel's own state for one task's Git・PR 履歴 read (doc-6). `noTaskId` is not a failure of
  * the read but a refusal to attempt it: コミット検索 keys on the TASK-ID (doc-6 §3), and a 解析不能
  * file has none — the 不足 doc-8 §3 asks to be stated rather than an empty list to be shown.
