@@ -64,7 +64,10 @@ export const CANONICAL_COLUMN_LABEL: Record<StatusColumn, string> = {
 /**
  * What the 未分類区画 is called wherever it is named beside the four (doc-7 §2.2). It is not a
  * canonical column, so it has no entry in `CANONICAL_COLUMN_LABEL`; keeping the word here stops the
- * grid's column head, the folded row's counts and the detail panel's 位置表示 from drifting apart.
+ * grid's column head, the folded row's counts and the detail panel's 前後移動 controls (through
+ * [`laneGroupLabel`]) from drifting apart.
+ *
+ * Not the detail panel's 位置表示: that prints a count alone and names no group (doc-8 §2.2, TASK-72).
  */
 export const UNMAPPED_LABEL = "未分類";
 
@@ -456,9 +459,14 @@ export function laneNeighbours(
 /**
  * What the group holding this task is called on screen (doc-8 §2.2). **The 未分類区画 is not a
  * レーンセル** — doc-7 §1 makes a cell a プロジェクト行 × 正準ステータス列 — so the noun differs by
- * group, and every string that names the group takes it from here: the 位置表示 below and the two
- * 前後移動 controls in the heading. Spelling セル in each of them is what let the panel call the
- * 区画 a cell while doc-7 said it is not one.
+ * group, and every string that names the group takes it from here: the two 前後移動 controls in the
+ * heading. Spelling セル in each of them is what let the panel call the 区画 a cell while doc-7 said
+ * it is not one.
+ *
+ * Two callers, not three: the 位置表示 dropped the group's name in TASK-72, because the heading's
+ * first row has to hold one line and the name was 97px of it (measured at the 30rem sidebar with a
+ * long id). The two controls still take their noun from here, so no screen ever calls the 未分類区画
+ * a cell — which is the whole point of this function, and it survives the count changing.
  */
 export function laneGroupLabel(group: LaneNeighbours["group"]): string {
   return group.kind === "column"
@@ -466,9 +474,21 @@ export function laneGroupLabel(group: LaneNeighbours["group"]): string {
     : `${UNMAPPED_LABEL}区画`;
 }
 
-/** doc-8 §2.2 の位置表示: which group, and where in it. */
+/**
+ * doc-8 §2.2 の位置表示: where in its group this task sits.
+ *
+ * The group's *name* is not here (TASK-72). It sits in the heading's first row beside the id, the
+ * marks, the 前後移動 controls, the 3 配置切替 and 閉じる, and that row is fixed — a second line there
+ * is height the body never gets back. The name is the longest part of it and the least load-bearing:
+ * the two ↑↓ controls immediately to the left say it in full in their `title`, and 画面設計案 02 itself
+ * prints only「セル内 3 / 7」(doc-12 §3).
+ *
+ * `title`, not the accessible name: those controls carry `aria-label="前のタスクへ"`, and an
+ * `aria-label` outranks a `title` — so the group's name is their *description*, which is what
+ * doc-11 §2.4 wants (the label holds the operation's name and nothing else).
+ */
 export function laneNeighbourLabel(neighbours: LaneNeighbours): string {
-  return `${laneGroupLabel(neighbours.group)}内 ${neighbours.position} / ${neighbours.total} 件`;
+  return `${neighbours.position} / ${neighbours.total} 件`;
 }
 
 /** Why 前後移動 is not offered, when it is not (doc-11 §5: a withheld control says why). */

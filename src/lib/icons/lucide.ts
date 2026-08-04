@@ -50,7 +50,11 @@ export type IconName =
   | "chevron-right"
   | "panel-right"
   | "panel-top-dashed"
-  | "maximize";
+  | "maximize"
+  | "clipboard"
+  | "clipboard-check"
+  | "arrow-up"
+  | "arrow-down";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -60,6 +64,16 @@ export type IconName =
  * The attribute values are lucide's own strings rather than numbers: SVG reads either the same way,
  * and keeping the spelling means a reader diffing this file against `__iconNode` compares characters
  * instead of deciding whether a retyped coordinate is still the same coordinate.
+ *
+ * `ry` is optional because lucide writes it on some rects and not others — `clipboard`'s carries
+ * `rx: "1", ry: "1"` while `panel-right`'s carries `rx: "2"` alone. Writing `ry` onto the panels to
+ * make the field required would be redrawing them, which the module header refuses; dropping it from
+ * `clipboard` would be redrawing that one.
+ *
+ * **An optional attribute is not held by [`drawnShape`]'s exhaustiveness.** That switch is over
+ * element *kinds*: a new kind leaves it non-exhaustive and the build stops, but a new attribute on an
+ * existing kind compiles fine and would simply never reach the SVG. `lucide.test.ts` is what holds
+ * this axis — it asserts every field of every shape below comes back out of [`drawnShape`].
  */
 export type IconShape =
   | { shape: "path"; d: string }
@@ -70,6 +84,7 @@ export type IconShape =
       x: string;
       y: string;
       rx: string;
+      ry?: string;
     };
 
 /** The frame the coordinates below are in (`defaultAttributes.mjs`). */
@@ -116,6 +131,9 @@ export function drawnShape(shape: IconShape): DrawnShape {
           x: shape.x,
           y: shape.y,
           rx: shape.rx,
+          // Spread rather than `ry: shape.ry`: an explicit `undefined` is an attribute Svelte then has
+          // to decide about, and the rects lucide writes without a `ry` should carry no `ry` at all.
+          ...(shape.ry === undefined ? {} : { ry: shape.ry }),
         },
       };
   }
@@ -163,5 +181,36 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M21 8V5a2 2 0 0 0-2-2h-3" },
     { shape: "path", d: "M3 16v3a2 2 0 0 0 2 2h3" },
     { shape: "path", d: "M16 21h3a2 2 0 0 0 2-2v-3" },
+  ],
+  // 横断タスクID のコピー (doc-8 §2.2) の 2 態. The pair is one control's before and after, not two
+  // controls: `clipboard-check` is `clipboard` plus a tick, and lucide draws the first two elements
+  // identically in both — which is why the swap reads as the same button answering rather than as the
+  // button being replaced. Which figure is showing is `TaskDetail.svelte`'s to decide; nothing here
+  // knows what a copy is.
+  clipboard: [
+    { shape: "rect", width: "8", height: "4", x: "8", y: "2", rx: "1", ry: "1" },
+    {
+      shape: "path",
+      d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2",
+    },
+  ],
+  "clipboard-check": [
+    { shape: "rect", width: "8", height: "4", x: "8", y: "2", rx: "1", ry: "1" },
+    {
+      shape: "path",
+      d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2",
+    },
+    { shape: "path", d: "m9 14 2 2 4-4" },
+  ],
+  // 前後移動 (doc-8 §2.2) の ↑↓. Arrows rather than the chevron pair above: doc-8 §2.2 writes this
+  // operation as ↑↓, and the 折畳み controls already speak chevron on the same screens — a fold and a
+  // move to the neighbouring task are different operations and should not share a figure.
+  "arrow-up": [
+    { shape: "path", d: "m5 12 7-7 7 7" },
+    { shape: "path", d: "M12 19V5" },
+  ],
+  "arrow-down": [
+    { shape: "path", d: "M12 5v14" },
+    { shape: "path", d: "m19 12-7 7-7-7" },
   ],
 };

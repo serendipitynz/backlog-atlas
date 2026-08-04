@@ -18,6 +18,7 @@
   // URLs are text, not links, for the same reason inverted: an <a href> inside the Tauri WebView
   // would navigate the app window away from Atlas, and opening an external browser needs a
   // capability this build does not have.
+  import { onDestroy } from "svelte";
   import DetailSection from "./DetailSection.svelte";
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
@@ -26,6 +27,7 @@
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import {
+    CROSS_ID_UNAVAILABLE,
     acProgress,
     degradeSummary,
     dependencyLinks,
@@ -566,11 +568,32 @@
   let copyState = $state<
     | { state: "idle" }
     | { state: "copied"; path: string }
+    | { state: "fading"; path: string }
     | { state: "failed"; path: string; text: string }
   >({ state: "idle" });
   let copyNotice = $derived(
     copyState.state !== "idle" && copyState.path === task.sourcePath ? copyState : null,
   );
+  /** Whether the control is showing its 成功 figure — `clipboard-check` — rather than `clipboard`. */
+  let copied = $derived(copyNotice?.state === "copied" || copyNotice?.state === "fading");
+
+  /**
+   * 成功表示の 2 段 (AC #4): hold the 成功色 for `COPY_HOLD_MS`, then let it fade over `COPY_FADE_MS`
+   * and put the `clipboard` figure back. Two phases rather than one timer because the sentence AC #4
+   * writes has four parts — 変わり / 成功色になって / フェードアウトし / 元へ戻る — and a single revert
+   * would snap the figure back while the colour was still on its way out.
+   *
+   * `COPY_FADE_MS` is also the CSS transition below. Kept as one number in one place: two that had to
+   * agree and did not would put the figure back mid-fade, which is the defect this shape avoids.
+   */
+  const COPY_HOLD_MS = 1200;
+  const COPY_FADE_MS = 450;
+  let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearCopyTimer(): void {
+    if (copyTimer !== null) clearTimeout(copyTimer);
+    copyTimer = null;
+  }
 
   async function copyCrossTaskId(): Promise<void> {
     const id = crossId;
@@ -578,13 +601,29 @@
     const path = task.sourcePath;
     try {
       await navigator.clipboard.writeText(id);
+      // Restarted rather than queued: pressing again during the fade is a second copy, and it should
+      // read as one — a full hold from now, not the tail of the previous press.
+      clearCopyTimer();
       copyState = { state: "copied", path };
+      copyTimer = setTimeout(() => {
+        copyState = { state: "fading", path };
+        copyTimer = setTimeout(() => {
+          copyTimer = null;
+          copyState = { state: "idle" };
+        }, COPY_FADE_MS);
+      }, COPY_HOLD_MS);
     } catch {
       // No reason text: what the user needs here is the id itself, in a form they can select — the
       // clipboard API's own message ("permission denied", "not focused") does not help them copy it.
+      // Nor does this one time out: the id is still on screen to be selected, and taking it away on a
+      // timer would take away the only copy that worked.
+      clearCopyTimer();
       copyState = { state: "failed", path, text: id };
     }
   }
+
+  // A pending timer outlives the panel otherwise, and fires `copyState` into a component that is gone.
+  onDestroy(clearCopyTimer);
 
   /**
    * 前後移動 (doc-8 §2.2). The move is an ordinary selection change, so it goes through the shell's
@@ -669,6 +708,25 @@
            still says which project's task this is. A 解析不能 file has no id, so it is named by
            its file — the only stable handle it has (doc-4 §5). -->
       <span class="identity">{cardIdentity(view)}</span>
+      <!-- ID コピーは ID の右横 (doc-8 §2.2, TASK-72). アイコンのみのボタン (doc-11 §2.4): the figure
+           carries no words, so `aria-label` holds the whole name — and it holds the *operation* name
+           only. 成功 is said by the sentence below, which is a live region, rather than by a name that
+           would change under a user who is looking for this button by it (doc-11 §2.4 の「持続する
+           状態の印」はここに及ばない). 無効化提示 (doc-11 §5) keeps its reason beside the control as
+           well as in `title`: the hint under this line carries it. -->
+      <button
+        type="button"
+        class="copy"
+        class:copied={copyNotice?.state === "copied"}
+        class:fading={copyNotice?.state === "fading"}
+        style="--copy-fade: {COPY_FADE_MS}ms"
+        disabled={crossId === null}
+        aria-label="横断タスクID をコピー"
+        title={crossId === null ? CROSS_ID_UNAVAILABLE : "横断タスクID をコピー"}
+        onclick={copyCrossTaskId}
+      >
+        <Icon name={copied ? "clipboard-check" : "clipboard"} />
+      </button>
       {#if crossId === null}
         <!-- 解析不能 (doc-4 §5): a required field the read layer could not get — the 縮退 family,
              not the 版ずれ one, since the divergence has nothing to do with it. -->
@@ -689,6 +747,39 @@
       {#if missing}
         <span class="mark" data-kind="unreadable">ファイル不明</span>
       {/if}
+
+      <!-- 前後移動 (doc-8 §2.2) は 1 行目の右端、配置切替の手前 (画面設計案 02。doc-12 §3)。
+           ↑↓ のアイコンのみのボタン (doc-11 §2.4) で、名前は `aria-label` が全部持つ — 操作の名前
+           だけで、群の名前は入れない (doc-11 §2.4 が `aria-label` に操作の名前だけを求めている)。
+           **群の名前を刷るのはこの 2 つの `title` だけで、どちらも `laneGroupLabel` から取る**
+           (doc-8 §2.2)。`aria-label` が `title` に優先するので、群の名前はこの控えの説明であって
+           名前ではない。
+           2 つが別の語を刷れば、同じ群を同じ行の中で 2 つの語で呼ぶことになる。未分類区画はレーン
+           セルではない (doc-7 §1)。**隣の位置表示は群の名前を持たない** — 1 行に収める必要があり、
+           名前がその行の 97px を占めていた (TASK-72 の実測)。端での無効化の理由は隣の位置表示と
+           下の控えが担う — 読めない位置に理由を隠さない、が doc-11 §5 の要求である。 -->
+      <div class="nav">
+        {#each [{ dir: "previous", icon: "arrow-up", name: "前のタスクへ", edge: "先頭" }, { dir: "next", icon: "arrow-down", name: "次のタスクへ", edge: "末尾" }] as const as step (step.dir)}
+          {@const target = neighbours === null ? null : neighbours[step.dir]}
+          <button
+            type="button"
+            class="step"
+            disabled={target === null}
+            aria-label={step.name}
+            title={neighbours === null
+              ? NO_LANE_CELL_REASON
+              : target === null
+                ? `${laneGroupLabel(neighbours.group)}の${step.edge}です`
+                : `${laneGroupLabel(neighbours.group)}内の${step.name}`}
+            onclick={() => moveTo(target)}
+          >
+            <Icon name={step.icon} />
+          </button>
+        {/each}
+        <span class="position">
+          {neighbours === null ? "スイムレーン上の位置不明" : laneNeighbourLabel(neighbours)}
+        </span>
+      </div>
 
       <!-- 配置の切替は「閉じる ×」と同じ操作群に置く (doc-8 §2.2): both answer "この面をどうするか",
            and neither belongs among the operations on the task's contents. -->
@@ -718,93 +809,25 @@
       </div>
     </div>
 
-    {#if persistenceNote !== null}
-      <p class="hint">{persistenceNote}</p>
-    {/if}
 
-    <!-- 前後移動 と ID コピー (doc-8 §2.2). Both sit in the heading in all three placements: the
-         id copy is the only way to point at this task from outside Atlas, and the move is what makes
-         the panel a place to read a cell from rather than a single stop. -->
-    <div class="line nav">
-      <!-- 端での無効化の理由は、隣の位置表示がそのまま担う。読めない位置に理由を隠さない、が
-           doc-11 §5 の要求である。**群の名前は `laneGroupLabel` だけが決める** (doc-8 §2.2): この 3 つと
-           位置表示が同じ行に並ぶので、片方が「セル」と刷って片方が「未分類区画」と刷ると、同じ群を
-           2 つの語で呼ぶことになる。未分類区画はレーンセルではない (doc-7 §1)。 -->
-      <button
-        type="button"
-        class="mini"
-        disabled={neighbours === null || neighbours.previous === null}
-        title={neighbours === null
-          ? NO_LANE_CELL_REASON
-          : neighbours.previous === null
-            ? `${laneGroupLabel(neighbours.group)}の先頭です`
-            : `${laneGroupLabel(neighbours.group)}内のひとつ前のタスクへ`}
-        onclick={() => moveTo(neighbours?.previous ?? null)}
-      >
-        ← 前のタスク
-      </button>
-      <span class="position">
-        {neighbours === null ? "スイムレーン上の位置不明" : laneNeighbourLabel(neighbours)}
-      </span>
-      <button
-        type="button"
-        class="mini"
-        disabled={neighbours === null || neighbours.next === null}
-        title={neighbours === null
-          ? NO_LANE_CELL_REASON
-          : neighbours.next === null
-            ? `${laneGroupLabel(neighbours.group)}の末尾です`
-            : `${laneGroupLabel(neighbours.group)}内のひとつ次のタスクへ`}
-        onclick={() => moveTo(neighbours?.next ?? null)}
-      >
-        次のタスク →
-      </button>
-      <button
-        type="button"
-        class="mini"
-        disabled={crossId === null}
-        onclick={copyCrossTaskId}
-      >
-        横断タスクID をコピー
-      </button>
+    <!-- 2 行目: title と編集入口 (画面設計案 02。doc-12 §3, doc-8 §3). 編集入口は押しボタンだけで、
+         保存キーの注記・未保存の予告・版ずれの告知は編集卓に残る — それらは長さが変わる文であり、
+         見出しは固定されているので、伸びた分だけ本文の高さを奪うことになる。 -->
+    <div class="line title-line">
+      {#if session === null}
+        <h2>{task.title ?? "（title 不明）"}</h2>
+      {:else}
+        <label class="field">
+          <span>title</span>
+          <input
+            type="text"
+            value={session.draft.title}
+            oninput={(event) => edit("title", event.currentTarget.value)}
+          />
+        </label>
+      {/if}
+      {@render editEntry()}
     </div>
-    {#if neighbours === null}
-      <!-- 無効化提示 (doc-11 §5): the reason sits beside the control, not only in a tooltip. -->
-      <p class="hint">{NO_LANE_CELL_REASON}</p>
-    {/if}
-    {#if crossId === null}
-      <p class="hint">
-        TASK-ID を読めないため横断タスクID を作れません（doc-4 §5 の解析不能）。
-      </p>
-    {/if}
-    {#if copyNotice !== null && copyNotice.state === "copied"}
-      <p class="ok">横断タスクID をコピーしました。</p>
-    {:else if copyNotice !== null}
-      <p class="warn">
-        クリップボードへ書けませんでした。次の文字列を選択してコピーしてください。
-        <input type="text" readonly value={copyNotice.text} aria-label="横断タスクID" />
-      </p>
-    {/if}
-
-    {#if missing}
-      <!-- doc-8 §6.4: an external move does not get to take the 未保存入力 with it. The panel
-           stays up showing the last read that resolved, so the input can be copied out before it
-           is discarded on purpose. -->
-      <p class="warn">{FILE_MISSING_REASON}</p>
-    {/if}
-
-    {#if session === null}
-      <h2>{task.title ?? "（title 不明）"}</h2>
-    {:else}
-      <label class="field">
-        <span>title</span>
-        <input
-          type="text"
-          value={session.draft.title}
-          oninput={(event) => edit("title", event.currentTarget.value)}
-        />
-      </label>
-    {/if}
 
     <dl class="facts">
       <dt>status</dt>
@@ -856,24 +879,9 @@
         {/if}
       </dd>
 
-      <dt>assignee</dt>
+      <dt>保存区分</dt>
       <dd>
-        {#if session !== null}
-          <!-- 担当の設定・付け替えはこの画面で閉じる (doc-5 §3・doc-10 §7, TASK-57). 1 欄 1 値 —
-               `-a` は 1 件しか受け取らず、frontmatter の一覧を丸ごと置き換える. -->
-          <input
-            type="text"
-            aria-label="assignee"
-            value={session.draft.assignee}
-            oninput={(event) => edit("assignee", event.currentTarget.value)}
-          />
-          <p class="hint">{ASSIGNEE_NOT_CLEARABLE}</p>
-          {#if assigneeCollapse !== null}
-            <p class="warn">{assigneeCollapse}</p>
-          {/if}
-        {:else}
-          {task.assignee.length > 0 ? task.assignee.join(", ") : "—"}
-        {/if}
+        {task.storageState === null ? "保存区分不明" : STORAGE_LABEL[task.storageState]}
       </dd>
 
       <dt>milestone</dt>
@@ -900,51 +908,111 @@
         {/if}
       </dd>
 
-      <dt>保存区分</dt>
-      <dd>
-        {task.storageState === null
-          ? "保存区分不明"
-          : STORAGE_LABEL[task.storageState]}
-      </dd>
+      <!-- created と updated は別のセル (画面設計案 02 の 3 段目。doc-12 §3). 1 セルに 2 つ収めると
+           `tabular-nums` が桁を揃える相手を持たない — 揃えたい 2 つが同じ列に立って初めて効く。 -->
+      <dt>created</dt>
+      <dd class="date">{task.createdDate ?? "—"}</dd>
 
-      <dt>日付</dt>
-      <dd>
-        created {task.createdDate ?? "—"} / updated {task.updatedDate ?? "—"}
-      </dd>
-
-      <dt>ファイル</dt>
-      <dd class="path">{task.sourcePath}</dd>
+      <dt>updated</dt>
+      <dd class="date">{task.updatedDate ?? "—"}</dd>
     </dl>
   </header>
 {/snippet}
 
+<!-- 見出しの操作が述べる文 (doc-8 §3, doc-11 §5): drawn *below* the 見出し rather than inside it. Every
+     one of these appears and disappears — a 既定 write that was refused, an end-of-cell move, an id that
+     cannot be built, the result of a copy, a file that left the read — so inside the 固定 band each of
+     them would grow it, and the failed-copy one would grow it and stay. The band is the three rows
+     doc-12 §3 transcribed and nothing else; height it takes is height the body never gets back.
+     Adjacency is what doc-11 §5 actually asks for (a reason readable without hovering), and these sit
+     immediately under the controls they speak for. -->
+{#snippet headingNotes()}
+  <div class="heading-notes">
+    {#if persistenceNote !== null}
+      <p class="hint">{persistenceNote}</p>
+    {/if}
+    {#if neighbours === null}
+      <!-- 無効化提示 (doc-11 §5): the reason sits beside the control, not only in a tooltip. -->
+      <p class="hint">{NO_LANE_CELL_REASON}</p>
+    {/if}
+    {#if crossId === null}
+      <p class="hint">{CROSS_ID_UNAVAILABLE}</p>
+    {/if}
+    <!-- 成功・失敗を述べる語 (doc-11 §2.4, TASK-72). A live region because the control's own name must
+         not change under the user: the figure and the 成功色 reach the eye, and this is what reaches
+         the ear. `role="status"` — polite — so it waits for a pause rather than cutting in on whatever
+         is being read; the copy has already happened either way. Always in the tree, empty when there is
+         nothing to say: a region inserted at the moment it fills is not reliably announced. -->
+    <div
+      role="status"
+      aria-live="polite"
+      class="live"
+      class:unseen={copyNotice?.state !== "failed"}
+    >
+      {#if copied}
+        <p class="ok">横断タスクID をコピーしました。</p>
+      {:else if copyNotice !== null && copyNotice.state === "failed"}
+        <p class="warn">
+          クリップボードへ書けませんでした。次の文字列を選択してコピーしてください。
+          <input type="text" readonly value={copyNotice.text} aria-label="横断タスクID" />
+        </p>
+      {/if}
+    </div>
+    {#if missing}
+      <!-- doc-8 §6.4: an external move does not get to take the 未保存入力 with it. The panel
+           stays up showing the last read that resolved, so the input can be copied out before it
+           is discarded on purpose. -->
+      <p class="warn">{FILE_MISSING_REASON}</p>
+    {/if}
+  </div>
+{/snippet}
+
+<!-- 編集入口 (doc-8 §3): the 編集卓's buttons, drawn at the right end of the heading's title row so
+     that the primary action on this task is reachable without scrolling — the same requirement that
+     fixes the heading at all (doc-8 §3). Only the buttons move: the console below keeps every sentence,
+     because those grow and shrink with the session and the heading has no room to grow into. -->
+{#snippet editEntry()}
+  <div class="entry">
+    {#if session === null}
+      <button
+        type="button"
+        class="primary"
+        disabled={availability.state !== "editable"}
+        title={availability.state === "editable" ? "編集" : availability.reason}
+        onclick={startEditing}
+      >
+        編集
+      </button>
+    {:else}
+      <button
+        type="button"
+        class="primary"
+        disabled={saveGate.state !== "ready"}
+        aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
+        title={saveGate.state === "ready"
+          ? `保存 (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`
+          : saveGate.reason}
+        onclick={save}
+      >
+        {busy ? "保存中…" : "保存"}
+      </button>
+      <button type="button" onclick={cancelEditing}>キャンセル</button>
+    {/if}
+  </div>
+{/snippet}
+
 <!-- 編集（明示保存） (doc-8 §3): 常設 in all three. Nothing here writes as you type, and Enter is
-     not one of the save keys (doc-8 §6.2). -->
+     not one of the save keys (doc-8 §6.2). The buttons are in the heading (`editEntry`); what is left
+     here is every sentence that explains, warns or foretells. -->
 {#snippet editConsole()}
   <section class="console">
     {#if session === null}
-      {#if availability.state === "editable"}
-        <button type="button" class="primary" onclick={startEditing}>編集</button>
-      {:else}
-        <button type="button" class="primary" disabled title={availability.reason}>編集</button>
+      {#if availability.state !== "editable"}
+        <!-- 無効化提示 (doc-11 §5): the disabled 編集 button in the heading carries this in its
+             `title`, and doc-11 §5 refuses to leave a reason on hover alone. -->
         <p class="hint">{availability.reason}</p>
       {/if}
     {:else}
-      <div class="buttons">
-        <button
-          type="button"
-          class="primary"
-          disabled={saveGate.state !== "ready"}
-          aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-          title={saveGate.state === "ready"
-            ? `保存 (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`
-            : saveGate.reason}
-          onclick={save}
-        >
-          {busy ? "保存中…" : "保存"}
-        </button>
-        <button type="button" onclick={cancelEditing}>キャンセル</button>
-      </div>
       {#if !missing}
         <!-- Withheld while the file is gone: naming the save shortcut there would advertise an
              operation that cannot be issued (doc-5 §5). The banner above carries the reason.
@@ -1097,6 +1165,35 @@
     </ul>
     {#if session !== null}
       <p class="hint">{TYPE_NOT_EDITABLE}</p>
+    {/if}
+  </DetailSection>
+{/snippet}
+
+<!-- assignee (doc-8 §3): 見出しから外して本文側の区画へ置いた (TASK-72). 画面設計案 02 の属性表には
+     あるが、本書は意図的に外れている (doc-12 §3) — 属性表を 2 列に保ったまま created と updated を
+     別のセルへ割くためで、assignee は編集セッションでだけ書き換える値なので、常に読める必要がある
+     見出しの側に要らない。割当は通常ラベルと同じ (併置=常設 / モーダル=脇列 / 全面=常設)。 -->
+{#snippet assigneeSection()}
+  <DetailSection title="assignee" disposition={layout.sections.labels}>
+    {#if session === null}
+      {#if task.assignee.length === 0}
+        <p class="neutral">なし</p>
+      {:else}
+        <p>{task.assignee.join(", ")}</p>
+      {/if}
+    {:else}
+      <!-- 担当の設定・付け替えはこの画面で閉じる (doc-5 §3・doc-10 §7, TASK-57). 1 欄 1 値 —
+           `-a` は 1 件しか受け取らず、frontmatter の一覧を丸ごと置き換える. -->
+      <input
+        type="text"
+        aria-label="assignee"
+        value={session.draft.assignee}
+        oninput={(event) => edit("assignee", event.currentTarget.value)}
+      />
+      <p class="hint">{ASSIGNEE_NOT_CLEARABLE}</p>
+      {#if assigneeCollapse !== null}
+        <p class="warn">{assigneeCollapse}</p>
+      {/if}
     {/if}
   </DetailSection>
 {/snippet}
@@ -1511,6 +1608,10 @@
      edits Atlas itself cannot issue. -->
 {#snippet externalEditorSection()}
   <DetailSection title="外部エディタで開く" disposition={layout.sections.transitions}>
+    <!-- 管理ファイルのパス (doc-8 §7): 見出しから移した (TASK-72). 開く操作の隣がパスの置き場である —
+         何を開こうとしているのかは押す前に読めていなければならない。画面でこのパスを出しているのは
+         ここだけなので、縮退や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
+    <p class="path">{task.sourcePath}</p>
     <p class="hint">{CLI_LIMIT_GUIDANCE}</p>
     <!-- 開く前に示す (doc-8 §7 難点と受け方): the frontmatter is exposed and the CLI's schema checking
          is bypassed, so this is stated before a launch rather than after a degraded read. -->
@@ -1579,6 +1680,7 @@
 {#snippet flowSections()}
   {@render typeSection()}
   {@render labelsSection()}
+  {@render assigneeSection()}
   {@render descriptionSection()}
   {@render acSection()}
   {@render planSection()}
@@ -1604,6 +1706,7 @@
 {#snippet sideColumn()}
   {@render typeSection()}
   {@render labelsSection()}
+  {@render assigneeSection()}
   {@render dependenciesSection()}
   {@render pullRequestSection()}
   {@render referencesSection()}
@@ -1619,6 +1722,7 @@
     2}rem; --modal-inset: {MODAL_INSET_REM / 2}rem; --modal-max-width: {MODAL_MAX_WIDTH_REM}rem;"
 >
   {@render heading()}
+  {@render headingNotes()}
   {@render editConsole()}
   {@render degradePanel()}
 
@@ -1644,7 +1748,10 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    padding: 0.6rem 0.75rem 1rem;
+    // No top padding: the sticky 見出し owns it (see `.heading`). Left here, it became a 9.6px strip
+    // above the band that the content scrolled through — measured, and visible in a screenshot as the
+    // 縮退帯 appearing over the pinned heading.
+    padding: 0 0.75rem 1rem;
     background: var(--panel);
     // Scrolls inside itself so the swimlane keeps its own scroll position while the panel is open.
     overflow-y: auto;
@@ -1664,7 +1771,7 @@
   .detail[data-placement="modal"] {
     width: min(var(--modal-max-width), calc(100vw - var(--modal-inset) * 2));
     max-height: 100%;
-    padding: 0.6rem var(--modal-padding) 1rem;
+    padding: 0 var(--modal-padding) 1rem;
     border: 1px solid var(--line-strong);
     border-radius: 6px;
     box-shadow: 0 8px 32px color-mix(in srgb, var(--fg) 25%, transparent);
@@ -1698,16 +1805,144 @@
     align-items: start;
   }
 
+  /*
+   * 見出しは 3 配置とも固定 (doc-8 §3, AC #2). `.detail` is the scroll container (`overflow-y: auto`)
+   * and this is its direct child, so `sticky` pins against that box in all three placements without
+   * any per-placement rule.
+   *
+   * The band has to reach all four of the panel's edges, or the content scrolls through whatever it does
+   * not cover. Sideways that is negative margins with matching padding, against the panel's horizontal
+   * padding. Upwards it is the panel having *no* top padding and this element carrying it instead: a
+   * negative top margin does not work, because a sticky box is pinned by its static position and the
+   * pull-up is given straight back when it sticks. That was measured — the band settled 9.6px below the
+   * panel's edge in both engines, and a screenshot showed the 縮退帯 riding through the gap.
+   * `--panel` is the same requirement in the third dimension: a transparent sticky band is a band the
+   * text scrolls *through*.
+   *
+   * What is fixed is deliberately only the three rows doc-12 §3 transcribed. Every sentence that comes
+   * and goes is drawn outside it — the ones the heading's own controls speak (`.heading-notes`) and the
+   * ones the session speaks (the 編集卓) — because the band cannot grow without taking that height from
+   * the body permanently, and the failed-copy notice would grow it and then stay.
+   */
   .heading {
+    /*
+     * The height and the text size of every control in the heading's first row, as one value each —
+     * the same reason `Swimlane.svelte` has `--head-control`. The ↑↓, the 3 配置切替 and 閉じる draw a
+     * figure or a word in boxes that do not otherwise share anything, and a figure is `1em` of its own
+     * box (doc-11 §2.4) rather than a line box handed down by the row: without one font-size taken by
+     * all of them they would only line up by coincidence, and the coincidence differs by engine.
+     * Declared here rather than on `.frame` because the ↑↓ group sits outside it and has to take the
+     * same two numbers (TASK-72 moved 前後移動 into this row).
+     */
+    --frame-control: 1.4rem;
+    --frame-text: 0.7rem;
+
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
+    margin: 0 -0.75rem;
+    padding: 0.6rem 0.75rem 0.4rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
 
     h2 {
       margin: 0;
       font-size: 0.95rem;
       line-height: 1.35;
     }
+  }
+
+  // 中央モーダルは左右の padding が違う (`--modal-padding`), so the band's pull-out has to match it or
+  // the strip comes back on that placement alone.
+  .detail[data-placement="modal"] .heading {
+    margin-right: calc(var(--modal-padding) * -1);
+    margin-left: calc(var(--modal-padding) * -1);
+    padding-right: var(--modal-padding);
+    padding-left: var(--modal-padding);
+  }
+
+  // 2 行目: title が伸びしろを取り、編集入口は右端で自分の幅のまま。
+  .title-line {
+    align-items: center;
+    gap: 0.5rem;
+    // The row is one line in both states (目視 2026-08-04). It is part of the 固定 band, so a second
+    // line here is height the body never gets back — and the band would change height on entering an
+    // edit session, which is the one moment the reader is looking at the body.
+    flex-wrap: nowrap;
+
+    h2 {
+      flex: 1;
+      min-width: 0;
+    }
+
+    // Editing: the label sits *beside* its input rather than above it, so the field is one line like
+    // the `h2` it replaces. `min-width: 0` on both is what lets the input give way instead of pushing
+    // 保存・キャンセル onto a line of their own — a flex item's default `min-width: auto` refuses to
+    // shrink below its content.
+    .field {
+      flex: 1;
+      min-width: 0;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.3rem;
+
+      span {
+        flex: none;
+      }
+
+      input {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+  }
+
+  /*
+   * 見出しが述べる文の置き場: 固定帯のすぐ下、本文より前。
+   *
+   * `display: contents` so the group itself lays nothing out: its children become items of the panel's
+   * own column and take that column's spacing, and — when there is nothing to say — this subtree
+   * contributes no box at all. A wrapper with its own box would spend one of the panel's `gap`s
+   * whether or not it had anything in it.
+   */
+  .heading-notes {
+    display: contents;
+  }
+
+  /*
+   * 成功の語は読み上げにだけ残す (doc-11 §2.4)。The figure already says it to the eye — `clipboard`
+   * becomes `clipboard-check` and takes the 成功色 — so a sentence repeating that is one the sighted
+   * reader has to read past every time they copy an id. What it must not do is disappear from the
+   * accessibility tree, because the tree is the *only* place the result exists for a screen reader:
+   * `aria-label` stays fixed on the button by doc-11 §2.4, and a figure announces nothing.
+   *
+   * Hence visually hidden rather than `display: none` or a removed element. Both of those take it out
+   * of the tree, and an unmounted region announces nothing when it fills, which is the whole reason it
+   * is kept mounted. Out of flow as well, so a silent round spends none of the panel's `gap`.
+   *
+   * The failure notice is not covered by this: it carries the id as selectable text, which is the only
+   * way left to copy it, and no figure says that. It stays visible — which is why the class is driven
+   * by the failure state rather than by "is there anything to say".
+   */
+  .live.unseen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .entry {
+    display: flex;
+    flex: none;
+    gap: 0.3rem;
+    margin-left: auto;
   }
 
   .line {
@@ -1717,13 +1952,32 @@
     gap: 0.35rem;
   }
 
+  // 前後移動 (doc-8 §2.2): 1 行目の右端、配置切替の手前。`margin-left: auto` はこちらが持ち、
+  // `.frame` はその隣に続く — 2 つとも auto を持つと間が開いて 1 つの群に見えなくなる。
   .nav {
+    display: flex;
     align-items: center;
+    gap: 0.3rem;
+    margin-left: auto;
+    // The same two values the 操作群 beside it takes (`.frame`), so the ↑↓ and the 3 配置切替 line up
+    // by one number rather than by coincidence.
+    font-size: var(--frame-text);
+  }
+
+  .step {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--frame-control);
+    height: var(--frame-control);
+    padding: 0;
   }
 
   .position {
     font-size: 0.7rem;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
     opacity: 0.7;
   }
 
@@ -1733,22 +1987,52 @@
     opacity: 0.75;
   }
 
+  // 横断タスクID のコピー (doc-8 §2.2): アイコンのみのボタン sitting against the id it copies.
+  .copy {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    // Square, and sized from the id beside it rather than from `--frame-control`: this control belongs
+    // to the ID, not to the 操作群 at the other end of the line (doc-8 §2.2 puts those two apart).
+    width: 1.35rem;
+    height: 1.35rem;
+    padding: 0;
+    font-size: 0.75rem;
+    // No transition at rest. `color` is the property the 成功色 and its fade both move (the figure is
+    // `currentColor`, doc-11 §2.4), and a standing `transition: color` on this button animates *every*
+    // change of it — 表示テーマ の切り替え included, which measured as this one control easing to its
+    // new colour while the rest of the panel had already changed. The transition belongs to the fade,
+    // so `.fading` is what carries it.
+
+    /*
+     * 成功色 (AC #5, TASK-72): `--info` の代替 — decision-12 と doc-11 §2.1 が `--info` を通知・確認の
+     * 色と定めており、コピー成功は確認そのものである。新しい変数を起こしていないのは、成功が図形
+     * (`clipboard-check`) で述べられていて色がその繰り返しだからで、色相を 1 つ増やしても新しい判別は
+     * 生まれない。実測では 10 テーマとも `--info` 対 `--panel` が 5.67:1 以上あり、非文字要素の下限
+     * 3:1 を満たす。
+     *
+     * `transition: none` on the way in: 成功は押した瞬間の返事なので、色が育つのを待たせない。
+     * 成功は押した瞬間の返事なので、入るときは transition を持たせない (色が育つのを待たせない)。
+     * フェードは `.fading` に入った瞬間から始まり、図形は色が引き終わるまで `clipboard-check` の
+     * ままで、そのあと `clipboard` へ戻る。時間はスクリプトの `COPY_FADE_MS` から `--copy-fade` で
+     * 入ってくるので、フェードとそれを終わらせるタイマーは 1 つの数である。
+     */
+    &.copied {
+      color: var(--info);
+    }
+
+    &.fading {
+      color: inherit;
+      transition: color var(--copy-fade) ease;
+    }
+  }
+
   // 配置の切替と閉じるは 1 つの操作群 (doc-8 §2.2).
   .frame {
-    /*
-     * The height and the text size of everything in this 操作群, as one value each — the same reason
-     * `Swimlane.svelte` has `--head-control`. Three of the four controls draw a figure and the fourth
-     * spells a word, and a figure is `1em` of its own box (doc-11 §2.4) rather than a line box handed
-     * down by the row: without one font-size taken by all of them the switches and 閉じる would only
-     * line up by coincidence, and the coincidence differs by engine.
-     */
-    --frame-control: 1.4rem;
-    --frame-text: 0.7rem;
-
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-left: auto;
   }
 
   .placement {
@@ -1813,9 +2097,18 @@
     font-size: var(--frame-text);
   }
 
+  /*
+   * 主要属性の属性表 (画面設計案 02。doc-12 §3): 3 段 2 列。Four grid tracks — label, value, label,
+   * value — so the six items fall into three rows of two pairs in source order, which is the order
+   * doc-8 §3 writes them in. The label tracks are `auto` rather than a fixed 5.5rem: with two pairs on
+   * a line, a fixed label column spends width the values need, and the labels here are short.
+   *
+   * The whole table drops to one pair per line under a narrow box. `--frame-control` is not involved:
+   * these rows carry text only, so the line box is the right thing to size them.
+   */
   .facts {
     display: grid;
-    grid-template-columns: 5.5rem 1fr;
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 0.15rem 0.5rem;
     margin: 0;
     font-size: 0.74rem;
@@ -1831,6 +2124,10 @@
       align-items: baseline;
       gap: 0.3rem;
     }
+  }
+
+  .date {
+    font-variant-numeric: tabular-nums;
   }
 
   .path {

@@ -239,7 +239,10 @@ describe("タスク詳細の離脱と保存中状態", () => {
     // 前後移動 arrives at the same guard as any other selection change rather than carrying a second
     // one of its own (doc-8 §2.2) — which is only observable from here, since the button is the
     // panel's and the gate is the shell's.
-    const next = byText<HTMLButtonElement>(host, "button.mini", "次のタスク →");
+    //
+    // Found by label: TASK-72 made this an アイコンのみのボタン (doc-11 §2.4), so the figure carries no
+    // text and `aria-label` is the only name it has.
+    const next = byLabel<HTMLButtonElement>(host, "button.step", "次のタスクへ");
     expect(next.disabled).toBe(false);
     click(next);
 

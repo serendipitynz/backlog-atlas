@@ -11,7 +11,8 @@
  * | term | here | is |
  * |---|---|---|
  * | doc-8 §1 タスク詳細画面 | `TaskDetail.svelte` | the panel showing one task's every item |
- * | doc-8 §3 見出し | the panel's `<header>` | 横断タスクID＋title・status（正準対応併記）・priority・assignee・milestone |
+ * | doc-8 §3 見出し | the panel's `<header>` | the three fixed rows: 横断タスクID＋ID コピー＋印＋前後移動＋位置＋3 配置切替＋閉じる / title＋編集入口 / 主要属性 |
+ * | doc-8 §3 主要属性 | the `<header>`'s `<dl>` | status（正準対応併記）・priority・保存区分・milestone・created・updated の 6 つ、3 段 2 列。assignee は本文側、ファイルパスは外部エディタ区画 |
  * | doc-8 §3 milestone 参照 | [`MilestoneRef`] | the id plus the title it resolves to in this root, or 未解決 |
  * | doc-8 §3 dependencies（未解決印） | [`DependencyLink`] | one dependency id and the task it resolves to, or `null` for 参照欠損 |
  * | doc-8 §4 Pull Request ↔ References 分離 | [`ReferenceSplit`] | the task's references cut into PR URLs and ordinary references |
@@ -48,6 +49,17 @@ import type {
   TaskHistory,
   TaskView,
 } from "./wire";
+
+/**
+ * Why 横断タスクID のコピー (doc-8 §2.2) cannot be offered for this task: the read layer could not get a
+ * TASK-ID out of the file (doc-4 §5 の解析不能), and the id is built from it (doc-3 §5.3).
+ *
+ * One string for the two places the screen says it — the control's `title` and the sentence beside it
+ * (doc-11 §5 wants the reason readable without hovering). Written out twice they would drift, and the
+ * same refusal would be worded two ways in one line.
+ */
+export const CROSS_ID_UNAVAILABLE =
+  "TASK-ID を読めないため横断タスクID を作れません（doc-4 §5 の解析不能）。";
 
 /**
  * The panel's own state for one task's Git・PR 履歴 read (doc-6). `noTaskId` is not a failure of
