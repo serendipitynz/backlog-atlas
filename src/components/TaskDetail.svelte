@@ -1584,8 +1584,8 @@
   </DetailSection>
 {/snippet}
 
-<!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行であり、同じ割当（併置・モーダルでは折畳み、全面では
-     常設）で動く。2 つの区画に分けてあるのは操作の系統が違うためで、開き方は 1 つの規則に従う。 -->
+<!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行であり、同じ割当（3 配置とも折畳み。既定は併置・モーダルで
+     閉、全面で開）で動く。2 つの区画に分けてあるのは操作の系統が違うためで、開き方は 1 つの規則に従う。 -->
 {#snippet transitionsSection()}
   <DetailSection title="状態遷移" section="transitions" {layout}>
     {#if transitions.state === "none"}

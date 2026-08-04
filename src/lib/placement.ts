@@ -13,7 +13,8 @@
  * | doc-8 §2.1 詳細配置 | [`DetailPlacement`] (`wire.ts`) | 併置サイドバー / 中央モーダル / 全面シングルビュー |
  * | doc-8 §3 区画 | [`DetailSection`] | one row of the assignment table — one block of the panel |
  * | doc-8 §3 常設 | [`Disposition`] `"always"` | 開いたまま置く状態。利用者に閉じる手段は無い |
- * | doc-8 §3 折畳み | [`Disposition`] `"collapsed"` | 見出しと件数だけを見せて既定で閉じた状態。利用者が開閉できる |
+ * | doc-8 §3 折畳み | [`Disposition`] `"foldOpen"` / `"foldClosed"`, [`isFold`] | 利用者が開閉できる状態 |
+ * | doc-8 §3 既定開閉 | [`startsOpen`] | 折畳みの区画がその配置で開いて始まるか閉じて始まるか |
  * | doc-8 §2.1 主列 / 脇列 | [`SectionColumn`] `"main"` / `"side"` | the two columns of 中央モーダル and 全面 |
  * | doc-8 §3 2 列にまたがる | [`SectionColumn`] `"wide"` | 見出し and 編集卓 only — they sit above the columns |
  * | doc-8 §3.1 区画の並び | [`MAIN_COLUMN_ORDER`] / [`SIDE_COLUMN_ORDER`] / [`SINGLE_COLUMN_ORDER`] | the 正本 transcribed from 画面設計案 02 |
@@ -64,7 +65,31 @@ export type DetailSection =
   /** 状態遷移・外部エディタ — one row of doc-8 §3, so one key here. */
   | "transitions";
 
-export type Disposition = "always" | "collapsed";
+/**
+ * 割当表の 1 セルが取る値 (doc-8 §3). Three rather than two because the cell says two independent
+ * things — whether the user can close the 区画 at all, and whether it starts open — and doc-8 used to
+ * bundle the second into the definition of 折畳み ("既定で閉じた状態"). 画面設計案 02 draws the same
+ * four 区画 as folds in all three figures and varies only the direction of the 開閉印, so the bundled
+ * form could not be transcribed at all (TASK-114).
+ *
+ * Read them through [`isFold`] and [`startsOpen`] rather than by comparing strings: those are the two
+ * questions the markup actually asks, and each has to keep giving one answer for 常設.
+ */
+export type Disposition = "always" | "foldOpen" | "foldClosed";
+
+/** Whether the user can close this 区画 — the half of the cell the 区画見出し's 体裁 states (doc-8 §3). */
+export function isFold(disposition: Disposition): boolean {
+  return disposition !== "always";
+}
+
+/**
+ * Whether this 区画 is open when the placement is first drawn (doc-8 §3 既定開閉). True for 常設 as
+ * well: 常設 is open and stays open, so the one question "is it open right now, at the start" has the
+ * same answer for both, and the markup needs no third branch.
+ */
+export function startsOpen(disposition: Disposition): boolean {
+  return disposition !== "foldClosed";
+}
 
 /**
  * Where a 区画 sits in the two columns (doc-8 §2.1). Read by 中央モーダル and 全面シングルビュー;
@@ -95,28 +120,33 @@ export interface PlacementLayout {
 export const PLACEMENTS: readonly DetailPlacement[] = ["sidebar", "modal", "full"] as const;
 
 /**
- * doc-8 §3 の割当表, transcribed. `full` is not written out: 全面シングルビュー is 全区画を常設で出す
- * (doc-8 §2.1), so it is every section at `"always"` and stating it row by row would invite the two
- * to drift apart.
+ * doc-8 §3 の割当表, transcribed. All three placements are written out. `full` used to be derived from
+ * a rule instead — 全区画を常設 (doc-8 §2.1) — and the rule was wrong: 画面設計案 02's 全面 figure draws
+ * five 区画 with 開閉印 (TASK-114). A rule is only worth the row it replaces while the document states
+ * one, and this table no longer has one to state.
+ *
+ * **Which 区画 are folds does not vary by placement** — the four rows below that leave `"always"` are
+ * folds in all three, exactly as the three figures draw them. Only 既定開閉 varies. That is what lets
+ * doc-8 §3 fix the 区画見出し's 体裁 to the 区画 rather than to the placement.
  */
-const DISPOSITIONS: Record<DetailSection, { sidebar: Disposition; modal: Disposition }> = {
-  heading: { sidebar: "always", modal: "always" },
-  assignee: { sidebar: "always", modal: "always" },
-  editConsole: { sidebar: "always", modal: "always" },
-  type: { sidebar: "always", modal: "always" },
-  labels: { sidebar: "always", modal: "always" },
-  description: { sidebar: "always", modal: "always" },
-  ac: { sidebar: "always", modal: "always" },
-  plan: { sidebar: "collapsed", modal: "always" },
-  notes: { sidebar: "collapsed", modal: "collapsed" },
-  dependencies: { sidebar: "always", modal: "always" },
-  references: { sidebar: "collapsed", modal: "always" },
-  pullRequest: { sidebar: "always", modal: "always" },
+const DISPOSITIONS: Record<DetailSection, Record<DetailPlacement, Disposition>> = {
+  heading: { sidebar: "always", modal: "always", full: "always" },
+  assignee: { sidebar: "always", modal: "always", full: "always" },
+  editConsole: { sidebar: "always", modal: "always", full: "always" },
+  type: { sidebar: "always", modal: "always", full: "always" },
+  labels: { sidebar: "always", modal: "always", full: "always" },
+  description: { sidebar: "always", modal: "always", full: "always" },
+  ac: { sidebar: "always", modal: "always", full: "always" },
+  plan: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
+  notes: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
+  dependencies: { sidebar: "always", modal: "always", full: "always" },
+  references: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
+  pullRequest: { sidebar: "always", modal: "always", full: "always" },
   // The Git 履歴欄's own row is a granularity rather than a fold (`HistoryDetail`); the section
   // itself stays open in all three, since even 件数のみ is something to read.
-  gitHistory: { sidebar: "always", modal: "always" },
-  degrade: { sidebar: "always", modal: "always" },
-  transitions: { sidebar: "collapsed", modal: "collapsed" },
+  gitHistory: { sidebar: "always", modal: "always", full: "always" },
+  degrade: { sidebar: "always", modal: "always", full: "always" },
+  transitions: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
 };
 
 /**
@@ -194,8 +224,7 @@ const HISTORY_DETAIL: Record<DetailPlacement, HistoryDetail> = {
 export function layoutFor(placement: DetailPlacement): PlacementLayout {
   const sections = {} as Record<DetailSection, Disposition>;
   for (const [section, byPlacement] of Object.entries(DISPOSITIONS)) {
-    sections[section as DetailSection] =
-      placement === "full" ? "always" : byPlacement[placement];
+    sections[section as DetailSection] = byPlacement[placement];
   }
   return {
     sections,

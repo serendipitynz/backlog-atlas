@@ -16,11 +16,13 @@ import {
   SIDEBAR_WIDTH_REM,
   SIDE_COLUMN_ORDER,
   SINGLE_COLUMN_ORDER,
+  isFold,
   layoutFor,
   modalMainColumnRem,
   placementPersistence,
   placementPersistenceNote,
   placementSwitchName,
+  startsOpen,
   type DetailSection,
   type Disposition,
 } from "./placement";
@@ -29,9 +31,8 @@ import type { DetailPlacement } from "./wire";
 
 /**
  * doc-8 §3 の割当表, written out again from the document rather than from `placement.ts`. Restating it
- * is the point: the code builds `full` from a rule (全区画を常設) and reads the other two from one
- * table, so a table that quietly changed would still be internally consistent — only a second copy
- * taken from doc-8 catches it.
+ * is the point: `placement.ts` holds one table, so a table that quietly changed would still be
+ * internally consistent — only a second copy taken from doc-8 catches it.
  */
 const DOC_8_SECTION_3: Record<
   DetailSection,
@@ -44,15 +45,22 @@ const DOC_8_SECTION_3: Record<
   labels: { sidebar: "always", modal: "always", full: "always" },
   description: { sidebar: "always", modal: "always", full: "always" },
   ac: { sidebar: "always", modal: "always", full: "always" },
-  plan: { sidebar: "collapsed", modal: "always", full: "always" },
-  notes: { sidebar: "collapsed", modal: "collapsed", full: "always" },
+  plan: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
+  notes: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
   dependencies: { sidebar: "always", modal: "always", full: "always" },
-  references: { sidebar: "collapsed", modal: "always", full: "always" },
+  references: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
   pullRequest: { sidebar: "always", modal: "always", full: "always" },
   gitHistory: { sidebar: "always", modal: "always", full: "always" },
   degrade: { sidebar: "always", modal: "always", full: "always" },
-  transitions: { sidebar: "collapsed", modal: "collapsed", full: "always" },
+  transitions: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
 };
+
+/**
+ * 画面設計案 02 の 3 図が開閉印を描く区画 (doc-12 §3), written out from the transcription rather than
+ * derived from the table above. This is the fact TASK-114 turned on — the same 区画 are folds in all
+ * three placements, and only their 既定開閉 moves — so it is asserted against the figures directly.
+ */
+const FOLDS_IN_EVERY_FIGURE: DetailSection[] = ["plan", "notes", "references", "transitions"];
 
 describe("AC #1 3 配置", () => {
   it("offers exactly the three placements doc-8 §2.1 defines, narrowest first", () => {
@@ -116,9 +124,40 @@ describe("AC #2 配置ごとの割当（doc-8 §3）", () => {
     });
   }
 
-  it("keeps 全面シングルビュー entirely 常設 — nothing is folded away there", () => {
+  /*
+   * TASK-114. Until then this test asserted the opposite — 全面シングルビュー entirely 常設 — which is
+   * what doc-8 §2.1 said and what 画面設計案 02's 全面 figure contradicts (doc-12 §3: five 区画 carry a
+   * 開閉印). 全面 still shows everything at once; it does it with 既定開 rather than by taking the
+   * close away.
+   */
+  it("opens every 区画 of the 全面シングルビュー, without making them all 常設", () => {
     const { sections } = layoutFor("full");
-    expect(Object.values(sections).every((disposition) => disposition === "always")).toBe(true);
+    expect(Object.values(sections).every(startsOpen)).toBe(true);
+    expect(Object.values(sections).some(isFold)).toBe(true);
+  });
+
+  it("folds the same 区画 in all three placements, varying only the 既定開閉 (doc-8 §3)", () => {
+    for (const placement of PLACEMENTS) {
+      const { sections } = layoutFor(placement);
+      const folds = (Object.keys(sections) as DetailSection[]).filter((section) =>
+        isFold(sections[section]),
+      );
+      expect([placement, folds.sort()]).toEqual([placement, [...FOLDS_IN_EVERY_FIGURE].sort()]);
+    }
+  });
+
+  /*
+   * The three figures' own directions (doc-12 §3), stated per placement rather than as a rule: 併置 is
+   * where cards are compared so nothing starts open, 全面 is where everything is read so everything
+   * does, and 中央モーダル sits between them. A rule guessed from that shape is what put 全面 wrong in
+   * the first place.
+   */
+  it("starts each fold the way its figure draws it", () => {
+    const open = (placement: DetailPlacement) =>
+      FOLDS_IN_EVERY_FIGURE.filter((section) => startsOpen(layoutFor(placement).sections[section]));
+    expect(open("sidebar")).toEqual([]);
+    expect(open("modal")).toEqual(["plan", "references"]);
+    expect(open("full")).toEqual([...FOLDS_IN_EVERY_FIGURE]);
   });
 
   it("varies the Git 履歴欄's granularity by placement (doc-8 §5)", () => {
