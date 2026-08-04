@@ -90,6 +90,7 @@
     type VersionConflict,
   } from "../lib/mark";
   import {
+    DISCLOSURE_ICON,
     MODAL_COLUMN_GAP_REM,
     MODAL_INSET_REM,
     MODAL_MAX_WIDTH_REM,
@@ -1137,9 +1138,20 @@
       {#each degrade.danglingReferences as dangling, index (index)}
         <p>参照欠損: {REFERENCE_KIND_LABEL[dangling.kind]} {dangling.target}</p>
       {/each}
+      <!-- 未知セクション は区画ではなく縮退表示の中の項目だが、開閉の記号は折畳み区画に揃える
+           (doc-8 §3) — 同じ面の中で UA 既定マーカーと 開閉印 が並ぶと、同じ操作が 2 通りの記号で
+           出ることになる。向きは `[open]` から CSS で選ぶ: 開いているかを持つのは要素自身で、
+           それを写した変数を別に置くと、タスクを移った先の別のセクションへ前の開閉が付く
+           (この一覧の鍵は index であり、節の名前ではない)。 -->
       {#each task.unknownSections as section, index (index)}
-        <details>
-          <summary>未知セクション {section.name}（保持のみ）</summary>
+        <details class="unknown">
+          <summary>
+            <!-- `mark` ではない: そのクラスは 状態の印 チップ (doc-11 §3) が取っており、
+                 開閉印はその 4 系統のどれでもない。 -->
+            <span class="disclosure closed"><Icon name={DISCLOSURE_ICON.closed} /></span>
+            <span class="disclosure open"><Icon name={DISCLOSURE_ICON.open} /></span>
+            未知セクション {section.name}（保持のみ）
+          </summary>
           <pre class="body">{section.body}</pre>
         </details>
       {/each}
@@ -2368,6 +2380,34 @@
 
     details {
       font-size: 0.72rem;
+    }
+  }
+
+  .unknown {
+    summary {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      // 開閉印 が UA 既定マーカーの代わりに立つ (doc-8 §3). WebKit は擬似要素、Chromium は
+      // `list-style` に答えるので、両方を書かないと片方の webview で記号が 2 つ出る。
+      list-style: none;
+      cursor: pointer;
+
+      &::-webkit-details-marker {
+        display: none;
+      }
+    }
+
+    .disclosure.open {
+      display: none;
+    }
+
+    &[open] .disclosure.open {
+      display: block;
+    }
+
+    &[open] .disclosure.closed {
+      display: none;
     }
   }
 

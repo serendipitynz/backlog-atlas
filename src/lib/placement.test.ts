@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ICONS, drawnShape } from "./icons/lucide";
 import {
   DEFAULT_PLACEMENT_MARK,
+  DISCLOSURE_ICON,
   MODAL_MIN_MAIN_COLUMN_REM,
   MODAL_REQUIRED_VIEWPORT_PX,
   MODAL_SIDE_COLUMN_REM,
@@ -137,6 +138,28 @@ describe("AC #2 配置ごとの割当（doc-8 §3）", () => {
       "pullRequest",
     ] as const) {
       expect([section, SECTION_COLUMN[section]]).toEqual([section, "side"]);
+    }
+  });
+});
+
+describe("TASK-73 開閉印", () => {
+  /*
+   * 画面設計案 02 の原文, restated from doc-12 §3 rather than read back from `DISCLOSURE_ICON` — the
+   * direction is what the 原文 decided (`▼` on the expanded 実装計画, `▶` on the folded 実装ノート), so a
+   * test that derived it from the record would agree with either pairing.
+   */
+  it("faces the way the 区画 is, not the way pressing it would go", () => {
+    expect(DISCLOSURE_ICON).toEqual({ open: "chevron-down", closed: "chevron-right" });
+  });
+
+  it("gives the two states two different figures, both written out in lucide", () => {
+    expect(DISCLOSURE_ICON.open).not.toBe(DISCLOSURE_ICON.closed);
+    for (const state of ["open", "closed"] as const) {
+      const figure = ICONS[DISCLOSURE_ICON[state]];
+      expect([state, figure.length > 0]).toEqual([state, true]);
+      for (const shape of figure) {
+        expect([state, drawnShape(shape).tag]).toEqual([state, shape.shape]);
+      }
     }
   });
 });

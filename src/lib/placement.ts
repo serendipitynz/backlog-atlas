@@ -12,8 +12,8 @@
  * |---|---|---|
  * | doc-8 §2.1 詳細配置 | [`DetailPlacement`] (`wire.ts`) | 併置サイドバー / 中央モーダル / 全面シングルビュー |
  * | doc-8 §3 区画 | [`DetailSection`] | one row of the assignment table — one block of the panel |
- * | doc-8 §3 常設 | [`Disposition`] `"always"` | 既定で開いた状態 |
- * | doc-8 §3 折畳み | [`Disposition`] `"collapsed"` | 見出しと件数だけを見せて既定で閉じた状態 |
+ * | doc-8 §3 常設 | [`Disposition`] `"always"` | 開いたまま置く状態。利用者に閉じる手段は無い |
+ * | doc-8 §3 折畳み | [`Disposition`] `"collapsed"` | 見出しと件数だけを見せて既定で閉じた状態。利用者が開閉できる |
  * | doc-8 §2.1 主列 / 脇列 | [`SectionColumn`] `"main"` / `"side"` | the 中央モーダル's two columns |
  * | doc-8 §3 の列指定が無い区画 | [`SectionColumn`] `"wide"` | spans both columns (see `SECTION_COLUMN`) |
  * | doc-8 §5 配置ごとの粒度 | [`HistoryDetail`] | how much of the Git 履歴欄 this placement shows |
@@ -255,6 +255,21 @@ export const PLACEMENT_ICON: Record<DetailPlacement, IconName> = {
   sidebar: "panel-right",
   modal: "panel-top-dashed",
   full: "maximize",
+};
+
+/**
+ * 開閉印 が刷る図形 (doc-8 §3, doc-12 §3, TASK-73). The mark points at **what the 区画 is**, not at what
+ * pressing it would do: 画面設計案 02 draws `▼` on the expanded 実装計画 and `▶` on the folded 実装ノート.
+ * That is doc-7 §2.3's convention (行折畳み) and the opposite of §2.2's (列折畳み), where no direction can
+ * mean open or closed — so the axis is written down here rather than left to whoever reads the figure.
+ *
+ * Held beside the placement tables for the same reason as [`PLACEMENT_ICON`]: `lucide.ts` holds figures
+ * and knows nothing about 区画, and one record is what keeps the 区画見出し and the 未知セクション inside
+ * the 縮退表示 from drifting into two different pairs of chevrons.
+ */
+export const DISCLOSURE_ICON: Record<"open" | "closed", IconName> = {
+  open: "chevron-down",
+  closed: "chevron-right",
 };
 
 /**
