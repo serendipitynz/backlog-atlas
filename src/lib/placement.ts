@@ -17,6 +17,7 @@
  * | doc-8 §2.1 主列 / 脇列 | [`SectionColumn`] `"main"` / `"side"` | the two columns of 中央モーダル and 全面 |
  * | doc-8 §3 2 列にまたがる | [`SectionColumn`] `"wide"` | 見出し and 編集卓 only — they sit above the columns |
  * | doc-8 §3.1 区画の並び | [`MAIN_COLUMN_ORDER`] / [`SIDE_COLUMN_ORDER`] / [`SINGLE_COLUMN_ORDER`] | the 正本 transcribed from 画面設計案 02 |
+ * | doc-8 §2.1 1 行の長さの上限 | [`PROSE_MAX_WIDTH_REM`] + [`PROSE_SECTIONS`] | 48rem, on four 区画's body blocks |
  * | doc-8 §5 配置ごとの粒度 | [`HistoryDetail`] | how much of the Git 履歴欄 this placement shows |
  * | doc-8 §2.1 1280×800 でも 2 列 | [`modalMainColumnRem`] | what is left for the 主列 once the 脇列 is taken |
  * | doc-8 §2.2 既定の永続 | [`placementPersistence`] | whether the chosen placement could be stored, and why not |
@@ -212,6 +213,9 @@ export function layoutFor(placement: DetailPlacement): PlacementLayout {
 // requirement stated as a number is one a test can hold. The component reads these out as custom
 // properties, so the CSS and the check below cannot disagree.
 
+/** 併置サイドバー の幅 (doc-8 §2.1: 幅 30rem 固定). Held here for the same reason the modal's are. */
+export const SIDEBAR_WIDTH_REM = 30;
+
 /** 脇列 (doc-8 §2.1). The width the requirement names. */
 export const MODAL_SIDE_COLUMN_REM = 18;
 /** Gap between the two columns. */
@@ -256,6 +260,36 @@ export function modalMainColumnRem(
     MODAL_SIDE_COLUMN_REM
   );
 }
+
+// --- 1 行の長さの上限 (doc-8 §2.1) -------------------------------------------------------------
+
+/**
+ * 行長上限 (doc-8 §2.1, TASK-113). The widest a body block may draw, whatever width the column
+ * gives it.
+ *
+ * The number is not invented here: it is the 主列 the 中央モーダル already has, once doc-8 §2.1's 脇列
+ * 18rem is taken out of [`MODAL_MAX_WIDTH_REM`]. That width has two values at 1280×800 —
+ * [`modalMainColumnRem`] computes 47.75rem, the layout draws 49.25rem, and the 1.5rem between them is
+ * the modal's padding (TASK-115 reconciles them). 48rem sits between the two, so it is the width the
+ * design already commits to either way.
+ *
+ * Measured at 1280×800 (TASK-113): 全面シングルビュー's 主列 is 956px and the cap takes the body to
+ * 768px — the longest line falls from 1237.0px to 746.6px. 中央モーダル loses 20px. 併置サイドバー is
+ * unaffected: its body block is 480px, six tenths of the cap, so the rule applies and never binds.
+ */
+export const PROSE_MAX_WIDTH_REM = 48;
+
+/**
+ * The 区画 [`PROSE_MAX_WIDTH_REM`] applies to (doc-8 §2.1). Git 履歴欄 is deliberately absent: 全面 is
+ * where the whole commit list is read (doc-8 §2.1), so narrowing it would cost the placement its
+ * reason to exist.
+ */
+export const PROSE_SECTIONS: readonly DetailSection[] = [
+  "description",
+  "ac",
+  "plan",
+  "notes",
+] as const;
 
 // --- 既定の永続 (doc-8 §2.2) -----------------------------------------------------------------
 

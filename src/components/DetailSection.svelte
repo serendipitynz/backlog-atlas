@@ -21,10 +21,16 @@
      * appears only while folded would vanish exactly when the list it counts is not on screen.
      */
     count?: string | null;
+    /**
+     * 行長上限 を掛ける区画かどうか (doc-8 §2.1, `PROSE_SECTIONS`). Caps the content only, never the
+     * heading: the 区画境界 has to keep running to the edge of the 区画 (doc-8 §3), and a rule that
+     * stopped where the text did would say the 区画 is narrower than it is.
+     */
+    prose?: boolean;
     children: Snippet;
   }
 
-  let { title, disposition, count = null, children }: Props = $props();
+  let { title, disposition, count = null, prose = false, children }: Props = $props();
 
   // Bound to the element so the 開閉印 can face the way the 区画 actually is, and re-seeded whenever
   // the placement moves this 区画: a placement is a whole set of folds rather than a starting point
@@ -50,7 +56,7 @@
 {#if disposition === "always"}
   <section class="section">
     {@render sectionTitle(true)}
-    <div class="content">
+    <div class="content" class:prose>
       {@render children()}
     </div>
   </section>
@@ -63,7 +69,7 @@
       <Icon name={DISCLOSURE_ICON[open ? "open" : "closed"]} />
       {@render sectionTitle(false)}
     </summary>
-    <div class="content">
+    <div class="content" class:prose>
       {@render children()}
     </div>
   </details>
@@ -129,5 +135,13 @@
     flex-direction: column;
     gap: 0.25rem;
     padding-top: 0.25rem;
+  }
+
+  // 行長上限 (doc-8 §2.1): 48rem, the 主列 the 中央モーダル already has. Held in `placement.ts` and
+  // handed down as a custom property so the number the test reads and the number the browser lays
+  // out are the same one. Bites hardest in 全面シングルビュー (956px の主列 → 768px の本文); the
+  // 併置サイドバー is under it at 480px and never feels it.
+  .content.prose {
+    max-width: var(--prose-max-width);
   }
 </style>

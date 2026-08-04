@@ -9,8 +9,11 @@ import {
   MODAL_SIDE_COLUMN_REM,
   PLACEMENTS,
   PLACEMENT_ICON,
+  PROSE_MAX_WIDTH_REM,
+  PROSE_SECTIONS,
   RECENT_COMMIT_LIMIT,
   SECTION_COLUMN,
+  SIDEBAR_WIDTH_REM,
   SIDE_COLUMN_ORDER,
   SINGLE_COLUMN_ORDER,
   layoutFor,
@@ -250,6 +253,30 @@ describe("AC #4 全面シングルビューの列構成", () => {
   });
 });
 
+describe("AC #5 1 行の長さの上限", () => {
+  // doc-8 §2.1 derives the ceiling from the 主列 the 中央モーダル already has, rather than inventing a
+  // number. If the modal's geometry ever moves away from it, the derivation stopped holding — which
+  // is the thing to be told about, since the whole justification for 48rem is that it is not new.
+  it("is the 主列 the 中央モーダル's own geometry already yields", () => {
+    const modalMain = modalMainColumnRem(MODAL_REQUIRED_VIEWPORT_PX);
+    expect(modalMain).toBeLessThanOrEqual(PROSE_MAX_WIDTH_REM);
+    expect(PROSE_MAX_WIDTH_REM - modalMain).toBeLessThan(1);
+  });
+
+  it("never binds the 併置サイドバー, whose whole panel is narrower", () => {
+    expect(SIDEBAR_WIDTH_REM).toBeLessThan(PROSE_MAX_WIDTH_REM);
+  });
+
+  // Git 履歴欄 is the one long block left uncapped: doc-8 §2.1 makes 全面 the place the whole commit
+  // list is read, so narrowing it would cost that placement its reason to exist.
+  it("caps the four 本文 区画 and leaves the Git 履歴欄 alone", () => {
+    expect([...PROSE_SECTIONS]).toEqual(["description", "ac", "plan", "notes"]);
+    expect(PROSE_SECTIONS).not.toContain("gitHistory");
+    for (const section of PROSE_SECTIONS) {
+      expect([section, SECTION_COLUMN[section]]).toEqual([section, "main"]);
+    }
+  });
+});
 
 describe("AC #7 中央モーダルは 1280×800 でも 2 列", () => {
   it("keeps two columns at the size doc-8 §2.1 names", () => {

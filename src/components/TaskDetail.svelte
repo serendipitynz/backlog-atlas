@@ -98,6 +98,8 @@
     MODAL_SIDE_COLUMN_REM,
     PLACEMENTS,
     PLACEMENT_ICON,
+    PROSE_MAX_WIDTH_REM,
+    SIDEBAR_WIDTH_REM,
     layoutFor,
     placementPersistence,
     placementPersistenceNote,
@@ -1240,7 +1242,7 @@
 {/snippet}
 
 {#snippet descriptionSection()}
-  <DetailSection title="Description" disposition={layout.sections.description}>
+  <DetailSection title="Description" disposition={layout.sections.description} prose>
     {#if session === null}
       {#if task.description}
         <pre class="body">{task.description}</pre>
@@ -1264,6 +1266,7 @@
     title="Acceptance Criteria"
     disposition={layout.sections.ac}
     count={`${ac.checked} / ${ac.total}`}
+    prose
   >
     {#if session === null}
       {#if ac.total === 0}
@@ -1409,7 +1412,7 @@
 {/snippet}
 
 {#snippet planSection()}
-  <DetailSection title="実装計画" disposition={layout.sections.plan}>
+  <DetailSection title="実装計画" disposition={layout.sections.plan} prose>
     {#if session === null}
       {#if task.implementationPlan}
         <pre class="body">{task.implementationPlan}</pre>
@@ -1428,7 +1431,7 @@
 {/snippet}
 
 {#snippet notesSection()}
-  <DetailSection title="実装ノート" disposition={layout.sections.notes}>
+  <DetailSection title="実装ノート" disposition={layout.sections.notes} prose>
     {#if session === null}
       {#if task.implementationNotes}
         <pre class="body">{task.implementationNotes}</pre>
@@ -1724,7 +1727,7 @@
   data-placement={placement}
   aria-label="タスク詳細"
   style="--modal-side-column: {MODAL_SIDE_COLUMN_REM}rem; --modal-column-gap: {MODAL_COLUMN_GAP_REM}rem; --modal-padding: {MODAL_PADDING_REM /
-    2}rem; --modal-inset: {MODAL_INSET_REM / 2}rem; --modal-max-width: {MODAL_MAX_WIDTH_REM}rem;"
+    2}rem; --modal-inset: {MODAL_INSET_REM / 2}rem; --modal-max-width: {MODAL_MAX_WIDTH_REM}rem; --prose-max-width: {PROSE_MAX_WIDTH_REM}rem; --sidebar-width: {SIDEBAR_WIDTH_REM}rem;"
 >
   {@render heading()}
   {@render headingNotes()}
@@ -1765,7 +1768,9 @@
   // that gives way (it scrolls).
   .detail[data-placement="sidebar"] {
     flex: none;
-    width: min(30rem, 45vw);
+    // 45vw is this component's own floor for a small window; the 30rem is doc-8 §2.1's number and
+    // comes from `lib/placement.ts`, so the document and the layout hold one value between them.
+    width: min(var(--sidebar-width), 45vw);
     border-left: 1px solid var(--line);
   }
 
