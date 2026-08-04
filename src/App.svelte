@@ -35,6 +35,7 @@
     projectWatchStart,
     projectWatchStop,
     settingsLocation,
+    settingsLocationOpen,
     settingsRead,
     settingsSave,
     taskFileOpen,
@@ -82,6 +83,7 @@
     type HistoryInputs,
     type HistoryRead,
   } from "./lib/history-read";
+  import { openLocationFailure } from "./lib/settings";
   import { createSettingsWriter } from "./lib/settings-write";
   import { themeAttribute } from "./lib/theme";
   import {
@@ -733,6 +735,12 @@
     const before = watchEnabled;
     const failure = await writeSettings(change);
     if (failure !== null) return failure;
+    // 保存した旨 (TASK-74 AC #4) as the 上部帯 ⑤ 通知 (doc-11 §4 済んだ操作の結果). It is worth a 帯
+    // because not every item shows itself: a 表示テーマ change is visible the moment the モーダル closes,
+    // while 既定の保存区分・既定の詳細配置・外部エディタ指定 only take effect on a later start or a later
+    // press. The モーダル covers the 上部帯 (`Modal.svelte`), so this is read after it closes, which is
+    // where 保存する goes (`Settings.svelte`).
+    notice = "設定を保存しました。";
     if (before !== watchEnabled) await reconcileWatches();
     // 起動指定の解決順 starts at アプリ設定 (doc-8 §7), so the probe's answer changes with this save.
     // Re-probed here rather than left until the next start: the panel names the editor it would
@@ -743,6 +751,22 @@
       notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
     return null;
+  }
+
+  /**
+   * 場所を開く (TASK-75): hand the アプリ設定ディレクトリ to the OS's file manager. Returns the failure's
+   * text, or `null` once the launcher took it — the 設定画面 states it, as it does for 保存, because this
+   * モーダル covers the 上部帯 and a 帯 would not be read until it closed.
+   *
+   * Nothing is read or written here and no path is sent: the boundary resolves the directory itself.
+   */
+  async function openSettingsLocation(): Promise<string | null> {
+    try {
+      await settingsLocationOpen();
+      return null;
+    } catch (error) {
+      return openLocationFailure(asCommandError(error));
+    }
   }
 
   /** Bring every registered root's watch in line with 継続検出の可否 (doc-9 §3.1). */
@@ -1525,6 +1549,7 @@
         loaded={settings}
         path={settingsPath}
         onsave={saveSettings}
+        onopenLocation={openSettingsLocation}
         onclose={() => (settingsOpen = false)}
       />
     </Modal>

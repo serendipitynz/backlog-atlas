@@ -8,6 +8,8 @@ import {
   emptyStorageWarning,
   isDirty,
   mergeDraft,
+  openLocationBlocked,
+  openLocationFailure,
   saveAvailability,
   statusNotice,
   toggleStorage,
@@ -61,6 +63,40 @@ describe("saveAvailability", () => {
     expect(availability.enabled).toBe(false);
     // doc-5 §5 / doc-11 §5: a withheld control says why, rather than being absent.
     expect(availability.reason).toContain("9");
+  });
+});
+
+describe("場所を開く (TASK-75)", () => {
+  it("withholds the control only while the file has never been written (AC #3)", () => {
+    expect(openLocationBlocked({ state: "absent" })).toContain("まだ作成されていない");
+  });
+
+  it("opens the location for a file that exists but cannot be used", () => {
+    // 読めない・上位版 の 2 つは、ファイルが**ある**状態である。手で直すならその場所を開く必要が
+    // あるので、読めないことを理由に閉ざすと、直す手段のほうを閉ざすことになる。
+    for (const status of [
+      { state: "stored" },
+      { state: "unreadable", detail: "expected an equals" },
+      { state: "readOnly", version: 9 },
+    ] satisfies SettingsStatus[]) {
+      expect(openLocationBlocked(status)).toBeNull();
+    }
+  });
+
+  it("names what refused the launch, without the 外部エディタ経路's advice", () => {
+    const failure = openLocationFailure({
+      kind: "editorLaunchFailed",
+      method: "association",
+      program: "xdg-open",
+      detail: "No such file or directory (os error 2)",
+    });
+    expect(failure).toContain("xdg-open");
+    expect(failure).toContain("os error 2");
+    // `launchFailureDetail` (external-editor.ts) points a failed association at `.md` の関連付け and at
+    // VISUAL・EDITOR. Neither has any bearing on a directory that would not open, and telling someone
+    // to check them is sending them to the one place that cannot be the cause.
+    expect(failure).not.toContain(".md");
+    expect(failure).not.toContain("EDITOR");
   });
 });
 

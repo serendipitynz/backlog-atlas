@@ -32,6 +32,7 @@ import {
 } from "./lib/fake-boundary";
 import { entry, history, loaded, snapshot, taskView, unreadable } from "./lib/fixtures";
 import { SHORTCUT_HELP_LABEL } from "./lib/header";
+import { CLOSE_WITHOUT_SAVING_LABEL } from "./lib/settings";
 import { SHORTCUTS } from "./lib/shortcuts";
 import type { ProjectLoad, UpdateResult } from "./lib/wire";
 
@@ -370,7 +371,9 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
 
     const byControl = await openSettings();
     expect(byControl.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
-    click(byText(byControl, "button.mini", "閉じる"));
+    // 変更せずに閉じる, the 下部操作行's own exit (TASK-74). Named from the constant the component prints,
+    // so this test asks for the control by the same one word the screen does.
+    click(byText(byControl, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
     expect(byControl.querySelector('[aria-label="設定"]')).toBeNull();
     expectFocusBackOnMenu(byControl);
   });
