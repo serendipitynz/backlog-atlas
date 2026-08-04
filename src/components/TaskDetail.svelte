@@ -805,39 +805,6 @@
       </div>
     </div>
 
-    {#if persistenceNote !== null}
-      <p class="hint">{persistenceNote}</p>
-    {/if}
-
-    {#if neighbours === null}
-      <!-- 無効化提示 (doc-11 §5): the reason sits beside the control, not only in a tooltip. -->
-      <p class="hint">{NO_LANE_CELL_REASON}</p>
-    {/if}
-    {#if crossId === null}
-      <p class="hint">{CROSS_ID_UNAVAILABLE}</p>
-    {/if}
-    <!-- 成功・失敗を述べる語 (doc-11 §2.4, TASK-72). A live region because the control's own name must
-         not change under the user: the figure and the 成功色 reach the eye, and this is what reaches
-         the ear. `role="status"` — polite — so it waits for a pause rather than cutting in on whatever
-         is being read; the copy has already happened either way. Always in the tree, empty when there is
-         nothing to say: a region inserted at the moment it fills is not reliably announced. -->
-    <div role="status" aria-live="polite">
-      {#if copied}
-        <p class="ok">横断タスクID をコピーしました。</p>
-      {:else if copyNotice !== null && copyNotice.state === "failed"}
-        <p class="warn">
-          クリップボードへ書けませんでした。次の文字列を選択してコピーしてください。
-          <input type="text" readonly value={copyNotice.text} aria-label="横断タスクID" />
-        </p>
-      {/if}
-    </div>
-
-    {#if missing}
-      <!-- doc-8 §6.4: an external move does not get to take the 未保存入力 with it. The panel
-           stays up showing the last read that resolved, so the input can be copied out before it
-           is discarded on purpose. -->
-      <p class="warn">{FILE_MISSING_REASON}</p>
-    {/if}
 
     <!-- 2 行目: title と編集入口 (画面設計案 02。doc-12 §3, doc-8 §3). 編集入口は押しボタンだけで、
          保存キーの注記・未保存の予告・版ずれの告知は編集卓に残る — それらは長さが変わる文であり、
@@ -946,6 +913,54 @@
       <dd class="date">{task.updatedDate ?? "—"}</dd>
     </dl>
   </header>
+{/snippet}
+
+<!-- 見出しの操作が述べる文 (doc-8 §3, doc-11 §5): drawn *below* the 見出し rather than inside it. Every
+     one of these appears and disappears — a 既定 write that was refused, an end-of-cell move, an id that
+     cannot be built, the result of a copy, a file that left the read — so inside the 固定 band each of
+     them would grow it, and the failed-copy one would grow it and stay. The band is the three rows
+     doc-12 §3 transcribed and nothing else; height it takes is height the body never gets back.
+     Adjacency is what doc-11 §5 actually asks for (a reason readable without hovering), and these sit
+     immediately under the controls they speak for. -->
+{#snippet headingNotes()}
+  <div class="heading-notes">
+    {#if persistenceNote !== null}
+      <p class="hint">{persistenceNote}</p>
+    {/if}
+    {#if neighbours === null}
+      <!-- 無効化提示 (doc-11 §5): the reason sits beside the control, not only in a tooltip. -->
+      <p class="hint">{NO_LANE_CELL_REASON}</p>
+    {/if}
+    {#if crossId === null}
+      <p class="hint">{CROSS_ID_UNAVAILABLE}</p>
+    {/if}
+    <!-- 成功・失敗を述べる語 (doc-11 §2.4, TASK-72). A live region because the control's own name must
+         not change under the user: the figure and the 成功色 reach the eye, and this is what reaches
+         the ear. `role="status"` — polite — so it waits for a pause rather than cutting in on whatever
+         is being read; the copy has already happened either way. Always in the tree, empty when there is
+         nothing to say: a region inserted at the moment it fills is not reliably announced. -->
+    <div
+      role="status"
+      aria-live="polite"
+      class="live"
+      class:quiet={!copied && copyNotice?.state !== "failed"}
+    >
+      {#if copied}
+        <p class="ok">横断タスクID をコピーしました。</p>
+      {:else if copyNotice !== null && copyNotice.state === "failed"}
+        <p class="warn">
+          クリップボードへ書けませんでした。次の文字列を選択してコピーしてください。
+          <input type="text" readonly value={copyNotice.text} aria-label="横断タスクID" />
+        </p>
+      {/if}
+    </div>
+    {#if missing}
+      <!-- doc-8 §6.4: an external move does not get to take the 未保存入力 with it. The panel
+           stays up showing the last read that resolved, so the input can be copied out before it
+           is discarded on purpose. -->
+      <p class="warn">{FILE_MISSING_REASON}</p>
+    {/if}
+  </div>
 {/snippet}
 
 <!-- 編集入口 (doc-8 §3): the 編集卓's buttons, drawn at the right end of the heading's title row so
@@ -1703,6 +1718,7 @@
     2}rem; --modal-inset: {MODAL_INSET_REM / 2}rem; --modal-max-width: {MODAL_MAX_WIDTH_REM}rem;"
 >
   {@render heading()}
+  {@render headingNotes()}
   {@render editConsole()}
   {@render degradePanel()}
 
@@ -1799,9 +1815,10 @@
    * `--panel` is the same requirement in the third dimension: a transparent sticky band is a band the
    * text scrolls *through*.
    *
-   * What is fixed is deliberately only the three rows doc-8 §3 names. Every sentence that appears and
-   * disappears with the session (保存キーの注記・未保存の予告・版ずれの告知・コピーの結果) is below in
-   * the 編集卓, because the heading cannot grow without taking that height from the body permanently.
+   * What is fixed is deliberately only the three rows doc-12 §3 transcribed. Every sentence that comes
+   * and goes is drawn outside it — the ones the heading's own controls speak (`.heading-notes`) and the
+   * ones the session speaks (the 編集卓) — because the band cannot grow without taking that height from
+   * the body permanently, and the failed-copy notice would grow it and then stay.
    */
   .heading {
     /*
@@ -1857,6 +1874,29 @@
       flex: 1;
       min-width: 0;
     }
+  }
+
+  /*
+   * 見出しが述べる文の置き場: 固定帯のすぐ下、本文より前。
+   *
+   * `display: contents` so the group itself lays nothing out: its children become items of the panel's
+   * own column and take that column's spacing, and — when there is nothing to say — this subtree
+   * contributes no box at all. A wrapper with its own box would spend one of the panel's `gap`s
+   * whether or not it had anything in it.
+   */
+  .heading-notes {
+    display: contents;
+  }
+
+  /*
+   * The live region is the one child that is always here (a region inserted at the moment it fills is
+   * not reliably announced), so it is the one that would spend that `gap` while silent. Taken out of
+   * flow rather than hidden: `display: none` would take it out of the accessibility tree too, and a
+   * live region that is not in the tree announces nothing when it fills — which is the whole point of
+   * keeping it mounted. Absolute leaves it mounted, announced, and laying nothing out.
+   */
+  .live.quiet {
+    position: absolute;
   }
 
   .entry {
