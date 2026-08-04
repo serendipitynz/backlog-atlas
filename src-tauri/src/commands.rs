@@ -1003,6 +1003,10 @@ fn join_watch(handle: Option<WatchHandle>) {
 /// read, and a test that cannot build the state cannot make that claim.
 #[derive(Debug, Clone)]
 pub struct ConfigFiles {
+    /// The アプリ設定ディレクトリ both files are in (decision-13 台帳ファイルと同じ…ディレクトリ). Held
+    /// rather than derived from either path, because it is what [`settings_location_open`] opens and
+    /// what makes that one control the 場所を開く for both files (TASK-75 AC #4).
+    directory: PathBuf,
     ledger: PathBuf,
     settings: PathBuf,
 }
@@ -1018,6 +1022,7 @@ impl ConfigFiles {
         Ok(ConfigFiles {
             ledger: dir.join("projects.toml"),
             settings: dir.join("settings.toml"),
+            directory: dir,
         })
     }
 }
@@ -1612,6 +1617,25 @@ fn save_settings(
 #[tauri::command(async)]
 pub fn settings_location(app: AppHandle) -> Result<PathBuf, CommandError> {
     Ok(ConfigFiles::resolve(&app)?.settings)
+}
+
+/// Open the アプリ設定ディレクトリ in whatever the OS opens a directory with (TASK-75 AC #1). The
+/// counterpart of [`settings_location`]: that one says where the file is, this one takes the user
+/// there.
+///
+/// The directory rather than the file: the association launcher hands a `.toml` to a text editor,
+/// which is not what a 場所を開く asks for, and the three platforms have no common way to *select* a
+/// file in the file manager that does not go through a command line (`explorer /select,` is exactly
+/// the shape decision-15 refused). The directory is opened on all three by the same one path, and
+/// the file is not selected.
+///
+/// The path is Atlas's own — resolved here, never taken from the frontend — and reaches the OS as one
+/// argv element or one `lpFile` (AGENTS: no shell string). Nothing is read or written, so no lock is
+/// taken, and 台帳ファイル needs no control of its own: decision-13 puts it in this same directory.
+#[tauri::command(async)]
+pub fn settings_location_open(app: AppHandle) -> Result<EditorLaunch, CommandError> {
+    let files = ConfigFiles::resolve(&app)?;
+    Ok(editor::open_association(&SystemLauncher, &files.directory)?)
 }
 
 // --- commands: 外部エディタ経路 (doc-8 §7) --------------------------------------------------------
@@ -3358,6 +3382,7 @@ labels: []\n\
             });
         }
         let files = ConfigFiles {
+            directory: temp.path.clone(),
             ledger: temp.path.join("projects.toml"),
             settings: temp.path.join("settings.toml"),
         };

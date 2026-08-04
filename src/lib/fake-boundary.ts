@@ -265,6 +265,15 @@ export const commandFakes = {
   settingsLocation: (): Promise<string> =>
     record("settings_location", [], () => Promise.resolve(answers.settingsPath)),
 
+  settingsLocationOpen: (): Promise<EditorLaunch> =>
+    record("settings_location_open", [], () =>
+      Promise.resolve({
+        method: "association" as LaunchMethod,
+        program: "open",
+        args: [answers.settingsPath],
+      }),
+    ),
+
   cliProbe: (): Promise<CliReadiness> =>
     record("cli_probe", [], () => Promise.resolve(answers.cli)),
 

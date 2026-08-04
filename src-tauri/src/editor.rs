@@ -674,6 +674,39 @@ fn planned(
     }
 }
 
+/// An [`Environment`] holding nothing. `LaunchMethod::Association` consults no variable (see
+/// [`planned`]), so [`open_association`] states that by handing over an environment that has none —
+/// rather than the process's own, which would leave "this call must not read `VISUAL`" resting on
+/// the reader noticing which branch of `planned` runs.
+struct NoEnvironment;
+
+impl Environment for NoEnvironment {
+    fn var(&self, _name: &str) -> Option<String> {
+        None
+    }
+}
+
+/// Hand `path` to the platform's association launcher (doc-8 §7 OS の関連付け起動), with no 起動指定
+/// involved.
+///
+/// The 設定画面's 場所を開く uses this on the アプリ設定ディレクトリ (decision-13, TASK-75): a directory
+/// has no editor to resolve — every platform's launcher opens one in the file manager — so the
+/// resolution order this module's other entry point runs is skipped rather than run and ignored.
+///
+/// The path is still one argv element (or `lpFile`), which is the property that made this the launch
+/// TASK-75 reuses: the whole of AGENTS' "no shell string" holds for a directory exactly as it does for
+/// a management file.
+pub fn open_association(launcher: &dyn Launcher, path: &Path) -> Result<EditorLaunch, EditorError> {
+    open_on(
+        Platform::current(),
+        None,
+        &NoEnvironment,
+        launcher,
+        LaunchMethod::Association,
+        path,
+    )
+}
+
 /// Open `file` in the user's editor (doc-8 §7). `file` is the management file itself — the caller
 /// resolves it from its own read model, so no path from the frontend reaches a process here.
 pub fn open(
@@ -1010,6 +1043,49 @@ mod tests {
                 "{platform:?}"
             );
         }
+    }
+
+    /// TASK-75: 場所を開く reaches the OS through the association method, with the directory as the one
+    /// path the launcher receives. Asserted on the host's own platform because [`open_association`] is
+    /// the entry point that reads [`Platform::current`] — which platform does what is already settled
+    /// by the two tests above, and what this one adds is that the new entry point goes to that table
+    /// rather than to the 起動指定 branch.
+    #[test]
+    fn the_association_entry_point_launches_the_directory_as_one_path() {
+        let launcher = FakeLauncher::default();
+        let directory = Path::new("/roots/Application Support/Backlog Atlas");
+        let launch = open_association(&launcher, directory).expect("launched");
+
+        assert_eq!(launch.method, LaunchMethod::Association);
+        assert_eq!(
+            launch.args,
+            vec![directory.to_string_lossy().into_owned()],
+            "leading arguments aside, the directory is the whole of what is passed"
+        );
+        let calls = launcher.spawns.borrow().len() + launcher.shell_executes.borrow().len();
+        assert_eq!(
+            calls, 1,
+            "one launch, through exactly one of the two OS calls"
+        );
+    }
+
+    /// What [`NoEnvironment`] is for: it names no editor, so the resolution order cannot be satisfied
+    /// through it. Asserted against the branch that *does* read the environment — a `NoEnvironment` that
+    /// ever started answering would make this plan succeed.
+    #[test]
+    fn the_empty_environment_names_no_editor() {
+        let error = plan_on(
+            Platform::MacOs,
+            None,
+            &NoEnvironment,
+            LaunchMethod::Configured,
+            Path::new("/roots/settings.toml"),
+        )
+        .expect_err("nothing names a program");
+        assert!(
+            matches!(error, EditorError::Unavailable { .. }),
+            "{error:?}"
+        );
     }
 
     /// The `$EDITOR` method is unaffected by the platform: it was the fallback Windows had while the
