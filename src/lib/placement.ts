@@ -21,6 +21,7 @@
  * | doc-8 §2.1 1 行の長さの上限 | [`PROSE_MAX_WIDTH_REM`] + [`PROSE_SECTIONS`] | 48rem, on four 区画's body blocks |
  * | doc-8 §5 配置ごとの粒度 | [`HistoryDetail`] | how much of the Git 履歴欄 this placement shows |
  * | doc-8 §2.1 1280×800 でも 2 列 | [`modalMainColumnRem`] | what is left for the 主列 once the 脇列 is taken |
+ * | doc-8 §2.1 中央モーダルの幅 | [`modalContentWidthRem`] | the box the two columns divide — content, not footprint (TASK-115) |
  * | doc-8 §2.2 既定の永続 | [`placementPersistence`] | whether the chosen placement could be stored, and why not |
  * | doc-8 §2.2 既定印 | [`DEFAULT_PLACEMENT_MARK`] + [`placementSwitchName`] | the mark on the switch for the placement stored as the 既定 |
  * | doc-8 §2.2 切替が刷る図形 | [`PLACEMENT_ICON`] | which lucide figure stands for each placement |
@@ -241,6 +242,12 @@ export function layoutFor(placement: DetailPlacement): PlacementLayout {
 // requirement with a number in it — 1280×800 でも 2 列を保つ（脇列 18rem は確保できる）— and a
 // requirement stated as a number is one a test can hold. The component reads these out as custom
 // properties, so the CSS and the check below cannot disagree.
+//
+// **Every rem here sizes a content box, not a footprint** (TASK-115). This repository has no global
+// `box-sizing` reset, so the `width` the component writes is the box the two columns divide, and the
+// padding and the border are laid outside it. Naming the content box is what lets the geometry below
+// be exact: a footprint would also have to carry the panel's 1px border, and a border given in px
+// does not follow the `rootFontPx` these functions take.
 
 /** 併置サイドバー の幅 (doc-8 §2.1: 幅 30rem 固定). Held here for the same reason the modal's are. */
 export const SIDEBAR_WIDTH_REM = 30;
@@ -249,11 +256,20 @@ export const SIDEBAR_WIDTH_REM = 30;
 export const MODAL_SIDE_COLUMN_REM = 18;
 /** Gap between the two columns. */
 export const MODAL_COLUMN_GAP_REM = 0.75;
-/** The modal's own left+right padding, together. */
-export const MODAL_PADDING_REM = 1.5;
-/** Space kept between the modal and the window edge, left+right together. */
+/**
+ * The panel's left+right padding, together — `.detail`'s, in all three placements rather than the
+ * 中央モーダル's alone (measured: 12px a side in each of them). It lies **outside** the widths below,
+ * so nothing here subtracts it; the component needs the number because the 固定 見出し band pulls
+ * itself back out to the panel's edges by exactly this much.
+ */
+export const PANEL_PADDING_REM = 1.5;
+/**
+ * Taken off the viewport before the modal's content box is sized, left+right together. What reaches
+ * the eye is narrower by the padding and the border: at the default root font size this 4rem leaves
+ * 2.375rem of window (19px a side, measured at 1000×800 in both engines).
+ */
 export const MODAL_INSET_REM = 4;
-/** The modal stops growing here: past this, lines get too long to read. */
+/** The modal's content box stops growing here: past this, lines get too long to read. */
 export const MODAL_MAX_WIDTH_REM = 68;
 /**
  * The narrowest 主列 that still holds a body of text beside the 脇列. Not a breakpoint — nothing
@@ -265,17 +281,35 @@ export const MODAL_MIN_MAIN_COLUMN_REM = 22;
 /** The window width doc-8 §2.1's 2 列 requirement is stated at. */
 export const MODAL_REQUIRED_VIEWPORT_PX = 1280;
 
-/** Browser default root font size — what `rem` means when the user has not changed it. */
-const ROOT_FONT_PX = 16;
+/**
+ * Browser default root font size — what `rem` means when the user has not changed it. Exported so a
+ * test converting a recorded pixel measurement back to rem takes the same number these functions
+ * default to, rather than writing 16 down a second time.
+ */
+export const ROOT_FONT_PX = 16;
 
-/** The modal's width at a given viewport width, in rem. */
-export function modalWidthRem(viewportWidthPx: number, rootFontPx: number = ROOT_FONT_PX): number {
+/**
+ * The modal's content box at a given viewport width, in rem — the width its two columns divide, and
+ * the value the component writes as `width`. The modal's footprint on screen is this plus
+ * [`PANEL_PADDING_REM`] plus its 1px border a side.
+ */
+export function modalContentWidthRem(
+  viewportWidthPx: number,
+  rootFontPx: number = ROOT_FONT_PX,
+): number {
   return Math.min(MODAL_MAX_WIDTH_REM, viewportWidthPx / rootFontPx - MODAL_INSET_REM);
 }
 
 /**
- * What is left for the 主列 once the 脇列, the gap and the padding are taken (doc-8 §2.1). Can go
- * negative on an absurdly narrow window; the caller compares it against
+ * What is left for the 主列 once the 脇列 and the gap are taken out of the content box (doc-8 §2.1).
+ *
+ * The padding is **not** subtracted: it lies outside the box the columns divide (see the note above).
+ * Until TASK-115 this subtracted it and so read 1.5rem short of every layout it described — 47.75rem
+ * against a 主列 both engines drew at 49.25rem (788px at 1280×800). Re-measured after the change at
+ * 1280×800 and 1000×800, in WebKit and Chromium: 788px and 636px drawn against 49.25rem and 39.75rem
+ * computed, agreeing to the pixel.
+ *
+ * Can go negative on an absurdly narrow window; the caller compares it against
  * [`MODAL_MIN_MAIN_COLUMN_REM`] rather than treating any positive number as a fit.
  */
 export function modalMainColumnRem(
@@ -283,8 +317,7 @@ export function modalMainColumnRem(
   rootFontPx: number = ROOT_FONT_PX,
 ): number {
   return (
-    modalWidthRem(viewportWidthPx, rootFontPx) -
-    MODAL_PADDING_REM -
+    modalContentWidthRem(viewportWidthPx, rootFontPx) -
     MODAL_COLUMN_GAP_REM -
     MODAL_SIDE_COLUMN_REM
   );
@@ -297,10 +330,10 @@ export function modalMainColumnRem(
  * gives it.
  *
  * The number is not invented here: it is the 主列 the 中央モーダル already has, once doc-8 §2.1's 脇列
- * 18rem is taken out of [`MODAL_MAX_WIDTH_REM`]. That width has two values at 1280×800 —
- * [`modalMainColumnRem`] computes 47.75rem, the layout draws 49.25rem, and the 1.5rem between them is
- * the modal's padding (TASK-115 reconciles them). 48rem sits between the two, so it is the width the
- * design already commits to either way.
+ * 18rem is taken out of [`MODAL_MAX_WIDTH_REM`]. That 主列 is **49.25rem** at 1280×800 — one value
+ * since TASK-115, computed by [`modalMainColumnRem`] and drawn by both engines at 788px. 48rem is a
+ * whole rem that column already holds, so the cap commits to no width the design had not committed
+ * to; it binds the modal's own 主列 by the remaining 1.25rem (the 20px TASK-113 measured).
  *
  * Measured at 1280×800 (TASK-113): 全面シングルビュー's 主列 is 956px and the cap takes the body to
  * 768px — the longest line falls from 1237.0px to 746.6px. 中央モーダル loses 20px. 併置サイドバー is

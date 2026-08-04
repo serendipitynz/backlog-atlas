@@ -7,17 +7,20 @@ import {
   MODAL_MIN_MAIN_COLUMN_REM,
   MODAL_REQUIRED_VIEWPORT_PX,
   MODAL_SIDE_COLUMN_REM,
+  PANEL_PADDING_REM,
   PLACEMENTS,
   PLACEMENT_ICON,
   PROSE_MAX_WIDTH_REM,
   PROSE_SECTIONS,
   RECENT_COMMIT_LIMIT,
+  ROOT_FONT_PX,
   SECTION_COLUMN,
   SIDEBAR_WIDTH_REM,
   SIDE_COLUMN_ORDER,
   SINGLE_COLUMN_ORDER,
   isFold,
   layoutFor,
+  modalContentWidthRem,
   modalMainColumnRem,
   placementPersistence,
   placementPersistenceNote,
@@ -296,10 +299,16 @@ describe("AC #5 1 行の長さの上限", () => {
   // doc-8 §2.1 derives the ceiling from the 主列 the 中央モーダル already has, rather than inventing a
   // number. If the modal's geometry ever moves away from it, the derivation stopped holding — which
   // is the thing to be told about, since the whole justification for 48rem is that it is not new.
-  it("is the 主列 the 中央モーダル's own geometry already yields", () => {
+  // Since TASK-115 that 主列 is one number (49.25rem) rather than two, so the derivation can be
+  // stated as an inequality: the cap is a whole rem that the 中央モーダル's own 主列 already holds. It
+  // therefore asks for no width the design had not already committed to, and binds that 主列 by the
+  // remainder (1.25rem, the 20px TASK-113 measured) rather than hanging above it unused.
+  it("is a whole rem the 主列 the 中央モーダル already has can hold", () => {
     const modalMain = modalMainColumnRem(MODAL_REQUIRED_VIEWPORT_PX);
-    expect(modalMain).toBeLessThanOrEqual(PROSE_MAX_WIDTH_REM);
-    expect(PROSE_MAX_WIDTH_REM - modalMain).toBeLessThan(1);
+    expect(Number.isInteger(PROSE_MAX_WIDTH_REM)).toBe(true);
+    expect(PROSE_MAX_WIDTH_REM).toBeLessThanOrEqual(modalMain);
+    // Within a rem or two of it, or it stopped being that column's width and became a new number.
+    expect(modalMain - PROSE_MAX_WIDTH_REM).toBeLessThan(2);
   });
 
   it("never binds the 併置サイドバー, whose whole panel is narrower", () => {
@@ -335,6 +344,43 @@ describe("AC #7 中央モーダルは 1280×800 でも 2 列", () => {
     // what makes that true; the 主列 simply gets less.
     expect(layoutFor("modal").columns).toBe(2);
     expect(modalMainColumnRem(1024)).toBeLessThan(modalMainColumnRem(1280));
+  });
+});
+
+describe("TASK-115 AC #1 関数の主列と実レイアウトの主列が一致する", () => {
+  /**
+   * `jsdom` runs no layout, so the measurement cannot be taken here — what is held is the recording,
+   * the same way the wire fixtures hold the Rust side's output. Taken from
+   * `_sandbox/detail-check/?placement=modal&long=1` at each viewport width, WebKit and Chromium
+   * agreeing to the pixel (2026-08-05). 1152 is the width below which the 68rem cap stops binding and
+   * [`MODAL_INSET_REM`] starts to; 1000 is under it.
+   */
+  const DRAWN_MAIN_COLUMN_PX: ReadonlyArray<readonly [number, number]> = [
+    [1280, 788],
+    [1152, 788],
+    [1000, 636],
+  ];
+
+  // The function was 1.5rem short of every one of these until TASK-115, because it subtracted the
+  // panel's padding — which a content-box `width` puts outside the box the columns divide.
+  it("computes the 主列 both engines draw, at every width measured", () => {
+    for (const [viewportPx, drawnPx] of DRAWN_MAIN_COLUMN_PX) {
+      expect([viewportPx, modalMainColumnRem(viewportPx, ROOT_FONT_PX) * ROOT_FONT_PX]).toEqual([
+        viewportPx,
+        drawnPx,
+      ]);
+    }
+  });
+
+  // The other half of the same fact: what the geometry names is the content box, so the modal's
+  // footprint is wider than every number in this module. The remainder is the 1px border a side —
+  // which is why the border is not a constant here: a px border does not follow `rootFontPx`.
+  it("names the content box, leaving the padding and the border outside it", () => {
+    const contentPx = modalContentWidthRem(1280, ROOT_FONT_PX) * ROOT_FONT_PX;
+    const DRAWN_CONTENT_PX = 1088;
+    const DRAWN_FOOTPRINT_PX = 1114;
+    expect(contentPx).toBe(DRAWN_CONTENT_PX);
+    expect(DRAWN_FOOTPRINT_PX - contentPx - PANEL_PADDING_REM * ROOT_FONT_PX).toBe(2);
   });
 });
 

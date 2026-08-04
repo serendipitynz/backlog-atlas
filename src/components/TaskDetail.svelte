@@ -95,8 +95,8 @@
     MODAL_COLUMN_GAP_REM,
     MODAL_INSET_REM,
     MODAL_MAX_WIDTH_REM,
-    MODAL_PADDING_REM,
     MODAL_SIDE_COLUMN_REM,
+    PANEL_PADDING_REM,
     PLACEMENTS,
     PLACEMENT_ICON,
     PROSE_MAX_WIDTH_REM,
@@ -1739,7 +1739,7 @@
   class="detail"
   data-placement={placement}
   aria-label="タスク詳細"
-  style="--modal-side-column: {MODAL_SIDE_COLUMN_REM}rem; --modal-column-gap: {MODAL_COLUMN_GAP_REM}rem; --modal-padding: {MODAL_PADDING_REM /
+  style="--modal-side-column: {MODAL_SIDE_COLUMN_REM}rem; --modal-column-gap: {MODAL_COLUMN_GAP_REM}rem; --panel-padding: {PANEL_PADDING_REM /
     2}rem; --modal-inset: {MODAL_INSET_REM / 2}rem; --modal-max-width: {MODAL_MAX_WIDTH_REM}rem; --prose-max-width: {PROSE_MAX_WIDTH_REM}rem; --sidebar-width: {SIDEBAR_WIDTH_REM}rem;"
 >
   {@render heading()}
@@ -1772,8 +1772,10 @@
     gap: 0.6rem;
     // No top padding: the sticky 見出し owns it (see `.heading`). Left here, it became a 9.6px strip
     // above the band that the content scrolled through — measured, and visible in a screenshot as the
-    // 縮退帯 appearing over the pinned heading.
-    padding: 0 0.75rem 1rem;
+    // 縮退帯 appearing over the pinned heading. The sideways value comes from `lib/placement.ts` so
+    // that this padding and the band's pull-out below are one number rather than two that have to
+    // agree (TASK-115).
+    padding: 0 var(--panel-padding) 1rem;
     background: var(--panel);
     // Scrolls inside itself so the swimlane keeps its own scroll position while the panel is open.
     overflow-y: auto;
@@ -1792,10 +1794,13 @@
   // 中央モーダル (doc-8 §2.1): a box over the grid, wide enough for two columns at 1280×800. The
   // numbers come from `lib/placement.ts` through the custom properties above, so the width the
   // test checks and the width the browser lays out are the same numbers.
+  //
+  // This `width` is a *content* box — the repository has no global `box-sizing` reset — so it is the
+  // box the two columns divide, and the padding and border below are laid outside it. `placement.ts`
+  // states its geometry in those terms for that reason (TASK-115).
   .detail[data-placement="modal"] {
     width: min(var(--modal-max-width), calc(100vw - var(--modal-inset) * 2));
     max-height: 100%;
-    padding: 0 var(--modal-padding) 1rem;
     border: 1px solid var(--line-strong);
     border-radius: 6px;
     box-shadow: 0 8px 32px color-mix(in srgb, var(--fg) 25%, transparent);
@@ -1868,8 +1873,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
-    margin: 0 -0.75rem;
-    padding: 0.6rem 0.75rem 0.4rem;
+    margin: 0 calc(var(--panel-padding) * -1);
+    padding: 0.6rem var(--panel-padding) 0.4rem;
     border-bottom: 1px solid var(--line);
     background: var(--panel);
 
@@ -1880,14 +1885,10 @@
     }
   }
 
-  // 中央モーダルは左右の padding が違う (`--modal-padding`), so the band's pull-out has to match it or
-  // the strip comes back on that placement alone.
-  .detail[data-placement="modal"] .heading {
-    margin-right: calc(var(--modal-padding) * -1);
-    margin-left: calc(var(--modal-padding) * -1);
-    padding-right: var(--modal-padding);
-    padding-left: var(--modal-padding);
-  }
+  // The band needs no per-placement rule sideways. There used to be one for the 中央モーダル, on the
+  // grounds that its horizontal padding differed — it does not: `.detail` takes `--panel-padding` in
+  // all three placements, so that rule wrote the same value back (TASK-115 measured 12px a side in
+  // each). The pull-out above draws on that one value and reaches the edges of every placement.
 
   // 2 行目: title が伸びしろを取り、編集入口は右端で自分の幅のまま。
   .title-line {
