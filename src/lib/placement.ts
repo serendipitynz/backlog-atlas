@@ -14,8 +14,10 @@
  * | doc-8 §3 区画 | [`DetailSection`] | one row of the assignment table — one block of the panel |
  * | doc-8 §3 常設 | [`Disposition`] `"always"` | 開いたまま置く状態。利用者に閉じる手段は無い |
  * | doc-8 §3 折畳み | [`Disposition`] `"collapsed"` | 見出しと件数だけを見せて既定で閉じた状態。利用者が開閉できる |
- * | doc-8 §2.1 主列 / 脇列 | [`SectionColumn`] `"main"` / `"side"` | the 中央モーダル's two columns |
- * | doc-8 §3 の列指定が無い区画 | [`SectionColumn`] `"wide"` | spans both columns (see `SECTION_COLUMN`) |
+ * | doc-8 §2.1 主列 / 脇列 | [`SectionColumn`] `"main"` / `"side"` | the two columns of 中央モーダル and 全面 |
+ * | doc-8 §3 2 列にまたがる | [`SectionColumn`] `"wide"` | 見出し and 編集卓 only — they sit above the columns |
+ * | doc-8 §3.1 区画の並び | [`MAIN_COLUMN_ORDER`] / [`SIDE_COLUMN_ORDER`] / [`SINGLE_COLUMN_ORDER`] | the 正本 transcribed from 画面設計案 02 |
+ * | doc-8 §2.1 1 行の長さの上限 | [`PROSE_MAX_WIDTH_REM`] + [`PROSE_SECTIONS`] | 48rem, on four 区画's body blocks |
  * | doc-8 §5 配置ごとの粒度 | [`HistoryDetail`] | how much of the Git 履歴欄 this placement shows |
  * | doc-8 §2.1 1280×800 でも 2 列 | [`modalMainColumnRem`] | what is left for the 主列 once the 脇列 is taken |
  * | doc-8 §2.2 既定の永続 | [`placementPersistence`] | whether the chosen placement could be stored, and why not |
@@ -39,7 +41,11 @@
 import type { IconName } from "./icons/lucide";
 import type { DetailPlacement } from "./wire";
 
-/** The 区画 doc-8 §3's assignment table has rows for, in the table's own order. */
+/**
+ * The 区画 doc-8 §3's assignment table has rows for, in the table's own order — **which is not the
+ * order they are drawn in** (doc-8 §3.1 says so outright: the table is an index, and the 並び is
+ * transcribed from 画面設計案 02 into [`MAIN_COLUMN_ORDER`] / [`SIDE_COLUMN_ORDER`]).
+ */
 export type DetailSection =
   | "heading"
   | "assignee"
@@ -60,7 +66,10 @@ export type DetailSection =
 
 export type Disposition = "always" | "collapsed";
 
-/** Where a 区画 sits in the 中央モーダル's two columns (doc-8 §2.1). Ignored by the other two. */
+/**
+ * Where a 区画 sits in the two columns (doc-8 §2.1). Read by 中央モーダル and 全面シングルビュー;
+ * 併置サイドバー has no columns and reads [`SINGLE_COLUMN_ORDER`] instead.
+ */
 export type SectionColumn = "main" | "side" | "wide";
 
 /** How much of the Git 履歴欄 a placement shows (doc-8 §5 配置ごとの粒度). */
@@ -78,7 +87,7 @@ export const RECENT_COMMIT_LIMIT = 2;
 export interface PlacementLayout {
   sections: Record<DetailSection, Disposition>;
   history: HistoryDetail;
-  /** How many columns the panel lays its 区画 out in — 2 only for the 中央モーダル (doc-8 §2.1). */
+  /** How many columns the panel lays its 区画 out in — 1 only for the 併置サイドバー (doc-8 §2.1). */
   columns: 1 | 2;
 }
 
@@ -111,16 +120,16 @@ const DISPOSITIONS: Record<DetailSection, { sidebar: Disposition; modal: Disposi
 };
 
 /**
- * Which column each 区画 takes in the 中央モーダル. doc-8 §2.1 names the two columns' contents and
- * §3 marks them per row; the four it leaves unplaced are decided here and recorded in doc-8 §3:
- * 見出し・編集卓・縮退表示 span both columns (they are about the whole panel — and the 縮退 must not
- * be findable only in one column), 実装ノート and Git 履歴欄 join the 主列 as the other long-form
- * blocks, and 状態遷移・外部エディタ joins the 脇列 with the other short blocks.
+ * Which column each 区画 takes (doc-8 §2.1・§3). Used by both two-column placements. Only 見出し and
+ * 編集卓 are `"wide"`: they are fixed rows above the columns (doc-8 §2.2), so they are not in either
+ * column's order below. **縮退表示 is `"main"`** — it used to span both columns on the grounds that
+ * one column's reader would otherwise miss it, but doc-8 §3.1 puts it at the *head* of the 主列,
+ * which is above both columns' contents and so is passed before either is read.
  */
 export const SECTION_COLUMN: Record<DetailSection, SectionColumn> = {
   heading: "wide",
   editConsole: "wide",
-  degrade: "wide",
+  degrade: "main",
   description: "main",
   ac: "main",
   plan: "main",
@@ -135,6 +144,47 @@ export const SECTION_COLUMN: Record<DetailSection, SectionColumn> = {
   transitions: "side",
 };
 
+// --- 区画の並び (doc-8 §3.1) ------------------------------------------------------------------
+//
+// The 正本 is 画面設計案 02, transcribed into doc-8 §3.1 and then to here. Held as data for the same
+// reason the assignment table is: an order spelled out in markup is an order no test can read, and
+// this one has to agree with `SECTION_COLUMN` (checked in the tests) and hold for three placements.
+
+/** 主列の並び (doc-8 §3.1). 縮退表示 leads — see [`SECTION_COLUMN`]. */
+export const MAIN_COLUMN_ORDER: readonly DetailSection[] = [
+  "degrade",
+  "description",
+  "ac",
+  "plan",
+  "notes",
+  "gitHistory",
+] as const;
+
+/**
+ * 脇列の並び (doc-8 §3.1). `assignee` sits after 通常ラベル by a decision recorded in doc-8 §3.1 —
+ * 画面設計案 02 has no assignee 区画 at all (it keeps the value in the 属性表), so the original settles
+ * every other position here but not this one.
+ */
+export const SIDE_COLUMN_ORDER: readonly DetailSection[] = [
+  "type",
+  "labels",
+  "assignee",
+  "dependencies",
+  "pullRequest",
+  "references",
+  "transitions",
+] as const;
+
+/**
+ * What 併置サイドバー draws, top to bottom (doc-8 §3.1): the 主列's order with the 脇列's appended.
+ * Not a third order — 画面設計案 02's 併置 figure *is* the two columns run together, which is why one
+ * 正本 covers all three placements.
+ */
+export const SINGLE_COLUMN_ORDER: readonly DetailSection[] = [
+  ...MAIN_COLUMN_ORDER,
+  ...SIDE_COLUMN_ORDER,
+] as const;
+
 const HISTORY_DETAIL: Record<DetailPlacement, HistoryDetail> = {
   sidebar: "count",
   modal: "recent",
@@ -147,7 +197,13 @@ export function layoutFor(placement: DetailPlacement): PlacementLayout {
     sections[section as DetailSection] =
       placement === "full" ? "always" : byPlacement[placement];
   }
-  return { sections, history: HISTORY_DETAIL[placement], columns: placement === "modal" ? 2 : 1 };
+  return {
+    sections,
+    history: HISTORY_DETAIL[placement],
+    // 全面 joined 中央モーダル at two columns in TASK-113 (doc-8 §2.1): what the 全面 gains from a
+    // wide window is a wide 主列, and the 脇列's short values do not get longer with it.
+    columns: placement === "sidebar" ? 1 : 2,
+  };
 }
 
 // --- 中央モーダルの寸法 (doc-8 §2.1) ---------------------------------------------------------
@@ -156,6 +212,9 @@ export function layoutFor(placement: DetailPlacement): PlacementLayout {
 // requirement with a number in it — 1280×800 でも 2 列を保つ（脇列 18rem は確保できる）— and a
 // requirement stated as a number is one a test can hold. The component reads these out as custom
 // properties, so the CSS and the check below cannot disagree.
+
+/** 併置サイドバー の幅 (doc-8 §2.1: 幅 30rem 固定). Held here for the same reason the modal's are. */
+export const SIDEBAR_WIDTH_REM = 30;
 
 /** 脇列 (doc-8 §2.1). The width the requirement names. */
 export const MODAL_SIDE_COLUMN_REM = 18;
@@ -201,6 +260,36 @@ export function modalMainColumnRem(
     MODAL_SIDE_COLUMN_REM
   );
 }
+
+// --- 1 行の長さの上限 (doc-8 §2.1) -------------------------------------------------------------
+
+/**
+ * 行長上限 (doc-8 §2.1, TASK-113). The widest a body block may draw, whatever width the column
+ * gives it.
+ *
+ * The number is not invented here: it is the 主列 the 中央モーダル already has, once doc-8 §2.1's 脇列
+ * 18rem is taken out of [`MODAL_MAX_WIDTH_REM`]. That width has two values at 1280×800 —
+ * [`modalMainColumnRem`] computes 47.75rem, the layout draws 49.25rem, and the 1.5rem between them is
+ * the modal's padding (TASK-115 reconciles them). 48rem sits between the two, so it is the width the
+ * design already commits to either way.
+ *
+ * Measured at 1280×800 (TASK-113): 全面シングルビュー's 主列 is 956px and the cap takes the body to
+ * 768px — the longest line falls from 1237.0px to 746.6px. 中央モーダル loses 20px. 併置サイドバー is
+ * unaffected: its body block is 480px, six tenths of the cap, so the rule applies and never binds.
+ */
+export const PROSE_MAX_WIDTH_REM = 48;
+
+/**
+ * The 区画 [`PROSE_MAX_WIDTH_REM`] applies to (doc-8 §2.1). Git 履歴欄 is deliberately absent: 全面 is
+ * where the whole commit list is read (doc-8 §2.1), so narrowing it would cost the placement its
+ * reason to exist.
+ */
+export const PROSE_SECTIONS: readonly DetailSection[] = [
+  "description",
+  "ac",
+  "plan",
+  "notes",
+] as const;
 
 // --- 既定の永続 (doc-8 §2.2) -----------------------------------------------------------------
 

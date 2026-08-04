@@ -11,11 +11,23 @@
   // "既定で" meant an initial value. The 原文 settles it the other way.
   import type { Snippet } from "svelte";
   import Icon from "../lib/icons/Icon.svelte";
-  import { DISCLOSURE_ICON, type Disposition } from "../lib/placement";
+  import {
+    DISCLOSURE_ICON,
+    PROSE_SECTIONS,
+    type DetailSection,
+    type PlacementLayout,
+  } from "../lib/placement";
 
   interface Props {
     title: string;
-    disposition: Disposition;
+    /**
+     * どの 区画 か (doc-8 §3 の割当表の行). Everything this component varies by 区画 is derived from
+     * it — the disposition from the placement's layout, the 行長上限 from `PROSE_SECTIONS` — so a
+     * 区画 names itself once and cannot be given one 区画's disposition and another's width.
+     */
+    section: DetailSection;
+    /** The placement's whole layout (`layoutFor`), read for this 区画's row. */
+    layout: PlacementLayout;
     /**
      * 見出しに添える件数 (doc-8 §3: 折畳み（件数を見せる）). Shown open or closed — a count that
      * appears only while folded would vanish exactly when the list it counts is not on screen.
@@ -24,7 +36,15 @@
     children: Snippet;
   }
 
-  let { title, disposition, count = null, children }: Props = $props();
+  let { title, section, layout, count = null, children }: Props = $props();
+
+  const disposition = $derived(layout.sections[section]);
+  /**
+   * 行長上限 を掛ける区画か (doc-8 §2.1). Caps the content only, never the heading: the 区画境界 has
+   * to keep running to the edge of the 区画 (doc-8 §3), and a rule that stopped where the text did
+   * would say the 区画 is narrower than it is.
+   */
+  const prose = $derived(PROSE_SECTIONS.includes(section));
 
   // Bound to the element so the 開閉印 can face the way the 区画 actually is, and re-seeded whenever
   // the placement moves this 区画: a placement is a whole set of folds rather than a starting point
@@ -50,7 +70,7 @@
 {#if disposition === "always"}
   <section class="section">
     {@render sectionTitle(true)}
-    <div class="content">
+    <div class="content" class:prose>
       {@render children()}
     </div>
   </section>
@@ -63,7 +83,7 @@
       <Icon name={DISCLOSURE_ICON[open ? "open" : "closed"]} />
       {@render sectionTitle(false)}
     </summary>
-    <div class="content">
+    <div class="content" class:prose>
       {@render children()}
     </div>
   </details>
@@ -129,5 +149,13 @@
     flex-direction: column;
     gap: 0.25rem;
     padding-top: 0.25rem;
+  }
+
+  // 行長上限 (doc-8 §2.1): 48rem, the 主列 the 中央モーダル already has. Held in `placement.ts` and
+  // handed down as a custom property so the number the test reads and the number the browser lays
+  // out are the same one. Bites hardest in 全面シングルビュー (956px の主列 → 768px の本文); the
+  // 併置サイドバー is under it at 480px and never feels it.
+  .content.prose {
+    max-width: var(--prose-max-width);
   }
 </style>
