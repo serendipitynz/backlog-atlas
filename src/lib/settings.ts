@@ -15,6 +15,8 @@
  * | decision-12 表示テーマ | `theme.ts` の `RECORDED_THEMES` | the colour sets this build has; named there, defined in `app.scss` |
  * | doc-7 §5.2 既定の保存区分 | [`STORAGE_SELECTION_LABEL`] + [`toggleStorage`] | which 保存区分 the filter starts with |
  * | doc-8 §2.2 既定の詳細配置（第 2 の書き手） | [`mergeDraft`] | how a placement stored elsewhere lands in an open form without taking its input |
+ * | TASK-74 下部操作行 | [`CLOSE_WITHOUT_SAVING_LABEL`] / [`SAVE_LABEL`] | the two ways out of the モーダル, named in one place |
+ * | TASK-75 場所を開く | [`OPEN_LOCATION_LABEL`] / [`openLocationBlocked`] | opening the アプリ設定ディレクトリ (decision-13), and when it cannot be opened |
  *
  * One rule runs through it, the same one `edit.ts` and `external-editor.ts` follow: **a withheld
  * control says why** (doc-5 §5, doc-11 §5). No item is hidden because it cannot be changed yet or
@@ -24,11 +26,13 @@
 import type {
   AppSettings,
   CardDensity,
+  CommandError,
   DetailPlacement,
   EditorCommand,
   SettingsStatus,
   StorageSelection,
 } from "./wire";
+import { commandErrorDetail } from "./edit";
 
 export const CARD_DENSITY_LABEL: Record<CardDensity, string> = {
   s: "S（ID・priority・印・title 1 行）",
@@ -183,10 +187,65 @@ export const STARTUP_READ_NOTE =
   "起動時に全ルートを読むことは必須で、設定項目にしていません。読まない状態ではカードを 1 枚も描けず、" +
   "更新前競合検出の基準も持てないためです（doc-9 §3.2）。";
 
-/** decision-13: 列折畳み・行折畳み・行非表示 をこのファイルへ保存しない理由 (AC #4)。 */
-export const TRANSIENT_STATE_NOTE =
-  "列折畳み・行折畳み・行非表示は画面の一時状態として扱い、この設定には保存しません。" +
-  "前回どけた行が消えたままだと、登録したはずのプロジェクトが失われたように読めるためです（decision-13）。";
+/**
+ * 下部操作行 (TASK-74) の 2 つの押下。「変更せずに閉じる」は下書きを書かずに出る経路で、「保存する」は
+ * 書けたときだけ出る経路である。語を定数に持つのは、この 2 つが `Settings.svelte` の外（コンポーネント
+ * テストの引き当て）からも同じ 1 か所を見て名指しされるようにするためで、寸法の変数と同じ理由による。
+ */
+export const CLOSE_WITHOUT_SAVING_LABEL = "変更せずに閉じる";
+export const SAVE_LABEL = "保存する";
+
+/**
+ * 「保存する」が押せない理由のうち、変更が無いことだけを述べるもの (TASK-74 AC #3)。**可視の補助文には
+ * しない** — 下部操作行が 2 つの出口を常に見せているので、押せないことの説明は画面の語を増やすだけになる。
+ * それでも doc-11 §5 は理由の無い無効化を禁じているので、控えは `aria-disabled` のままフォーカスを受け、
+ * この文を `aria-describedby` で読める場所に置く（同節が挙げる 2 つ目の形）。
+ */
+export const NO_CHANGES_REASON = "変更はありません";
+
+/** 「保存する」が押せない理由のうち、保存の発行中であることを述べるもの。 */
+export const SAVING_REASON = "保存中です";
+
+/** 場所を開く (TASK-75 AC #1)。開くのはアプリ設定ディレクトリで、ファイルは選択されない。 */
+export const OPEN_LOCATION_LABEL = "場所を開く";
+
+export const OPEN_LOCATION_TITLE =
+  "設定ファイルのあるフォルダを OS のファイルマネージャで開きます（ファイルは選択されません）。";
+
+/** 起動を発行してから応答が返るまでの、場所を開く の理由。 */
+export const OPENING_LOCATION_REASON = "いま開いています（OS の応答を待っています）。";
+
+/**
+ * 場所を開く が押せない理由 (TASK-75 AC #3)、または `null`。ファイルがまだ書かれていない状態
+ * (`absent`) と、起動を発行してまだ応答が返っていない状態の 2 つが理由になる。読めない・上位版の
+ * ファイルは**存在する**ので、場所へは行ける — 手で直すならまさにそこを開く必要があり、読めないことを
+ * 理由に閉ざすと直す手段まで閉ざすことになる。
+ *
+ * 発行中を状態ではなく**理由**として持つのは doc-11 §5 のためで、控えが `aria-disabled` になる間ずっと
+ * `aria-describedby` の指す先が空だと、それは同節が禁じる理由の無い無効化そのものになる。
+ */
+export function openLocationBlocked(status: SettingsStatus, opening: boolean): string | null {
+  if (opening) return OPENING_LOCATION_REASON;
+  return status.state === "absent"
+    ? "設定ファイルはまだ作成されていないため、その場所を開けません（保存すると作成します）。"
+    : null;
+}
+
+/**
+ * 場所を開く の失敗文 (doc-5 §5「withheld control says why」と同じ姿勢で、起きたことを述べる)。
+ * `launchFailureDetail` (external-editor.ts) と分けてあるのは、あちらの助言が `.md` の関連付けと
+ * $VISUAL・$EDITOR を名指すためで、ディレクトリを開けなかった利用者にはどちらも関係が無い。
+ */
+export function openLocationFailure(error: CommandError): string {
+  switch (error.kind) {
+    case "editorLaunchFailed":
+      return `${error.program} で開けませんでした: ${error.detail}。`;
+    case "editorUnavailable":
+      return `場所を開けませんでした: ${error.detail}`;
+    default:
+      return commandErrorDetail(error);
+  }
+}
 
 /**
  * Fold a baseline that arrived from *outside* the 設定画面 into the draft it is editing: every field the

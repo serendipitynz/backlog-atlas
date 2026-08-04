@@ -32,6 +32,7 @@ import {
 } from "./lib/fake-boundary";
 import { entry, history, loaded, snapshot, taskView, unreadable } from "./lib/fixtures";
 import { SHORTCUT_HELP_LABEL } from "./lib/header";
+import { CLOSE_WITHOUT_SAVING_LABEL } from "./lib/settings";
 import { SHORTCUTS } from "./lib/shortcuts";
 import type { ProjectLoad, UpdateResult } from "./lib/wire";
 
@@ -370,9 +371,48 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
 
     const byControl = await openSettings();
     expect(byControl.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
-    click(byText(byControl, "button.mini", "閉じる"));
+    // 変更せずに閉じる, the 下部操作行's own exit (TASK-74). Named from the constant the component prints,
+    // so this test asks for the control by the same one word the screen does.
+    click(byText(byControl, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
     expect(byControl.querySelector('[aria-label="設定"]')).toBeNull();
     expectFocusBackOnMenu(byControl);
+  });
+
+  it("保存の発行中は、その 2 経路のどちらもモーダルを閉じない", async () => {
+    // The same contract from the other side: while a 設定 save is unresolved, *neither* exit may take
+    // the panel away. Leaving would drop the report of a write that is still going to land, under a
+    // control named 変更せずに閉じる — and the failure branch would lose the draft it is meant to keep.
+    // Both routes are held by one flag in the shell, which is why this is asserted through the caller
+    // rather than in the form: only from here can Escape and the button be seen to answer to it.
+    const hold = deferred<void>();
+    answers.settingsSaveHold = hold;
+    const host = await openSettings();
+
+    // 変更あり: the draft has to differ from the file before 保存する will take a press at all.
+    // The radios carry no `value` attribute (the form binds them by index), so the unchecked one is
+    // picked off the list rather than named by a selector.
+    const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
+      (radio) => !radio.checked,
+    );
+    if (other === undefined) throw new Error("every カード情報量 is already checked");
+    click(other);
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+    expect(madeTo("settings_save")).toHaveLength(1);
+
+    click(byText(host, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
+
+    press(only(host, '[role="dialog"][aria-label="設定"]'), "Escape");
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
+
+    // Once the write lands, 保存する's own close goes through — the modal was held, not stuck.
+    hold.resolve();
+    await settled();
+    expect(host.querySelector('[aria-label="設定"]')).toBeNull();
+    expectFocusBackOnMenu(host);
   });
 
   it("プロジェクト登録も同じ 2 経路で閉じる", async () => {

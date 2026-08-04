@@ -189,6 +189,15 @@ export function settingsLocation(): Promise<string> {
 }
 
 /**
+ * Open the アプリ設定ディレクトリ in the OS's file manager (TASK-75). The directory the settings file is
+ * in, not the file: opening a `.toml` by association starts a text editor, which is not what 場所を開く
+ * asks for. 台帳ファイル is in the same directory (decision-13), so this one call is its 場所を開く too.
+ */
+export function settingsLocationOpen(): Promise<EditorLaunch> {
+  return invoke<EditorLaunch>("settings_location_open");
+}
+
+/**
  * Whether a supported `backlog` is on PATH (doc-5 §5 縮退). Read once at startup so the screen can
  * withhold edit controls with a reason instead of offering an action that cannot be issued.
  */

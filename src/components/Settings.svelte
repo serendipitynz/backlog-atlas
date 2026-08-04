@@ -1,28 +1,40 @@
 <script lang="ts">
-  // 設定画面 (decision-13, doc-7 §2.1「設定」). The six items decision-13 lists, and nothing else: the
-  // rules for what this file must not hold (列折畳み・行折畳み・行非表示、起動時の全ルート読み取り) are
-  // stated on screen rather than only in the code, because a user looking for those switches should
-  // find out here why they are absent instead of concluding Atlas lost them.
+  // 設定画面 (decision-13, doc-7 §2.1「設定」). The six items decision-13 lists, and nothing else.
   //
   // The component holds a draft and issues one 保存; it never writes as the user types. Same reason the
   // detail panel uses 明示保存 (doc-8 §6.3): a half-typed editor path saved on every keystroke would be
   // the 起動指定 in force for as long as it took to finish typing.
+  //
+  // **The two ways out are the 下部操作行** (TASK-74): 変更せずに閉じる and 保存する, outside the body's
+  // scroll so they are on screen wherever the form has been scrolled to. Before, the only 閉じる was in
+  // the header and said nothing about the draft, so a user who changed a value and closed got no hint
+  // that nothing had been written. The pair states the choice instead of leaving it to be inferred.
+  //
+  // 「ここに無い項目」— the section that stated why 列折畳み・行折畳み・行非表示 are not held (decision-13)
+  // — is gone with it (AC #3). It answered a question the screen does not raise: nothing here offers
+  // those switches, and the file's rules are decision-13's to state.
   import { untrack } from "svelte";
   import {
     CARD_DENSITY_LABEL,
     CARD_DENSITY_NOTE,
+    CLOSE_WITHOUT_SAVING_LABEL,
     DETAIL_PLACEMENT_LABEL,
     DETAIL_PLACEMENT_NOTE,
+    NO_CHANGES_REASON,
+    OPEN_LOCATION_LABEL,
+    OPEN_LOCATION_TITLE,
+    SAVE_LABEL,
+    SAVING_REASON,
     STARTUP_READ_NOTE,
     STORAGE_SELECTIONS,
     STORAGE_SELECTION_LABEL,
-    TRANSIENT_STATE_NOTE,
     WATCH_OFF_NOTE,
     editorArgsText,
     editorCommandOf,
     emptyStorageWarning,
     isDirty,
     mergeDraft,
+    openLocationBlocked,
     saveAvailability,
     statusNotice,
     toggleStorage,
@@ -55,14 +67,26 @@
      * the user edited — so it decides that here rather than sending the whole document blind.
      */
     onsave: (change: (current: AppSettings) => AppSettings) => Promise<string | null>;
+    /**
+     * Open the アプリ設定ディレクトリ in the OS's file manager (TASK-75). Resolves with the failure's
+     * text, or `null` once the launcher took it. The shell owns the call for the same reason it owns
+     * `onsave`: the path is Atlas's own and is resolved at the boundary, never sent from here.
+     */
+    onopenLocation: () => Promise<string | null>;
+    /**
+     * Whether a save issued from here is still unresolved. Held by the shell rather than here, the way
+     * `ProjectRegister` takes `busy`: the same flag has to withhold this form's controls *and* stop the
+     * モーダル being dismissed out from under the write (`Modal.svelte`'s Escape reaches the shell, not
+     * this component), and one fact must not be two flags.
+     */
+    saving: boolean;
     onclose: () => void;
   }
 
-  let { loaded, path, onsave, onclose }: Props = $props();
+  let { loaded, path, onsave, onopenLocation, saving, onclose }: Props = $props();
 
   /** The draft the form edits. Re-seeded whenever the boundary hands back a new value. */
   let draft = $state<AppSettings | null>(null);
-  let saving = $state(false);
   /** The result of the last 保存 attempt: its failure text, or `null` once it succeeded. */
   let failure = $state<string | null>(null);
   /**
@@ -155,21 +179,68 @@
 
   /**
    * なぜ押せないか、押せないときだけ (doc-11 §5). Derived as a string rather than left as a boolean so
-   * that the same value drives the `disabled` state and the 補助文 below the buttons: a disabled state
-   * computed separately from its reason is how a 理由の無い無効化 gets in.
+   * that the same value drives the withheld state and the reason bound to it: a disabled state computed
+   * separately from its reason is how a 理由の無い無効化 gets in.
    *
    * Ordered as the obstacles are: a settings file that cannot be written blocks 保存 whatever the form
    * holds, and 変更はありません is only worth saying once writing is possible at all.
    */
   let saveBlocked = $derived(
-    availability.reason ?? (saving ? "保存中です" : dirty ? null : "変更はありません"),
+    availability.reason ?? (saving ? SAVING_REASON : dirty ? null : NO_CHANGES_REASON),
   );
-  /** 取り消す is a change to the form only, so the file's writability has no bearing on it. */
-  let revertBlocked = $derived(saving ? "保存中です" : dirty ? null : "変更はありません");
+  /**
+   * 変更せずに閉じる is withheld while a save is unresolved. Leaving then would take away the panel that
+   * is to report the write's outcome, and it would do it under a label that says nothing was written —
+   * while the write already issued goes on to store the draft. The shell holds the same flag and turns
+   * away Escape with it, so both ways out are closed by one fact.
+   */
+  let closeBlocked = $derived(saving ? SAVING_REASON : null);
+  /**
+   * The one line the 下部操作行 gives for a control it is withholding, and the one element both point at.
+   * One rather than two, because while a save is in flight *both* are withheld by the same one
+   * circumstance, and saying it twice in the same row would name one situation two ways.
+   */
+  let footerReason = $derived(closeBlocked ?? saveBlocked);
+  /**
+   * Whether that line is printed. 変更はありません is not (TASK-74 AC #3): the 下部操作行 shows both
+   * exits at once, so spelling out "you have changed nothing" adds a line that says what the disabled
+   * 保存する already shows. It is still *reachable* — `aria-disabled` keeps the button focusable and
+   * `aria-describedby` points at the text (doc-11 §5 の 2 つ目の形), which is why the element stays in
+   * the DOM and is only hidden visually. The obstacles that are not the user's own doing (a file this
+   * build must not overwrite, a write still running) keep their printed line.
+   */
+  let footerReasonPrinted = $derived(footerReason !== null && footerReason !== NO_CHANGES_REASON);
+  const FOOTER_REASON_ID = "settings-footer-reason";
+
+  /** The failure of the last 場所を開く, or `null`. Reported beside the button, not as a 上部帯 通知:
+   *  this モーダル covers the 上部帯 (`Modal.svelte`), so a 帯 would not be read until it closed. */
+  let locationFailure = $state<string | null>(null);
+  /** Whether a launch has been issued and not yet answered. */
+  let opening = $state(false);
+  /**
+   * Why 場所を開く cannot be pressed, or `null`. The launch in flight is one of the reasons, not a state
+   * beside them: a control that goes `aria-disabled` while its `aria-describedby` stays empty is the
+   * 理由の無い無効化 doc-11 §5 refuses, and a user who cannot see the pointer cannot tell it from a fault.
+   */
+  let locationBlocked = $derived(
+    loaded === null ? null : openLocationBlocked(loaded.status, opening),
+  );
+  const LOCATION_BLOCKED_ID = "settings-location-blocked";
 
   function setStorage(value: StorageSelection, on: boolean): void {
     if (draft === null) return;
     draft.default_storage_filter = toggleStorage(draft.default_storage_filter, value, on);
+  }
+
+  /**
+   * 保存する: write, and close only if the write landed (AC #2). A failure keeps the モーダル up with
+   * its text beside the button — closing on a failed save would take the draft away and leave the user
+   * to find out from the next start that nothing was stored.
+   */
+  async function saveAndClose(): Promise<void> {
+    if (saveBlocked !== null) return;
+    await save();
+    if (failure === null) onclose();
   }
 
   async function save(): Promise<void> {
@@ -183,187 +254,281 @@
     // settings are when the write is issued, so a 詳細配置 stored in the meantime survives this save.
     const value = $state.snapshot(pending);
     const base = baseline;
-    saving = true;
-    try {
-      failure = await onsave((current) => (base === null ? value : mergeDraft(base, value, current)));
-    } finally {
-      saving = false;
-    }
+    // `saving` is not set here: the shell raises it around the same call, because it also has to turn
+    // Escape away for as long as this is unresolved.
+    failure = await onsave((current) => (base === null ? value : mergeDraft(base, value, current)));
   }
 
-  function revert(): void {
-    if (loaded === null) return;
-    draft = { ...loaded.settings };
-    editorProgram = loaded.settings.external_editor?.program ?? "";
-    editorArgs = editorArgsText(loaded.settings.external_editor);
-    failure = null;
+  /** 場所を開く (TASK-75 AC #1). Nothing is read or written; the OS opens the directory or says why not. */
+  async function openLocation(): Promise<void> {
+    if (locationBlocked !== null) return;
+    opening = true;
+    try {
+      locationFailure = await onopenLocation();
+    } finally {
+      opening = false;
+    }
   }
 </script>
 
 <div class="settings">
+  <!-- 閉じる is not here any more (TASK-74): both ways out are the 下部操作行 at the foot of this box. -->
   <header>
     <h2>設定</h2>
-    <button type="button" class="mini" onclick={onclose}>閉じる</button>
   </header>
 
-  {#if notice !== null}
-    <!-- decision-13 既定値で動いている旨 (AC #6): stated whenever these values did not come from the
-         file, so "my settings are gone" and "this build will not write your newer file" never look
-         the same. -->
-    <p class="warn">{notice}</p>
-  {/if}
-  {#if failure !== null}
-    <p class="warn">保存できませんでした: {failure}</p>
-  {/if}
+  <!-- The one box that scrolls. Bounded by `.settings`' own height so the 下部操作行 below stays put
+       (AC #1) — the backdrop's scroll, which used to move the whole モーダル, never comes into play at
+       this size. -->
+  <div class="body">
+    {#if notice !== null}
+      <!-- decision-13 既定値で動いている旨 (AC #6): stated whenever these values did not come from the
+           file, so "my settings are gone" and "this build will not write your newer file" never look
+           the same. -->
+      <p class="warn">{notice}</p>
+    {/if}
 
-  {#if draft === null}
-    <p class="hint">設定を読み込んでいます…</p>
-  {:else}
-    <section>
-      <h3>表示テーマ</h3>
-      <label>
-        <select bind:value={draft.theme}>
-          <option value={null}>{THEME_UNSET_LABEL}</option>
-          {#each themeChoices as name (name)}
-            <option value={name}>
-              {themeLabel(name) ?? `${name}（このビルドには収録されていません）`}
-            </option>
-          {/each}
-        </select>
-      </label>
-      <p class="hint">{THEME_LIST_NOTE}</p>
-    </section>
-
-    <section>
-      <h3>カード情報量</h3>
-      {#each Object.entries(CARD_DENSITY_LABEL) as [value, label] (value)}
-        <label class="choice">
-          <input
-            type="radio"
-            name="card-density"
-            checked={draft.card_density === value}
-            onchange={() => draft !== null && (draft.card_density = value as CardDensity)}
-          />
-          {label}
+    {#if draft === null}
+      <p class="hint">設定を読み込んでいます…</p>
+    {:else}
+      <section>
+        <h3>表示テーマ</h3>
+        <label>
+          <select bind:value={draft.theme}>
+            <option value={null}>{THEME_UNSET_LABEL}</option>
+            {#each themeChoices as name (name)}
+              <option value={name}>
+                {themeLabel(name) ?? `${name}（このビルドには収録されていません）`}
+              </option>
+            {/each}
+          </select>
         </label>
-      {/each}
-      <p class="hint">{CARD_DENSITY_NOTE}</p>
-    </section>
+        <p class="hint">{THEME_LIST_NOTE}</p>
+      </section>
 
-    <section>
-      <h3>既定の保存区分（フィルタの初期値）</h3>
-      {#each STORAGE_SELECTIONS as value (value)}
+      <section>
+        <h3>カード情報量</h3>
+        {#each Object.entries(CARD_DENSITY_LABEL) as [value, label] (value)}
+          <label class="choice">
+            <input
+              type="radio"
+              name="card-density"
+              checked={draft.card_density === value}
+              onchange={() => draft !== null && (draft.card_density = value as CardDensity)}
+            />
+            {label}
+          </label>
+        {/each}
+        <p class="hint">{CARD_DENSITY_NOTE}</p>
+      </section>
+
+      <section>
+        <h3>既定の保存区分（フィルタの初期値）</h3>
+        {#each STORAGE_SELECTIONS as value (value)}
+          <label class="choice">
+            <input
+              type="checkbox"
+              checked={draft.default_storage_filter.includes(value)}
+              onchange={(event) => setStorage(value, event.currentTarget.checked)}
+            />
+            {STORAGE_SELECTION_LABEL[value]}
+          </label>
+        {/each}
+        {#if storageWarning !== null}
+          <p class="warn">{storageWarning}</p>
+        {/if}
+      </section>
+
+      <section>
+        <h3>既定の詳細配置</h3>
+        {#each Object.entries(DETAIL_PLACEMENT_LABEL) as [value, label] (value)}
+          <label class="choice">
+            <input
+              type="radio"
+              name="detail-placement"
+              checked={draft.default_detail_placement === value}
+              onchange={() =>
+                draft !== null && (draft.default_detail_placement = value as DetailPlacement)}
+            />
+            {label}
+          </label>
+        {/each}
+        <p class="hint">{DETAIL_PLACEMENT_NOTE}</p>
+      </section>
+
+      <section>
+        <h3>ファイル監視で外部変更を取り込む（継続検出）</h3>
         <label class="choice">
-          <input
-            type="checkbox"
-            checked={draft.default_storage_filter.includes(value)}
-            onchange={(event) => setStorage(value, event.currentTarget.checked)}
-          />
-          {STORAGE_SELECTION_LABEL[value]}
+          <input type="checkbox" bind:checked={draft.watch_external_changes} />
+          継続検出を使う
         </label>
-      {/each}
-      {#if storageWarning !== null}
-        <p class="warn">{storageWarning}</p>
-      {/if}
-    </section>
+        <p class="hint">{WATCH_OFF_NOTE}</p>
+        <p class="hint">{STARTUP_READ_NOTE}</p>
+      </section>
 
-    <section>
-      <h3>既定の詳細配置</h3>
-      {#each Object.entries(DETAIL_PLACEMENT_LABEL) as [value, label] (value)}
-        <label class="choice">
-          <input
-            type="radio"
-            name="detail-placement"
-            checked={draft.default_detail_placement === value}
-            onchange={() =>
-              draft !== null && (draft.default_detail_placement = value as DetailPlacement)}
-          />
-          {label}
+      <section>
+        <h3>外部エディタ指定</h3>
+        <p class="hint">
+          指定があればこれを使い、無ければ $VISUAL・$EDITOR を使います（doc-8 §7）。
+          引数は 1 行に 1 つ書きます（シェルへ渡さないため、空白では区切りません）。
+          空欄にすると指定を解除します。
+        </p>
+        <label>
+          <span>プログラム</span>
+          <input type="text" bind:value={editorProgram} placeholder="/Applications/… または code" />
         </label>
-      {/each}
-      <p class="hint">{DETAIL_PLACEMENT_NOTE}</p>
-    </section>
+        <label>
+          <span>引数（1 行 1 つ）</span>
+          <textarea rows="3" bind:value={editorArgs} placeholder="-w"></textarea>
+        </label>
+      </section>
 
-    <section>
-      <h3>ファイル監視で外部変更を取り込む（継続検出）</h3>
-      <label class="choice">
-        <input type="checkbox" bind:checked={draft.watch_external_changes} />
-        継続検出を使う
-      </label>
-      <p class="hint">{WATCH_OFF_NOTE}</p>
-      <p class="hint">{STARTUP_READ_NOTE}</p>
-    </section>
+      <!-- 設定ファイルの場所 (decision-13). Moved out of the foot and into the form (TASK-74/75): the
+           下部操作行 holds the two exits and nothing else, and the path belongs beside the control that
+           opens it — 開く操作の隣がパスの置き場, which is what doc-8 §7 already asks of the 外部エディタ
+           経路's own path line. -->
+      <section class="location">
+        <h3>設定ファイル</h3>
+        {#if path !== null}
+          <p class="path">{path}</p>
+        {/if}
+        <div class="row">
+          <!-- `aria-disabled` rather than `disabled`, so the reason below stays reachable without a
+               pointer (doc-11 §5). -->
+          <button
+            type="button"
+            aria-disabled={locationBlocked !== null}
+            aria-describedby={locationBlocked === null ? undefined : LOCATION_BLOCKED_ID}
+            title={locationBlocked ?? OPEN_LOCATION_TITLE}
+            onclick={openLocation}
+          >
+            {OPEN_LOCATION_LABEL}
+          </button>
+        </div>
+        {#if locationBlocked !== null}
+          <p class="hint" id={LOCATION_BLOCKED_ID}>{locationBlocked}</p>
+        {/if}
+        {#if locationFailure !== null}
+          <p class="warn">{locationFailure}</p>
+        {/if}
+        <p class="hint">
+          台帳ファイル（projects.toml）も同じフォルダにあります（decision-13）。
+        </p>
+      </section>
+    {/if}
+  </div>
 
-    <section>
-      <h3>外部エディタ指定</h3>
-      <p class="hint">
-        指定があればこれを使い、無ければ $VISUAL・$EDITOR を使います（doc-8 §7）。
-        引数は 1 行に 1 つ書きます（シェルへ渡さないため、空白では区切りません）。
-        空欄にすると指定を解除します。
-      </p>
-      <label>
-        <span>プログラム</span>
-        <input type="text" bind:value={editorProgram} placeholder="/Applications/… または code" />
-      </label>
-      <label>
-        <span>引数（1 行 1 つ）</span>
-        <textarea rows="3" bind:value={editorArgs} placeholder="-w"></textarea>
-      </label>
-    </section>
-
-    <section class="not-here">
-      <h3>ここに無い項目</h3>
-      <p class="hint">{TRANSIENT_STATE_NOTE}</p>
-    </section>
-
-    <footer>
+  <!--
+    下部操作行 (TASK-74 AC #1): the two ways out of the モーダル, outside the scrolling body so they are
+    on screen wherever the form has been scrolled to. 保存する is last, on the side the affirmative
+    control takes on this platform.
+  -->
+  <footer>
+    {#if failure !== null}
+      <!-- Beside the press that produced it. The failure used to be printed at the top of the panel,
+           which a scrolled form would have carried out of sight at the moment 保存する was pressed. -->
+      <p class="warn">保存できませんでした: {failure}</p>
+    {/if}
+    <!-- 無効化の理由 (doc-11 §5). Kept in the DOM whether or not it is printed, because a withheld
+         control points at it with `aria-describedby` — a reason only rendered when it is visible
+         would leave the 変更はありません case with a described-by target that is not there. -->
+    <span class="hint" id={FOOTER_REASON_ID} class:unseen={!footerReasonPrinted}>
+      {footerReason === null ? "" : `いま押せません: ${footerReason}`}
+    </span>
+    <div class="actions">
+      <!-- Not `.mini`: the two are peers in one row, and a smaller one drew 2px shorter than 保存する
+           (and by different amounts in the two engines — the figure-less controls take their height
+           from their own font size, doc-11 §2.4 の 1em と同じ理由). -->
       <button
         type="button"
-        disabled={saveBlocked !== null}
-        title={saveBlocked ?? "設定を書き込みます"}
-        onclick={save}
+        aria-disabled={closeBlocked !== null}
+        aria-describedby={closeBlocked === null ? undefined : FOOTER_REASON_ID}
+        title={closeBlocked ?? "書き込まずに閉じます"}
+        onclick={() => closeBlocked === null && onclose()}
       >
-        {saving ? "保存中…" : "保存"}
+        {CLOSE_WITHOUT_SAVING_LABEL}
       </button>
+      <!-- `aria-disabled` rather than `disabled`: doc-11 §5 keeps a withheld control focusable when its
+           reason is not printed beside it, which is the 変更はありません case. -->
       <button
         type="button"
-        class="mini"
-        disabled={revertBlocked !== null}
-        title={revertBlocked ?? "読み込んだ内容へ戻します"}
-        onclick={revert}
+        aria-disabled={saveBlocked !== null}
+        aria-describedby={saveBlocked === null ? undefined : FOOTER_REASON_ID}
+        title={saveBlocked ?? "設定を書き込んで閉じます"}
+        onclick={saveAndClose}
       >
-        変更を取り消す
+        {saving ? "保存中…" : SAVE_LABEL}
       </button>
-      <!-- 無効化の理由は常時表示の補助文として置く (doc-11 §5): `title` はホバーにしか出ず、`disabled`
-           な操作はフォーカスも受け取らないため、それだけではキーボードにもスクリーンリーダーにも届かない。
-           2 つ目は理由が食い違うときだけ出す（同じ理由を二度書かない）。 -->
-      {#if saveBlocked !== null}
-        <span class="hint">保存できません: {saveBlocked}</span>
-      {/if}
-      {#if revertBlocked !== null && revertBlocked !== saveBlocked}
-        <span class="hint">変更を取り消せません: {revertBlocked}</span>
-      {/if}
-      {#if path !== null}
-        <span class="hint path">{path}</span>
-      {/if}
-    </footer>
-  {/if}
+    </div>
+  </footer>
 </div>
 
 <style lang="scss">
+  /*
+   * The box the モーダル holds, bounded so the 下部操作行 can sit outside the scroll (AC #1).
+   *
+   * The bound is the window less what `Modal.svelte` puts between this box and the window edge: its
+   * backdrop's padding on both sides, and the dialog's own border on both. Those two numbers are
+   * declared there as custom properties and read here, so the box that is sized and the box that is
+   * drawn are the same one — a literal `4rem` copied into this file is exactly how a padding changed
+   * in one place leaves a footer two pixels below the fold in another.
+   *
+   * `box-sizing` because this box states a height in `rem` and carries padding (the repository has no
+   * global reset — the height would otherwise be the content's and the padding would be added outside
+   * it).
+   *
+   * **The side padding is on the three children, not here.** A scroll container clips what is painted
+   * to its padding box, and a focus ring is painted outside the control it belongs to — so with the
+   * scrolling moved into `.body`, a control flush against its content edge had its ring cut down the
+   * left side (the 表示テーマ `select`, reported from the real WKWebView). While this box was the one
+   * that scrolled, its own side padding was the room that ring needed; giving that padding to the box
+   * that scrolls now is putting the same room back where it was, rather than estimating how wide a
+   * ring the platform draws. One declaration, read by all three, so the row and the two rules under
+   * the heading and above the 下部操作行 cannot drift apart.
+   */
   .settings {
+    --panel-inline: 0.75rem;
+
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
+    max-height: calc(
+      100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2
+    );
     gap: 0.6rem;
-    padding: 0.6rem 0.75rem 1rem;
-    overflow-y: auto;
+    padding: 0.6rem 0 1rem;
     font-size: 0.8rem;
   }
 
+  header,
+  .body,
+  footer {
+    padding-inline: var(--panel-inline);
+  }
+
+  /*
+   * Everything between the heading and the 下部操作行. `min-height: 0` because a flex item's default
+   * `min-height: auto` is its content's height, which would let this box push past the bound above
+   * instead of scrolling inside it — and the footer would go down with it.
+   */
+  .body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    gap: 0.6rem;
+    overflow-y: auto;
+  }
+
+  // The rule under the heading says the same thing the one above the 下部操作行 does: what is on the
+  // other side of it scrolls, and this does not.
   header {
     display: flex;
+    flex: none;
     align-items: baseline;
     gap: 0.5rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--line);
 
     h2 {
       margin: 0;
@@ -410,11 +575,49 @@
     }
   }
 
+  /*
+   * 下部操作行 (AC #1). Outside `.body`, so it is where it is whatever the form has been scrolled to;
+   * `flex: none` keeps it at its own height when the body wants the rest.
+   */
   footer {
     display: flex;
-    flex-wrap: wrap;
+    flex: none;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .actions {
+    display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.4rem;
+  }
+
+  .location {
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+  }
+
+  /*
+   * Present but not printed. Used for the 変更はありません reason (TASK-74 AC #3), which the 保存する
+   * button points at with `aria-describedby` — `display: none` or an absent element would take it out
+   * of the accessibility tree as well, and the reason would then exist nowhere but the `title`, which
+   * doc-11 §5 refuses as the only holder.
+   */
+  .unseen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   button {
@@ -428,10 +631,6 @@
     cursor: pointer;
     // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5): a `:disabled` rule written here would outrank
     // the global one and take this screen back out of step with the rest.
-
-    &.mini {
-      font-size: 0.7rem;
-    }
   }
 
   .hint {
@@ -441,7 +640,12 @@
   }
 
   .path {
+    margin: 0;
+    font-size: 0.72rem;
+    // パス は ui-monospace (doc-11 §2.2).
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    // The path is one long unbroken token; without this it widens the モーダル rather than wrapping.
+    overflow-wrap: anywhere;
   }
 
   // An action's own report, not one of the 印の族 (decision-6): the neutral info hue, as the shell's
@@ -454,7 +658,8 @@
     font-size: 0.75rem;
   }
 
-  .not-here {
+  // The last section in the body; the 下部操作行's own top border is the rule under it.
+  .location {
     border-bottom: 0;
   }
 </style>
