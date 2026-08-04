@@ -943,7 +943,7 @@
       role="status"
       aria-live="polite"
       class="live"
-      class:quiet={!copied && copyNotice?.state !== "failed"}
+      class:unseen={copyNotice?.state !== "failed"}
     >
       {#if copied}
         <p class="ok">横断タスクID をコピーしました。</p>
@@ -1864,15 +1864,35 @@
   .title-line {
     align-items: center;
     gap: 0.5rem;
+    // The row is one line in both states (目視 2026-08-04). It is part of the 固定 band, so a second
+    // line here is height the body never gets back — and the band would change height on entering an
+    // edit session, which is the one moment the reader is looking at the body.
+    flex-wrap: nowrap;
 
     h2 {
       flex: 1;
       min-width: 0;
     }
 
+    // Editing: the label sits *beside* its input rather than above it, so the field is one line like
+    // the `h2` it replaces. `min-width: 0` on both is what lets the input give way instead of pushing
+    // 保存・キャンセル onto a line of their own — a flex item's default `min-width: auto` refuses to
+    // shrink below its content.
     .field {
       flex: 1;
       min-width: 0;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.3rem;
+
+      span {
+        flex: none;
+      }
+
+      input {
+        flex: 1;
+        min-width: 0;
+      }
     }
   }
 
@@ -1889,14 +1909,29 @@
   }
 
   /*
-   * The live region is the one child that is always here (a region inserted at the moment it fills is
-   * not reliably announced), so it is the one that would spend that `gap` while silent. Taken out of
-   * flow rather than hidden: `display: none` would take it out of the accessibility tree too, and a
-   * live region that is not in the tree announces nothing when it fills — which is the whole point of
-   * keeping it mounted. Absolute leaves it mounted, announced, and laying nothing out.
+   * 成功の語は読み上げにだけ残す (doc-11 §2.4)。The figure already says it to the eye — `clipboard`
+   * becomes `clipboard-check` and takes the 成功色 — so a sentence repeating that is one the sighted
+   * reader has to read past every time they copy an id. What it must not do is disappear from the
+   * accessibility tree, because the tree is the *only* place the result exists for a screen reader:
+   * `aria-label` stays fixed on the button by doc-11 §2.4, and a figure announces nothing.
+   *
+   * Hence visually hidden rather than `display: none` or a removed element. Both of those take it out
+   * of the tree, and an unmounted region announces nothing when it fills, which is the whole reason it
+   * is kept mounted. Out of flow as well, so a silent round spends none of the panel's `gap`.
+   *
+   * The failure notice is not covered by this: it carries the id as selectable text, which is the only
+   * way left to copy it, and no figure says that. It stays visible — which is why the class is driven
+   * by the failure state rather than by "is there anything to say".
    */
-  .live.quiet {
+  .live.unseen {
     position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .entry {

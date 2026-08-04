@@ -11,6 +11,7 @@ import {
   columnFoldable,
   compareCards,
   laneCounts,
+  laneGroupLabel,
   laneNeighbourLabel,
   laneNeighbours,
   laneScrollDelta,
@@ -316,7 +317,7 @@ describe("AC #5 同一レーンセル内の前後タスクへ位置つきで移�
     expect(middle!.total).toBe(3);
     expect(middle!.previous?.task.id).toBe("TASK-1");
     expect(middle!.next?.task.id).toBe("TASK-3");
-    expect(laneNeighbourLabel(middle!)).toBe("To Do セル内 2 / 3 件");
+    expect(laneNeighbourLabel(middle!)).toBe("2 / 3 件");
   });
 
   it("has no previous at the head and no next at the tail", () => {
@@ -356,8 +357,11 @@ describe("AC #5 同一レーンセル内の前後タスクへ位置つきで移�
     expect(first?.group).toEqual({ kind: "unmapped" });
     // 未分類区画はレーンセルではない (doc-7 §1), so the 位置表示 does not call it one — asserted both
     // ways because the wording it must not use is the one it had (doc-8 §2.2).
-    expect(laneNeighbourLabel(first!)).toBe("未分類区画内 1 / 2 件");
-    expect(laneNeighbourLabel(first!)).not.toContain("セル");
+    // 位置表示 no longer carries the group's name (TASK-72), so what has to be checked here is the
+    // place that still does: 未分類区画 must not be called a cell by the controls that name it.
+    expect(laneNeighbourLabel(first!)).toBe("1 / 2 件");
+    expect(laneGroupLabel(first!.group)).toBe("未分類区画");
+    expect(laneGroupLabel(first!.group)).not.toContain("セル");
     expect(first?.next?.task.id).toBe("TASK-2");
   });
 
