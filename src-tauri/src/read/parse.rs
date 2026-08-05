@@ -145,6 +145,73 @@ pub struct Body {
     pub events: Vec<DegradeEvent>,
 }
 
+/// 説明の本文範囲 (decision-21) — the byte range of `body` a milestone's Description occupies:
+/// from the line after its opening (a `## Description` heading, or a `SECTION:DESCRIPTION:BEGIN`
+/// marker) up to the line before whatever ends it (the next `##` heading, the matching `END`
+/// marker, or the end of the body). `None` when the body has no Description at all.
+///
+/// **The read and the write share this one function**, which is what makes decision-21's third
+/// condition — the range written is the range the read layer reads — hold by construction rather
+/// than by two implementations agreeing. `read::read_milestones` takes the text of this range as
+/// [`crate::domain::Milestone::description`]; `update`'s 直接書き込み操作 replaces exactly these
+/// bytes and leaves every other byte of the file as it was. Writing the range rule twice is how
+/// the string on screen and the string that can be saved would come apart without anything
+/// failing.
+///
+/// Both opening forms are accepted because the reader accepts both: v1.48.0's `milestone add`
+/// writes the plain heading (measured 2026-08-06), while task files use the SECTION pair, and a
+/// milestone file hand-edited into the other shape still reads.
+pub fn description_span(body: &str) -> Option<std::ops::Range<usize>> {
+    let mut offset = 0;
+    let mut start: Option<usize> = None;
+    let mut section = false;
+    for line in body.split_inclusive('\n') {
+        let end = offset + line.len();
+        let trimmed = line.trim_end_matches(['\n', '\r']);
+        match start {
+            None => {
+                if matches!(
+                    marker(trimmed).and_then(parse_marker),
+                    Some(Marker::SectionBegin(ref name)) if name.eq_ignore_ascii_case("DESCRIPTION")
+                ) {
+                    start = Some(end);
+                    section = true;
+                } else if is_heading(trimmed, "Description") {
+                    start = Some(end);
+                }
+            }
+            Some(from) => {
+                let closes = if section {
+                    matches!(
+                        marker(trimmed).and_then(parse_marker),
+                        Some(Marker::SectionEnd(ref name)) if name.eq_ignore_ascii_case("DESCRIPTION")
+                    )
+                } else {
+                    trimmed.trim_start().starts_with("##")
+                };
+                if closes {
+                    return Some(from..offset);
+                }
+            }
+        }
+        offset = end;
+    }
+    // No closing line: the Description runs to the end of the body. An unclosed SECTION pair is a
+    // 存在時構造検査 failure for a task (doc-4 §4), but this function only reports the range —
+    // `parse_body` is where that verdict is made.
+    start.map(|from| from..body.len())
+}
+
+/// A `## <name>` heading line, by the same "starts with `##`" rule [`parse_body`] uses to end a
+/// block, with the name compared case-insensitively.
+fn is_heading(line: &str, name: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix("##") else {
+        return false;
+    };
+    rest.trim().eq_ignore_ascii_case(name)
+}
+
 /// The marker payload of a comment line, e.g. `SECTION:NOTES:BEGIN` for
 /// `<!-- SECTION:NOTES:BEGIN -->`. `None` for any ordinary line.
 fn marker(line: &str) -> Option<&str> {
@@ -561,6 +628,45 @@ notes body
                 "notes.md".to_string()
             ]
         );
+    }
+
+    // --- 説明の本文範囲 (decision-21) ------------------------------------------------------------
+
+    fn described(body: &str) -> Option<&str> {
+        description_span(body).map(|span| &body[span])
+    }
+
+    #[test]
+    fn the_description_span_runs_from_the_heading_to_the_next_one() {
+        // The shape `milestone add -d` writes (measured 2026-08-06): a plain heading, no SECTION.
+        let body = "\n## Description\n\nfirst\nsecond\n\n## Notes\n\nkept\n";
+        assert_eq!(described(body), Some("\nfirst\nsecond\n\n"));
+    }
+
+    #[test]
+    fn the_description_span_runs_to_the_end_when_nothing_closes_it() {
+        assert_eq!(described("\n## Description\n\nonly\n"), Some("\nonly\n"));
+    }
+
+    #[test]
+    fn the_description_span_accepts_the_section_pair_too() {
+        // A task file's shape. Milestones are not written this way, but the reader accepts it, and
+        // the range the writer replaces has to be the range the reader took (decision-21).
+        let body = "<!-- SECTION:DESCRIPTION:BEGIN -->\nheld\n<!-- SECTION:DESCRIPTION:END -->\n\n## Notes\n";
+        assert_eq!(described(body), Some("held\n"));
+    }
+
+    #[test]
+    fn a_heading_inside_a_section_pair_does_not_end_the_span() {
+        // Between the markers the closer is the END marker, not the next `##` — otherwise the same
+        // body would read one way and be written back another.
+        let body = "<!-- SECTION:DESCRIPTION:BEGIN -->\na\n## Inner\nb\n<!-- SECTION:DESCRIPTION:END -->\n";
+        assert_eq!(described(body), Some("a\n## Inner\nb\n"));
+    }
+
+    #[test]
+    fn a_body_without_a_description_has_no_span() {
+        assert_eq!(described("\nloose prose\n\n## Notes\n"), None);
     }
 
     #[test]

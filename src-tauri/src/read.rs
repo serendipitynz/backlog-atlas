@@ -406,7 +406,7 @@ fn read_milestones(source: &dyn ScanSource) -> Result<Vec<Milestone>, RootError>
             source_path: path,
             id,
             title,
-            description: section_or_heading(&body, "Description"),
+            description: description_text(&body),
         });
     }
     Ok(out)
@@ -488,29 +488,15 @@ fn identity(text: &str) -> Option<((String, String), String)> {
     Some(((id, title), body.to_string()))
 }
 
-/// A milestone's Description is written as a plain `## Description` heading, not a SECTION
-/// pair (measured on v1.48.0), so accept either.
-fn section_or_heading(body: &str, heading: &str) -> Option<String> {
-    let parsed = parse::parse_body(body);
-    if parsed.description.is_some() {
-        return parsed.description;
-    }
-    let mut collected: Vec<&str> = Vec::new();
-    let mut inside = false;
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if let Some(name) = trimmed.strip_prefix("##") {
-            if inside {
-                break;
-            }
-            inside = name.trim().eq_ignore_ascii_case(heading);
-            continue;
-        }
-        if inside {
-            collected.push(line);
-        }
-    }
-    non_empty(&collected.join("\n"))
+/// A milestone's Description, read as the text of 説明の本文範囲 (decision-21). The range comes
+/// from [`parse::description_span`] rather than from a scan of its own, because the 直接書き込み
+/// 操作 writes that same range: two scans could drift, and the drift would show up as a
+/// description the screen displays but cannot save back.
+///
+/// v1.48.0's `milestone add` writes a plain `## Description` heading rather than a SECTION pair
+/// (measured 2026-08-06); the span function accepts either, as this did.
+fn description_text(body: &str) -> Option<String> {
+    non_empty(&body[parse::description_span(body)?])
 }
 
 fn non_empty(text: &str) -> Option<String> {
