@@ -605,6 +605,17 @@ export const DISCARD_CONFIRM_QUESTION =
 /** The answer that goes ahead and loses the input. */
 export const DISCARD_CONFIRM_PROCEED = "破棄して続ける";
 
+/**
+ * The same answer where the モーダル asks it (doc-11 §7).
+ *
+ * 続ける rather than 閉じる above because doc-8 §6.3's five routes do not share a destination — three
+ * of them (別タスクを開く・前後移動・詳細配置の切替) close nothing, and the word has to cover all
+ * five. A モーダル's two are both ways of closing that one layer, so the wider word would name
+ * something wider than what the press does. The *question* stays the one above: what is lost is the
+ * same thing, and doc-8 §6.3 asks for one wording of that.
+ */
+export const DISCARD_CONFIRM_CLOSE = "破棄して閉じる";
+
 /** The answer that stays where it is. */
 export const DISCARD_CONFIRM_KEEP = "編集に戻る";
 

@@ -81,21 +81,26 @@
      */
     saving: boolean;
     /**
-     * Ask to leave without writing. A *request*: the shell puts the 破棄前確認 (doc-8 §6.3) in front of
-     * it while this form holds a 下書き, so pressing 変更せずに閉じる may leave the モーダル standing with
-     * the question above (doc-11 §7). Reached by the × and Escape as well, which is why the guard is
-     * the shell's and not this button's.
+     * 変更せずに閉じる: leave without writing, and without being asked again.
+     *
+     * No 破棄前確認 in front of this one (doc-11 §7): the question and this control's own wording say
+     * the same thing, so a user who read the label and pressed it has already answered. The × and
+     * Escape do go through the question — they say only 閉じる, and Escape says nothing at all — which
+     * is the same 役割の別 §7 draws between this row and the corner, not an exception to it.
+     *
+     * It still reaches the shell's one close request, which is what refuses it while a save is
+     * unresolved; the difference is carried into that request, not around it.
      */
-    onclose: () => void;
+    ondiscard: () => void;
     /**
      * Report whether the 下書き differs from the file. What the shell's guard reads — held there rather
      * than here because two of the three exits are not this form's controls.
      */
     ondirty: (dirty: boolean) => void;
     /**
-     * The write landed; the モーダル may go. Separate from `onclose` because it is not one of the three
-     * exits doc-11 §7 gathers: those leave the 下書き unwritten, and this one leaves nothing to discard,
-     * so putting it behind the same 破棄前確認 would ask about a loss that did not happen.
+     * The write landed; the モーダル may go. Its own way out rather than `ondiscard` above: that one
+     * leaves the 下書き unwritten and says so, this one wrote it — nothing is being discarded either
+     * way, but only one of them is true to call 変更せずに閉じる.
      */
     onsaved: () => void;
   }
@@ -106,7 +111,7 @@
     onsave,
     onopenLocation,
     saving,
-    onclose,
+    ondiscard,
     ondirty,
     onsaved,
   }: Props = $props();
@@ -269,10 +274,9 @@
    * with its text beside the button — closing on a failed save would take the draft away and leave the
    * user to find out from the next start that nothing was stored.
    *
-   * `onsaved`, not `onclose`: the 下書き was written, so there is nothing for a 破棄前確認 to be about
-   * and a question saying 「このまま進むと破棄されます」 would be false. Nothing here reads `dirty` to
-   * make that distinction — it is decided by which route is taken, not by a value that has to have
-   * caught up with the write by the time this line runs.
+   * `onsaved`, not `ondiscard`: the 下書き was written, so 変更せずに閉じる would be false of what just
+   * happened. Nothing here reads `dirty` to tell the two apart — it is decided by which route is
+   * taken, not by a value that has to have caught up with the write by the time this line runs.
    */
   async function saveAndClose(): Promise<void> {
     if (saveBlocked !== null) return;
@@ -481,7 +485,7 @@
         aria-disabled={closeBlocked !== null}
         aria-describedby={closeBlocked === null ? undefined : FOOTER_REASON_ID}
         title={closeBlocked ?? "書き込まずに閉じます"}
-        onclick={() => closeBlocked === null && onclose()}
+        onclick={() => closeBlocked === null && ondiscard()}
       >
         {CLOSE_WITHOUT_SAVING_LABEL}
       </button>

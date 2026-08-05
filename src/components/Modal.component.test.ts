@@ -15,8 +15,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import Modal from "./Modal.svelte";
 import {
+  DISCARD_CONFIRM_CLOSE,
   DISCARD_CONFIRM_KEEP,
-  DISCARD_CONFIRM_PROCEED,
   DISCARD_CONFIRM_QUESTION,
 } from "../lib/edit";
 import { byLabel, byText, cleanup, click, press, render, snippet } from "../lib/render";
@@ -121,7 +121,9 @@ describe("モーダルの閉じる出口", () => {
   it("破棄前確認は、上部帯ではなくこの層の中に出る", () => {
     // doc-11 §7: this layer covers the 上部帯 where every other route's ① goes (doc-7 §5.3), so a
     // question raised by one of *its* exits has to be drawn inside it or it cannot be answered while
-    // it stands. The three texts are `edit.ts`'s, not this component's — doc-8 §6.3 の 文言は同じ.
+    // it stands. All three texts are `edit.ts`'s, not this component's: the question is the one every
+    // route shares (doc-8 §6.3 の 文言は同じ), and the answer that goes ahead is the モーダル's own
+    // 破棄して閉じる, since here the destination is always this layer closing.
     const answered: string[] = [];
     const { host } = render(Modal, {
       label: "設定",
@@ -136,7 +138,7 @@ describe("モーダルの閉じる出口", () => {
 
     expect(dialog.textContent).toContain(DISCARD_CONFIRM_QUESTION);
 
-    click(byText(dialog, "button", DISCARD_CONFIRM_PROCEED));
+    click(byText(dialog, "button", DISCARD_CONFIRM_CLOSE));
     click(byText(dialog, "button", DISCARD_CONFIRM_KEEP));
     // Neither answer is a close request of its own: the request was already made, and what the two
     // answer is whether it goes through. A button here that called `onclose` would be a route around

@@ -822,15 +822,25 @@
    * `saving` for the form), so each of them can say why it will not answer (doc-11 §5). Escape has no
    * control to hang a reason on, which is why this end of it only declines.
    *
-   * Then the 破棄前確認 (doc-8 §6.3), because all three leave the 下書き unwritten. Behind the same gate
-   * as every other route that discards input, so the モーダル cannot grow a wording or a rule of its
-   * own; what is particular to it is only where the question is drawn (doc-11 §7 — this layer covers
-   * the 上部帯, so `Modal.svelte` draws it). 保存する does not come through here: it wrote the 下書き,
-   * and `settingsSaved` below is its own way out.
+   * Then the 破棄前確認 (doc-8 §6.3), for the exits that do not say what becomes of the 下書き — the ×
+   * says only 閉じる and Escape says nothing at all, so the question is where the draft's fate gets
+   * stated. Behind the same gate as every other route that discards input, so the モーダル cannot grow
+   * a wording or a rule of its own; what is particular to it is only where the question is drawn
+   * (doc-11 §7 — this layer covers the 上部帯, so `Modal.svelte` draws it).
+   *
+   * — except from 変更せずに閉じる, which says it already. That is what `fateStated` carries, and it is
+   * a parameter rather than a route of its own so that all three exits still meet here (doc-11 §7 の
+   * 出口はすべて 1 つの閉じる要求へ集まる): the 発行中 refusal above, and the layer being dropped below,
+   * stay one decision made in one place. What the flag selects is only whether the question has
+   * anything left to say — 下書きの行方を語で述べる出口かどうか, which is the axis §7 already draws
+   * between the 下部操作行 and the corner.
+   *
+   * 保存する does not come through here at all: it wrote the 下書き, so 変更せずに閉じる would be false
+   * of what happened, and `settingsSaved` is its own way out.
    */
-  function closeSettings(): void {
+  function closeSettings(fateStated: boolean): void {
     if (settingsSaving) return;
-    guardDiscard(settingsDirty, dropSettingsModal);
+    guardDiscard(settingsDirty && !fateStated, dropSettingsModal);
   }
 
   /** The 設定 write landed (TASK-74 保存は成功したときだけ閉じる), so nothing is being discarded. */
@@ -842,7 +852,7 @@
    * Take the モーダル away, and with it any 破棄前確認 one of its exits had raised.
    *
    * The question goes because it was about leaving *this* layer, and every route to here leaves it
-   * one way or another — answered 破棄して続ける (already cleared), 保存する that landed, or a draft
+   * one way or another — answered 破棄して閉じる (already cleared), 保存する that landed, or a draft
    * reverted to the file's values while the question stood, which lets the next press through the
    * gate unanswered. Left behind, an unanswered one would come back as the 上部帯 ① over the screen
    * the layer had been covering: a question about input that is no longer anywhere, offering a
@@ -1497,7 +1507,7 @@
     // An unanswered 破棄前確認 from the screen behind lapses here rather than being taken over by the
     // layer about to cover it. Where the question is drawn is decided by which layer is up
     // (`confirmInModal`), so one raised by another route would be drawn by this モーダル as though one
-    // of its own exits had asked it — and 破棄して続ける would then carry out that other route behind
+    // of its own exits had asked it — and 破棄して閉じる would then carry out that other route behind
     // it, leaving the モーダル standing over a screen that had changed underneath. Dropping it
     // discards nothing: the request lapses and the 未保存入力 it was about stays where it is.
     pendingDiscard = null;
@@ -1695,12 +1705,14 @@
          shown, so losing the rows, filter and selection to open it would be backwards. -->
     <!-- The × this layer draws is turned away by the same fact that turns away Escape and the
          下部操作行's own 変更せずに閉じる, and it is told why: an exit that goes quiet without saying so
-         is the 理由の無い無効化 doc-11 §5 refuses. One flag, three exits (doc-11 §7). -->
+         is the 理由の無い無効化 doc-11 §5 refuses. One flag, three exits (doc-11 §7).
+         The 破棄前確認 is a different fact and reaches only two of them: 変更せずに閉じる says what
+         becomes of the 下書き in its own words, so the question would ask what the label answered. -->
     <Modal
       label="設定"
       closeBlocked={settingsSaving ? SAVING_REASON : null}
       confirmDiscard={modalConfirm}
-      onclose={closeSettings}
+      onclose={() => closeSettings(false)}
     >
       <Settings
         loaded={settings}
@@ -1708,7 +1720,7 @@
         onsave={saveSettings}
         onopenLocation={openSettingsLocation}
         saving={settingsSaving}
-        onclose={closeSettings}
+        ondiscard={() => closeSettings(true)}
         ondirty={(dirty) => (settingsDirty = dirty)}
         onsaved={settingsSaved}
       />

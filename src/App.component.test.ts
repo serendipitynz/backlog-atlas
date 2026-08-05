@@ -560,15 +560,15 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     return host;
   }
 
-  it("設定の 3 経路は、下書きがあるとどれも確認を経てからでないと閉じない", async () => {
-    // doc-11 §7: the three exits reach one close request, and TASK-86 puts the 破棄前確認 in front of
-    // that one request — so a route that skipped it would have to have been wired around the request
-    // itself. Each route is taken on its own mount, because the first one that got through would
-    // leave the rest with no modal to press.
+  it("下書きの行方を語で述べていない 2 経路だけが確認を経る", async () => {
+    // doc-11 §7 の役割の別, applied to the question rather than to the controls: the × says only
+    // 閉じる and Escape says nothing at all, so what becomes of the 下書き is said by the 破棄前確認 —
+    // while 変更せずに閉じる has already said it, and asking again would be asking what the label
+    // answered. Each route is taken on its own mount, because the one that gets through leaves the
+    // rest with no modal to press.
     for (const take of [
       (host: HTMLElement) => press(dialogOf(host, "設定"), "Escape"),
       (host: HTMLElement) => click(closeOf(host, "設定")),
-      (host: HTMLElement) => click(byText(host, "footer button", CLOSE_WITHOUT_SAVING_LABEL)),
     ]) {
       const host = await withSettingsDraft();
       take(host);
@@ -581,9 +581,17 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
 
       cleanup();
     }
+
+    const byWording = await withSettingsDraft();
+    click(byText(byWording, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
+
+    // Closed on one press, with the draft dropped — which is what its own label said would happen.
+    expect(byWording.querySelector('[aria-label="設定"]')).toBeNull();
+    expect(confirmBand(byWording)).toBeNull();
+    expect(madeTo("settings_save")).toHaveLength(0);
   });
 
-  it("破棄して続けると閉じ、編集に戻ると下書きも残る", async () => {
+  it("破棄して閉じると閉じ、編集に戻ると下書きも残る", async () => {
     const kept = await withSettingsDraft();
     const chosen = only<HTMLInputElement>(kept, 'input[name="card-density"]:checked');
     press(dialogOf(kept, "設定"), "Escape");
@@ -600,7 +608,7 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
 
     const discarded = await withSettingsDraft();
     press(dialogOf(discarded, "設定"), "Escape");
-    answer(discarded, "設定", "破棄して続ける");
+    answer(discarded, "設定", "破棄して閉じる");
 
     expect(discarded.querySelector('[aria-label="設定"]')).toBeNull();
     expect(madeTo("settings_save")).toHaveLength(0);
@@ -643,7 +651,7 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
       expect(confirmIn(host, "プロジェクトを登録")).not.toBeNull();
       expect(confirmBand(host)).toBeNull();
 
-      answer(host, "プロジェクトを登録", "破棄して続ける");
+      answer(host, "プロジェクトを登録", "破棄して閉じる");
       expect(host.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
       expect(madeTo("ledger_register")).toHaveLength(0);
 
@@ -654,7 +662,7 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
   it("画面が上げた確認をモーダルが引き取らない", async () => {
     // Where the question is drawn is decided by which layer is up, so a question raised by a route
     // that has nothing to do with these モーダル must not become one of theirs on the way in: its
-    // 破棄して続ける would carry out that other route *behind* the layer, and the モーダル would be left
+    // 破棄して閉じる would carry out that other route *behind* the layer, and the モーダル would be left
     // standing over a screen that had changed underneath it.
     const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
     click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
@@ -711,7 +719,7 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
 
   it("登録の発行中は、確認より前に 2 経路とも断られる", async () => {
     // AC #3 の 登録中: the order matters. A 破棄前確認 raised while the registration is unresolved
-    // would offer 破棄して続ける for input the ledger is in the middle of taking — the request must not
+    // would offer 破棄して閉じる for input the ledger is in the middle of taking — the request must not
     // be issued at all until the write answers, which is the same 事情 the 設定 holds one screen over
     // (doc-11 §7 の いま閉じられない).
     const hold = deferred<void>();
