@@ -42,6 +42,7 @@
     EMPTY_MILESTONE_RENAME,
     EMPTY_TASK_CREATE,
     ISSUE_BUSY_REASON,
+    MILESTONE_DESCRIPTION_NOT_EDITABLE,
     MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
     MILESTONE_REMOVE_MOVES_THE_FILE,
     TASK_CREATE_OMITTED_FIELDS,
@@ -81,9 +82,9 @@
   import {
     ALIAS_EFFECT_NOTES,
     DETAIL_SECTIONS,
-    DOC_LIST_WIDTH_REM,
     displayPath,
     LEDGER_WRITE_IN_FLIGHT_REASON,
+    LIST_COLUMN_WIDTH_REM,
     OVERVIEW_READ_ONLY_NOTE,
     SECTION_NAV_WIDTH_REM,
     SLUG_IMMUTABLE_NOTE,
@@ -500,23 +501,82 @@
   }
 
   /**
-   * Which milestone's 改称・削除・アーカイブ is open (doc-10 §6). One at a time, keyed by id: each
-   * carries input of its own, and two open at once would leave the 書き換え対象集合 shown beside one
-   * operation while another is the one about to be issued.
+   * 選択中のマイルストーン (doc-10 §6): which card the マイルストーン一覧 holds selected. One at a
+   * time, and it is only a selection — unlike the 文書区画's card it opens no 編集セッション
+   * (doc-8 §1), which is why the pane it drives is the 操作ペイン and not an 編集ペイン.
    */
-  let milestoneOp = $state<{ id: string; kind: "rename" | "remove" | "archive" } | null>(null);
+  let milestoneSelection = $state<string | null>(null);
+  /** The 操作ペイン's scroll container, for the reset on selection (doc-10 §6). */
+  let milestonePane = $state<HTMLDivElement | undefined>(undefined);
+  /**
+   * Which operation is open on the selected milestone (doc-10 §6). Two open at once would leave the
+   * 書き換え対象集合 shown beside one operation while another is the one about to be issued.
+   */
+  let milestoneOp = $state<"rename" | "remove" | "archive" | null>(null);
   let renameInput = $state<MilestoneRenameInput>({ ...EMPTY_MILESTONE_RENAME });
   let removeInput = $state<MilestoneRemoveInput>({ ...EMPTY_MILESTONE_REMOVE });
+  /**
+   * Input typed into the open operation and not yet issued — what the 破棄前確認 protects
+   * (doc-10 §6). `reassignTo` needs no clause of its own: the field only appears once 参照タスクの
+   * 扱い is `reassign`, so `handling !== null` already stands wherever a 付け替え先 could be set.
+   */
+  let milestoneOpDirty = $derived(renameInput.to.trim() !== "" || removeInput.handling !== null);
+  /** Where the user asked to go while 未保存入力 was held — **not applied** until they answer. */
+  let pendingMilestone = $state<{ milestone: Milestone | null } | null>(null);
 
-  function openMilestoneOp(milestone: Milestone, kind: "rename" | "remove" | "archive"): void {
-    // Pressing the open operation again closes it, which is a cancel like any other.
-    if (milestoneOp?.id === milestone.id && milestoneOp.kind === kind) {
+  /** Select one milestone's card, asking first when the open operation's input would be lost. */
+  function selectMilestone(milestone: Milestone): void {
+    // Already selected: re-pressing the card would restart the pane and drop the input silently.
+    if (milestoneSelection === milestone.id) return;
+    if (milestoneOpDirty) {
+      pendingMilestone = { milestone };
+      return;
+    }
+    openMilestone(milestone);
+  }
+
+  async function openMilestone(milestone: Milestone): Promise<void> {
+    milestoneSelection = milestone.id;
+    // Each selection starts from no operation and empty input, so a name or a 付け替え先 typed for
+    // one milestone cannot be issued against the next.
+    closeMilestoneOp();
+    message = null;
+    // Same reset as the 編集ペイン's (doc-10 §6): the pane is one persistent scroller whose content
+    // swaps, so a kept scrollTop would hide the newly selected milestone's operations above the
+    // viewport. Never the 一覧, whose kept position is the point of the split scrollers.
+    await tick();
+    if (milestonePane !== undefined) milestonePane.scrollTop = 0;
+  }
+
+  /** Drop the selection and go back to the 作成フォーム, asking first when input would be lost. */
+  function clearMilestoneSelection(): void {
+    if (milestoneOpDirty) {
+      pendingMilestone = { milestone: null };
+      return;
+    }
+    milestoneSelection = null;
+    closeMilestoneOp();
+  }
+
+  function milestoneLeaveConfirmed(): void {
+    const target = pendingMilestone;
+    pendingMilestone = null;
+    if (target === null) return;
+    if (target.milestone === null) {
+      milestoneSelection = null;
       closeMilestoneOp();
       return;
     }
-    milestoneOp = { id: milestone.id, kind };
-    // Moving to another operation starts from empty, so a name or a 付け替え先 typed for one
-    // milestone cannot be issued against the next.
+    openMilestone(target.milestone);
+  }
+
+  function openMilestoneOp(kind: "rename" | "remove" | "archive"): void {
+    // Pressing the open operation again closes it, which is a cancel like any other.
+    if (milestoneOp === kind) {
+      closeMilestoneOp();
+      return;
+    }
+    milestoneOp = kind;
     renameInput = { ...EMPTY_MILESTONE_RENAME };
     removeInput = { ...EMPTY_MILESTONE_REMOVE };
     message = null;
@@ -535,8 +595,8 @@
 
   /** The plan the open operation would issue, or `null` when none is open. */
   function milestoneOpPlan(milestone: Milestone): IssuePlan | null {
-    if (milestoneOp?.id !== milestone.id) return null;
-    switch (milestoneOp.kind) {
+    if (milestoneSelection !== milestone.id || milestoneOp === null) return null;
+    switch (milestoneOp) {
       case "rename":
         return buildMilestoneRename(milestone, renameInput);
       case "remove":
@@ -570,8 +630,26 @@
     // Closed on success only: the milestone the input names is gone (removed/archived) or renamed,
     // so keeping the form open would offer a second issue against a stale operand. A failure or a
     // 更新前競合 keeps it, which is what lets the user reload and retry the same input.
-    if (outcome?.state === "applied") closeMilestoneOp();
+    if (outcome?.state !== "applied") return;
+    closeMilestoneOp();
+    // The re-read has already landed, so this asks the *post-operation* list. 削除・アーカイブ take
+    // the milestone out of it and the selection would name nothing; 改称 keeps the id (v1.48.0 does
+    // not change it, doc-9 §4.2.1) and so keeps the selection standing.
+    if (!(project?.milestones ?? []).some((candidate) => candidate.id === milestone.id)) {
+      milestoneSelection = null;
+    }
   }
+
+  /**
+   * The selected milestone as the current read holds it (doc-10 §6). Derived rather than stored, so
+   * an external change that removes it drops the 操作ペイン back to the 作成フォーム instead of
+   * leaving operations pointed at a milestone that is no longer there.
+   */
+  let selectedMilestone = $derived(
+    milestoneSelection === null
+      ? null
+      : (project?.milestones.find((candidate) => candidate.id === milestoneSelection) ?? null),
+  );
 
   // --- 未保存入力 (doc-8 §6.3) -------------------------------------------------------------------
 
@@ -589,9 +667,9 @@
       hasDocCreateInput(docInput) ||
       hasMilestoneAddInput(milestoneInput) ||
       // An open 改称・削除 carries input of its own — a name typed but not yet issued is exactly the
-      // kind of thing leaving the screen loses silently (doc-8 §6.3).
-      renameInput.to.trim() !== "" ||
-      removeInput.handling !== null ||
+      // kind of thing leaving the screen loses silently (doc-8 §6.3). The same value drives the
+      // 区画内の破棄前確認 (doc-10 §6), so the two cannot disagree about what counts as unsaved.
+      milestoneOpDirty ||
       newLabel.trim() !== "" ||
       newCriterion.trim() !== "",
   );
@@ -602,8 +680,10 @@
 
   // --- 表示の小道具 -------------------------------------------------------------------------------
 
-  /** Where the list's 編集 buttons send `aria-describedby` while issuance is held (doc-11 §5). */
+  /** Where a 一覧列's cards send `aria-describedby` while issuance is held (doc-11 §5). One id per
+   * 区画, because the two lists are never on screen together but their sentences differ. */
   const DOC_EDIT_BLOCKED_ID = "detail-doc-edit-blocked";
+  const MILESTONE_SELECT_BLOCKED_ID = "detail-milestone-select-blocked";
 
   function why(availability: { state: string; reason?: string }): string {
     return availability.state === "blocked" ? (availability.reason ?? "") : "";
@@ -688,7 +768,7 @@
      out are the same one (TASK-113's pattern). Both size content boxes (TASK-115). -->
 <div
   class="detail"
-  style="--section-nav-width: {SECTION_NAV_WIDTH_REM}rem; --doc-list-width: {DOC_LIST_WIDTH_REM}rem"
+  style="--section-nav-width: {SECTION_NAV_WIDTH_REM}rem; --list-column-width: {LIST_COLUMN_WIDTH_REM}rem"
 >
   <!-- ヘッダ (doc-10 §3): identity and the round trip only. Nothing here writes. The パンくず
        (doc-12 §8) puts 「← スイムレーン」 at the top left — where a way back is looked for — with
@@ -730,7 +810,8 @@
       {/each}
     </nav>
 
-    <div class="panel" class:split={section === "documents"}>
+    <!-- 一覧列を持つ 2 区画 (doc-10 §1/§5/§6) では、パネルはスクローラを 2 列へ譲る。 -->
+    <div class="panel" class:split={section === "documents" || section === "milestones"}>
       {#if message !== null}
         <p class={message.tone}>{message.text}</p>
       {/if}
@@ -967,7 +1048,7 @@
              from design 07's single scroller, recorded in doc-10 §5 — so choosing a document swaps
              the pane while the list keeps its scroll position. The 破棄前確認 stays above the
              columns: it must be visible whatever either column has scrolled to. -->
-        <section class="doc-grid">
+        <section class="split-section">
           {#if unreadableNote !== null}
             <h2>文書</h2>
             <p class="unreadable">{unreadableNote}</p>
@@ -994,7 +1075,7 @@
             {/if}
 
             <div class="columns">
-              <div class="doc-list">
+              <div class="list-column">
                 <!-- The list's own heading (目視反映): the count belongs to the column that holds
                      the cards, and keeping it out of the scroller is what keeps it readable at any
                      scroll position. -->
@@ -1011,7 +1092,7 @@
                       {issuingReason}。完了するまで文書の編集は開けません。
                     </p>
                   {/if}
-                  <ul class="doc-cards">
+                  <ul class="cards">
                     {#each project.documents as document (document.id)}
                       {@const current = docSession?.baseline.id === document.id}
                       <li>
@@ -1021,7 +1102,7 @@
                              moved to the 編集ペイン's heading (doc-10 §5's recorded departure). -->
                         <button
                           type="button"
-                          class="doc-card"
+                          class="card"
                           class:current
                           aria-current={current ? "true" : undefined}
                           aria-disabled={issuing}
@@ -1057,7 +1138,7 @@
               <!-- 編集ペイン (doc-10 §5): the update form alone while a session is open — the
                    create form beside a live editor buried the editor's own actions (目視反映) —
                    and the create form with the withheld operations otherwise. -->
-              <div class="doc-pane" bind:this={docPane}>
+              <div class="pane" bind:this={docPane}>
                 {#if docSession !== null}
                   {@const session = docSession}
                   <div class="sub-panel">
@@ -1211,38 +1292,123 @@
           {/if}
         </section>
       {:else if section === "milestones"}
-        <!-- マイルストーン区画 (doc-10 §6) -->
-        <section>
-          <h2>マイルストーン</h2>
-
+        <!-- マイルストーン区画 (doc-10 §6): マイルストーン一覧 — this 区画's 一覧列 (§1) — beside the
+             操作ペイン, the same three columns the 文書区画 has. The pane is not called an 編集ペイン
+             because selecting a card opens no 編集セッション (doc-8 §1): what opens here is 改称・
+             削除・アーカイブ. Each column scrolls on its own and the 破棄前確認 stays above both,
+             for the reasons doc-10 §5 records and §6 repeats. -->
+        <section class="split-section">
           {#if unreadableNote !== null}
+            <h2>マイルストーン</h2>
             <p class="unreadable">{unreadableNote}</p>
+            {@render withheld(
+              "現時点で提供しない操作（マイルストーン）",
+              WITHHELD_MILESTONE_OPERATIONS,
+            )}
           {:else if project === null}
+            <h2>マイルストーン</h2>
             <p class="neutral">読み込み中…</p>
+            {@render withheld(
+              "現時点で提供しない操作（マイルストーン）",
+              WITHHELD_MILESTONE_OPERATIONS,
+            )}
           {:else}
-            {#if project.milestones.length === 0}
-              <p class="neutral">マイルストーンはありません。</p>
-            {:else}
-              <ul class="records">
-                {#each project.milestones as milestone (milestone.id)}
+            {#if pendingMilestone !== null}
+              <!-- 破棄前確認 (doc-10 §6): the open operation holds 未保存入力 and the requested move
+                   would drop it. The move itself has not been applied. -->
+              <div class="confirm">
+                <span>
+                  {#if pendingMilestone.milestone === null}
+                    マイルストーンの操作に未保存入力があります。選択を解除すると破棄されます。
+                  {:else}
+                    マイルストーンの操作に未保存入力があります。{pendingMilestone.milestone.id} を開くと破棄されます。
+                  {/if}
+                </span>
+                <button type="button" onclick={milestoneLeaveConfirmed}>破棄して続行</button>
+                <button type="button" onclick={() => (pendingMilestone = null)}>入力に戻る</button>
+              </div>
+            {/if}
+
+            <div class="columns">
+              <div class="list-column">
+                <h2>マイルストーン {project.milestones.length} 件</h2>
+                {#if project.milestones.length === 0}
+                  <p class="neutral">マイルストーンはありません。</p>
+                {:else}
+                  {#if issuingReason !== null}
+                    <!-- Every card is held by the same one thing (doc-11 §5): written once above the
+                         list and each card bound to it. They stay `aria-disabled` so they keep
+                         taking focus, which is what makes the binding reachable without a pointer. -->
+                    <p class="reason" id={MILESTONE_SELECT_BLOCKED_ID}>
+                      {issuingReason}。完了するまで別のマイルストーンは開けません。
+                    </p>
+                  {/if}
+                  <ul class="cards">
+                    {#each project.milestones as milestone (milestone.id)}
+                      {@const held = project.tasks.filter(
+                        (view) => view.task.milestone === milestone.id,
+                      ).length}
+                      {@const current = milestoneSelection === milestone.id}
+                      <li>
+                        <!-- カード (doc-10 §6): id・title・所属タスク件数. No 説明 — the 一覧列 is
+                             16rem and the description is stated in the pane instead (§6's recorded
+                             departure). No「編集中」chip either: a selection opens no session, so
+                             the emphasis alone says which one is open. -->
+                        <button
+                          type="button"
+                          class="card"
+                          class:current
+                          aria-current={current ? "true" : undefined}
+                          aria-disabled={issuing}
+                          aria-describedby={issuing ? MILESTONE_SELECT_BLOCKED_ID : undefined}
+                          title={issuingReason ?? "このマイルストーンを開きます"}
+                          onclick={() => !issuing && selectMilestone(milestone)}
+                        >
+                          <span class="card-head">
+                            <span class="id">{milestone.id}</span>
+                            <span class="meta">所属タスク {held} 件</span>
+                            {#if current && milestoneOpDirty}
+                              <!-- 未保存入力の印 (doc-10 §6): only the selected card can carry it,
+                                   and it is shown here so「まだ発行していない」stays readable when
+                                   the 操作ペイン has scrolled out of view. -->
+                              <span class="unsaved">未保存</span>
+                            {/if}
+                          </span>
+                          <span class="card-title">{milestone.title}</span>
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+
+              <!-- 操作ペイン (doc-10 §6): the selected milestone's operations alone while one is
+                   selected, and the create form with the withheld operations otherwise. -->
+              <div class="pane" bind:this={milestonePane}>
+                {#if selectedMilestone !== null}
+                  {@const milestone = selectedMilestone}
                   {@const held = project.tasks.filter(
                     (view) => view.task.milestone === milestone.id,
                   ).length}
                   {@const plan = milestoneOpPlan(milestone)}
-                  {@const open = milestoneOp?.id === milestone.id ? milestoneOp.kind : null}
+                  {@const open = milestoneOp}
                   {@const opIssue = plan === null ? null : availability(plan)}
                   {@const targets = rewriteTargets(milestone, plan)}
-                  <li>
+                  <div class="sub-panel">
                     <div class="record-head">
                       <span class="id">{milestone.id}</span>
                       <span class="title">{milestone.title}</span>
                       <span class="meta">所属タスク {held} 件</span>
                     </div>
+                    <!-- 説明 (doc-10 §6): stated here rather than on the card, which is the second
+                         of this 区画's departures from design 07. -->
                     {#if milestone.description}
                       <p class="description">{milestone.description}</p>
                     {:else}
                       <p class="neutral">説明なし</p>
                     {/if}
+                    <p class="hint">{MILESTONE_DESCRIPTION_NOT_EDITABLE}</p>
+
                     <!-- 改称・削除・アーカイブ (doc-10 §6). doc-9 §4.2 defines the 照合 for all
                          three, so they are operations here rather than 提供しない操作区画 entries. -->
                     <div class="actions">
@@ -1251,7 +1417,7 @@
                         aria-expanded={open === "rename"}
                         disabled={issuing}
                         title={issuingReason ?? ""}
-                        onclick={() => openMilestoneOp(milestone, "rename")}
+                        onclick={() => openMilestoneOp("rename")}
                       >
                         改称
                       </button>
@@ -1260,7 +1426,7 @@
                         aria-expanded={open === "remove"}
                         disabled={issuing}
                         title={issuingReason ?? ""}
-                        onclick={() => openMilestoneOp(milestone, "remove")}
+                        onclick={() => openMilestoneOp("remove")}
                       >
                         削除
                       </button>
@@ -1269,10 +1435,11 @@
                         aria-expanded={open === "archive"}
                         disabled={issuing}
                         title={issuingReason ?? ""}
-                        onclick={() => openMilestoneOp(milestone, "archive")}
+                        onclick={() => openMilestoneOp("archive")}
                       >
                         アーカイブ
                       </button>
+                      <button type="button" onclick={clearMilestoneSelection}>選択を解除</button>
                     </div>
 
                     {#if open !== null}
@@ -1401,49 +1568,53 @@
                         </div>
                       </div>
                     {/if}
-                  </li>
-                {/each}
-              </ul>
-            {/if}
+                  </div>
+                {:else}
+                  <div class="sub-panel">
+                    <h3>マイルストーンを作成（milestone add）</h3>
+                    <label class="field">
+                      <span class="label">名称（必須）</span>
+                      <input
+                        type="text"
+                        value={milestoneInput.name}
+                        oninput={(event) => (milestoneInput.name = event.currentTarget.value)}
+                      />
+                    </label>
+                    <label class="field">
+                      <span class="label">説明（作成時のみ設定できます）</span>
+                      <input
+                        type="text"
+                        value={milestoneInput.description}
+                        oninput={(event) =>
+                          (milestoneInput.description = event.currentTarget.value)}
+                      />
+                    </label>
+                    <p class="hint">
+                      作成後、左の一覧でそのマイルストーンのカードを選ぶと改称・削除・アーカイブができます。
+                    </p>
+                    <div class="actions">
+                      <button
+                        type="button"
+                        disabled={milestoneIssue.state !== "ready"}
+                        title={why(milestoneIssue)}
+                        onclick={addMilestone}
+                      >
+                        マイルストーンを作成
+                      </button>
+                      {#if milestoneIssue.state === "blocked"}
+                        <span class="reason">{milestoneIssue.reason}</span>
+                      {/if}
+                    </div>
+                  </div>
 
-            <div class="sub-panel">
-              <h3>マイルストーンを作成（milestone add）</h3>
-              <label class="field">
-                <span class="label">名称（必須）</span>
-                <input
-                  type="text"
-                  value={milestoneInput.name}
-                  oninput={(event) => (milestoneInput.name = event.currentTarget.value)}
-                />
-              </label>
-              <label class="field">
-                <span class="label">説明（作成時のみ設定できます）</span>
-                <input
-                  type="text"
-                  value={milestoneInput.description}
-                  oninput={(event) => (milestoneInput.description = event.currentTarget.value)}
-                />
-              </label>
-              <div class="actions">
-                <button
-                  type="button"
-                  disabled={milestoneIssue.state !== "ready"}
-                  title={why(milestoneIssue)}
-                  onclick={addMilestone}
-                >
-                  マイルストーンを作成
-                </button>
-                {#if milestoneIssue.state === "blocked"}
-                  <span class="reason">{milestoneIssue.reason}</span>
+                  {@render withheld(
+                    "現時点で提供しない操作（マイルストーン）",
+                    WITHHELD_MILESTONE_OPERATIONS,
+                  )}
                 {/if}
               </div>
             </div>
           {/if}
-
-          {@render withheld(
-            "現時点で提供しない操作（マイルストーン）",
-            WITHHELD_MILESTONE_OPERATIONS,
-          )}
         </section>
       {:else}
         <!-- 新規タスク区画 (doc-10 §7) -->
@@ -1676,10 +1847,11 @@
     padding: 0.6rem 0.75rem 1.5rem;
     overflow-y: auto;
 
-    // 文書区画 (doc-10 §5): the panel stops being the scroller and hands its height to the two
-    // columns, each scrolling on its own. Its horizontal padding moves into the columns — a focus
-    // ring at a scrollport's edge is clipped (TASK-74's実測), so each scroll container carries its
-    // own side padding — which leaves the direct children above the columns to carry it themselves.
+    // 一覧列を持つ区画 (doc-10 §1: 文書 §5 と マイルストーン §6): the panel stops being the scroller
+    // and hands its height to the two columns, each scrolling on its own. Its horizontal padding
+    // moves into the columns — a focus ring at a scrollport's edge is clipped (TASK-74's実測), so
+    // each scroll container carries its own side padding — which leaves the direct children above
+    // the columns to carry it themselves.
     &.split {
       display: flex;
       flex-direction: column;
@@ -1693,7 +1865,7 @@
     }
   }
 
-  .doc-grid {
+  .split-section {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -1715,14 +1887,15 @@
     min-height: 0;
   }
 
-  // 文書一覧 (doc-10 §5): the column that keeps the selection. Width is design 07's 16rem, a
-  // content box like the 区画ナビ's. The heading stays out of the scroller (`.doc-cards` is the
-  // scroll container) so the count is readable at any scroll position.
-  .doc-list {
+  // 一覧列 (doc-10 §1): the column that keeps the selection — 文書一覧 (§5) and マイルストーン一覧
+  // (§6) are its two instances, styled once because the doc calls them one column type. Width is
+  // design 07's 16rem, a content box like the 区画ナビ's. The heading stays out of the scroller
+  // (`.cards` is the scroll container) so the count is readable at any scroll position.
+  .list-column {
     display: flex;
     flex: none;
     flex-direction: column;
-    width: var(--doc-list-width);
+    width: var(--list-column-width);
     padding: 0 0.35rem 0 0.75rem;
     border-right: 1px solid var(--line);
     overflow: hidden;
@@ -1732,7 +1905,7 @@
     }
   }
 
-  .doc-cards {
+  .cards {
     flex: 1;
     min-height: 0;
     margin: 0;
@@ -1746,9 +1919,9 @@
     }
   }
 
-  // カード (doc-10 §5): the whole area is the selection, and the current one is marked the way
+  // カード (doc-10 §5/§6): the whole area is the selection, and the current one is marked the way
   // the 区画ナビ marks its current entry — one vocabulary for「いま開いているもの」.
-  .doc-card {
+  .card {
     display: block;
     width: 100%;
     padding: 0.3rem 0.45rem;
@@ -1800,10 +1973,12 @@
     font-size: 0.66rem;
   }
 
-  // 編集ペイン (doc-10 §5): the update form alone while a session is open; the create form and
-  // the withheld operations otherwise. Its first block starts at the columns' top — the pane has
-  // no heading of its own, so an inherited margin here reads as a hole (目視反映).
-  .doc-pane {
+  // 編集ペイン (doc-10 §5) / 操作ペイン (§6): the selected thing's form alone while something is
+  // selected; the create form and the withheld operations otherwise. Two names in the doc because
+  // only one of them opens a 編集セッション, one rule here because the column is the same shape.
+  // Its first block starts at the columns' top — the pane has no heading of its own, so an
+  // inherited margin here reads as a hole (目視反映).
+  .pane {
     flex: 1;
     min-width: 0;
     padding: 0 0.75rem 1.5rem 0.6rem;
@@ -2043,17 +2218,8 @@
     }
   }
 
-  .records {
-    margin: 0 0 0.5rem;
-    padding: 0;
-    list-style: none;
-
-    li {
-      padding: 0.3rem 0;
-      border-bottom: 1px solid var(--line);
-    }
-  }
-
+  // 操作ペインの見出し行 (doc-10 §6): which milestone is selected, on one line. Replaces the flat
+  // list row this 区画 had before the 3 カラム, which is why it keeps that row's typography.
   .record-head {
     display: flex;
     flex-wrap: wrap;
