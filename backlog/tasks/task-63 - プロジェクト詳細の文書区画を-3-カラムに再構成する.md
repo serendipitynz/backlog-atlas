@@ -1,10 +1,10 @@
 ---
 id: TASK-63
 title: プロジェクト詳細の文書区画を 3 カラムに再構成する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:29'
-updated_date: '2026-08-05 08:28'
+updated_date: '2026-08-05 09:40'
 labels:
   - ui
   - project-detail
