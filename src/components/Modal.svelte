@@ -20,18 +20,44 @@
   // control outside would not be one. Nothing becomes unreachable — Escape closes this modal and gives
   // focus back, so an unanswered ① is one key away, and none of the three can raise a 破棄前確認 of its
   // own, since opening them unmounts nothing that holds 未保存入力.
+  //
+  // **The × in the corner is this layer's** (doc-11 §7, TASK-76), not each caller's. Before, every one
+  // of the three drew a 閉じる text button of its own beside its heading, so the one operation the three
+  // share was three controls in three files — and the 設定 had none at all after TASK-74 moved its exits
+  // to the 下部操作行. The × says only "close this layer"; a モーダル that holds a 下書き says what
+  // becomes of it in its own 下部操作行 beside it (doc-11 §7 の役割の別).
   import type { Snippet } from "svelte";
+  import Icon from "../lib/icons/Icon.svelte";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
 
   interface Props {
     /** The dialog's accessible name — what the header entry that opened it is called. */
     label: string;
+    /**
+     * Why the shell will turn a close request away right now, or `null` while it will take one.
+     *
+     * The layer asks rather than decides — `onclose` stays a request (see below) — but a control that
+     * silently does nothing is the 理由の無い無効化 doc-11 §5 refuses, and the × is the one exit that
+     * has a control to hang a reason on. The shell holds the fact because it is the shell that wires
+     * both exits: `App.svelte`'s `settingsSaving` turns away Escape too, so one circumstance closes
+     * both rather than each exit reading its own.
+     */
+    closeBlocked?: string | null;
     onclose: () => void;
     children: Snippet;
   }
 
-  let { label, onclose, children }: Props = $props();
+  let { label, closeBlocked = null, onclose, children }: Props = $props();
+
+  /**
+   * Where `aria-describedby` points while the × is withheld. A module constant rather than a generated
+   * id: 被せ層 は 1 枚だけ (`App.svelte`'s `raiseModal`), so two of these cannot be in the document at
+   * once. The reason is spelled here rather than shared with the caller's own printed line — a caller
+   * that prints it (`Settings.svelte`'s 下部操作行) keeps its line, and one that does not still has a
+   * reason to point at.
+   */
+  const CLOSE_BLOCKED_ID = "modal-close-blocked";
 
   /**
    * 閉じたら開く前の操作へフォーカスを戻す (doc-7 §2.1). Read while the component initialises, which is
@@ -133,6 +159,34 @@
     bind:this={dialog}
     onkeydown={keydown}
   >
+    <!--
+      アイコンのみのボタン (doc-11 §2.4): no visible wording, so `aria-label` carries the whole name and
+      it stays 閉じる whatever this layer is holding — the dialog's own `aria-label` above already says
+      *what* is being closed, and 「プロジェクトを登録を閉じる」 is what composing the two would read as.
+      `title` gives way to the reason while the close is withheld, as the 下部操作行 does.
+
+      First in the dialog, so Tab starts here and the layer's own exit is one press away from opening —
+      and so `Modal`'s focus-on-mount lands at the top of the box rather than below whatever the caller
+      draws first (`ShortcutHelp` opens on a nine-row table and would otherwise open already scrolled).
+    -->
+    <button
+      type="button"
+      class="close"
+      aria-label="閉じる"
+      aria-disabled={closeBlocked !== null}
+      aria-describedby={closeBlocked === null ? undefined : CLOSE_BLOCKED_ID}
+      title={closeBlocked ?? "閉じる"}
+      onclick={() => closeBlocked === null && onclose()}
+    >
+      <Icon name="x" />
+    </button>
+    <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Hidden from sight rather than left out: the one caller
+         that withholds this control prints the same reason in its 下部操作行, and a second visible copy
+         would name one circumstance twice in one box. Kept in the DOM at all times because a target
+         inserted at the moment it is pointed at is not reliably announced. -->
+    <span class="unseen" id={CLOSE_BLOCKED_ID}>
+      {closeBlocked === null ? "" : `いま押せません: ${closeBlocked}`}
+    </span>
     {@render children()}
   </div>
 </div>
@@ -166,7 +220,14 @@
      * expressed in the same unit as the inset above (TASK-115 の幾何).
      */
     --modal-dialog-border: 1px;
+    /*
+     * How far the × is held off the box's top and right edges. Its own value rather than a caller's
+     * padding: the callers do not agree on one (`Settings` inlines 0.75rem, the other two pad 0.75rem
+     * all round), and the × belongs to this box, not to what is drawn inside it.
+     */
+    --modal-close-inset: 0.5rem;
 
+    position: relative;
     width: min(44rem, 100%);
     border: var(--modal-dialog-border) solid var(--line-strong);
     // パネル 6px (doc-11 §2.2).
@@ -178,5 +239,66 @@
       outline: 2px solid var(--sel);
       outline-offset: 1px;
     }
+  }
+
+  /*
+   * Out of the flow, so the box's first row is whatever the caller draws there (the heading) and the ×
+   * sits at the end of that same line without every caller having to leave a slot for it.
+   *
+   * Square and sized from its own font-size: the figure is 1em (doc-11 §2.4), so the two numbers below
+   * are the figure plus the room around it, and nothing here re-states the figure's size.
+   */
+  .close {
+    box-sizing: border-box;
+    position: absolute;
+    top: var(--modal-close-inset);
+    right: var(--modal-close-inset);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 1px solid transparent;
+    // カード・ボタン 4px (doc-11 §2.2).
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+
+    // hover は 枠線 --line → --line-strong (doc-11 §2.3). At rest the border is transparent rather
+    // than absent: a border appearing on hover would move the figure by a pixel, and the whole point
+    // of drawing it is that the control answers where it is.
+    &:hover {
+      border-color: var(--line-strong);
+    }
+
+    // 無効化提示 の 破線枠 (doc-11 §2.3) is drawn by `app.scss` as a `border-style`, which a border
+    // this control keeps transparent at rest would draw in no colour at all. The colour is given back
+    // here so the withheld state is the three marks §2.3 asks for and not two of them.
+    &[aria-disabled="true"] {
+      border-color: var(--line-strong);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--sel);
+      outline-offset: 1px;
+    }
+  }
+
+  // doc-11 §5 の 2 つ目の形: the reason stays in the accessibility tree while it is out of sight.
+  // `display: none` would take it out of both, and a described-by target that is not in the tree is
+  // the same as having no reason at all.
+  .unseen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 </style>

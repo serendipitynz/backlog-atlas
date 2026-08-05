@@ -322,7 +322,16 @@ describe("タスク詳細の離脱と保存中状態", () => {
 
 // -------------------------------------------------------------------------------------------------
 
-describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", () => {
+describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
+  /**
+   * この層の × (doc-11 §7, TASK-76) — the one exit every モーダル has, whatever it holds. Found by its
+   * announced name because it is an アイコンのみのボタン (doc-11 §2.4) with no text of its own; the
+   * dialog is named so the lookup cannot drift onto some other 閉じる on the screen behind.
+   */
+  function closeOf(host: HTMLElement, label: string): HTMLButtonElement {
+    return byLabel<HTMLButtonElement>(host, `[role="dialog"][aria-label="${label}"] button`, "閉じる");
+  }
+
   /**
    * Take one line of the menu the way the screen offers it: through the ☰, which is the header's only
    * control since TASK-66 folded the per-entry buttons away (doc-7 §2.1). Two presses rather than one,
@@ -356,16 +365,26 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
     expect(document.activeElement).toBe(byLabel(host, "button.header-entry", "メニュー"));
   }
 
-  it("Escape と Settings 自身の閉じるが、どちらも同じ 1 つの出口へ届く", async () => {
+  it("Escape・×・変更せずに閉じる の 3 つが、どれも同じ 1 つの出口へ届く", async () => {
     // Asserted through the real caller rather than a snippet: what a snippet would prove is that the
-    // layer answers Escape, and the contract is that `Modal`'s `onclose` and the child's own control
-    // are the *same* request. Only the caller wires both, so only from here can one of them be
-    // rewired without the test noticing.
+    // layer answers Escape, and the contract is that `Modal`'s `onclose` — reached by Escape and by
+    // the × the layer draws — and the child's own control are the *same* request. Only the caller
+    // wires all three, so only from here can one of them be rewired without the test noticing.
+    //
+    // 設定 is the モーダル that has all three, which is what makes it the one to assert them on: the
+    // × says only 閉じる, and the 下部操作行 says what becomes of the 下書き (doc-11 §7 の役割の別).
     const byEscape = await openSettings();
     const dialog = only(byEscape, '[role="dialog"][aria-label="設定"]');
     press(dialog, "Escape");
     expect(byEscape.querySelector('[aria-label="設定"]')).toBeNull();
     expectFocusBackOnMenu(byEscape);
+
+    cleanup();
+
+    const byCorner = await openSettings();
+    click(closeOf(byCorner, "設定"));
+    expect(byCorner.querySelector('[aria-label="設定"]')).toBeNull();
+    expectFocusBackOnMenu(byCorner);
 
     cleanup();
 
@@ -378,12 +397,14 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
     expectFocusBackOnMenu(byControl);
   });
 
-  it("保存の発行中は、その 2 経路のどちらもモーダルを閉じない", async () => {
-    // The same contract from the other side: while a 設定 save is unresolved, *neither* exit may take
-    // the panel away. Leaving would drop the report of a write that is still going to land, under a
+  it("保存の発行中は、その 3 経路のどれもモーダルを閉じない", async () => {
+    // The same contract from the other side: while a 設定 save is unresolved, *no* exit may take the
+    // panel away. Leaving would drop the report of a write that is still going to land, under a
     // control named 変更せずに閉じる — and the failure branch would lose the draft it is meant to keep.
-    // Both routes are held by one flag in the shell, which is why this is asserted through the caller
-    // rather than in the form: only from here can Escape and the button be seen to answer to it.
+    // All three routes are held by one flag in the shell, which is why this is asserted through the
+    // caller rather than in the form: only from here can Escape, the ×, and the button be seen to
+    // answer to it. The × is the exit that also has to *say* why (doc-11 §5), which is fixed in
+    // `Modal.component.test.ts`; what is fixed here is that the shell hands it the same one fact.
     const hold = deferred<void>();
     answers.settingsSaveHold = hold;
     const host = await openSettings();
@@ -408,6 +429,12 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
     await settled();
     expect(host.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
 
+    const corner = closeOf(host, "設定");
+    click(corner);
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
+    expect(corner.getAttribute("aria-disabled")).toBe("true");
+
     // Once the write lands, 保存する's own close goes through — the modal was held, not stuck.
     hold.resolve();
     await settled();
@@ -426,7 +453,9 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
 
     const byControl = await startWith([loaded("atlas", [TASK])]);
     chooseFromMenu(byControl, "プロジェクトを登録");
-    click(byText(byControl, "button", "閉じる"));
+    // Two rather than three: this モーダル holds no 下書き to state the fate of, so it has no
+    // 下部操作行 and the × is its only pressable exit (doc-11 §7).
+    click(closeOf(byControl, "プロジェクトを登録"));
     expect(byControl.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
     expectFocusBackOnMenu(byControl);
   });
@@ -456,7 +485,7 @@ describe("モーダルの 2 つの出口が同じ閉じる要求へ集まる", (
 
     const byControl = await startWith([loaded("atlas", [TASK])]);
     chooseFromMenu(byControl, SHORTCUT_HELP_LABEL);
-    click(byText(byControl, '[aria-label="キーボード操作の一覧"] button', "閉じる"));
+    click(closeOf(byControl, "キーボード操作の一覧"));
     expect(byControl.querySelector('[aria-label="キーボード操作の一覧"]')).toBeNull();
     expectFocusBackOnMenu(byControl);
   });

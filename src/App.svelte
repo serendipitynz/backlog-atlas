@@ -83,7 +83,7 @@
     type HistoryInputs,
     type HistoryRead,
   } from "./lib/history-read";
-  import { openLocationFailure } from "./lib/settings";
+  import { SAVING_REASON, openLocationFailure } from "./lib/settings";
   import { createSettingsWriter } from "./lib/settings-write";
   import { themeAttribute } from "./lib/theme";
   import {
@@ -766,11 +766,15 @@
   }
 
   /**
-   * Every way out of the 設定モーダル — its own 変更せずに閉じる, and the Escape `Modal.svelte` answers.
-   * Both are turned away while a save is unresolved: the panel is what reports the write's outcome, and
-   * leaving takes it away while the write already issued goes on to store the draft — under a control
-   * whose name says nothing was written. The form withholds its own controls with the same flag and
-   * states the reason (doc-11 §5); here there is no control to hang a reason on, so this only declines.
+   * Where every way out of the 設定モーダル meets (doc-11 §7): the × `Modal.svelte` draws, the Escape it
+   * answers, and the form's own 変更せずに閉じる.
+   *
+   * All three are refused while a save is unresolved, but only Escape is refused *here*. The panel is
+   * what reports the write's outcome, and leaving takes it away while the write already issued goes on
+   * to store the draft — under a control whose name says nothing was written. The two pressable exits
+   * are held one step earlier by the reason this same flag produces (`closeBlocked` for the ×,
+   * `saving` for the form), so each of them can say why it will not answer (doc-11 §5). Escape has no
+   * control to hang a reason on, which is why this end of it only declines.
    */
   function closeSettings(): void {
     if (settingsSaving) return;
@@ -1560,7 +1564,6 @@
         onpickDirectory={pickDirectory}
         ondefaultSlug={ledgerDefaultSlug}
         onregister={registerProject}
-        onclose={() => (registerOpen = false)}
       />
     </Modal>
   {/if}
@@ -1568,7 +1571,14 @@
   {#if settingsOpen}
     <!-- Over the screen with the shell's state intact: an アプリ設定 change is about how the swimlane is
          shown, so losing the rows, filter and selection to open it would be backwards. -->
-    <Modal label="設定" onclose={closeSettings}>
+    <!-- The × this layer draws is turned away by the same fact that turns away Escape and the
+         下部操作行's own 変更せずに閉じる, and it is told why: an exit that goes quiet without saying so
+         is the 理由の無い無効化 doc-11 §5 refuses. One flag, three exits (doc-11 §7). -->
+    <Modal
+      label="設定"
+      closeBlocked={settingsSaving ? SAVING_REASON : null}
+      onclose={closeSettings}
+    >
       <Settings
         loaded={settings}
         path={settingsPath}
@@ -1585,7 +1595,7 @@
          reference rather than a place to work — nothing behind it is unmounted, so a グリッド mid-filter
          and an open 編集セッション are both still there when it closes. -->
     <Modal label="キーボード操作の一覧" onclose={() => (shortcutHelpOpen = false)}>
-      <ShortcutHelp onclose={() => (shortcutHelpOpen = false)} />
+      <ShortcutHelp />
     </Modal>
   {/if}
 

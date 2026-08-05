@@ -13,23 +13,17 @@
   // typed out here would be a second place — one that keeps saying `⌘N` after the assignment moves.
   import { SCOPE_LABEL, SHORTCUTS, chordLabel } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
-
-  interface Props {
-    onclose: () => void;
-  }
-
-  let { onclose }: Props = $props();
 </script>
 
 <section>
-  <!-- 閉じる sits beside the heading, as `Settings.svelte` and `ProjectRegister.svelte` both do, and for
-       a reason this modal has more of than either: `Modal.svelte` focuses the first focusable control on
-       mount, and `focus()` scrolls it into the backdrop's scroll area. With the only control below a
-       nine-row table, a window shorter than the dialog would open the list already scrolled past its own
-       heading and first rows. -->
+  <!-- The way out is the × `Modal.svelte` draws in the corner (doc-11 §7, TASK-76); this file used to
+       put a 閉じる text button beside the heading. That control mattered to this modal for a reason
+       neither of the others had: `Modal.svelte` focuses the first focusable control on mount, and
+       `focus()` scrolls it into the backdrop's scroll area, so with the only control *below* a nine-row
+       table a short window opened the list already scrolled past its own heading. The × is first in the
+       dialog and at the top of it, which is the same guarantee from the layer's side. -->
   <header>
     <h2>キーボード操作の一覧</h2>
-    <button type="button" class="close" onclick={onclose}>閉じる</button>
   </header>
   <p class="lead">
     修飾キーはこの OS の表記で出しています。入力欄・編集部品の内側では、単独キーの割り当ては発火しません。
@@ -67,9 +61,6 @@
   }
 
   header {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
     margin-bottom: 0.25rem;
   }
 
@@ -78,10 +69,6 @@
     margin: 0;
     font-size: 0.92rem;
     font-weight: 650;
-  }
-
-  .close {
-    margin-left: auto;
   }
 
   // 副次 (doc-11 §2.1): it describes the table rather than being read on its own.
@@ -125,15 +112,4 @@
     white-space: nowrap;
   }
 
-  button {
-    padding: 0.25rem 0.75rem;
-    border: 1px solid var(--line-strong);
-    // カード・ボタン 4px (doc-11 §2.2).
-    border-radius: 4px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: 0.72rem;
-    cursor: pointer;
-  }
 </style>

@@ -38,7 +38,6 @@
     onpickDirectory: (title: string) => Promise<string | null>;
     ondefaultSlug: (projectRoot: string) => Promise<string | null>;
     onregister: (request: RegisterRequest) => Promise<LedgerActionResult>;
-    onclose: () => void;
   }
 
   let {
@@ -49,7 +48,6 @@
     onpickDirectory,
     ondefaultSlug,
     onregister,
-    onclose,
   }: Props = $props();
 
   let input = $state<RegisterInput>({ ...EMPTY_REGISTER_INPUT });
@@ -152,9 +150,11 @@
 </script>
 
 <section class="register">
+  <!-- 閉じる is not here any more (TASK-76): the way out is the × `Modal.svelte` draws in the corner
+       (doc-11 §7). The 原文 pairs 登録 with a 取消 button (doc-12 §2.3) and this screen has never had
+       one — that difference is TASK-80's, not this task's. -->
   <header>
     <h2>プロジェクトを登録</h2>
-    <button type="button" class="close" onclick={onclose}>閉じる</button>
   </header>
 
   <p class="where">
@@ -294,19 +294,9 @@
     font-size: 0.8rem;
   }
 
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-  }
-
   h2 {
     margin: 0;
     font-size: 0.9rem;
-  }
-
-  .close {
-    margin-left: auto;
   }
 
   .where {

@@ -4,7 +4,7 @@
 //
 // 表示テーマ (decision-12): every colour value in the app lives in this file and nowhere else. A
 // component names a variable — never a hue, never a system colour — so adding a theme is adding one
-// entry to `$themes` below, and no component is touched (doc-11 §7).
+// entry to `$themes` below, and no component is touched (doc-11 §8).
 @use "sass:map";
 
 // 表示テーマ 10 組 (decision-12 収録テーマ). The palettes come from 画面設計案 05 (transcribed in

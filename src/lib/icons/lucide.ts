@@ -54,7 +54,8 @@ export type IconName =
   | "clipboard"
   | "clipboard-check"
   | "arrow-up"
-  | "arrow-down";
+  | "arrow-down"
+  | "x";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -212,5 +213,12 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
   "arrow-down": [
     { shape: "path", d: "M12 5v14" },
     { shape: "path", d: "m19 12-7 7-7-7" },
+  ],
+  // モーダルの閉じる (doc-11 §7). The only figure here that also exists on screen as a character glyph
+  // (上部帯通知・絞り込みトークン・status 別名表の行削除 all print `×`): those three are older than
+  // `src/lib/icons/` and TASK-80 has them, while this one is new and takes the form §2.4 asks for.
+  x: [
+    { shape: "path", d: "M18 6 6 18" },
+    { shape: "path", d: "m6 6 12 12" },
   ],
 };
