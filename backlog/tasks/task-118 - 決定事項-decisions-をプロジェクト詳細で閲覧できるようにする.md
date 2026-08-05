@@ -4,8 +4,11 @@ title: 決定事項 (decisions) をプロジェクト詳細で閲覧できるよ
 status: To Do
 assignee: []
 created_date: '2026-08-05 08:18'
+updated_date: '2026-08-05 08:26'
 labels:
+  - ui
   - project-detail
+  - 'kind:feature'
 milestone: m-3
 dependencies: []
 ordinal: 115500

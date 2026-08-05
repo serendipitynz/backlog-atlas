@@ -4,8 +4,11 @@ title: 新規文書の作成を一覧ヘッダからのモーダルへ移す
 status: To Do
 assignee: []
 created_date: '2026-08-05 08:18'
+updated_date: '2026-08-05 08:26'
 labels:
+  - ui
   - project-detail
+  - 'kind:feature'
 milestone: m-2
 dependencies: []
 ordinal: 114500
