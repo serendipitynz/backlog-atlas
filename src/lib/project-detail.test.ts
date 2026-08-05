@@ -6,6 +6,7 @@ import {
   SLUG_IMMUTABLE_NOTE,
   UNREGISTER_SCOPE_NOTE,
   aliasSummary,
+  displayPath,
   movesRoot,
   overviewBlocked,
   rootMoveNote,
@@ -212,6 +213,32 @@ describe("別名が効くかの提示", () => {
 });
 
 // --- 登録解除 (doc-10 §4.3) ---------------------------------------------------------------------
+
+describe("表示パス", () => {
+  it("makes source_path project-relative for the pane heading", () => {
+    expect(displayPath("/repos/atlas/backlog/docs/doc-1 - a.md", "/repos/atlas")).toBe(
+      "backlog/docs/doc-1 - a.md",
+    );
+    // A trailing separator on the root names the same root.
+    expect(displayPath("/repos/atlas/backlog/docs/doc-1 - a.md", "/repos/atlas/")).toBe(
+      "backlog/docs/doc-1 - a.md",
+    );
+  });
+
+  it("keeps the Windows separator working, since source_path comes from the OS that scanned", () => {
+    expect(displayPath("C:\\repos\\atlas\\backlog\\docs\\doc-1.md", "C:\\repos\\atlas")).toBe(
+      "backlog\\docs\\doc-1.md",
+    );
+  });
+
+  it("shows a path not under the root as read, rather than guessing", () => {
+    // `/repos/atlas-two` must not be shortened by the `/repos/atlas` root: the prefix check is on
+    // whole path segments, so a sibling directory sharing the spelling stays absolute.
+    expect(displayPath("/repos/atlas-two/backlog/docs/doc-1.md", "/repos/atlas")).toBe(
+      "/repos/atlas-two/backlog/docs/doc-1.md",
+    );
+  });
+});
 
 describe("登録解除", () => {
   const open = { readOnly: false, busy: false };
