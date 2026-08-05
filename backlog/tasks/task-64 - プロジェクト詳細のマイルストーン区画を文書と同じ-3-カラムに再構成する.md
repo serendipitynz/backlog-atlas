@@ -1,10 +1,10 @@
 ---
 id: TASK-64
 title: プロジェクト詳細のマイルストーン区画を文書と同じ 3 カラムに再構成する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:29'
-updated_date: '2026-08-05 10:12'
+updated_date: '2026-08-05 11:48'
 labels:
   - ui
   - project-detail
