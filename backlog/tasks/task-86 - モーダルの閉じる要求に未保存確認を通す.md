@@ -1,10 +1,10 @@
 ---
 id: TASK-86
 title: モーダルの閉じる要求に未保存確認を通す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-05 02:59'
+updated_date: '2026-08-05 03:31'
 labels:
   - robustness
   - ui
