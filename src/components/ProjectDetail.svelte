@@ -630,14 +630,10 @@
     // Closed on success only: the milestone the input names is gone (removed/archived) or renamed,
     // so keeping the form open would offer a second issue against a stale operand. A failure or a
     // 更新前競合 keeps it, which is what lets the user reload and retry the same input.
-    if (outcome?.state !== "applied") return;
-    closeMilestoneOp();
-    // The re-read has already landed, so this asks the *post-operation* list. 削除・アーカイブ take
-    // the milestone out of it and the selection would name nothing; 改称 keeps the id (v1.48.0 does
-    // not change it, doc-9 §4.2.1) and so keeps the selection standing.
-    if (!(project?.milestones ?? []).some((candidate) => candidate.id === milestone.id)) {
-      milestoneSelection = null;
-    }
+    // Closed whatever the operation was: 改称 keeps the id (v1.48.0 does not change it, doc-9
+    // §4.2.1) so the selection stands, and 削除・アーカイブ take the milestone out of the re-read —
+    // which the effect below turns into a dropped selection, on every read rather than only here.
+    if (outcome?.state === "applied") closeMilestoneOp();
   }
 
   /**
@@ -650,6 +646,22 @@
       ? null
       : (project?.milestones.find((candidate) => candidate.id === milestoneSelection) ?? null),
   );
+
+  /**
+   * A selection that no longer resolves takes its input with it (PR #65 round 1 [P2]). Falling back
+   * to the 作成フォーム is not enough on its own: `milestoneOp` and its input would stay standing,
+   * and `milestoneOpDirty` would then hold both 破棄前確認 — this 区画's and the shell's — over input
+   * that is nowhere on screen, which is the failure `closeMilestoneOp` records. Leaving it would
+   * also let a reappearing id restore the old form with the old input aimed at the new read.
+   *
+   * Guarded on `project !== null` so a read in flight, which resolves nothing, does not clear input
+   * the user is still typing.
+   */
+  $effect(() => {
+    if (project === null || milestoneSelection === null || selectedMilestone !== null) return;
+    milestoneSelection = null;
+    closeMilestoneOp();
+  });
 
   // --- 未保存入力 (doc-8 §6.3) -------------------------------------------------------------------
 
