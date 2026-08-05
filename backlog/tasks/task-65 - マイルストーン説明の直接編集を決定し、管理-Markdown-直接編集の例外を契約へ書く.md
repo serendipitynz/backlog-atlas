@@ -1,10 +1,10 @@
 ---
 id: TASK-65
 title: マイルストーン説明の直接編集を決定し、管理 Markdown 直接編集の例外を契約へ書く
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:30'
-updated_date: '2026-08-05 22:40'
+updated_date: '2026-08-05 23:05'
 labels:
   - ui
   - project-detail
