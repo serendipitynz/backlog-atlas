@@ -590,8 +590,15 @@ export const NOTHING_TO_SAVE_REASON = "変更はまだありません";
 // doc-8 §6.3 requires exactly that: 文言は 5 経路で同じものを使う. Held here rather than in the panel
 // because two of the five are the shell's (opening another task, switching the placement), and a
 // per-caller wording is how the five would end up describing the same loss five ways.
+//
+// The モーダル routes TASK-86 added (doc-11 §7) take the same three texts. What differs there is only
+// where the question is drawn — inside the layer, because that layer covers the 上部帯 — and a second
+// wording for the same loss is exactly what holding them in one place rules out.
 
-/** What the 確認 asks. Shown as the 上部帯 ① (doc-7 §5.3), whichever route raised it. */
+/**
+ * What the 確認 asks. Drawn as the 上部帯 ① (doc-7 §5.3), or inside the モーダル that raised it when a
+ * モーダル is up (doc-11 §7) — the announcement is the same one either way.
+ */
 export const DISCARD_CONFIRM_QUESTION =
   "編集中の未保存入力があります。このまま進むと破棄されます。";
 
@@ -600,6 +607,22 @@ export const DISCARD_CONFIRM_PROCEED = "破棄して続ける";
 
 /** The answer that stays where it is. */
 export const DISCARD_CONFIRM_KEEP = "編集に戻る";
+
+/**
+ * The two answers, as the layer that draws them needs them (doc-11 §7). A pair rather than a flag and
+ * two callbacks: the question and its answers stand or fall together, so `null` is the whole of
+ * 「聞いていない」 and there is no state where one half is set and the other is not.
+ *
+ * The texts are not in here. The caller says *what happens* on each answer — that is the part only it
+ * knows — and the layer prints the three constants above, so no caller can word the same loss its own
+ * way (doc-8 §6.3 文言は同じ).
+ */
+export interface DiscardAnswers {
+  /** 破棄して続ける: take the exit that was asked for, and lose the input. */
+  onproceed: () => void;
+  /** 編集に戻る: drop the request and stay where the input is. */
+  onkeep: () => void;
+}
 
 /**
  * Whether the save control may be pressed, and the reason when it may not. A single decision for
