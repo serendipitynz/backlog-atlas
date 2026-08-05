@@ -82,6 +82,7 @@
     ALIAS_EFFECT_NOTES,
     DETAIL_SECTIONS,
     DOC_LIST_WIDTH_REM,
+    displayPath,
     LEDGER_WRITE_IN_FLIGHT_REASON,
     OVERVIEW_READ_ONLY_NOTE,
     SECTION_NAV_WIDTH_REM,
@@ -967,12 +968,12 @@
              the pane while the list keeps its scroll position. The 破棄前確認 stays above the
              columns: it must be visible whatever either column has scrolled to. -->
         <section class="doc-grid">
-          <h2>文書</h2>
-
           {#if unreadableNote !== null}
+            <h2>文書</h2>
             <p class="unreadable">{unreadableNote}</p>
             {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
           {:else if project === null}
+            <h2>文書</h2>
             <p class="neutral">読み込み中…</p>
             {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
           {:else}
@@ -994,61 +995,79 @@
 
             <div class="columns">
               <div class="doc-list">
+                <!-- The list's own heading (目視反映): the count belongs to the column that holds
+                     the cards, and keeping it out of the scroller is what keeps it readable at any
+                     scroll position. -->
+                <h2>文書 {project.documents.length} 件</h2>
                 {#if project.documents.length === 0}
                   <p class="neutral">文書はありません。</p>
                 {:else}
                   {#if issuingReason !== null}
-                    <!-- Every 編集 in the list is held by the same one thing (doc-11 §5): the reason
-                         is written once above the list and each button is bound to it. They stay
-                         `aria-disabled` so they keep taking focus, which is what makes the binding
-                         reachable without a pointer. -->
+                    <!-- Every card is held by the same one thing (doc-11 §5): the reason is written
+                         once above the list and each card is bound to it. They stay `aria-disabled`
+                         so they keep taking focus, which is what makes the binding reachable
+                         without a pointer. -->
                     <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
                       {issuingReason}。完了するまで文書の編集は開けません。
                     </p>
                   {/if}
-                  <ul class="records">
+                  <ul class="doc-cards">
                     {#each project.documents as document (document.id)}
+                      {@const current = docSession?.baseline.id === document.id}
                       <li>
-                        <div class="record-head">
-                          <span class="id">{document.id}</span>
-                          <span class="title">{document.title}</span>
-                          <span class="meta">{document.type ?? "type 未設定"}</span>
+                        <!-- カード (doc-10 §5): the whole area is the selection — no separate 編集
+                             button, and the current card is marked (目視反映: which document is
+                             being edited must be readable from the list). No path here: the 表示パス
+                             moved to the 編集ペイン's heading (doc-10 §5's recorded departure). -->
+                        <button
+                          type="button"
+                          class="doc-card"
+                          class:current
+                          aria-current={current ? "true" : undefined}
+                          aria-disabled={issuing}
+                          aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
+                          title={issuingReason ?? "この文書を開いて編集します"}
+                          onclick={() => !issuing && editDocument(document)}
+                        >
+                          <span class="card-head">
+                            <span class="id">{document.id}</span>
+                            <span class="meta">{document.type ?? "type 未設定"}</span>
+                            {#if current}
+                              <span class="editing">編集中</span>
+                            {/if}
+                            {#if current && docEditorDirty}
+                              <!-- 未保存入力のある文書には印を付ける (doc-10 §5). Only one 編集セッション
+                                   exists at a time, so only one card can carry it; it is shown on the
+                                   list side so that「まだ送っていない」stays readable even when the
+                                   editor has scrolled out of view. -->
+                              <span class="unsaved">未保存</span>
+                            {/if}
+                          </span>
+                          <span class="card-title">{document.title}</span>
                           {#if document.tags.length > 0}
                             <span class="meta">tags: {document.tags.join(", ")}</span>
                           {/if}
-                          {#if docSession?.baseline.id === document.id && docEditorDirty}
-                            <!-- 未保存入力のある文書には印を付ける (doc-10 §5). Only one 編集セッション
-                                 exists at a time, so only one row can carry it; it is shown on the list
-                                 side so that「まだ送っていない」stays readable even when the editor has
-                                 scrolled out of view. -->
-                            <span class="unsaved">未保存</span>
-                          {/if}
-                          <button
-                            type="button"
-                            class="mini"
-                            aria-disabled={issuing}
-                            aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
-                            title={issuingReason ?? "この文書を編集します"}
-                            onclick={() => !issuing && editDocument(document)}
-                          >
-                            {docSession?.baseline.id === document.id ? "編集中" : "編集"}
-                          </button>
-                        </div>
-                        <!-- パス (doc-10 §5): the `source_path` the read layer got from its scan, not the
-                             docs-relative value `-p` takes — which is why the update form's path field
-                             holds no current value. -->
-                        <p class="path"><code>{document.sourcePath}</code></p>
+                        </button>
                       </li>
                     {/each}
                   </ul>
                 {/if}
               </div>
 
+              <!-- 編集ペイン (doc-10 §5): the update form alone while a session is open — the
+                   create form beside a live editor buried the editor's own actions (目視反映) —
+                   and the create form with the withheld operations otherwise. -->
               <div class="doc-pane" bind:this={docPane}>
                 {#if docSession !== null}
                   {@const session = docSession}
                   <div class="sub-panel">
                     <h3>{session.baseline.id} を更新（doc update）</h3>
+                    <!-- 表示パス (doc-10 §5): which file the chosen document is, project-relative.
+                         Display only — the path *input* below stays a move request and holds no
+                         current value. -->
+                    <p class="path">
+                      <code>{displayPath(session.baseline.sourcePath, entry.project_root)}</code>
+                    </p>
 
                     <label class="field">
                       <span class="label">title</span>
@@ -1120,7 +1139,7 @@
                       >
                         文書を更新（doc update）
                       </button>
-                      <button type="button" onclick={closeEditor}>閉じる</button>
+                      <button type="button" onclick={closeEditor}>編集を閉じる</button>
                       {#if docUpdateIssue.state === "blocked"}
                         <span class="reason">{docUpdateIssue.reason}</span>
                       {/if}
@@ -1132,61 +1151,61 @@
                       本文欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも更新を発行できます。
                     </p>
                   </div>
-                {/if}
-
-                <div class="sub-panel">
-                  <h3>文書を作成（doc create）</h3>
-                  <div class="row">
-                    <label class="field">
-                      <span class="label">title（必須）</span>
-                      <input
-                        type="text"
-                        value={docInput.title}
-                        oninput={(event) => (docInput.title = event.currentTarget.value)}
-                      />
-                    </label>
-                    <label class="field">
-                      <span class="label">type</span>
-                      <select
-                        value={docInput.docType}
-                        onchange={(event) => (docInput.docType = event.currentTarget.value)}
+                {:else}
+                  <div class="sub-panel">
+                    <h3>文書を作成（doc create）</h3>
+                    <div class="row">
+                      <label class="field">
+                        <span class="label">title（必須）</span>
+                        <input
+                          type="text"
+                          value={docInput.title}
+                          oninput={(event) => (docInput.title = event.currentTarget.value)}
+                        />
+                      </label>
+                      <label class="field">
+                        <span class="label">type</span>
+                        <select
+                          value={docInput.docType}
+                          onchange={(event) => (docInput.docType = event.currentTarget.value)}
+                        >
+                          <option value="">—（CLI の既定）</option>
+                          {#each DOC_TYPES as value (value)}
+                            <option {value}>{value}</option>
+                          {/each}
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="label">path</span>
+                        <input
+                          type="text"
+                          placeholder="docs 配下の下位パス（任意）"
+                          value={docInput.path}
+                          oninput={(event) => (docInput.path = event.currentTarget.value)}
+                        />
+                      </label>
+                    </div>
+                    <p class="hint">
+                      本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
+                      作成後、左の一覧でその文書のカードを選んで本文を入れます。
+                    </p>
+                    <div class="actions">
+                      <button
+                        type="button"
+                        disabled={docCreateIssue.state !== "ready"}
+                        title={why(docCreateIssue)}
+                        onclick={createDoc}
                       >
-                        <option value="">—（CLI の既定）</option>
-                        {#each DOC_TYPES as value (value)}
-                          <option {value}>{value}</option>
-                        {/each}
-                      </select>
-                    </label>
-                    <label class="field">
-                      <span class="label">path</span>
-                      <input
-                        type="text"
-                        placeholder="docs 配下の下位パス（任意）"
-                        value={docInput.path}
-                        oninput={(event) => (docInput.path = event.currentTarget.value)}
-                      />
-                    </label>
+                        文書を作成
+                      </button>
+                      {#if docCreateIssue.state === "blocked"}
+                        <span class="reason">{docCreateIssue.reason}</span>
+                      {/if}
                   </div>
-                  <p class="hint">
-                    本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
-                    作成後、左の一覧から「編集」して本文を入れます。
-                  </p>
-                  <div class="actions">
-                    <button
-                      type="button"
-                      disabled={docCreateIssue.state !== "ready"}
-                      title={why(docCreateIssue)}
-                      onclick={createDoc}
-                    >
-                      文書を作成
-                    </button>
-                    {#if docCreateIssue.state === "blocked"}
-                      <span class="reason">{docCreateIssue.reason}</span>
-                    {/if}
                   </div>
-                </div>
 
-                {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
+                  {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
+                {/if}
               </div>
             </div>
           {/if}
@@ -1697,22 +1716,102 @@
   }
 
   // 文書一覧 (doc-10 §5): the column that keeps the selection. Width is design 07's 16rem, a
-  // content box like the 区画ナビ's.
+  // content box like the 区画ナビ's. The heading stays out of the scroller (`.doc-cards` is the
+  // scroll container) so the count is readable at any scroll position.
   .doc-list {
+    display: flex;
     flex: none;
+    flex-direction: column;
     width: var(--doc-list-width);
-    padding: 0 0.6rem 1.5rem 0.75rem;
+    padding: 0 0.35rem 0 0.75rem;
     border-right: 1px solid var(--line);
-    overflow-y: auto;
+    overflow: hidden;
+
+    h2 {
+      flex: none;
+    }
   }
 
-  // 編集ペイン (doc-10 §5): 更新フォーム, then 作成フォーム and 提供しない操作区画. Only the
-  // 更新フォーム swaps with the selection; the rest stand whatever is chosen.
+  .doc-cards {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    // The side padding keeps a focused card's ring inside the scrollport (TASK-74's実測).
+    padding: 0.15rem 0.25rem 1.5rem 0.15rem;
+    overflow-y: auto;
+    list-style: none;
+
+    li {
+      margin-bottom: 0.35rem;
+    }
+  }
+
+  // カード (doc-10 §5): the whole area is the selection, and the current one is marked the way
+  // the 区画ナビ marks its current entry — one vocabulary for「いま開いているもの」.
+  .doc-card {
+    display: block;
+    width: 100%;
+    padding: 0.3rem 0.45rem;
+    text-align: left;
+
+    &.current {
+      border-color: var(--info);
+      background: color-mix(in srgb, var(--info) 12%, transparent);
+    }
+
+    .card-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.35rem;
+    }
+
+    .id {
+      font-family: ui-monospace, monospace;
+      font-size: 0.72rem;
+    }
+
+    .meta {
+      display: block;
+      color: var(--muted);
+      font-size: 0.68rem;
+    }
+
+    .card-head .meta {
+      display: inline;
+    }
+
+    .card-title {
+      display: block;
+      margin-top: 0.1rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  // 編集中 on the current card: the same neutral info hue as 未保存 — being open is not one of
+  // decision-6's 印の族 either.
+  .editing {
+    padding: 0 0.3rem;
+    border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
+    border-radius: 3px;
+    color: var(--info);
+    font-size: 0.66rem;
+  }
+
+  // 編集ペイン (doc-10 §5): the update form alone while a session is open; the create form and
+  // the withheld operations otherwise. Its first block starts at the columns' top — the pane has
+  // no heading of its own, so an inherited margin here reads as a hole (目視反映).
   .doc-pane {
     flex: 1;
     min-width: 0;
     padding: 0 0.75rem 1.5rem 0.6rem;
     overflow-y: auto;
+
+    > :first-child {
+      margin-top: 0;
+    }
   }
 
   h2 {

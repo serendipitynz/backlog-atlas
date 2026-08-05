@@ -12,6 +12,7 @@
  * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | the four items 概要・文書・マイルストーン・新規タスク — a display change within one screen, not a screen transition |
  * | §3 区画ナビ | [`SECTION_NAV_WIDTH_REM`] | the 12rem column down the left that houses the 区画切替 — the place, where §1 is the choice |
  * | §5 文書一覧 / 編集ペイン | [`DOC_LIST_WIDTH_REM`] | the 16rem column that keeps the selection; the pane right of it takes the remaining width, so only the list's width is a constant |
+ * | §5 表示パス | [`displayPath`] | the read layer's `source_path` made project-relative for the pane's heading — display only, never the value `-p` takes |
  * | §3 台帳読取専用帯 | `band.ts`'s [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and what still works |
  * | §3 CLI 縮退帯 | `band.ts`'s [`cliDegradedBand`] | that no supported CLI was found, and what still works |
  * | §4.1 送る属性を保存の直前に列挙する | [`SubmittedAttribute`] + [`submittedAttributes`] | 送信属性一覧: the attributes a save puts on `ledger_update`, as name, current value and value to send |
@@ -66,6 +67,20 @@ export const SECTION_NAV_WIDTH_REM = 12;
  * right of it has no constant — it takes what remains.
  */
 export const DOC_LIST_WIDTH_REM = 16;
+
+/**
+ * 表示パス (doc-10 §5): the read layer's `source_path` made project-relative for the 編集ペイン's
+ * heading. Display only — the update form's path field is a *move request* and never holds this
+ * (doc-10 §5). A path not under the root is shown as read rather than guessed at, and both
+ * separators are tried because `source_path` comes from the Rust side's scan on whatever OS runs.
+ */
+export function displayPath(sourcePath: string, projectRoot: string): string {
+  for (const separator of ["/", "\\"]) {
+    const prefix = projectRoot.endsWith(separator) ? projectRoot : projectRoot + separator;
+    if (sourcePath.startsWith(prefix)) return sourcePath.slice(prefix.length);
+  }
+  return sourcePath;
+}
 
 // --- 概要区画: 送信属性一覧 (doc-10 §4.1) ------------------------------------------------------
 
