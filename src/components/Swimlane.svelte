@@ -137,6 +137,15 @@
   let headHeight = $state(0);
 
   /**
+   * The row whose 着地 just completed, carrying the 一時的な強調 (doc-7 §2.3). Separate from
+   * `focusSlug`, which is cleared the moment the scroll is written — the emphasis has to outlive
+   * that moment, because it exists precisely for the landing that writes no scroll at all (a row
+   * already in view moves nothing, and without a mark the return looks like nothing happened).
+   * Cleared when the fade's animation ends, so the class does not sit on the row forever.
+   */
+  let landedSlug = $state<string | null>(null);
+
+  /**
    * The 列ヘッダ行's height as it is right now.
    *
    * Every head is measured, not just one, so the offset does not depend on the grid stretching them
@@ -190,6 +199,10 @@
       laneHeight: head.getBoundingClientRect().height,
       viewportHeight: container.clientHeight,
     });
+    // 一時的な強調 (doc-7 §2.3), on every landing — not only the ones that scrolled. The landing
+    // for a row already in view writes no scroll, and that is exactly the case where the return
+    // would otherwise look like nothing happened.
+    landedSlug = slug;
     onfocused();
   });
 
@@ -356,7 +369,13 @@
     <div
       class="lane-head"
       class:unreadable={row.state === "unreadable"}
+      class:landed={landedSlug === row.slug}
       bind:this={laneHeads[row.slug]}
+      onanimationend={(event) => {
+        // Only the fade's own end takes the class off: `animationend` bubbles, and a child's
+        // animation ending must not cut the emphasis short.
+        if (event.target === event.currentTarget) landedSlug = null;
+      }}
     >
       {#if rowFoldable(row)}
         <!-- アイコンのみのボタン (doc-11 §2.4): 行折畳み is named by `aria-label` and explained by
@@ -653,6 +672,26 @@
     // (decision-12, `lib/theme.test.ts`). The edge says the same thing and cannot get behind a chip.
     &.unreadable {
       border-left: 3px solid var(--mark-unreadable);
+    }
+
+    // 一時的な強調 (doc-7 §2.3): a background tint that fades away on its own — an answer to the
+    // landing, not a lasting state, so it is none of doc-11 §2.3's rows and does not borrow the
+    // 選択 outline. `--info` because the tint informs (this is the row you asked for); mixed over
+    // `--inset` so the face stays opaque while it fades (cards scroll underneath this header).
+    // A one-shot animation on a class that leaves, never a standing `transition`: a standing one
+    // would also animate every theme switch.
+    &.landed {
+      animation: landed-fade 1.6s ease-out both;
+    }
+  }
+
+  @keyframes landed-fade {
+    from {
+      background-color: color-mix(in srgb, var(--info) 30%, var(--inset));
+    }
+
+    to {
+      background-color: var(--inset);
     }
   }
 

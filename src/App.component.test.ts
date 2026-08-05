@@ -791,6 +791,21 @@ describe("プロジェクト詳細の離脱", () => {
     click(byText(host, "button", "このプロジェクトのレーンへ"));
     expect(confirmBand(host)).not.toBeNull();
   });
+
+  it("このプロジェクトのレーンへ で戻ると対象行に一時的な強調が付く", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+
+    click(byText(host, "button", "このプロジェクトのレーンへ"));
+    await settled();
+
+    // 一時的な強調 (doc-7 §2.3): the return crosses two screens — the detail's exit hands the shell
+    // a row, and the grid that mounts has to mark it, because a row already in view moves nothing
+    // and the return would otherwise look like nothing happened. Only the mark's presence is
+    // asserted: jsdom runs no animation, so the fade and its end are not observable here.
+    expect(only(host, ".lane-head").classList.contains("landed")).toBe(true);
+  });
 });
 
 // -------------------------------------------------------------------------------------------------
