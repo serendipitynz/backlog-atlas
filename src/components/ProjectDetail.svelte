@@ -674,12 +674,17 @@
 {/snippet}
 
 <div class="detail">
-  <!-- ヘッダ (doc-10 §3): identity and the round trip only. Nothing here writes. -->
+  <!-- ヘッダ (doc-10 §3): identity and the round trip only. Nothing here writes. The パンくず
+       (doc-12 §8) puts 「← スイムレーン」 at the top left — where a way back is looked for — with
+       the project name as the current place; the return that also lands (doc-10 §2) stays a
+       separate control at the right, since it does more than go back. -->
   <header class="head">
-    <div class="identity">
+    <nav class="breadcrumb" aria-label="現在地">
+      <button type="button" onclick={onback}>← スイムレーン</button>
+      <span class="separator" aria-hidden="true">/</span>
       <span class="name">{project?.config.projectName ?? entry.slug}</span>
-      <span class="slug">{entry.slug}</span>
-    </div>
+    </nav>
+    <span class="slug">{entry.slug}</span>
     <span class="counts">
       {#if project !== null}
         タスク {project.tasks.length} ・ 文書 {project.documents.length} ・ マイルストーン
@@ -690,10 +695,7 @@
         読み込み中…
       {/if}
     </span>
-    <div class="exits">
-      <button type="button" onclick={onback}>← スイムレーン</button>
-      <button type="button" onclick={ontoLane}>このプロジェクトのレーンへ</button>
-    </div>
+    <button type="button" class="to-lane" onclick={ontoLane}>このプロジェクトのレーンへ</button>
   </header>
 
   <div class="body">
@@ -1562,11 +1564,17 @@
     background: var(--inset);
   }
 
-  .identity {
+  .breadcrumb {
     display: flex;
     align-items: baseline;
     gap: 0.35rem;
     min-width: 0;
+  }
+
+  // 副次 (doc-11 §2.1): the separator is punctuation between the way back and the current place,
+  // not something to read on its own.
+  .separator {
+    color: var(--faint);
   }
 
   .name {
@@ -1585,9 +1593,7 @@
     color: var(--mark-unreadable);
   }
 
-  .exits {
-    display: flex;
-    gap: 0.25rem;
+  .to-lane {
     margin-left: auto;
   }
 
