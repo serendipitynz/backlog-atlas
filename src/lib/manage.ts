@@ -331,19 +331,6 @@ export const DOC_NOTHING_TO_UPDATE_REASON = "変更はまだありません";
 export const DOC_TITLE_EMPTY_REASON =
   "title を空にはできません（doc-4 §3.2 の必須項目で、空にすると文書として読めなくなります）";
 
-/**
- * Said beside the tags field when the save would be a タグ全消し (doc-10 §5). An empty tags field
- * looks exactly like the empty path field one row up, which means 変更しない — so the one that
- * clears has to say it does, before the update is issued.
- */
-export const DOC_TAGS_CLEARED_NOTICE =
-  "保存すると、この文書のタグをすべて外します（`doc update --tags \"\"`）。";
-
-/** Whether saving now would clear every tag — the condition [`DOC_TAGS_CLEARED_NOTICE`] belongs to. */
-export function clearsAllTags(session: DocSession): boolean {
-  return docDirtyFields(session).includes("tags") && cleaned(session.draft.tags).length === 0;
-}
-
 /** The values a 文書更新 asserts, kept so the re-read can be checked against them ([`docDivergence`]). */
 export interface DocSubmitted {
   title?: string;

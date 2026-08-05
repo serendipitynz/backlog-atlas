@@ -30,7 +30,6 @@ import {
   buildMilestoneRemove,
   buildMilestoneRename,
   buildTaskCreate,
-  clearsAllTags,
   followsReferences,
   referencingTasks,
   docDirtyFields,
@@ -252,16 +251,6 @@ describe("buildDocUpdate", () => {
     expect(action(buildDocUpdate(session))).toEqual([
       { op: "docUpdate", docId: "doc-4", update: { tags: [] } },
     ]);
-  });
-
-  it("says the save clears every tag, so an empty field does not read as 変更しない", () => {
-    expect(clearsAllTags(startDocSession(document()))).toBe(false);
-    expect(clearsAllTags(setDocField(startDocSession(document()), "tags", []))).toBe(true);
-    // Whitespace-only entries are dropped before the update is built, so they clear too.
-    expect(clearsAllTags(setDocField(startDocSession(document()), "tags", ["  "]))).toBe(true);
-    // A document that had no tags to begin with is not a タグ全消し — nothing is being sent.
-    const untagged = setDocField(startDocSession(document({ tags: [] })), "tags", []);
-    expect(clearsAllTags(untagged)).toBe(false);
   });
 
   it("omits tags entirely when the field was never touched", () => {
