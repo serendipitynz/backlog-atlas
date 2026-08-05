@@ -10,6 +10,8 @@
  * | doc-10 | here | is |
  * |---|---|---|
  * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | the four items 概要・文書・マイルストーン・新規タスク — a display change within one screen, not a screen transition |
+ * | §3 区画ナビ | [`SECTION_NAV_WIDTH_REM`] | the 12rem column down the left that houses the 区画切替 — the place, where §1 is the choice |
+ * | §5 文書一覧 / 編集ペイン | [`DOC_LIST_WIDTH_REM`] | the 16rem column that keeps the selection; the pane right of it takes the remaining width, so only the list's width is a constant |
  * | §3 台帳読取専用帯 | `band.ts`'s [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and what still works |
  * | §3 CLI 縮退帯 | `band.ts`'s [`cliDegradedBand`] | that no supported CLI was found, and what still works |
  * | §4.1 送る属性を保存の直前に列挙する | [`SubmittedAttribute`] + [`submittedAttributes`] | 送信属性一覧: the attributes a save puts on `ledger_update`, as name, current value and value to send |
@@ -48,6 +50,22 @@ export const DETAIL_SECTIONS: readonly { id: DetailSection; label: string }[] = 
   { id: "milestones", label: "マイルストーン" },
   { id: "newTask", label: "新規タスク" },
 ] as const;
+
+// --- 画面の列幅 (doc-10 §3/§5, 画面設計案 07) --------------------------------------------------
+//
+// Held here rather than written into the SCSS so the number a test or a doc cites and the number
+// the browser lays out are the same one (the placement.ts pattern, TASK-113). **Every rem here
+// sizes a content box, not a footprint** (TASK-115): this repository has no global box-sizing
+// reset, so padding and the 1px rule sit outside these values.
+
+/** 区画ナビ (doc-10 §3): the column housing the 区画切替, design 07's 12rem. */
+export const SECTION_NAV_WIDTH_REM = 12;
+
+/**
+ * 文書一覧 (doc-10 §5): the column that keeps the selection, design 07's 16rem. The 編集ペイン
+ * right of it has no constant — it takes what remains.
+ */
+export const DOC_LIST_WIDTH_REM = 16;
 
 // --- 概要区画: 送信属性一覧 (doc-10 §4.1) ------------------------------------------------------
 

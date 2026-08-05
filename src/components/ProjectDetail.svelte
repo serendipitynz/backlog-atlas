@@ -81,8 +81,10 @@
   import {
     ALIAS_EFFECT_NOTES,
     DETAIL_SECTIONS,
+    DOC_LIST_WIDTH_REM,
     LEDGER_WRITE_IN_FLIGHT_REASON,
     OVERVIEW_READ_ONLY_NOTE,
+    SECTION_NAV_WIDTH_REM,
     SLUG_IMMUTABLE_NOTE,
     UNREGISTER_SCOPE_NOTE,
     movesRoot,
@@ -673,7 +675,12 @@
   </div>
 {/snippet}
 
-<div class="detail">
+<!-- The column widths come from `project-detail.ts` so the number a doc cites and the number laid
+     out are the same one (TASK-113's pattern). Both size content boxes (TASK-115). -->
+<div
+  class="detail"
+  style="--section-nav-width: {SECTION_NAV_WIDTH_REM}rem; --doc-list-width: {DOC_LIST_WIDTH_REM}rem"
+>
   <!-- ヘッダ (doc-10 §3): identity and the round trip only. Nothing here writes. The パンくず
        (doc-12 §8) puts 「← スイムレーン」 at the top left — where a way back is looked for — with
        the project name as the current place; the return that also lands (doc-10 §2) stays a
@@ -714,7 +721,7 @@
       {/each}
     </nav>
 
-    <div class="panel">
+    <div class="panel" class:split={section === "documents"}>
       {#if message !== null}
         <p class={message.tone}>{message.text}</p>
       {/if}
@@ -946,14 +953,20 @@
           </div>
         </section>
       {:else if section === "documents"}
-        <!-- 文書区画 (doc-10 §5) -->
-        <section>
+        <!-- 文書区画 (doc-10 §5): 文書一覧 (16rem) beside the 編集ペイン, the screen's own second and
+             third column after the 区画ナビ. Each column scrolls on its own — a deliberate departure
+             from design 07's single scroller, recorded in doc-10 §5 — so choosing a document swaps
+             the pane while the list keeps its scroll position. The 破棄前確認 stays above the
+             columns: it must be visible whatever either column has scrolled to. -->
+        <section class="doc-grid">
           <h2>文書</h2>
 
           {#if unreadableNote !== null}
             <p class="unreadable">{unreadableNote}</p>
+            {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
           {:else if project === null}
             <p class="neutral">読み込み中…</p>
+            {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
           {:else}
             {#if pendingDocument !== null}
               <!-- 破棄前確認: 未保存入力 is held and the requested action would drop it. The action
@@ -971,198 +984,204 @@
               </div>
             {/if}
 
-            {#if project.documents.length === 0}
-              <p class="neutral">文書はありません。</p>
-            {:else}
-              {#if issuingReason !== null}
-                <!-- Every 編集 in the list is held by the same one thing (doc-11 §5): the reason is
-                     written once above the list and each button is bound to it. They stay
-                     `aria-disabled` so they keep taking focus, which is what makes the binding
-                     reachable without a pointer. -->
-                <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
-                  {issuingReason}。完了するまで文書の編集は開けません。
-                </p>
-              {/if}
-              <ul class="records">
-                {#each project.documents as document (document.id)}
-                  <li>
-                    <div class="record-head">
-                      <span class="id">{document.id}</span>
-                      <span class="title">{document.title}</span>
-                      <span class="meta">{document.type ?? "type 未設定"}</span>
-                      {#if document.tags.length > 0}
-                        <span class="meta">tags: {document.tags.join(", ")}</span>
-                      {/if}
-                      {#if docSession?.baseline.id === document.id && docEditorDirty}
-                        <!-- 未保存入力のある文書には印を付ける (doc-10 §5). Only one 編集セッション
-                             exists at a time, so only one row can carry it; it is shown on the list
-                             side so that「まだ送っていない」stays readable even when the editor has
-                             scrolled out of view. -->
-                        <span class="unsaved">未保存</span>
-                      {/if}
+            <div class="columns">
+              <div class="doc-list">
+                {#if project.documents.length === 0}
+                  <p class="neutral">文書はありません。</p>
+                {:else}
+                  {#if issuingReason !== null}
+                    <!-- Every 編集 in the list is held by the same one thing (doc-11 §5): the reason
+                         is written once above the list and each button is bound to it. They stay
+                         `aria-disabled` so they keep taking focus, which is what makes the binding
+                         reachable without a pointer. -->
+                    <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
+                      {issuingReason}。完了するまで文書の編集は開けません。
+                    </p>
+                  {/if}
+                  <ul class="records">
+                    {#each project.documents as document (document.id)}
+                      <li>
+                        <div class="record-head">
+                          <span class="id">{document.id}</span>
+                          <span class="title">{document.title}</span>
+                          <span class="meta">{document.type ?? "type 未設定"}</span>
+                          {#if document.tags.length > 0}
+                            <span class="meta">tags: {document.tags.join(", ")}</span>
+                          {/if}
+                          {#if docSession?.baseline.id === document.id && docEditorDirty}
+                            <!-- 未保存入力のある文書には印を付ける (doc-10 §5). Only one 編集セッション
+                                 exists at a time, so only one row can carry it; it is shown on the list
+                                 side so that「まだ送っていない」stays readable even when the editor has
+                                 scrolled out of view. -->
+                            <span class="unsaved">未保存</span>
+                          {/if}
+                          <button
+                            type="button"
+                            class="mini"
+                            aria-disabled={issuing}
+                            aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
+                            title={issuingReason ?? "この文書を編集します"}
+                            onclick={() => !issuing && editDocument(document)}
+                          >
+                            {docSession?.baseline.id === document.id ? "編集中" : "編集"}
+                          </button>
+                        </div>
+                        <!-- パス (doc-10 §5): the `source_path` the read layer got from its scan, not the
+                             docs-relative value `-p` takes — which is why the update form's path field
+                             holds no current value. -->
+                        <p class="path"><code>{document.sourcePath}</code></p>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+
+              <div class="doc-pane">
+                {#if docSession !== null}
+                  {@const session = docSession}
+                  <div class="sub-panel">
+                    <h3>{session.baseline.id} を更新（doc update）</h3>
+
+                    <label class="field">
+                      <span class="label">title</span>
+                      <input
+                        type="text"
+                        value={session.draft.title}
+                        oninput={(event) => setDoc("title", event.currentTarget.value)}
+                      />
+                    </label>
+
+                    <div class="field">
+                      <span class="label">本文（全置換）</span>
+                      <Editor
+                        label="本文"
+                        value={session.draft.content}
+                        rows={14}
+                        onchange={(value) => setDoc("content", value)}
+                        onsave={updateDoc}
+                      />
+                      <p class="hint">
+                        `doc update --content` は本文を全置換します（v1.48.0 に部分更新はありません。doc-5
+                        §3.1）。この欄は読み取った本文全文で、発行時はここにある全文をそのまま渡します。
+                      </p>
+                    </div>
+
+                    <div class="row">
+                      <label class="field">
+                        <span class="label">type</span>
+                        <select
+                          value={session.draft.docType}
+                          onchange={(event) => setDoc("docType", event.currentTarget.value)}
+                        >
+                          <option value="">—（変更しない）</option>
+                          {#each DOC_TYPES as value (value)}
+                            <option {value}>{value}</option>
+                          {/each}
+                        </select>
+                      </label>
+
+                      <label class="field">
+                        <span class="label">path（移動する場合のみ）</span>
+                        <input
+                          type="text"
+                          placeholder="空欄なら変更しません"
+                          value={session.draft.path}
+                          oninput={(event) => setDoc("path", event.currentTarget.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <div class="field">
+                      <span class="label">tags</span>
+                      {@render listEditor(
+                        session.draft.tags,
+                        (next) => setDoc("tags", next),
+                        newTag,
+                        (value) => (newTag = value),
+                        "追加するタグ",
+                      )}
+                    </div>
+
+                    <div class="actions">
                       <button
                         type="button"
-                        class="mini"
-                        aria-disabled={issuing}
-                        aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
-                        title={issuingReason ?? "この文書を編集します"}
-                        onclick={() => !issuing && editDocument(document)}
+                        disabled={docUpdateIssue.state !== "ready"}
+                        aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
+                        title={why(docUpdateIssue)}
+                        onclick={updateDoc}
                       >
-                        {docSession?.baseline.id === document.id ? "編集中" : "編集"}
+                        文書を更新（doc update）
                       </button>
+                      <button type="button" onclick={closeEditor}>閉じる</button>
+                      {#if docUpdateIssue.state === "blocked"}
+                        <span class="reason">{docUpdateIssue.reason}</span>
+                      {/if}
                     </div>
-                    <!-- パス (doc-10 §5): the `source_path` the read layer got from its scan, not the
-                         docs-relative value `-p` takes — which is why the update form's path field
-                         holds no current value. -->
-                    <p class="path"><code>{document.sourcePath}</code></p>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-
-            {#if docSession !== null}
-              {@const session = docSession}
-              <div class="sub-panel">
-                <h3>{session.baseline.id} を更新（doc update）</h3>
-
-                <label class="field">
-                  <span class="label">title</span>
-                  <input
-                    type="text"
-                    value={session.draft.title}
-                    oninput={(event) => setDoc("title", event.currentTarget.value)}
-                  />
-                </label>
-
-                <div class="field">
-                  <span class="label">本文（全置換）</span>
-                  <Editor
-                    label="本文"
-                    value={session.draft.content}
-                    rows={14}
-                    onchange={(value) => setDoc("content", value)}
-                    onsave={updateDoc}
-                  />
-                  <p class="hint">
-                    `doc update --content` は本文を全置換します（v1.48.0 に部分更新はありません。doc-5
-                    §3.1）。この欄は読み取った本文全文で、発行時はここにある全文をそのまま渡します。
-                  </p>
-                </div>
-
-                <div class="row">
-                  <label class="field">
-                    <span class="label">type</span>
-                    <select
-                      value={session.draft.docType}
-                      onchange={(event) => setDoc("docType", event.currentTarget.value)}
-                    >
-                      <option value="">—（変更しない）</option>
-                      {#each DOC_TYPES as value (value)}
-                        <option {value}>{value}</option>
-                      {/each}
-                    </select>
-                  </label>
-
-                  <label class="field">
-                    <span class="label">path（移動する場合のみ）</span>
-                    <input
-                      type="text"
-                      placeholder="空欄なら変更しません"
-                      value={session.draft.path}
-                      oninput={(event) => setDoc("path", event.currentTarget.value)}
-                    />
-                  </label>
-                </div>
-
-                <div class="field">
-                  <span class="label">tags</span>
-                  {@render listEditor(
-                    session.draft.tags,
-                    (next) => setDoc("tags", next),
-                    newTag,
-                    (value) => (newTag = value),
-                    "追加するタグ",
-                  )}
-                </div>
-
-                <div class="actions">
-                  <button
-                    type="button"
-                    disabled={docUpdateIssue.state !== "ready"}
-                    aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-                    title={why(docUpdateIssue)}
-                    onclick={updateDoc}
-                  >
-                    文書を更新（doc update）
-                  </button>
-                  <button type="button" onclick={closeEditor}>閉じる</button>
-                  {#if docUpdateIssue.state === "blocked"}
-                    <span class="reason">{docUpdateIssue.reason}</span>
-                  {/if}
-                </div>
-                <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). The chord is answered inside the 本文欄
-                     (its 適用範囲 is 編集部品の内側), so it is named here at the 発行 it runs — printed from
-                     the 割り当て一覧, never spelled by hand. -->
-                <p class="hint">
-                  本文欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも更新を発行できます。
-                </p>
-              </div>
-            {/if}
-
-            <div class="sub-panel">
-              <h3>文書を作成（doc create）</h3>
-              <div class="row">
-                <label class="field">
-                  <span class="label">title（必須）</span>
-                  <input
-                    type="text"
-                    value={docInput.title}
-                    oninput={(event) => (docInput.title = event.currentTarget.value)}
-                  />
-                </label>
-                <label class="field">
-                  <span class="label">type</span>
-                  <select
-                    value={docInput.docType}
-                    onchange={(event) => (docInput.docType = event.currentTarget.value)}
-                  >
-                    <option value="">—（CLI の既定）</option>
-                    {#each DOC_TYPES as value (value)}
-                      <option {value}>{value}</option>
-                    {/each}
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="label">path</span>
-                  <input
-                    type="text"
-                    placeholder="docs 配下の下位パス（任意）"
-                    value={docInput.path}
-                    oninput={(event) => (docInput.path = event.currentTarget.value)}
-                  />
-                </label>
-              </div>
-              <p class="hint">
-                本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
-                作成後、上の一覧から「編集」して本文を入れます。
-              </p>
-              <div class="actions">
-                <button
-                  type="button"
-                  disabled={docCreateIssue.state !== "ready"}
-                  title={why(docCreateIssue)}
-                  onclick={createDoc}
-                >
-                  文書を作成
-                </button>
-                {#if docCreateIssue.state === "blocked"}
-                  <span class="reason">{docCreateIssue.reason}</span>
+                    <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). The chord is answered inside the 本文欄
+                         (its 適用範囲 is 編集部品の内側), so it is named here at the 発行 it runs — printed from
+                         the 割り当て一覧, never spelled by hand. -->
+                    <p class="hint">
+                      本文欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも更新を発行できます。
+                    </p>
+                  </div>
                 {/if}
+
+                <div class="sub-panel">
+                  <h3>文書を作成（doc create）</h3>
+                  <div class="row">
+                    <label class="field">
+                      <span class="label">title（必須）</span>
+                      <input
+                        type="text"
+                        value={docInput.title}
+                        oninput={(event) => (docInput.title = event.currentTarget.value)}
+                      />
+                    </label>
+                    <label class="field">
+                      <span class="label">type</span>
+                      <select
+                        value={docInput.docType}
+                        onchange={(event) => (docInput.docType = event.currentTarget.value)}
+                      >
+                        <option value="">—（CLI の既定）</option>
+                        {#each DOC_TYPES as value (value)}
+                          <option {value}>{value}</option>
+                        {/each}
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span class="label">path</span>
+                      <input
+                        type="text"
+                        placeholder="docs 配下の下位パス（任意）"
+                        value={docInput.path}
+                        oninput={(event) => (docInput.path = event.currentTarget.value)}
+                      />
+                    </label>
+                  </div>
+                  <p class="hint">
+                    本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
+                    作成後、左の一覧から「編集」して本文を入れます。
+                  </p>
+                  <div class="actions">
+                    <button
+                      type="button"
+                      disabled={docCreateIssue.state !== "ready"}
+                      title={why(docCreateIssue)}
+                      onclick={createDoc}
+                    >
+                      文書を作成
+                    </button>
+                    {#if docCreateIssue.state === "blocked"}
+                      <span class="reason">{docCreateIssue.reason}</span>
+                    {/if}
+                  </div>
+                </div>
+
+                {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
               </div>
             </div>
           {/if}
-
-          {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
         </section>
       {:else if section === "milestones"}
         <!-- マイルストーン区画 (doc-10 §6) -->
@@ -1608,7 +1627,9 @@
     flex: none;
     flex-direction: column;
     gap: 0.2rem;
-    width: 9rem;
+    // 区画ナビ (doc-10 §3): design 07's 12rem, dropped from `project-detail.ts` as a content-box
+    // width (TASK-115 — no global box-sizing reset, so the padding sits outside it).
+    width: var(--section-nav-width);
     padding: 0.6rem 0.4rem;
     border-right: 1px solid var(--line);
 
@@ -1626,6 +1647,63 @@
     flex: 1;
     min-width: 0;
     padding: 0.6rem 0.75rem 1.5rem;
+    overflow-y: auto;
+
+    // 文書区画 (doc-10 §5): the panel stops being the scroller and hands its height to the two
+    // columns, each scrolling on its own. Its horizontal padding moves into the columns — a focus
+    // ring at a scrollport's edge is clipped (TASK-74's実測), so each scroll container carries its
+    // own side padding — which leaves the direct children above the columns to carry it themselves.
+    &.split {
+      display: flex;
+      flex-direction: column;
+      padding: 0.6rem 0 0;
+      overflow: hidden;
+
+      > p {
+        margin-right: 0.75rem;
+        margin-left: 0.75rem;
+      }
+    }
+  }
+
+  .doc-grid {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+
+    > h2,
+    > .confirm,
+    > .unreadable,
+    > .neutral,
+    > .withheld {
+      margin-right: 0.75rem;
+      margin-left: 0.75rem;
+    }
+  }
+
+  .columns {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  // 文書一覧 (doc-10 §5): the column that keeps the selection. Width is design 07's 16rem, a
+  // content box like the 区画ナビ's.
+  .doc-list {
+    flex: none;
+    width: var(--doc-list-width);
+    padding: 0 0.6rem 1.5rem 0.75rem;
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+  }
+
+  // 編集ペイン (doc-10 §5): 更新フォーム, then 作成フォーム and 提供しない操作区画. Only the
+  // 更新フォーム swaps with the selection; the rest stand whatever is chosen.
+  .doc-pane {
+    flex: 1;
+    min-width: 0;
+    padding: 0 0.75rem 1.5rem 0.6rem;
     overflow-y: auto;
   }
 
