@@ -9,7 +9,6 @@ import {
   EMPTY_MILESTONE_REMOVE,
   EMPTY_MILESTONE_RENAME,
   EMPTY_TASK_CREATE,
-  MILESTONE_DESCRIPTION_NOT_EDITABLE,
   MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
   MILESTONE_NAME_REQUIRED_REASON,
   MILESTONE_REASSIGN_TARGET_IS_SELF_REASON,
@@ -21,12 +20,15 @@ import {
   TASK_CREATE_OMITTED_FIELDS,
   TASK_CREATE_SCOPE_NOTE,
   TASK_TITLE_REQUIRED_REASON,
+  MILESTONE_DESCRIPTION_HEADING_REASON,
+  MILESTONE_DESCRIPTION_UNCHANGED_REASON,
   WITHHELD_DOCUMENT_OPERATIONS,
   WITHHELD_MILESTONE_OPERATIONS,
   buildDocCreate,
   buildDocUpdate,
   buildMilestoneAdd,
   buildMilestoneArchive,
+  buildMilestoneDescribe,
   buildMilestoneRemove,
   buildMilestoneRename,
   buildTaskCreate,
@@ -318,31 +320,23 @@ describe("buildMilestoneAdd", () => {
 });
 
 describe("マイルストーンの提供範囲", () => {
-  it("states that a created milestone's description cannot be edited, and why (AC #3)", () => {
-    // The reason has to name the CLI constraint, not merely say the control is missing: doc-5 §3.2
-    // requires the absence to read as 制約由来.
-    expect(MILESTONE_DESCRIPTION_NOT_EDITABLE).toContain("milestone add -d");
-    expect(MILESTONE_DESCRIPTION_NOT_EDITABLE).toContain("doc-5 §3.1");
+  it("withholds no milestone operation at all, since TASK-65 (doc-10 §9)", () => {
+    // 改称・削除・アーカイブ left the list when doc-9 §4.2 defined their 照合 (TASK-45); the
+    // description edit left it when decision-21 made it a 直接書き込み操作. The empty list is the
+    // 区画's own instruction not to render (doc-10 §9), so it is asserted rather than assumed.
+    expect(WITHHELD_MILESTONE_OPERATIONS).toEqual([]);
   });
 
-  it("keeps only the description edit withheld, now that 照合 is defined for the other three", () => {
-    // doc-10 §6 after TASK-45: 改称・削除・アーカイブ are offered, so the 区画 holds the one entry
-    // whose cause is different — v1.48.0 has no subcommand for it.
-    expect(WITHHELD_MILESTONE_OPERATIONS.map((entry) => entry.kind)).toEqual(["describe"]);
-    for (const entry of WITHHELD_MILESTONE_OPERATIONS) {
+  it("still lays a withheld document operation out as 名称・写像先・理由 (doc-10 §1)", () => {
+    // The milestone list going empty must not take the shape with it: the 文書区画 keeps an entry,
+    // and it is the three points that tell 提供しない apart from a disabled button (doc-11 §5).
+    expect(WITHHELD_DOCUMENT_OPERATIONS.length).toBeGreaterThan(0);
+    for (const entry of WITHHELD_DOCUMENT_OPERATIONS) {
       expect(entry.label).not.toBe("");
       expect(entry.mapping).not.toBe("");
+      expect(entry.reason).not.toBe("");
     }
   });
-
-  it("keeps the description edit out of the 照合不能 family, since its cause is different", () => {
-    // The description edit is missing because the CLI has no subcommand, not because 照合 is
-    // undefined. With the 照合不能 tail it would read as "it appears once 照合 is settled".
-    const describe = WITHHELD_MILESTONE_OPERATIONS.find((entry) => entry.kind === "describe");
-    expect(describe?.reason).toBe(MILESTONE_DESCRIPTION_NOT_EDITABLE);
-    expect(describe?.reason).not.toContain("照合を省いた実行は代替経路として提供しません");
-  });
-
 });
 
 // --- 改称・削除・アーカイブ (doc-9 §4.2, doc-10 §6) ---------------------------------------------
@@ -475,6 +469,66 @@ describe("buildMilestoneArchive", () => {
       state: "ready",
       action: [{ op: "milestoneArchive", name: "m-1" }],
     });
+  });
+});
+
+// --- マイルストーン説明の更新 (doc-10 §6, decision-21) -------------------------------------------
+
+describe("buildMilestoneDescribe", () => {
+  const described: Milestone = { ...MILESTONE, description: "Phase one of two." };
+
+  it("issues the 直接書き込み操作 with the milestone's id as its operand", () => {
+    expect(buildMilestoneDescribe(described, "Rewritten.")).toEqual({
+      state: "ready",
+      action: [{ op: "milestoneDescribe", name: "m-1", description: "Rewritten." }],
+    });
+  });
+
+  it("issues an empty description rather than blocking it (doc-10 §6)", () => {
+    // Emptying is offered on purpose: `milestone add` without `-d` writes a placeholder, so a
+    // description the user wrote has no other way back out. The empty string is what carries it,
+    // which is why it must not be confused with "nothing to send".
+    expect(buildMilestoneDescribe(described, "")).toEqual({
+      state: "ready",
+      action: [{ op: "milestoneDescribe", name: "m-1", description: "" }],
+    });
+  });
+
+  it("blocks an unchanged description, including a milestone that never had one", () => {
+    expect(buildMilestoneDescribe(described, "Phase one of two.")).toEqual({
+      state: "blocked",
+      reason: MILESTONE_DESCRIPTION_UNCHANGED_REASON,
+    });
+    // `null` description and an empty box are the same state, so pressing 保存 there would write
+    // the bytes that are already in the file.
+    expect(buildMilestoneDescribe(MILESTONE, "")).toEqual({
+      state: "blocked",
+      reason: MILESTONE_DESCRIPTION_UNCHANGED_REASON,
+    });
+  });
+
+  it("refuses a line starting with `##`, wherever in the description it is", () => {
+    // The read layer ends 説明の本文範囲 at the next `##`, so everything after such a line would be
+    // written to the file and then read back as absent (decision-21).
+    for (const text of ["## Notes", "Intro.\n\n## Notes\n- a", "  ## indented"]) {
+      expect(buildMilestoneDescribe(described, text)).toEqual({
+        state: "blocked",
+        reason: MILESTONE_DESCRIPTION_HEADING_REASON,
+      });
+    }
+  });
+
+  it("allows `#` and a mid-line `##`, which end no section", () => {
+    // Only a line *beginning* `##` closes the range; refusing more than that would block ordinary
+    // prose for a rule it is not subject to.
+    expect(buildMilestoneDescribe(described, "# Title\nsee C## for the rest").state).toBe("ready");
+  });
+
+  it("states a reason that is true of v1.48.0 (doc-10 §1)", () => {
+    // Not "the CLI cannot do it": `milestone add -d` writes a heading-bearing description without
+    // complaint (measured 2026-08-06). The reason is about the round trip, and says so.
+    expect(MILESTONE_DESCRIPTION_HEADING_REASON).not.toContain("CLI");
+    expect(MILESTONE_DESCRIPTION_HEADING_REASON).toContain("##");
   });
 });
 
