@@ -1,10 +1,10 @@
 ---
 id: TASK-109
 title: 文書の tags 全消しを提供するかどうかを決める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-01 07:56'
-updated_date: '2026-08-05 21:16'
+updated_date: '2026-08-05 21:25'
 labels:
   - 'kind:chore'
 milestone: m-2
