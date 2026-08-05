@@ -620,10 +620,15 @@ export function buildMilestoneArchive(milestone: Milestone): IssuePlan {
 }
 
 /**
- * Why an existing milestone's description has no edit control (doc-5 §3.1/§3.2). Carried as the
- * reason of the 提供しない操作区画's `describe` entry (doc-10 §6) rather than as a hint beside the
- * descriptions: doc-11 §5 puts operations Atlas has decided not to offer in that 区画, and a sentence
- * floating beside the list would state the same absence in a second place with no 写像先 beside it.
+ * Why an existing milestone's description has no edit control (doc-5 §3.1/§3.2). Shown in **two**
+ * places, which doc-10 §6 makes the rule: as the reason of the 提供しない操作区画's `describe` entry,
+ * and as a hint beside the selected milestone's description in the 操作ペイン.
+ *
+ * The 提供しない操作区画 is where an operation Atlas decided against belongs, with its 写像先 beside
+ * it — that placement is unchanged. What changed is that it is no longer the only place: since the
+ * 区画 became three columns (TASK-64) the 提供しない操作区画 is only on screen while nothing is
+ * selected, so a reader looking at a description would never reach it. The duplication buys
+ * proximity, in the same spirit as doc-11 §5 allowing a 無効化の理由 to repeat what a 帯 already says.
  */
 export const MILESTONE_DESCRIPTION_NOT_EDITABLE =
   "作成後の説明の編集は提供しません。v1.48.0 の `milestone` に update/edit サブコマンドが無く、" +

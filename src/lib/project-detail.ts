@@ -11,7 +11,7 @@
  * |---|---|---|
  * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | the four items 概要・文書・マイルストーン・新規タスク — a display change within one screen, not a screen transition |
  * | §3 区画ナビ | [`SECTION_NAV_WIDTH_REM`] | the 12rem column down the left that houses the 区画切替 — the place, where §1 is the choice |
- * | §5 文書一覧 / 編集ペイン | [`DOC_LIST_WIDTH_REM`] | the 16rem column that keeps the selection; the pane right of it takes the remaining width, so only the list's width is a constant |
+ * | §1 一覧列 | [`LIST_COLUMN_WIDTH_REM`] | the 16rem column that keeps the selection — 文書一覧 (§5) and マイルストーン一覧 (§6) are its two instances; the pane right of it takes the remaining width, so only the list's width is a constant |
  * | §5 表示パス | [`displayPath`] | the read layer's `source_path` made project-relative for the pane's heading — display only, never the value `-p` takes |
  * | §3 台帳読取専用帯 | `band.ts`'s [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and what still works |
  * | §3 CLI 縮退帯 | `band.ts`'s [`cliDegradedBand`] | that no supported CLI was found, and what still works |
@@ -63,10 +63,12 @@ export const DETAIL_SECTIONS: readonly { id: DetailSection; label: string }[] = 
 export const SECTION_NAV_WIDTH_REM = 12;
 
 /**
- * 文書一覧 (doc-10 §5): the column that keeps the selection, design 07's 16rem. The 編集ペイン
- * right of it has no constant — it takes what remains.
+ * 一覧列 (doc-10 §1): the column that keeps the selection, design 07's 16rem. One constant rather
+ * than one per 区画 because doc-10 §1 makes it one column type with two instances — 文書一覧 (§5)
+ * and マイルストーン一覧 (§6). Two constants holding 16 would let the two drift apart while the doc
+ * still calls them the same column. The pane right of it has no constant — it takes what remains.
  */
-export const DOC_LIST_WIDTH_REM = 16;
+export const LIST_COLUMN_WIDTH_REM = 16;
 
 /**
  * 表示パス (doc-10 §5): the read layer's `source_path` made project-relative for the 編集ペイン's
