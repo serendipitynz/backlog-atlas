@@ -880,10 +880,14 @@ fn every_failure_kind() -> Vec<FailureKind> {
         FailureKind::Spawn,
         FailureKind::NonZero { code: None },
         FailureKind::TimedOut { after_ms: 0 },
+        FailureKind::Write,
     ];
     for value in &all {
         match value {
-            FailureKind::Spawn | FailureKind::NonZero { .. } | FailureKind::TimedOut { .. } => {}
+            FailureKind::Spawn
+            | FailureKind::NonZero { .. }
+            | FailureKind::TimedOut { .. }
+            | FailureKind::Write => {}
         }
     }
     all

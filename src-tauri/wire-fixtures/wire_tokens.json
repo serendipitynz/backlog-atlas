@@ -51,7 +51,8 @@
   "FailureKind": [
     "spawn",
     "nonZero",
-    "timedOut"
+    "timedOut",
+    "write"
   ],
   "LaunchMethod": [
     "configured",

@@ -78,6 +78,7 @@ use crate::ledger::{
 use crate::read::scan::{ScanSource, WorkingTree};
 use crate::read::RootError;
 use crate::settings::{self, AppSettings, LoadedSettings, SettingsError};
+use crate::store::{self, Files};
 use crate::subprocess::Cancel;
 use crate::sync::{
     FileVersions, FsVersions, GuardError, GuardedUpdate, ReloadReason, SyncState, WatchSession,
@@ -649,6 +650,7 @@ impl ProjectState {
         cli: &dyn BacklogCli,
         source: &dyn ScanSource,
         probe: &dyn FileVersions,
+        files: &dyn Files,
     ) -> Result<UpdateResult, CommandError> {
         // An action with no operation would run no invocation and then be reported as a success
         // (doc-5 §5 judges an action by its invocations' exit codes). Refusing it keeps "succeeded"
@@ -671,6 +673,7 @@ impl ProjectState {
                 cli,
                 source,
                 probe,
+                files,
             )
             .map_err(CommandError::guard)?;
         match guarded {
@@ -1730,9 +1733,15 @@ pub fn update_apply(
             }
         };
         let source = WorkingTree::new(&entry.backlog_root);
-        project
-            .state
-            .apply(&entry, &action, &capability, &cli, &source, &FsVersions)
+        project.state.apply(
+            &entry,
+            &action,
+            &capability,
+            &cli,
+            &source,
+            &FsVersions,
+            &store::SystemFiles,
+        )
     })
 }
 
@@ -2420,6 +2429,7 @@ ordinal: 1000\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -2576,6 +2586,7 @@ references:\n  - https://example.test/one\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
         let UpdateResult::Ran { outcome, project } = result else {
@@ -2675,6 +2686,7 @@ labels: []\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap()
         else {
@@ -2758,6 +2770,7 @@ labels: []\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -2805,6 +2818,7 @@ labels: []\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap_err();
 
@@ -2846,6 +2860,7 @@ labels: []\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -2889,6 +2904,7 @@ labels: []\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap_err();
         assert!(matches!(error, CommandError::UpdateRejected { .. }));
@@ -2896,7 +2912,15 @@ labels: []\n\
         // An action with nothing in it is refused the same way: it would otherwise launch no
         // invocation and still be reported as a success.
         let error = workspace
-            .apply(&entry, &[], &capability, &cli, &source(&entry), &FsVersions)
+            .apply(
+                &entry,
+                &[],
+                &capability,
+                &cli,
+                &source(&entry),
+                &FsVersions,
+                &store::SystemFiles,
+            )
             .unwrap_err();
         assert!(matches!(error, CommandError::UpdateRejected { .. }));
     }
@@ -2957,6 +2981,7 @@ labels: []\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -2977,6 +3002,7 @@ labels: []\n\
                 &cli,
                 &source(&entry),
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
         assert!(matches!(result, UpdateResult::Ran { .. }));
@@ -3457,6 +3483,7 @@ labels: []\n\
                         &cli,
                         &source(&entry),
                         &FsVersions,
+                        &store::SystemFiles,
                     )
                 })
             }

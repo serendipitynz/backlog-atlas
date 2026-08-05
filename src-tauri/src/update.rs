@@ -1,13 +1,19 @@
 //! Backlog 更新アダプター — turns an Atlas 更新操作 into a Backlog CLI invocation run with the
 //! target project as its working directory (doc-5). Implements doc-5 "Backlog 更新アダプター 設計".
 //!
-//! The adapter never rewrites managed Markdown; the Backlog CLI does (decision-2, doc-5 §2, AGENTS).
-//! This module only maps operations to sub-commands, launches them, and reports success or failure
-//! by exit code. The four seams doc-5 fixes map to the four public pieces here:
+//! The adapter rewrites managed Markdown only where doc-5 §1's 直接書き込み操作 says it does — one
+//! operation, マイルストーン説明の更新, under decision-21. Everything else is the Backlog CLI's write
+//! (decision-2, doc-5 §2, AGENTS), and this module maps operations to sub-commands, launches them,
+//! and reports success or failure by exit code. The seams doc-5 fixes map to the public pieces here:
 //!
-//! - **操作写像** (doc-5 §3, AC #1): [`UpdateOperation`] → a plan of [`Invocation`]s, built by
+//! - **操作写像** (doc-5 §3, AC #1): [`UpdateOperation`] → a plan of [`Mapped`]s, built by
 //!   [`plan_operation`]. One operation is one sub-command call; `task edit`/`doc update` combine
 //!   their fields into a single call rather than one call per field (doc-5 §3 bullet).
+//! - **直接書き込み操作** (doc-5 §1, decision-21): the one 更新操作 whose 写像先 is not a sub-command.
+//!   [`Mapped::WriteMilestoneDescription`] carries it, and [`DirectWriter`] — implemented by the
+//!   freshness layer — performs it, because the file it writes is resolved from the domain model
+//!   where its version was just checked. It is a step of the same plan as the CLI calls, so it
+//!   cannot be reached around the pre-update check or fall silently out of an action.
 //! - **実行ファイル解決の順序** (doc-5 §4, decision-16): [`resolve`] decides *which* executable the
 //!   invocations run — アプリ設定 `backlog_cli`, then the プラットフォーム別実行ファイル reached from
 //!   an npm shim on Windows, then the bare name `backlog`. It is the only part of this module that
@@ -27,9 +33,12 @@
 //!   version at or above the confirmed [`MIN_VERSION`] yields a [`CliCapability`]. [`run`] takes that
 //!   capability by reference, so an update is unreachable without a supported CLI — a missing or
 //!   too-old CLI degrades Atlas to read-only by construction, not by a flag a caller might forget.
-//!   Operations v1.48.0 cannot perform (milestone description update, emptying references) are
-//!   unrepresentable or refused *before* any process starts.
+//!   Operations v1.48.0 cannot perform (emptying references, emptying dependencies, clearing an
+//!   assignee) are unrepresentable or refused *before* any process starts. The 直接書き込み操作 is
+//!   gated the same way even though it starts no process: a root Atlas cannot update through the
+//!   CLI at all is not one where a single operation should still write.
 
+use crate::read::parse::DescriptionOpener;
 use crate::subprocess::{self, Cancel, Stopped};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -149,11 +158,15 @@ pub fn probe(cli: &dyn BacklogCli) -> CliStatus {
 
 // --- operation map (doc-5 §3, AC #1) ------------------------------------------------------------
 
-/// One Atlas 更新操作 (doc-5 §1). Each variant maps to exactly one Backlog CLI sub-command; the
-/// mapping is [`plan_operation`]. Operations v1.48.0 cannot perform are absent by construction:
-/// there is no milestone-description edit (only [`UpdateOperation::MilestoneAdd`] sets a
-/// description, at creation), no single-option AC replace (only the composite [`AcEdit::Replace`]),
-/// and references cannot be emptied ([`TaskEdit::references`] is refused when empty) — doc-5 §3.1.
+/// One Atlas 更新操作 (doc-5 §1). Each variant maps to exactly one 写像先 — a Backlog CLI
+/// sub-command, or, for the single 直接書き込み操作, Atlas's own write; the mapping is
+/// [`plan_operation`]. Operations v1.48.0 cannot perform are absent by construction: there is no
+/// single-option AC replace (only the composite [`AcEdit::Replace`]), and references cannot be
+/// emptied ([`TaskEdit::references`] is refused when empty) — doc-5 §3.1.
+///
+/// [`UpdateOperation::MilestoneDescribe`] is the one that used to be absent for the same reason and
+/// no longer is: decision-21 lets Atlas write 説明の本文範囲 itself, because re-creating a milestone
+/// to change its description changes its id and detaches every task that referenced it.
 //
 // large_enum_variant is allowed rather than boxed: this is an IPC command type, deserialized from
 // the frontend one value at a time and consumed immediately (doc-5 §2). It is never held in bulk
@@ -198,13 +211,23 @@ pub enum UpdateOperation {
     /// `doc update` (doc-5 §3): title / whole-body / type / path / tags.
     #[serde(rename_all = "camelCase")]
     DocUpdate { doc_id: String, update: DocUpdate },
-    /// `milestone add` (doc-5 §3). Description is set only here — v1.48.0 has no update path (§3.1).
+    /// `milestone add` (doc-5 §3).
     #[serde(rename_all = "camelCase")]
     MilestoneAdd {
         name: String,
         #[serde(default)]
         description: Option<String>,
     },
+    /// マイルストーン説明の更新 — the 直接書き込み操作 (doc-5 §1/§3, decision-21). No sub-command:
+    /// v1.48.0's `milestone` has no `update`/`edit`, so this one replaces 説明の本文範囲 of the
+    /// milestone's management file and nothing else.
+    ///
+    /// `description` is a plain `String` rather than an `Option`, because "no description" is a
+    /// value here and not an absent field: the empty string empties the range, which doc-10 §6
+    /// offers deliberately (the CLI's own `-d`-less creation writes a placeholder instead, so a
+    /// description the user wrote has no other way of being taken back).
+    #[serde(rename_all = "camelCase")]
+    MilestoneDescribe { name: String, description: String },
     /// `milestone rename` (doc-5 §3). `update_tasks` false adds `--no-update-tasks`.
     #[serde(rename_all = "camelCase")]
     MilestoneRename {
@@ -568,36 +591,67 @@ impl std::fmt::Display for RejectReason {
 
 impl std::error::Error for RejectReason {}
 
-/// Map one operation to its plan of invocations (doc-5 §3, AC #1). Most operations are a single
-/// invocation; the plan is a `Vec` so a future screen action that must split across sub-commands
-/// gets the abort-on-failure execution (AC #4) without a special case. Every emitted option is
-/// validated against the confirmed version's allowlist here, so an out-of-capability operation is
-/// refused before launch (AC #5).
-pub fn plan_operation(op: &UpdateOperation) -> Result<Vec<Invocation>, RejectReason> {
-    let invocations = match op {
-        UpdateOperation::TaskCreate(c) => vec![plan_task_create(c)],
-        UpdateOperation::TaskEdit { task_id, edit } => vec![plan_task_edit(task_id, edit)?],
+/// What one 更新操作's 写像先 is (doc-5 §3). Almost every operation is a Backlog CLI invocation;
+/// [`Mapped::WriteMilestoneDescription`] is the 直接書き込み操作 (doc-5 §1, decision-21) — the one
+/// whose 写像先 is Atlas's own write.
+///
+/// Both kinds are steps of the same plan rather than two paths a caller chooses between, which is
+/// what keeps the write inside every guarantee the CLI calls already have: the pre-update version
+/// check runs over the plan's targets, execution aborts on the first failure, and an operation
+/// cannot be dropped from an action without the match below ceasing to compile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Mapped {
+    Invoke(Invocation),
+    /// マイルストーン説明の更新. The file to write is **not** named here. It is resolved from the
+    /// domain model by [`DirectWriter`]'s implementor inside the freshness boundary — the same
+    /// place that just checked its version — so a path never travels from the frontend, and the
+    /// target of the write is the target that was checked.
+    WriteMilestoneDescription {
+        name: String,
+        description: String,
+    },
+}
+
+/// Map one operation to its plan (doc-5 §3, AC #1). Most operations are a single step; the plan is
+/// a `Vec` so a screen action that must split across sub-commands gets the abort-on-failure
+/// execution (AC #4) without a special case. Every emitted option is validated against the
+/// confirmed version's allowlist here, so an out-of-capability operation is refused before launch
+/// (AC #5) — a 直接書き込み操作 has no options to validate, having no sub-command.
+pub fn plan_operation(op: &UpdateOperation) -> Result<Vec<Mapped>, RejectReason> {
+    // Each arm names its own 写像先 kind rather than defaulting to a CLI call, so adding an
+    // operation is a decision about which kind it is (doc-5 §1) instead of an omission.
+    let mapped: Vec<Mapped> = match op {
+        UpdateOperation::TaskCreate(c) => invoked([plan_task_create(c)]),
+        UpdateOperation::TaskEdit { task_id, edit } => invoked([plan_task_edit(task_id, edit)?]),
         UpdateOperation::DraftPromote { draft_id } => {
-            vec![Invocation::new(&["draft", "promote"]).positional(draft_id)]
+            invoked([Invocation::new(&["draft", "promote"]).positional(draft_id)])
         }
         UpdateOperation::DraftArchive { draft_id } => {
-            vec![Invocation::new(&["draft", "archive"]).positional(draft_id)]
+            invoked([Invocation::new(&["draft", "archive"]).positional(draft_id)])
         }
         UpdateOperation::TaskDemote { task_id } => {
-            vec![Invocation::new(&["task", "demote"]).positional(task_id)]
+            invoked([Invocation::new(&["task", "demote"]).positional(task_id)])
         }
         UpdateOperation::TaskArchive { task_id } => {
-            vec![Invocation::new(&["task", "archive"]).positional(task_id)]
+            invoked([Invocation::new(&["task", "archive"]).positional(task_id)])
         }
         UpdateOperation::TaskComplete { task_id } => {
-            vec![Invocation::new(&["task", "complete"]).positional(task_id)]
+            invoked([Invocation::new(&["task", "complete"]).positional(task_id)])
         }
-        UpdateOperation::DocCreate(c) => vec![plan_doc_create(c)],
-        UpdateOperation::DocUpdate { doc_id, update } => vec![plan_doc_update(doc_id, update)?],
+        UpdateOperation::DocCreate(c) => invoked([plan_doc_create(c)]),
+        UpdateOperation::DocUpdate { doc_id, update } => {
+            invoked([plan_doc_update(doc_id, update)?])
+        }
         UpdateOperation::MilestoneAdd { name, description } => {
-            vec![Invocation::new(&["milestone", "add"])
+            invoked([Invocation::new(&["milestone", "add"])
                 .positional(name)
-                .opt_if("--description", description)]
+                .opt_if("--description", description)])
+        }
+        UpdateOperation::MilestoneDescribe { name, description } => {
+            vec![Mapped::WriteMilestoneDescription {
+                name: name.clone(),
+                description: description.clone(),
+            }]
         }
         UpdateOperation::MilestoneRename {
             from,
@@ -610,20 +664,27 @@ pub fn plan_operation(op: &UpdateOperation) -> Result<Vec<Invocation>, RejectRea
             if !update_tasks {
                 inv = inv.flag("--no-update-tasks");
             }
-            vec![inv]
+            invoked([inv])
         }
         UpdateOperation::MilestoneRemove {
             name,
             task_handling,
-        } => vec![plan_milestone_remove(name, task_handling)],
+        } => invoked([plan_milestone_remove(name, task_handling)]),
         UpdateOperation::MilestoneArchive { name } => {
-            vec![Invocation::new(&["milestone", "archive"]).positional(name)]
+            invoked([Invocation::new(&["milestone", "archive"]).positional(name)])
         }
     };
-    for inv in &invocations {
-        validate_options(inv)?;
+    for step in &mapped {
+        if let Mapped::Invoke(inv) = step {
+            validate_options(inv)?;
+        }
     }
-    Ok(invocations)
+    Ok(mapped)
+}
+
+/// The arms' common tail: CLI invocations as plan steps.
+fn invoked<const N: usize>(invocations: [Invocation; N]) -> Vec<Mapped> {
+    invocations.into_iter().map(Mapped::Invoke).collect()
 }
 
 fn plan_task_create(c: &TaskCreate) -> Invocation {
@@ -1127,7 +1188,8 @@ pub enum UpdateOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateFailure {
-    /// The sub-command that failed, e.g. `"task edit"`.
+    /// The 写像先 that failed — a sub-command name like `"task edit"`, or [`MILESTONE_DESCRIBE`] for
+    /// the 直接書き込み操作, which has no sub-command to name (doc-5 §1/§3).
     pub command: String,
     /// Why it failed, and its stderr as the failure reason shown to the user (doc-5 §5).
     pub kind: FailureKind,
@@ -1158,6 +1220,126 @@ pub enum FailureKind {
     // multi-word field on this enum needs the attribute of its own that `code` never revealed.
     #[serde(rename_all = "camelCase")]
     TimedOut { after_ms: u64 },
+    /// The 直接書き込み操作 could not write (doc-5 §5, decision-21). No process ran, so there is no
+    /// exit code and no deadline to report; the reason travels in
+    /// [`UpdateFailure::stderr`] like a CLI's does. Distinct from the three above because it is the
+    /// only failure that is *never* 要再読込 on its own — 一時ファイル置換 leaves the old file whole.
+    Write,
+}
+
+/// What [`UpdateFailure::command`] says when the 直接書き込み操作 fails. Named after the doc-5 §3
+/// operation rather than invented, and Japanese because the screen reads it in a Japanese sentence
+/// (`… が失敗しました`) exactly where a sub-command name would go.
+pub const MILESTONE_DESCRIBE: &str = "マイルストーン説明の更新";
+
+/// The seam the 直接書き込み操作 reaches the disk through (doc-5 §1, decision-21).
+///
+/// Implemented by the freshness layer (`sync`), not here, and for one reason: the file to write is
+/// the milestone's management file as the domain model knows it, and that is also the file whose
+/// version was checked a moment earlier. Resolving it there makes "what was checked is what is
+/// written" hold by construction. Taking a path as a parameter instead would let a caller — the
+/// command layer, or a future one — hand in a path the check never saw.
+pub trait DirectWriter {
+    /// Replace 説明の本文範囲 of the milestone `name` identifies, leaving every other byte of its
+    /// file as it was. `Ok(())` means the whole new file is under the destination's name; every
+    /// `Err` means the whole old file still is (decision-17).
+    fn write_milestone_description(
+        &self,
+        name: &str,
+        description: &str,
+    ) -> Result<(), WriteFailure>;
+}
+
+/// Why a 直接書き込み操作 did not write (doc-5 §5). One string rather than an enum of causes: it
+/// occupies the place a CLI's stderr does, and the screen states it the same way. The distinctions
+/// that matter to the code — refused before writing versus failed while writing — do not change
+/// what the user is told or what the model does, because either way nothing was written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteFailure {
+    pub detail: String,
+}
+
+/// 説明の本文範囲 replaced in the text of a milestone file (decision-21), or `Err` when the file has
+/// no Description to replace.
+///
+/// The range comes from [`crate::read::parse::description_span`] — the same function the read layer
+/// takes [`crate::domain::Milestone::description`] from — so what is replaced is exactly what the
+/// screen was showing. Everything outside it, frontmatter and file name included, is carried over
+/// byte for byte: this function only ever concatenates the untouched head, the new description, and
+/// the untouched tail.
+///
+/// A file whose Description is opened any other way is refused rather than written. Two cases, one
+/// reason: a file with no Description at all would have to be given a heading, and a file whose
+/// Description is a `SECTION:DESCRIPTION` pair — a task file's shape, reachable in a milestone only
+/// by hand-editing — would have Atlas writing into a shape v1.48.0's `milestone add` never produces.
+/// Either is Atlas deciding what a milestone file looks like, which is decision-21's first condition
+/// in reverse: the CLI defines the format, and Atlas writes into the shape the CLI already wrote.
+///
+/// The SECTION case is where the read is deliberately wider than the write. Such a milestone still
+/// shows its description on screen and saving it is refused with the reason said — the refusal
+/// decision-21 provides for, not a silent divergence: what the third condition forbids is the range
+/// moving, and the range is the same one either way.
+pub fn milestone_text_with_description(
+    text: &str,
+    description: &str,
+) -> Result<String, WriteFailure> {
+    let Some((_, body)) = crate::read::parse::split_frontmatter(text) else {
+        return Err(WriteFailure {
+            detail: "the milestone file does not open with a frontmatter block".to_string(),
+        });
+    };
+    // `body` is a suffix of `text` (`split_frontmatter` returns sub-slices, and a BOM can only sit
+    // at the front), so its start is what is left of the file once the body is taken off the end.
+    let body_at = text.len() - body.len();
+    let Some(found) = crate::read::parse::description_span(body) else {
+        return Err(WriteFailure {
+            detail: "the milestone file has no `## Description` section to update".to_string(),
+        });
+    };
+    if found.opener != DescriptionOpener::Heading {
+        return Err(WriteFailure {
+            detail: "the milestone file's Description is a SECTION marker pair, which \
+                     `milestone add` does not write; Atlas updates only a `## Description` section"
+                .to_string(),
+        });
+    }
+    let span = found.range;
+    let mut out = String::with_capacity(text.len() + description.len());
+    out.push_str(&text[..body_at + span.start]);
+    out.push_str(&filled(&body[span.clone()], description));
+    out.push_str(&text[body_at + span.end..]);
+    Ok(out)
+}
+
+/// The bytes to put in 説明の本文範囲 for `description`, given what the range holds now.
+///
+/// The range starts at the line *after* the heading and ends at the line before whatever closes it,
+/// so its content is `\n` + the text + whatever blank lines separated it from the next section. The
+/// description alone cannot be written into it: `## Notes` would end up on the same line as the last
+/// word, and a `##` that no longer starts a line stops closing the range — the next read would take
+/// the rest of the file as the description.
+///
+/// So the line structure is rebuilt: a leading newline, the text, and the whitespace that closed the
+/// range before (a single newline when there was none to keep, as at end of file). Keeping the old
+/// trailing run is what leaves a blank line before the next heading exactly as it was; it is inside
+/// the range, so it is ours to write, but there is no reason to churn it. An empty description
+/// collapses to the newline alone, which is the same shape `milestone add` leaves a description-less
+/// heading in.
+///
+/// The text is trimmed because the read layer trims: writing untrimmed would put bytes in the file
+/// that the next read discards, and the box would then differ from the file it was saved from.
+fn filled(current: &str, description: &str) -> String {
+    let description = description.trim();
+    if description.is_empty() {
+        return "\n".to_string();
+    }
+    let trailing = &current[current.trim_end().len()..];
+    let trailing = if trailing.contains('\n') {
+        trailing
+    } else {
+        "\n"
+    };
+    format!("\n{description}{trailing}")
 }
 
 /// Run one screen action — a sequence of operations executed as a unit (doc-5 §5) — against
@@ -1172,20 +1354,47 @@ pub fn run(
     action: &[UpdateOperation],
     _capability: &CliCapability,
     cli: &dyn BacklogCli,
+    writer: &dyn DirectWriter,
 ) -> Result<UpdateOutcome, RejectReason> {
     // Plan every operation before launching any, so an out-of-capability operation refuses the
     // whole action before a single process starts (AC #5, doc-5 §5).
-    let mut plan: Vec<Invocation> = Vec::new();
+    let mut plan: Vec<Mapped> = Vec::new();
     for op in action {
         plan.extend(plan_operation(op)?);
     }
-    Ok(execute(project_root, &plan, cli))
+    Ok(execute(project_root, &plan, cli, writer))
 }
 
 /// Run a planned sequence, aborting on the first failure (doc-5 §5, AC #4). Split from [`run`] so
 /// execution is testable with a hand-built plan and so the abort-on-failure contract is in one place.
-fn execute(project_root: &Path, plan: &[Invocation], cli: &dyn BacklogCli) -> UpdateOutcome {
-    for (i, inv) in plan.iter().enumerate() {
+fn execute(
+    project_root: &Path,
+    plan: &[Mapped],
+    cli: &dyn BacklogCli,
+    writer: &dyn DirectWriter,
+) -> UpdateOutcome {
+    for (i, step) in plan.iter().enumerate() {
+        let inv = match step {
+            Mapped::Invoke(inv) => inv,
+            // 直接書き込み操作 (doc-5 §1, decision-21). Reported like a CLI failure — same shape,
+            // same abort — because from the screen's side it is the same event: the update did not
+            // happen, and here is why (doc-5 §5).
+            Mapped::WriteMilestoneDescription { name, description } => {
+                if let Err(failure) = writer.write_milestone_description(name, description) {
+                    return UpdateOutcome::Failed(UpdateFailure {
+                        command: MILESTONE_DESCRIBE.to_string(),
+                        kind: FailureKind::Write,
+                        stderr: failure.detail,
+                        // 一時ファイル置換 leaves the whole old file under the destination's name
+                        // however it fails (decision-17), so this step on its own changed nothing.
+                        // Only an earlier step in the plan can make the root need re-reading.
+                        completed_before: i,
+                        reload_required: i > 0,
+                    });
+                }
+                continue;
+            }
+        };
         let argv = inv.to_argv();
         match cli.run(Some(project_root), &argv) {
             // A launch with no verdict (doc-5 §5). 起動失敗 put nothing of *this* invocation on
@@ -1615,6 +1824,7 @@ mod tests {
             }],
             &capability,
             &cli,
+            &FakeWriter::default(),
         )
         .expect("planning succeeds; the failure is at run time");
         let UpdateOutcome::Failed(failure) = outcome else {
@@ -1748,7 +1958,57 @@ mod tests {
     }
 
     fn run_one(op: UpdateOperation, cli: &FakeCli) -> Result<UpdateOutcome, RejectReason> {
-        run(&root(), std::slice::from_ref(&op), &capability(), cli)
+        run(
+            &root(),
+            std::slice::from_ref(&op),
+            &capability(),
+            cli,
+            &FakeWriter::default(),
+        )
+    }
+
+    /// The 直接書き込み操作's writer, recorded rather than performed (doc-5 §1). `sync` owns the real
+    /// one, because only it can resolve the milestone's file from the model; what this module's
+    /// tests decide is that the operation reaches a writer at all, in the plan's order, and that a
+    /// refusal from one is reported like a CLI failure.
+    ///
+    /// It records instead of doing nothing so a CLI-only test cannot pass while silently writing:
+    /// `wrote()` is asserted empty where nothing should have been written.
+    #[derive(Default)]
+    struct FakeWriter {
+        wrote: RefCell<Vec<(String, String)>>,
+        refuses: Option<String>,
+    }
+
+    impl FakeWriter {
+        fn refusing(detail: &str) -> Self {
+            FakeWriter {
+                wrote: RefCell::new(Vec::new()),
+                refuses: Some(detail.to_string()),
+            }
+        }
+
+        fn wrote(&self) -> Vec<(String, String)> {
+            self.wrote.borrow().clone()
+        }
+    }
+
+    impl DirectWriter for FakeWriter {
+        fn write_milestone_description(
+            &self,
+            name: &str,
+            description: &str,
+        ) -> Result<(), WriteFailure> {
+            self.wrote
+                .borrow_mut()
+                .push((name.to_string(), description.to_string()));
+            match &self.refuses {
+                Some(detail) => Err(WriteFailure {
+                    detail: detail.clone(),
+                }),
+                None => Ok(()),
+            }
+        }
     }
 
     // --- AC #6: version probe decides read-only vs update-enabled -----------------------------
@@ -2467,6 +2727,7 @@ mod tests {
             }],
             &capability(),
             &cli,
+            &FakeWriter::default(),
         )
         .unwrap();
         assert!(matches!(
@@ -2509,6 +2770,7 @@ mod tests {
             ],
             &capability(),
             &cli,
+            &FakeWriter::default(),
         )
         .unwrap();
         match outcome {
@@ -2521,6 +2783,237 @@ mod tests {
         }
         // Both were attempted in order; nothing after the failure would run (only two here).
         assert_eq!(cli.calls().len(), 2);
+    }
+
+    // --- 直接書き込み操作 (doc-5 §1/§3, decision-21) ------------------------------------------
+
+    /// The shape v1.48.0's `milestone add -d` writes (measured 2026-08-06), with a section after
+    /// the description so the replacement has something on both sides of it.
+    const MILESTONE: &str =
+        "---\nid: m-1\ntitle: \"P\"\n---\n\n## Description\n\nold\n\n## Notes\n\nkept\n";
+
+    #[test]
+    fn the_description_update_maps_to_a_write_and_not_a_sub_command() {
+        // doc-5 §3's table: this is the one row whose 写像先 is not a sub-command.
+        let plan = plan_operation(&UpdateOperation::MilestoneDescribe {
+            name: "m-1".to_string(),
+            description: "new".to_string(),
+        })
+        .expect("the 直接書き込み操作 plans without rejection");
+        assert_eq!(
+            plan,
+            vec![Mapped::WriteMilestoneDescription {
+                name: "m-1".to_string(),
+                description: "new".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn the_description_update_reaches_the_writer_and_launches_nothing() {
+        let cli = FakeCli::supported();
+        let writer = FakeWriter::default();
+        let outcome = run(
+            &root(),
+            &[UpdateOperation::MilestoneDescribe {
+                name: "m-1".to_string(),
+                description: "new".to_string(),
+            }],
+            &capability(),
+            &cli,
+            &writer,
+        )
+        .unwrap();
+        assert_eq!(outcome, UpdateOutcome::Succeeded);
+        assert_eq!(writer.wrote(), vec![("m-1".to_string(), "new".to_string())]);
+        assert!(cli.calls().is_empty(), "no process runs for a write");
+    }
+
+    #[test]
+    fn a_cli_only_action_writes_nothing() {
+        // The writer records rather than doing nothing, so an operation that quietly grew a write
+        // side would show up here instead of passing.
+        let cli = FakeCli::supported();
+        let writer = FakeWriter::default();
+        run(
+            &root(),
+            &[UpdateOperation::MilestoneArchive {
+                name: "m-1".to_string(),
+            }],
+            &capability(),
+            &cli,
+            &writer,
+        )
+        .unwrap();
+        assert!(writer.wrote().is_empty());
+    }
+
+    #[test]
+    fn a_refused_write_is_reported_like_a_cli_failure() {
+        let cli = FakeCli::supported();
+        let writer = FakeWriter::refusing("no `## Description` section");
+        let outcome = run(
+            &root(),
+            &[UpdateOperation::MilestoneDescribe {
+                name: "m-1".to_string(),
+                description: "new".to_string(),
+            }],
+            &capability(),
+            &cli,
+            &writer,
+        )
+        .unwrap();
+        match outcome {
+            UpdateOutcome::Failed(failure) => {
+                assert_eq!(failure.command, MILESTONE_DESCRIBE);
+                assert_eq!(failure.kind, FailureKind::Write);
+                assert!(failure.stderr.contains("Description"));
+                // 一時ファイル置換 leaves the old file whole, so a first-step write failure is not
+                // 要再読込 — unlike a 期限到達, which is (doc-5 §5).
+                assert!(!failure.reload_required);
+                assert_eq!(failure.completed_before, 0);
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_write_after_an_invocation_is_reload_required_when_it_fails() {
+        // The rule is the plan's, not the write's: an earlier invocation already wrote, so the root
+        // has to be re-read whatever stopped the step after it (doc-5 §5 要再読込).
+        // FakeCli succeeds unless a failure is queued, so the first invocation lands.
+        let cli = FakeCli::supported();
+        let writer = FakeWriter::refusing("disk full");
+        let outcome = run(
+            &root(),
+            &[
+                UpdateOperation::MilestoneArchive {
+                    name: "m-0".to_string(),
+                },
+                UpdateOperation::MilestoneDescribe {
+                    name: "m-1".to_string(),
+                    description: "new".to_string(),
+                },
+            ],
+            &capability(),
+            &cli,
+            &writer,
+        )
+        .unwrap();
+        match outcome {
+            UpdateOutcome::Failed(failure) => {
+                assert!(failure.reload_required);
+                assert_eq!(failure.completed_before, 1);
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_failed_write_stops_the_rest_of_the_plan() {
+        let cli = FakeCli::supported();
+        let writer = FakeWriter::refusing("disk full");
+        run(
+            &root(),
+            &[
+                UpdateOperation::MilestoneDescribe {
+                    name: "m-1".to_string(),
+                    description: "new".to_string(),
+                },
+                UpdateOperation::MilestoneArchive {
+                    name: "m-1".to_string(),
+                },
+            ],
+            &capability(),
+            &cli,
+            &writer,
+        )
+        .unwrap();
+        assert!(
+            cli.calls().is_empty(),
+            "部分適用の回避 applies to a write as much as to an invocation"
+        );
+    }
+
+    #[test]
+    fn the_replacement_keeps_every_byte_outside_the_description() {
+        let out = milestone_text_with_description(MILESTONE, "new").unwrap();
+        assert_eq!(
+            out,
+            "---\nid: m-1\ntitle: \"P\"\n---\n\n## Description\n\nnew\n\n## Notes\n\nkept\n"
+        );
+    }
+
+    #[test]
+    fn the_replacement_keeps_the_next_heading_on_its_own_line() {
+        // The range starts after the heading line, so writing the description alone into it would
+        // put `## Notes` on the same line as the last word — and a `##` that no longer starts a
+        // line no longer closes the range, so the next read would take the rest of the file.
+        let out = milestone_text_with_description(MILESTONE, "new").unwrap();
+        assert!(out.contains("\n## Notes\n"));
+        assert_eq!(
+            crate::read::parse::description_span(out.split_once("---\n\n").unwrap().1).map(
+                |found| out.split_once("---\n\n").unwrap().1[found.range]
+                    .trim()
+                    .to_string()
+            ),
+            Some("new".to_string()),
+            "the description reads back as what was written"
+        );
+    }
+
+    #[test]
+    fn an_empty_description_leaves_the_heading_and_the_rest() {
+        assert_eq!(
+            milestone_text_with_description(MILESTONE, "").unwrap(),
+            "---\nid: m-1\ntitle: \"P\"\n---\n\n## Description\n\n## Notes\n\nkept\n"
+        );
+        // …and an emptied description can be filled again, from the shape emptying left behind.
+        // The blank line that used to separate the description from `## Notes` does not come back:
+        // it was inside the range and emptying took it with the text. An ATX heading needs no blank
+        // line before it, so what is written still reads back as one description and one section —
+        // which is what the assertion below is really about.
+        let emptied = milestone_text_with_description(MILESTONE, "").unwrap();
+        assert_eq!(
+            milestone_text_with_description(&emptied, "back").unwrap(),
+            "---\nid: m-1\ntitle: \"P\"\n---\n\n## Description\n\nback\n## Notes\n\nkept\n"
+        );
+    }
+
+    #[test]
+    fn a_description_at_the_end_of_the_file_keeps_its_final_newline() {
+        let at_end = "---\nid: m-1\ntitle: \"P\"\n---\n\n## Description\n\nold\n";
+        assert_eq!(
+            milestone_text_with_description(at_end, "new").unwrap(),
+            "---\nid: m-1\ntitle: \"P\"\n---\n\n## Description\n\nnew\n"
+        );
+    }
+
+    #[test]
+    fn a_file_without_a_description_section_is_refused() {
+        let loose = "---\nid: m-1\ntitle: \"P\"\n---\n\nloose prose\n";
+        let error = milestone_text_with_description(loose, "new").unwrap_err();
+        assert!(error.detail.contains("Description"));
+        let headless = "no frontmatter here\n";
+        assert!(milestone_text_with_description(headless, "new").is_err());
+    }
+
+    #[test]
+    fn a_section_pair_description_is_read_but_not_written() {
+        // The read accepts a milestone hand-edited into a task file's shape (the span is there), but
+        // `milestone add` never writes that shape, so writing into it would be Atlas deciding what a
+        // milestone file looks like — decision-21's first condition in reverse. The read staying
+        // wider than the write is deliberate: the description is still shown, and saving says why it
+        // cannot be.
+        let sectioned = "---\nid: m-1\ntitle: \"P\"\n---\n\n<!-- SECTION:DESCRIPTION:BEGIN -->\nold\n<!-- SECTION:DESCRIPTION:END -->\n";
+        let body = sectioned.split_once("---\n\n").unwrap().1;
+        assert!(
+            crate::read::parse::description_span(body).is_some(),
+            "the reader still finds it"
+        );
+        let error = milestone_text_with_description(sectioned, "new").unwrap_err();
+        assert!(error.detail.contains("SECTION"), "{}", error.detail);
+        assert!(error.detail.contains("## Description"), "{}", error.detail);
     }
 
     #[test]
@@ -2539,6 +3032,7 @@ mod tests {
             ],
             &capability(),
             &cli,
+            &FakeWriter::default(),
         )
         .unwrap();
         // Only the first invocation ran; the second was not launched (doc-5 §5 部分適用の回避).
@@ -2566,6 +3060,7 @@ mod tests {
             ],
             &capability(),
             &cli,
+            &FakeWriter::default(),
         )
         .unwrap_err();
         assert_eq!(err, RejectReason::EmptyReferences);

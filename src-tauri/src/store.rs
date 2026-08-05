@@ -1,11 +1,19 @@
-//! How Atlas's own two files reach the disk — 一時ファイル置換 (decision-17, implements TASK-84).
+//! How every file Atlas writes itself reaches the disk — 一時ファイル置換 (decision-17, implements
+//! TASK-84).
 //!
-//! The ledger (`projects.toml`, doc-3 §2) and the app settings (`settings.toml`, decision-13) are
-//! the only files Atlas writes itself; everything else in a Backlog root is the Backlog CLI's to
-//! write (decision-2). Both used to reach the disk through `std::fs::write`, which truncates the
-//! destination before writing it: a failure between the truncation and the last byte leaves an
-//! empty or half-written TOML under the destination's name. A broken `projects.toml` opens none of
-//! the registered projects, and a broken `settings.toml` starts on the defaults.
+//! Two of them are Atlas's own: the ledger (`projects.toml`, doc-3 §2) and the app settings
+//! (`settings.toml`, decision-13). Both used to reach the disk through `std::fs::write`, which
+//! truncates the destination before writing it: a failure between the truncation and the last byte
+//! leaves an empty or half-written TOML under the destination's name. A broken `projects.toml`
+//! opens none of the registered projects, and a broken `settings.toml` starts on the defaults.
+//!
+//! The third is **not** Atlas's own, and is the only managed file Atlas writes: a milestone's
+//! 説明の本文範囲, under decision-21's exception to "the Backlog CLI writes the Backlog root"
+//! (decision-2). It arrives through [`crate::sync`], which resolves the file from the domain model
+//! it has just version-checked, and it is here for the same reason as the other two — a half-written
+//! milestone file would be a managed file Atlas broke. The list of callers is short on purpose: an
+//! operation reaches this module only once its place in the update path has been settled in a doc
+//! (doc-5 §1/§5), never because a write was convenient.
 //!
 //! ## Referent table (decision-17 term → identifier here)
 //!
@@ -14,6 +22,7 @@
 //! | term | here | is |
 //! |---|---|---|
 //! | decision-17 一時ファイル置換 | [`replace`] | write the whole content to a temp file beside the destination, sync it, then `rename` it over |
+//! | decision-21 直接書き込み操作 | [`replace`] called from [`crate::sync`] | the one managed file this module writes: a milestone's 説明の本文範囲 |
 //! | decision-17 保存境界 | [`Files`] | the filesystem operations a replacement is made of, behind one trait so each can be failed |
 //! | decision-17 保存の段 | [`Step`] | the name of one of those operations, as a value a test can point a failure at |
 //! | decision-17 ファイル同期 | [`Files::sync_all`] | getting the temp file's bytes out of the page cache before the `rename` |

@@ -295,7 +295,12 @@ const RELATION_STATES = unionValues<RelationOutcome["state"]>()(
 );
 const UPDATE_STATES = unionValues<UpdateResult["state"]>()("conflict", "ran");
 const OUTCOME_STATES = unionValues<UpdateOutcome["state"]>()("succeeded", "failed");
-const FAILURE_KINDS = unionValues<FailureKind["kind"]>()("spawn", "nonZero", "timedOut");
+const FAILURE_KINDS = unionValues<FailureKind["kind"]>()(
+  "spawn",
+  "nonZero",
+  "timedOut",
+  "write",
+);
 const CLI_STATES = unionValues<CliReadiness["state"]>()("ready", "unavailable", "unsupported");
 const SETTINGS_STATES = unionValues<SettingsStatus["state"]>()(
   "stored",

@@ -18,7 +18,8 @@
  * | doc-10 §6 改称・削除・アーカイブ | [`MilestoneRenameInput`] / [`MilestoneRemoveInput`] + their builders | the three operations doc-9 §4.2 made checkable, and what each requires before it is offered |
  * | doc-9 §4.2.2 参照タスク集合 | [`referencingTasks`] | the active tasks a 参照追随書き換え may rewrite, shown before the user commits |
  * | doc-9 §4.2.2 参照追随書き換えを伴うか | [`followsReferences`] | which of the six operations carries the fan-out |
- * | doc-5 §3.1/§3.2 作成後の説明編集は出さない | [`MILESTONE_DESCRIPTION_NOT_EDITABLE`] | the reason shown beside every milestone's description |
+ * | doc-5 §1/§3 マイルストーン説明の更新（直接書き込み操作） | [`buildMilestoneDescribe`] | the 説明 edit and the one operation on this screen that is not a CLI call (decision-21) |
+ * | doc-10 §6 行頭 `##` を拒む入力検査 | [`MILESTONE_DESCRIPTION_HEADING_REASON`] | why a heading in the 説明 is refused: it would fall outside the range read back |
  * | doc-10 §1 提供しない操作区画 | [`WithheldOperation`] + [`WITHHELD_DOCUMENT_OPERATIONS`] / [`WITHHELD_MILESTONE_OPERATIONS`] | the material for laying an operation decided against out as 名称・写像先・理由 |
  * | doc-10 §7 作成フォームを絞るのは製品判断 | [`TASK_CREATE_OMITTED_FIELDS`] | the fields with no input, each with its reason and its post-creation route |
  * | doc-5 §5 縮退 | [`issueAvailability`] via `readinessReason` | no supported CLI, so no operation is offered at all |
@@ -30,7 +31,8 @@
  *   文書更新 cannot revert a facet someone else changed between the read and the save.
  * - **The CLI's limits are anticipated, not discovered** (doc-5 §5). An operation v1.48.0 cannot
  *   perform, and one the boundary refuses before launch (doc-9 §4.2), is withheld here rather than
- *   issued and rejected.
+ *   issued and rejected. The one exception is the 直接書き込み操作, which v1.48.0 cannot perform and
+ *   Atlas offers anyway — under decision-21's three conditions, not because the gap was awkward.
  * - **A withheld operation says why**. Nothing is silently missing: either it is offered, or it
  *   carries the reason it is not — and for 照合不能 that reason states it is *not* a version
  *   divergence (doc-9 §5).
@@ -610,20 +612,51 @@ export function buildMilestoneArchive(milestone: Milestone): IssuePlan {
 }
 
 /**
- * Why an existing milestone's description has no edit control (doc-5 §3.1/§3.2). Shown in **two**
- * places, which doc-10 §6 makes the rule: as the reason of the 提供しない操作区画's `describe` entry,
- * and as a hint beside the selected milestone's description in the 操作ペイン.
+ * Why a description line beginning with `##` is refused (doc-10 §6, decision-21).
  *
- * The 提供しない操作区画 is where an operation Atlas decided against belongs, with its 写像先 beside
- * it — that placement is unchanged. What changed is that it is no longer the only place: since the
- * 区画 became three columns (TASK-64) the 提供しない操作区画 is only on screen while nothing is
- * selected, so a reader looking at a description would never reach it. The duplication buys
- * proximity, in the same spirit as doc-11 §5 allowing a 無効化の理由 to repeat what a 帯 already says.
+ * The read layer takes 説明の本文範囲 up to the next `##`, and the write replaces that same range,
+ * so a heading typed into the box would put the rest of what was typed *outside* the range that is
+ * read back — saved to the file, invisible on screen. Refusing at the input is the same shape as
+ * doc-10 §7's comma-in-a-label rule, and for the same kind of reason: the value would not survive
+ * the round trip it appears to make.
+ *
+ * The reason is **not** "the CLI cannot do it" — v1.48.0's `milestone add -d` writes such a
+ * description without complaint (measured 2026-08-06). doc-10 §1 asks that a stated reason be a
+ * true one.
  */
-export const MILESTONE_DESCRIPTION_NOT_EDITABLE =
-  "作成後の説明の編集は提供しません。v1.48.0 の `milestone` に update/edit サブコマンドが無く、" +
-  "説明は `milestone add -d` で作成時にのみ設定できます（`rename` は名称だけを変え、説明は変えません）。" +
-  "CLI が提供するまで Atlas も提供しません（doc-5 §3.1・§3.2）";
+export const MILESTONE_DESCRIPTION_HEADING_REASON =
+  "説明の行頭に `##` は置けません。読み取りは次の `##` までを説明として扱うため、" +
+  "その先に書いた分は保存しても画面に出なくなります";
+
+/** A description whose text is unchanged has nothing to issue — the same 触っていない判定 the
+ * document update form makes (doc-10 §5). */
+export const MILESTONE_DESCRIPTION_UNCHANGED_REASON = "説明は変更されていません";
+
+/**
+ * マイルストーン説明の更新 (doc-10 §6, decision-21) — the one action this screen issues that is not a
+ * CLI call.
+ *
+ * An empty `description` is allowed and issued: doc-10 §6 offers emptying deliberately, and the
+ * empty string is what carries it (`milestone add` without `-d` writes a placeholder instead, so a
+ * description the user wrote has no other way back out). It is only the *unchanged* case that is
+ * blocked, which is why the two are told apart here rather than by testing for emptiness.
+ *
+ * The operand is the id, like every other milestone operation on this screen: the CLI's operand
+ * accepts either, and the id is the one that cannot become ambiguous between milestones sharing a
+ * title.
+ */
+export function buildMilestoneDescribe(milestone: Milestone, description: string): IssuePlan {
+  if (description.split("\n").some((line) => line.trimStart().startsWith("##"))) {
+    return { state: "blocked", reason: MILESTONE_DESCRIPTION_HEADING_REASON };
+  }
+  if (description === (milestone.description ?? "")) {
+    return { state: "blocked", reason: MILESTONE_DESCRIPTION_UNCHANGED_REASON };
+  }
+  return {
+    state: "ready",
+    action: [{ op: "milestoneDescribe", name: milestone.id, description }],
+  };
+}
 
 /**
  * One item of a 提供しない操作区画 (doc-10 §1/§6). It holds the three points the 区画 lays out —
@@ -644,20 +677,16 @@ export interface WithheldOperation {
 }
 
 /**
- * What the マイルストーン区画 still withholds (doc-10 §6). 改称・削除・アーカイブ left this list once
- * doc-9 §4.2 defined their 照合 (TASK-45); what remains is missing for the other family of reason —
- * v1.48.0 has no subcommand for it — so no entry here speaks of 照合不能 any more. Kept as a list of
- * one rather than folded into a sentence: the 区画's three points (名称・写像先・理由) are what tell
- * "Atlas decided against this" apart from a disabled button (doc-11 §5).
+ * What the マイルストーン区画 still withholds (doc-10 §6) — **nothing**, since TASK-65. 改称・削除・
+ * アーカイブ left this list once doc-9 §4.2 defined their 照合 (TASK-45), and the description edit
+ * left it when decision-21 made it a 直接書き込み操作.
+ *
+ * The empty list is kept, rather than the constant deleted along with its last entry, because it is
+ * what `ProjectDetail` renders the 区画 from: doc-10 §9 says a 区画 with no entries is not shown at
+ * all, and "render nothing when the list is empty" states that where the list is. A milestone
+ * operation withheld in future has a place to go and a rule already written.
  */
-export const WITHHELD_MILESTONE_OPERATIONS: WithheldOperation[] = [
-  {
-    kind: "describe",
-    label: "作成後の説明の編集",
-    mapping: "`milestone` に update/edit 相当なし（`milestone add -d` は作成時のみ）",
-    reason: MILESTONE_DESCRIPTION_NOT_EDITABLE,
-  },
-];
+export const WITHHELD_MILESTONE_OPERATIONS: WithheldOperation[] = [];
 
 // --- 文書の提供しない操作 (doc-10 §5) ---------------------------------------------------------
 

@@ -530,25 +530,38 @@ export type UpdateOperation =
   | { op: "docCreate"; title: string; docType?: string; path?: string }
   | { op: "docUpdate"; docId: string; update: DocUpdate }
   | { op: "milestoneAdd"; name: string; description?: string }
+  /**
+   * マイルストーン説明の更新 — the 直接書き込み操作 (doc-5 §1, decision-21). The only operation whose
+   * 写像先 is not a CLI sub-command: Atlas replaces 説明の本文範囲 of the milestone's file itself.
+   * `description` is required and may be empty, because the empty string is the request to empty the
+   * description (doc-10 §6) rather than a field left out.
+   */
+  | { op: "milestoneDescribe"; name: string; description: string }
   | { op: "milestoneRename"; from: string; to: string; updateTasks: boolean }
   | { op: "milestoneRemove"; name: string; taskHandling: MilestoneTaskHandling }
   | { op: "milestoneArchive"; name: string };
 
 /**
- * How a CLI invocation failed (doc-5 §5). `timedOut` is 期限到達 (decision-18): the process was still
+ * How an update failed (doc-5 §5). `timedOut` is 期限到達 (decision-18): the process was still
  * running at the CLI 終了期限 and Atlas killed it, so no exit code was ever observed — which is why it
- * is not a `nonZero` with a missing code.
+ * is not a `nonZero` with a missing code. `write` is the 直接書き込み操作 failing (decision-21): no
+ * process ran, so there is neither an exit code nor a deadline, and 一時ファイル置換 means the old
+ * file is still whole.
  */
 export type FailureKind =
   | { kind: "spawn" }
   | { kind: "nonZero"; code: number | null }
-  | { kind: "timedOut"; afterMs: number };
+  | { kind: "timedOut"; afterMs: number }
+  | { kind: "write" };
 
 export interface UpdateFailure {
-  /** The sub-command that failed, e.g. `"task edit"`. */
+  /**
+   * The 写像先 that failed — a sub-command like `"task edit"`, or the operation's own name for the
+   * 直接書き込み操作, which has no sub-command (doc-5 §1/§3).
+   */
   command: string;
   kind: FailureKind;
-  /** The CLI's stderr — the failure reason doc-5 §5 requires showing. */
+  /** The CLI's stderr, or the write's reason — the failure reason doc-5 §5 requires showing. */
   stderr: string;
   completedBefore: number;
   /**

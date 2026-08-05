@@ -34,15 +34,19 @@
 //! and no shared lock (doc-9 §4.1), so a change slipping in during the 照合後競合窓 (between the
 //! check and the CLI's write) to the *same* file can still be overwritten. That loss is the
 //! best-effort limit doc-9 fixes as the guarantee level; it is documented, not silently closed. This
-//! module never writes managed files (the watch is read-only), so it cannot itself cause such loss —
-//! only the CLI's read-modify-write can, and only inside that window.
+//! module writes exactly one managed file, and only as the 直接書き込み操作 (doc-5 §1, decision-21):
+//! [`MilestoneDescriptions`] replaces 説明の本文範囲 of a milestone file, from inside the same
+//! sequence that just checked that file's version. The watch is read-only, and nothing else here
+//! writes, so the loss window above stays what doc-9 §4.1 describes — narrower for that one write
+//! (no second process is started inside it) but not closed.
 
 use crate::domain::ProjectModel;
 use crate::read::read_project;
 use crate::read::scan::{ScanDir, ScanSource};
+use crate::store::{self, Files};
 use crate::update::{
-    self, BacklogCli, CliCapability, MilestoneTaskHandling, RejectReason, UpdateOperation,
-    UpdateOutcome,
+    self, BacklogCli, CliCapability, DirectWriter, MilestoneTaskHandling, RejectReason,
+    UpdateOperation, UpdateOutcome, WriteFailure,
 };
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
@@ -447,6 +451,7 @@ impl SyncState {
         cli: &dyn BacklogCli,
         source: &dyn ScanSource,
         probe: &dyn FileVersions,
+        files: &dyn Files,
     ) -> Result<GuardedUpdate, GuardError> {
         // Pre-update check (AC #3): each operation's 書き換え対象集合 is resolved from the model
         // here, not supplied by the caller, so the check cannot be skipped. 全件一致 (doc-9 §4.2.3):
@@ -502,9 +507,17 @@ impl SyncState {
             });
         }
 
-        // Every target still matches what we read: run the action (doc-9 §4 step 2).
-        let outcome =
-            update::run(project_root, action, capability, cli).map_err(GuardError::Rejected)?;
+        // Every target still matches what we read: run the action (doc-9 §4 step 2). The 直接
+        // 書き込み操作 runs here too, through the writer built over the same `model` the checks above
+        // resolved their targets from (doc-5 §1, decision-21).
+        let outcome = update::run(
+            project_root,
+            action,
+            capability,
+            cli,
+            &MilestoneDescriptions { model, files },
+        )
+        .map_err(GuardError::Rejected)?;
         let reloaded = match &outcome {
             UpdateOutcome::Succeeded => Some(ReloadReason::UpdateApplied),
             // 要再読込 (doc-5 §5): on-disk state may have moved, so a reload is mandatory to reflect
@@ -593,6 +606,13 @@ fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> TargetResolut
         UpdateOperation::MilestoneArchive { name } => {
             return milestone_target("milestone archive", name, false, model)
         }
+        // 直接書き込み操作 (doc-5 §1, decision-21). Its 書き換え対象集合 is the milestone's own file
+        // and nothing else: replacing 説明の本文範囲 changes neither the id nor the title, so no task
+        // that references the milestone is rewritten. Same resolution as the CLI milestone
+        // operations, so the file that is checked here is the file the writer below goes on to find.
+        UpdateOperation::MilestoneDescribe { name, .. } => {
+            return milestone_target("milestone describe", name, false, model)
+        }
     };
 
     let path = match kind {
@@ -635,6 +655,48 @@ fn milestone_target(
         TargetResolution::ReferenceFollowing(files)
     } else {
         TargetResolution::Checkable(files)
+    }
+}
+
+/// The 直接書き込み操作's writer (doc-5 §1, decision-21), over the model the guarded update is
+/// running against.
+///
+/// It lives here, and not in `update`, because the file it writes has to be the file whose version
+/// was just checked. Both are found by [`find_milestone`] from the same `model`, so "checked" and
+/// "written" cannot come apart — and no path is ever taken from a caller, which is the same reason
+/// [`operation_target`] derives 書き換え対象集合 from the model rather than accepting one.
+struct MilestoneDescriptions<'a> {
+    model: &'a ProjectModel,
+    files: &'a dyn Files,
+}
+
+impl DirectWriter for MilestoneDescriptions<'_> {
+    fn write_milestone_description(
+        &self,
+        name: &str,
+        description: &str,
+    ) -> Result<(), WriteFailure> {
+        let Some(milestone) = find_milestone(self.model, name) else {
+            return Err(WriteFailure {
+                detail: format!(
+                    "milestone `{name}` is not in the model this sync state was built from"
+                ),
+            });
+        };
+        let path = &milestone.source_path;
+        // Read here rather than reusing the text the model was built from: the model keeps the
+        // description, not the file's bytes, and the bytes outside 説明の本文範囲 are what this
+        // write has to carry over unchanged. The version check that just passed is what says these
+        // bytes are the ones the screen was showing.
+        let text = std::fs::read_to_string(path).map_err(|e| WriteFailure {
+            detail: format!("{} could not be read: {e}", path.display()),
+        })?;
+        let updated = update::milestone_text_with_description(&text, description)?;
+        // 一時ファイル置換 (decision-17): a failure part-way through leaves the whole old file under
+        // this name, which is why a failed 直接書き込み is never 要再読込 on its own (doc-5 §5).
+        store::replace(self.files, path, &updated).map_err(|e| WriteFailure {
+            detail: format!("{} could not be written: {e}", path.display()),
+        })
     }
 }
 
@@ -1541,6 +1603,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -1555,6 +1618,263 @@ task_prefix: \"TASK\"\n";
         assert_eq!(
             cli.action_calls(),
             vec![vec!["task", "edit", "TASK-1", "--status", "Done"]]
+        );
+    }
+
+    // --- 直接書き込み操作 (doc-5 §1, decision-21, TASK-65 AC #4/#5/#6) --------------------------
+
+    /// A milestone file in the shape v1.48.0's `milestone add -d` writes (measured 2026-08-06),
+    /// with a second `##` section after the description so "only 説明の本文範囲 is replaced" has
+    /// something on both sides of it to be true about.
+    const MILESTONE_FILE: &str =
+        "---\nid: m-1\ntitle: \"Phase One\"\n---\n\n## Description\n\nFirst line.\nSecond line.\n\n## Notes\n\nkept\n";
+
+    fn described_root() -> TempDir {
+        let temp = minimal_root();
+        temp.write("milestones/m-1 - phase-one.md", MILESTONE_FILE);
+        temp
+    }
+
+    fn milestone_path(root: &TempDir) -> PathBuf {
+        root.path.join("milestones").join("m-1 - phase-one.md")
+    }
+
+    fn describe(description: &str) -> UpdateOperation {
+        UpdateOperation::MilestoneDescribe {
+            name: "m-1".to_string(),
+            description: description.to_string(),
+        }
+    }
+
+    /// AC #4. The assertion is on the *whole file*, not on the description the read layer then
+    /// reports: a write that reformatted the frontmatter or dropped the trailing section would
+    /// still round-trip through `Milestone::description` and pass a laxer check.
+    #[test]
+    fn describing_a_milestone_replaces_only_the_description_section() {
+        let temp = described_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+        cli.calls.borrow_mut().clear();
+
+        let result = state
+            .guarded_update(
+                &[describe("Rewritten.")],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+                &store::SystemFiles,
+            )
+            .unwrap();
+
+        match result {
+            GuardedUpdate::Ran { outcome, model } => {
+                assert_eq!(outcome, UpdateOutcome::Succeeded);
+                assert_eq!(
+                    model
+                        .unwrap()
+                        .milestone("m-1")
+                        .unwrap()
+                        .description
+                        .as_deref(),
+                    Some("Rewritten.")
+                );
+            }
+            other => panic!("expected Ran, got {other:?}"),
+        }
+        // No CLI process ran: the 写像先 of this operation is not a sub-command (doc-5 §3).
+        assert!(
+            cli.action_calls().is_empty(),
+            "the 直接書き込み操作 launches nothing"
+        );
+        assert_eq!(
+            std::fs::read_to_string(milestone_path(&temp)).unwrap(),
+            "---\nid: m-1\ntitle: \"Phase One\"\n---\n\n## Description\n\nRewritten.\n\n## Notes\n\nkept\n",
+            "frontmatter, the heading, and the following section stay byte for byte"
+        );
+    }
+
+    /// AC #4's other half: an empty description empties the range and leaves everything else,
+    /// rather than removing the heading or collapsing the file (doc-10 §6).
+    #[test]
+    fn describing_a_milestone_with_an_empty_string_empties_the_section() {
+        let temp = described_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+
+        state
+            .guarded_update(
+                &[describe("")],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+                &store::SystemFiles,
+            )
+            .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(milestone_path(&temp)).unwrap(),
+            "---\nid: m-1\ntitle: \"Phase One\"\n---\n\n## Description\n\n## Notes\n\nkept\n"
+        );
+        // The read layer reports the emptied description as absent, which is what the screen
+        // shows as 説明なし — the same state a milestone created without one would be in.
+        let (model, _) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        assert_eq!(model.milestone("m-1").unwrap().description, None);
+    }
+
+    /// AC #5. The 直接書き込み操作 is inside the same pre-update check as the CLI calls, so an
+    /// external change to the milestone file withholds the write and comes back as a conflict.
+    #[test]
+    fn describing_a_milestone_writes_nothing_when_the_file_has_moved_on() {
+        let temp = described_root();
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+
+        // Someone else edits the milestone after Atlas read it.
+        let theirs = MILESTONE_FILE.replace("First line.", "Theirs.");
+        temp.write("milestones/m-1 - phase-one.md", &theirs);
+
+        let result = state
+            .guarded_update(
+                &[describe("Rewritten.")],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+                &store::SystemFiles,
+            )
+            .unwrap();
+
+        match result {
+            GuardedUpdate::Conflict {
+                diverged, model, ..
+            } => {
+                assert_eq!(diverged, vec![milestone_path(&temp)]);
+                assert_eq!(
+                    model.milestone("m-1").unwrap().description.as_deref(),
+                    Some("Theirs.\nSecond line.")
+                );
+            }
+            other => panic!("expected Conflict, got {other:?}"),
+        }
+        // The external content is untouched: nothing was written, so nothing was overwritten.
+        assert_eq!(
+            std::fs::read_to_string(milestone_path(&temp)).unwrap(),
+            theirs
+        );
+    }
+
+    /// AC #6. Every step of the 一時ファイル置換 is failed in turn (decision-17): whichever one
+    /// gives out, the destination still holds the whole old file, and nothing of ours is left
+    /// beside it. `EVERY_STEP` is looped over rather than one step picked, so a step added to the
+    /// replacement is a step this test starts covering.
+    #[test]
+    fn a_failed_write_leaves_the_old_milestone_file_whole() {
+        for step in store::EVERY_STEP {
+            let temp = described_root();
+            let source = WorkingTree::new(&temp.path);
+            let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+            let cli = FakeCli::new();
+            let cap = capability(&cli);
+            let files = store::FakeFiles::failing_at(step);
+
+            let result = state
+                .guarded_update(
+                    &[describe("Rewritten.")],
+                    &model,
+                    &temp.path,
+                    &cap,
+                    &cli,
+                    &source,
+                    &FsVersions,
+                    &files,
+                )
+                .unwrap();
+
+            match result {
+                GuardedUpdate::Ran { outcome, .. } => match outcome {
+                    UpdateOutcome::Failed(failure) => {
+                        assert_eq!(failure.kind, update::FailureKind::Write, "step {step:?}");
+                        assert_eq!(failure.command, update::MILESTONE_DESCRIBE);
+                        // 一時ファイル置換 leaves the old file whole, so this failure alone does not
+                        // make the root need re-reading (doc-5 §5).
+                        assert!(!failure.reload_required, "step {step:?}");
+                    }
+                    other => panic!("expected Failed at {step:?}, got {other:?}"),
+                },
+                other => panic!("expected Ran at {step:?}, got {other:?}"),
+            }
+            assert_eq!(
+                std::fs::read_to_string(milestone_path(&temp)).unwrap(),
+                MILESTONE_FILE,
+                "the old file survives a failure at {step:?}"
+            );
+            // Nothing of ours is left beside it: the only leftover would be a temp file, and the
+            // directory holds exactly the one file it started with.
+            let left: Vec<_> = std::fs::read_dir(temp.path.join("milestones"))
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            assert_eq!(
+                left.len(),
+                1,
+                "no temp file is left after {step:?}: {left:?}"
+            );
+        }
+    }
+
+    /// A milestone file with no `## Description` is refused rather than given one: creating the
+    /// heading would be Atlas deciding the file's shape, which is decision-21's first condition in
+    /// reverse.
+    #[test]
+    fn describing_a_milestone_without_a_description_section_is_refused() {
+        let temp = minimal_root();
+        temp.write(
+            "milestones/m-1 - phase-one.md",
+            "---\nid: m-1\ntitle: \"Phase One\"\n---\n\nloose prose\n",
+        );
+        let source = WorkingTree::new(&temp.path);
+        let (model, mut state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+        let cli = FakeCli::new();
+        let cap = capability(&cli);
+        let before = std::fs::read_to_string(milestone_path(&temp)).unwrap();
+
+        let result = state
+            .guarded_update(
+                &[describe("Rewritten.")],
+                &model,
+                &temp.path,
+                &cap,
+                &cli,
+                &source,
+                &FsVersions,
+                &store::SystemFiles,
+            )
+            .unwrap();
+
+        match result {
+            GuardedUpdate::Ran {
+                outcome: UpdateOutcome::Failed(failure),
+                ..
+            } => assert!(failure.stderr.contains("Description")),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+        assert_eq!(
+            std::fs::read_to_string(milestone_path(&temp)).unwrap(),
+            before
         );
     }
 
@@ -1579,6 +1899,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -1634,6 +1955,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -1670,6 +1992,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -1927,6 +2250,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -1960,6 +2284,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
         assert!(matches!(archive, GuardedUpdate::Ran { .. }));
@@ -1995,6 +2320,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -2045,6 +2371,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -2092,6 +2419,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap_err();
 
@@ -2141,6 +2469,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -2184,6 +2513,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap_err();
 
@@ -2227,6 +2557,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap();
 
@@ -2271,6 +2602,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap_err();
 
@@ -2308,6 +2640,7 @@ task_prefix: \"TASK\"\n";
                 &cli,
                 &source,
                 &FsVersions,
+                &store::SystemFiles,
             )
             .unwrap_err();
 

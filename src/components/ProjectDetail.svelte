@@ -42,7 +42,6 @@
     EMPTY_MILESTONE_RENAME,
     EMPTY_TASK_CREATE,
     ISSUE_BUSY_REASON,
-    MILESTONE_DESCRIPTION_NOT_EDITABLE,
     MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
     MILESTONE_REMOVE_MOVES_THE_FILE,
     TASK_CREATE_OMITTED_FIELDS,
@@ -53,6 +52,7 @@
     buildDocUpdate,
     buildMilestoneAdd,
     buildMilestoneArchive,
+    buildMilestoneDescribe,
     buildMilestoneRemove,
     buildMilestoneRename,
     buildTaskCreate,
@@ -521,6 +521,17 @@
    * 扱い is `reassign`, so `handling !== null` already stands wherever a 付け替え先 could be set.
    */
   let milestoneOpDirty = $derived(renameInput.to.trim() !== "" || removeInput.handling !== null);
+  /**
+   * The 説明 box's content **while the user is editing it**, and `null` while they are not
+   * (doc-10 §6, decision-21).
+   *
+   * An override rather than a copy, so that an untouched box always shows the current read. Seeding
+   * a plain string on selection would make an external change to the description read as 未保存入力
+   * — the box would differ from the milestone through no act of the user's, and 破棄前確認 would
+   * stand over text nobody typed. That is the shape of PR #65 round 1's [P2], reached from the
+   * other side.
+   */
+  let milestoneDescriptionDraft = $state<string | null>(null);
   /** Where the user asked to go while 未保存入力 was held — **not applied** until they answer. */
   let pendingMilestone = $state<{ milestone: Milestone | null } | null>(null);
 
@@ -528,7 +539,7 @@
   function selectMilestone(milestone: Milestone): void {
     // Already selected: re-pressing the card would restart the pane and drop the input silently.
     if (milestoneSelection === milestone.id) return;
-    if (milestoneOpDirty) {
+    if (milestoneDirty) {
       pendingMilestone = { milestone };
       return;
     }
@@ -538,8 +549,10 @@
   async function openMilestone(milestone: Milestone): Promise<void> {
     milestoneSelection = milestone.id;
     // Each selection starts from no operation and empty input, so a name or a 付け替え先 typed for
-    // one milestone cannot be issued against the next.
+    // one milestone cannot be issued against the next. Dropping the 説明 draft is the same rule:
+    // left standing it would be a description written for one milestone, shown over another's.
     closeMilestoneOp();
+    milestoneDescriptionDraft = null;
     message = null;
     // Same reset as the 編集ペイン's (doc-10 §6): the pane is one persistent scroller whose content
     // swaps, so a kept scrollTop would hide the newly selected milestone's operations above the
@@ -550,12 +563,13 @@
 
   /** Drop the selection and go back to the 作成フォーム, asking first when input would be lost. */
   function clearMilestoneSelection(): void {
-    if (milestoneOpDirty) {
+    if (milestoneDirty) {
       pendingMilestone = { milestone: null };
       return;
     }
     milestoneSelection = null;
     closeMilestoneOp();
+    milestoneDescriptionDraft = null;
   }
 
   function milestoneLeaveConfirmed(): void {
@@ -565,6 +579,7 @@
     if (target.milestone === null) {
       milestoneSelection = null;
       closeMilestoneOp();
+      milestoneDescriptionDraft = null;
       return;
     }
     openMilestone(target.milestone);
@@ -637,6 +652,23 @@
   }
 
   /**
+   * マイルストーン説明の更新 (doc-10 §6, decision-21) — the one action this screen issues that is not
+   * a CLI call. The plan is built from the box's current text, so what is issued is what is on
+   * screen.
+   *
+   * The draft is dropped on success and kept otherwise, which is the same rule `runMilestoneOp`
+   * follows: after a success the re-read holds the new description and the box should follow it
+   * again, while after a failure or a 更新前競合 the user still has what they typed.
+   */
+  async function saveMilestoneDescription(milestone: Milestone): Promise<void> {
+    const plan = buildMilestoneDescribe(milestone, milestoneDescriptionText);
+    if (plan.state !== "ready") return;
+    if (availability(plan).state !== "ready") return;
+    const outcome = await issue(plan.action, `${milestone.id} の説明を更新しました`);
+    if (outcome?.state === "applied") milestoneDescriptionDraft = null;
+  }
+
+  /**
    * The selected milestone as the current read holds it (doc-10 §6). Derived rather than stored, so
    * an external change that removes it drops the 操作ペイン back to the 作成フォーム instead of
    * leaving operations pointed at a milestone that is no longer there.
@@ -647,12 +679,30 @@
       : (project?.milestones.find((candidate) => candidate.id === milestoneSelection) ?? null),
   );
 
+  /** What the 説明 box shows: the draft while one is being typed, the current read otherwise. */
+  let milestoneDescriptionText = $derived(
+    milestoneDescriptionDraft ?? selectedMilestone?.description ?? "",
+  );
+  /**
+   * 説明 typed but not yet issued. Part of the 未保存入力 doc-10 §6 protects, and unlike 改称・削除 it
+   * stands without any operation being open — the box is on screen for as long as a milestone is
+   * selected, which is why the 破棄前確認 below cannot key off `milestoneOp`.
+   */
+  let milestoneDescriptionDirty = $derived(
+    milestoneDescriptionDraft !== null &&
+      milestoneDescriptionDraft !== (selectedMilestone?.description ?? ""),
+  );
+  /** Every kind of 未保存入力 the マイルストーン区画 holds (doc-10 §6). */
+  let milestoneDirty = $derived(milestoneOpDirty || milestoneDescriptionDirty);
+
   /**
    * A selection that no longer resolves takes its input with it (PR #65 round 1 [P2]). Falling back
    * to the 作成フォーム is not enough on its own: `milestoneOp` and its input would stay standing,
-   * and `milestoneOpDirty` would then hold both 破棄前確認 — this 区画's and the shell's — over input
+   * and `milestoneDirty` would then hold both 破棄前確認 — this 区画's and the shell's — over input
    * that is nowhere on screen, which is the failure `closeMilestoneOp` records. Leaving it would
-   * also let a reappearing id restore the old form with the old input aimed at the new read.
+   * also let a reappearing id restore the old form with the old input aimed at the new read. The
+   * 説明 draft goes with them for the same reason, and it is the one that could otherwise be
+   * re-issued against a *different* milestone if the id came back.
    *
    * Guarded on `project !== null` so a read in flight, which resolves nothing, does not clear input
    * the user is still typing.
@@ -661,6 +711,7 @@
     if (project === null || milestoneSelection === null || selectedMilestone !== null) return;
     milestoneSelection = null;
     closeMilestoneOp();
+    milestoneDescriptionDraft = null;
   });
 
   // --- 未保存入力 (doc-8 §6.3) -------------------------------------------------------------------
@@ -678,10 +729,11 @@
       hasTaskCreateInput(taskInput) ||
       hasDocCreateInput(docInput) ||
       hasMilestoneAddInput(milestoneInput) ||
-      // An open 改称・削除 carries input of its own — a name typed but not yet issued is exactly the
-      // kind of thing leaving the screen loses silently (doc-8 §6.3). The same value drives the
-      // 区画内の破棄前確認 (doc-10 §6), so the two cannot disagree about what counts as unsaved.
-      milestoneOpDirty ||
+      // An open 改称・削除, or an edited 説明, carries input of its own — a name or a description
+      // typed but not yet issued is exactly the kind of thing leaving the screen loses silently
+      // (doc-8 §6.3). The same value drives the 区画内の破棄前確認 (doc-10 §6), so the two cannot
+      // disagree about what counts as unsaved.
+      milestoneDirty ||
       newLabel.trim() !== "" ||
       newCriterion.trim() !== "",
   );
@@ -761,7 +813,11 @@
 {#snippet withheld(title: string, operations: WithheldOperation[])}
   <!-- 提供しない操作区画 (doc-10 §1/§6, doc-11 §5): instead of unpressable buttons, the three points
        — 名称, the CLI it maps to, and the reason. 無効化 means「今は条件が揃っていない」, while what
-       is listed here is what Atlas decided not to offer in this version: a different statement. -->
+       is listed here is what Atlas decided not to offer in this version: a different statement.
+       An empty list renders nothing at all (doc-10 §9): a heading with nothing under it says
+       something is withheld and sends the reader looking for what. The マイルストーン区画's list
+       became empty with TASK-65, and the guard lives here so every caller gets it. -->
+  {#if operations.length > 0}
   <div class="withheld">
     <h3>{title}</h3>
     <ul>
@@ -774,6 +830,7 @@
       {/each}
     </ul>
   </div>
+  {/if}
 {/snippet}
 
 <!-- The column widths come from `project-detail.ts` so the number a doc cites and the number laid
@@ -1331,9 +1388,9 @@
               <div class="confirm">
                 <span>
                   {#if pendingMilestone.milestone === null}
-                    マイルストーンの操作に未保存入力があります。選択を解除すると破棄されます。
+                    マイルストーンに未保存入力があります。選択を解除すると破棄されます。
                   {:else}
-                    マイルストーンの操作に未保存入力があります。{pendingMilestone.milestone.id} を開くと破棄されます。
+                    マイルストーンに未保存入力があります。{pendingMilestone.milestone.id} を開くと破棄されます。
                   {/if}
                 </span>
                 <button type="button" onclick={milestoneLeaveConfirmed}>破棄して続行</button>
@@ -1379,7 +1436,7 @@
                           <span class="card-head">
                             <span class="id">{milestone.id}</span>
                             <span class="meta">所属タスク {held} 件</span>
-                            {#if current && milestoneOpDirty}
+                            {#if current && milestoneDirty}
                               <!-- 未保存入力の印 (doc-10 §6): only the selected card can carry it,
                                    and it is shown here so「まだ発行していない」stays readable when
                                    the 操作ペイン has scrolled out of view. -->
@@ -1406,6 +1463,9 @@
                   {@const open = milestoneOp}
                   {@const opIssue = plan === null ? null : availability(plan)}
                   {@const targets = rewriteTargets(milestone, plan)}
+                  {@const describeIssue = availability(
+                    buildMilestoneDescribe(milestone, milestoneDescriptionText),
+                  )}
                   <div class="sub-panel">
                     <div class="record-head">
                       <span class="id">{milestone.id}</span>
@@ -1413,13 +1473,34 @@
                       <span class="meta">所属タスク {held} 件</span>
                     </div>
                     <!-- 説明 (doc-10 §6): stated here rather than on the card, which is the second
-                         of this 区画's departures from design 07. -->
-                    {#if milestone.description}
-                      <p class="description">{milestone.description}</p>
-                    {:else}
-                      <p class="neutral">説明なし</p>
-                    {/if}
-                    <p class="hint">{MILESTONE_DESCRIPTION_NOT_EDITABLE}</p>
+                         of this 区画's departures from design 07 — and editable, which is the third
+                         (decision-21). The box is not one of the 改称・削除・アーカイブ operations:
+                         it is always open while a milestone is selected, because the description is
+                         what this pane states about the milestone and editing it is that statement
+                         being corrected. -->
+                    <label class="field">
+                      <span class="label">説明</span>
+                      <textarea
+                        rows="4"
+                        placeholder="説明なし"
+                        value={milestoneDescriptionText}
+                        oninput={(event) =>
+                          (milestoneDescriptionDraft = event.currentTarget.value)}
+                      ></textarea>
+                    </label>
+                    <div class="actions">
+                      <button
+                        type="button"
+                        disabled={describeIssue.state !== "ready"}
+                        title={why(describeIssue)}
+                        onclick={() => saveMilestoneDescription(milestone)}
+                      >
+                        説明を保存
+                      </button>
+                      {#if describeIssue.state === "blocked"}
+                        <span class="reason">{describeIssue.reason}</span>
+                      {/if}
+                    </div>
 
                     <!-- 改称・削除・アーカイブ (doc-10 §6). doc-9 §4.2 defines the 照合 for all
                          three, so they are operations here rather than 提供しない操作区画 entries. -->
