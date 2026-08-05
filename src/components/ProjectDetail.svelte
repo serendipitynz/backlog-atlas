@@ -16,7 +16,7 @@
   // `lib/ledger.ts` / `lib/manage.ts` (building the request values); this component is layout, local
   // form state and callbacks. Text inputs bind to local state and are never rewritten while the user
   // is typing — the same IME rule the other screens follow.
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import Editor from "./Editor.svelte";
   import { PRIORITIES } from "../lib/edit";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
@@ -397,6 +397,8 @@
   let docEditorDirty = $derived(docDirty || newTag.trim() !== "");
   /** Where the user asked to go while 未保存入力 was held — **not applied** until they answer. */
   let pendingDocument = $state<{ document: Document | null } | null>(null);
+  /** The 編集ペイン's scroll container, for the reset below. */
+  let docPane = $state<HTMLDivElement | undefined>(undefined);
 
   async function createDoc(): Promise<void> {
     if (docCreateIssue.state !== "ready" || docCreatePlan.state !== "ready") return;
@@ -446,10 +448,16 @@
     openDocument(document);
   }
 
-  function openDocument(document: Document): void {
+  async function openDocument(document: Document): Promise<void> {
     docSession = startDocSession(document);
     newTag = "";
     message = null;
+    // The 編集ペイン is a persistent scroller and only its content swaps: left at its old
+    // scrollTop, the newly opened 更新フォーム can sit above the viewport and the selection
+    // looks like it did nothing (review [P2]). Reset the pane once the swap has rendered —
+    // never the 文書一覧, whose kept position is the point of the split scrollers.
+    await tick();
+    if (docPane !== undefined) docPane.scrollTop = 0;
   }
 
   function closeEditor(): void {
@@ -1036,7 +1044,7 @@
                 {/if}
               </div>
 
-              <div class="doc-pane">
+              <div class="doc-pane" bind:this={docPane}>
                 {#if docSession !== null}
                   {@const session = docSession}
                   <div class="sub-panel">
