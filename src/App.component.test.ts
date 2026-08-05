@@ -453,8 +453,10 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
 
     const byControl = await startWith([loaded("atlas", [TASK])]);
     chooseFromMenu(byControl, "プロジェクトを登録");
-    // Two rather than three: this モーダル holds no 下書き to state the fate of, so it has no
-    // 下部操作行 and the × is its only pressable exit (doc-11 §7).
+    // Two rather than three: 登録 writes to the ledger without leaving the layer, so this モーダル has
+    // no second way out for a 下部操作行 to tell the first one from, and the × is its only pressable
+    // exit (doc-11 §7). It does hold 未保存入力 all the same — what the × does with it is the block
+    // below's subject (TASK-86).
     click(closeOf(byControl, "プロジェクトを登録"));
     expect(byControl.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
     expectFocusBackOnMenu(byControl);
@@ -488,6 +490,198 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
     click(closeOf(byControl, "キーボード操作の一覧"));
     expect(byControl.querySelector('[aria-label="キーボード操作の一覧"]')).toBeNull();
     expectFocusBackOnMenu(byControl);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+describe("モーダルの閉じる要求と破棄前確認", () => {
+  /**
+   * この層の × と、メニューからの入り方。The same two helpers the block above uses — repeated rather
+   * than hoisted because what each block fixes is a different contract, and a shared helper is how a
+   * change to one silently rewrites the other's route.
+   */
+  function closeOf(host: HTMLElement, label: string): HTMLButtonElement {
+    return byLabel<HTMLButtonElement>(host, `[role="dialog"][aria-label="${label}"] button`, "閉じる");
+  }
+
+  function chooseFromMenu(host: HTMLElement, label: string): void {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', label));
+  }
+
+  function dialogOf(host: HTMLElement, label: string): HTMLElement {
+    return only(host, `[role="dialog"][aria-label="${label}"]`);
+  }
+
+  /** The 破棄前確認 as the モーダル draws it (doc-11 §7), or `null` while none stands. */
+  function confirmIn(host: HTMLElement, label: string): HTMLElement | null {
+    return host.querySelector<HTMLElement>(`[role="dialog"][aria-label="${label}"] .confirm`);
+  }
+
+  function answer(host: HTMLElement, label: string, text: string): void {
+    const confirm = confirmIn(host, label);
+    if (confirm === null) throw new Error(`no 破棄前確認 in ${label}`);
+    click(byText(confirm, "button", text));
+  }
+
+  /**
+   * Open 設定 and leave a 下書き in it: another カード情報量 than the one in force.
+   *
+   * The radios carry no `value` attribute (the form binds them by index), so the unchecked one is
+   * picked off the list rather than named by a selector.
+   */
+  async function withSettingsDraft(): Promise<HTMLElement> {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    chooseFromMenu(host, "設定");
+    const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
+      (radio) => !radio.checked,
+    );
+    if (other === undefined) throw new Error("every カード情報量 is already checked");
+    click(other);
+    return host;
+  }
+
+  /**
+   * Open プロジェクトを登録 and type a root into it — 未保存入力 with nothing issued (doc-3 §4.1).
+   *
+   * The field is asked for by the caption the screen prints beside it: the form draws three text
+   * inputs and only one of them is the required root, so a positional query would keep passing while
+   * naming a different field.
+   */
+  async function withRegisterInput(): Promise<HTMLElement> {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    chooseFromMenu(host, "プロジェクトを登録");
+    const labelled = [
+      ...dialogOf(host, "プロジェクトを登録").querySelectorAll<HTMLElement>("label"),
+    ].find((label) => label.querySelector(".caption")?.textContent === "プロジェクトルート");
+    if (labelled === undefined) throw new Error("no プロジェクトルート field");
+    fill(only<HTMLInputElement>(labelled, 'input[type="text"]'), "/tmp/new");
+    return host;
+  }
+
+  it("設定の 3 経路は、下書きがあるとどれも確認を経てからでないと閉じない", async () => {
+    // doc-11 §7: the three exits reach one close request, and TASK-86 puts the 破棄前確認 in front of
+    // that one request — so a route that skipped it would have to have been wired around the request
+    // itself. Each route is taken on its own mount, because the first one that got through would
+    // leave the rest with no modal to press.
+    for (const take of [
+      (host: HTMLElement) => press(dialogOf(host, "設定"), "Escape"),
+      (host: HTMLElement) => click(closeOf(host, "設定")),
+      (host: HTMLElement) => click(byText(host, "footer button", CLOSE_WITHOUT_SAVING_LABEL)),
+    ]) {
+      const host = await withSettingsDraft();
+      take(host);
+
+      expect(host.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
+      expect(confirmIn(host, "設定")?.textContent).toContain("破棄");
+      // Drawn inside the layer and *only* there: this モーダル covers the 上部帯 (doc-7 §2.1), so an ①
+      // raised here would stand where it cannot be read until the thing it is asking about is gone.
+      expect(confirmBand(host)).toBeNull();
+
+      cleanup();
+    }
+  });
+
+  it("破棄して続けると閉じ、編集に戻ると下書きも残る", async () => {
+    const kept = await withSettingsDraft();
+    const chosen = only<HTMLInputElement>(kept, 'input[name="card-density"]:checked');
+    press(dialogOf(kept, "設定"), "Escape");
+    answer(kept, "設定", "編集に戻る");
+
+    expect(confirmIn(kept, "設定")).toBeNull();
+    expect(kept.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
+    // The point of asking: the draft is still the one the user had, not the file's value read back.
+    expect(only<HTMLInputElement>(kept, 'input[name="card-density"]:checked')).toBe(chosen);
+    // Nothing was written on the way — 破棄前確認 asks about losing the draft, not about storing it.
+    expect(madeTo("settings_save")).toHaveLength(0);
+
+    cleanup();
+
+    const discarded = await withSettingsDraft();
+    press(dialogOf(discarded, "設定"), "Escape");
+    answer(discarded, "設定", "破棄して続ける");
+
+    expect(discarded.querySelector('[aria-label="設定"]')).toBeNull();
+    expect(madeTo("settings_save")).toHaveLength(0);
+  });
+
+  it("変更が無ければ確認せずに閉じ、保存が landed したときも確認を通さない", async () => {
+    // The two cases that must *not* ask. The first has nothing to lose; the second wrote the draft,
+    // so a question saying「このまま進むと破棄されます」would be false.
+    //
+    // What this fixes is the outcome, not the wiring: routing 保存する's close through the same
+    // guard passes here too, because the shell's `settingsDirty` has caught up by the time the save
+    // resolves (measured — the mutation fails nothing). 保存する leaves by a route of its own so that
+    // the outcome does not rest on that ordering, which no test in this project can hold.
+    const unchanged = await startWith([loaded("atlas", [TASK])]);
+    chooseFromMenu(unchanged, "設定");
+    press(dialogOf(unchanged, "設定"), "Escape");
+    expect(unchanged.querySelector('[aria-label="設定"]')).toBeNull();
+
+    cleanup();
+
+    const saved = await withSettingsDraft();
+    click(byText(saved, "footer button", "保存する"));
+    await settled();
+
+    expect(madeTo("settings_save")).toHaveLength(1);
+    expect(saved.querySelector('[aria-label="設定"]')).toBeNull();
+  });
+
+  it("プロジェクト登録の 2 経路も、入力があると確認を経る", async () => {
+    // This モーダル has no 下部操作行 (doc-11 §7): 登録 writes without leaving the layer, so the two
+    // routes that lose what has been typed are the × and Escape, and both are wired outside the form.
+    for (const take of [
+      (host: HTMLElement) => press(dialogOf(host, "プロジェクトを登録"), "Escape"),
+      (host: HTMLElement) => click(closeOf(host, "プロジェクトを登録")),
+    ]) {
+      const host = await withRegisterInput();
+      take(host);
+
+      expect(host.querySelector('[role="dialog"][aria-label="プロジェクトを登録"]')).not.toBeNull();
+      expect(confirmIn(host, "プロジェクトを登録")).not.toBeNull();
+      expect(confirmBand(host)).toBeNull();
+
+      answer(host, "プロジェクトを登録", "破棄して続ける");
+      expect(host.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
+      expect(madeTo("ledger_register")).toHaveLength(0);
+
+      cleanup();
+    }
+  });
+
+  it("登録の発行中は、確認より前に 2 経路とも断られる", async () => {
+    // AC #3 の 登録中: the order matters. A 破棄前確認 raised while the registration is unresolved
+    // would offer 破棄して続ける for input the ledger is in the middle of taking — the request must not
+    // be issued at all until the write answers, which is the same 事情 the 設定 holds one screen over
+    // (doc-11 §7 の いま閉じられない).
+    const hold = deferred<void>();
+    answers.ledgerRegisterHold = hold;
+    const host = await withRegisterInput();
+    click(byText(host, ".register .row button", "登録"));
+    await settled();
+    expect(madeTo("ledger_register")).toHaveLength(1);
+
+    press(dialogOf(host, "プロジェクトを登録"), "Escape");
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="プロジェクトを登録"]')).not.toBeNull();
+    expect(confirmIn(host, "プロジェクトを登録")).toBeNull();
+
+    const corner = closeOf(host, "プロジェクトを登録");
+    click(corner);
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="プロジェクトを登録"]')).not.toBeNull();
+    expect(confirmIn(host, "プロジェクトを登録")).toBeNull();
+    // Withheld with a reason rather than quietly (doc-11 §5), as the 設定's × is.
+    expect(corner.getAttribute("aria-disabled")).toBe("true");
+
+    // Once it lands the form has emptied itself, so the same press now closes without asking: what
+    // was typed is in the ledger, and there is nothing left to discard.
+    hold.resolve();
+    await settled();
+    click(closeOf(host, "プロジェクトを登録"));
+    expect(host.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
   });
 });
 

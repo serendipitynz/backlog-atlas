@@ -80,10 +80,36 @@
      * this component), and one fact must not be two flags.
      */
     saving: boolean;
+    /**
+     * Ask to leave without writing. A *request*: the shell puts the 破棄前確認 (doc-8 §6.3) in front of
+     * it while this form holds a 下書き, so pressing 変更せずに閉じる may leave the モーダル standing with
+     * the question above (doc-11 §7). Reached by the × and Escape as well, which is why the guard is
+     * the shell's and not this button's.
+     */
     onclose: () => void;
+    /**
+     * Report whether the 下書き differs from the file. What the shell's guard reads — held there rather
+     * than here because two of the three exits are not this form's controls.
+     */
+    ondirty: (dirty: boolean) => void;
+    /**
+     * The write landed; the モーダル may go. Separate from `onclose` because it is not one of the three
+     * exits doc-11 §7 gathers: those leave the 下書き unwritten, and this one leaves nothing to discard,
+     * so putting it behind the same 破棄前確認 would ask about a loss that did not happen.
+     */
+    onsaved: () => void;
   }
 
-  let { loaded, path, onsave, onopenLocation, saving, onclose }: Props = $props();
+  let {
+    loaded,
+    path,
+    onsave,
+    onopenLocation,
+    saving,
+    onclose,
+    ondirty,
+    onsaved,
+  }: Props = $props();
 
   /** The draft the form edits. Re-seeded whenever the boundary hands back a new value. */
   let draft = $state<AppSettings | null>(null);
@@ -152,6 +178,12 @@
   let dirty = $derived(
     pending !== null && loaded !== null && isDirty(pending, loaded.settings),
   );
+  // 未保存入力があるか (doc-8 §6.3) as the shell's guard needs it. The same value the 保存する control
+  // reads, so the button that says there is nothing to save and the question that says there is
+  // something to lose cannot both be right.
+  $effect(() => {
+    ondirty(dirty);
+  });
   let storageWarning = $derived(
     draft === null ? null : emptyStorageWarning(draft.default_storage_filter),
   );
@@ -233,14 +265,19 @@
   }
 
   /**
-   * 保存する: write, and close only if the write landed (AC #2). A failure keeps the モーダル up with
-   * its text beside the button — closing on a failed save would take the draft away and leave the user
-   * to find out from the next start that nothing was stored.
+   * 保存する: write, and close only if the write landed (TASK-74 AC #2). A failure keeps the モーダル up
+   * with its text beside the button — closing on a failed save would take the draft away and leave the
+   * user to find out from the next start that nothing was stored.
+   *
+   * `onsaved`, not `onclose`: the 下書き was written, so there is nothing for a 破棄前確認 to be about
+   * and a question saying 「このまま進むと破棄されます」 would be false. Nothing here reads `dirty` to
+   * make that distinction — it is decided by which route is taken, not by a value that has to have
+   * caught up with the write by the time this line runs.
    */
   async function saveAndClose(): Promise<void> {
     if (saveBlocked !== null) return;
     await save();
-    if (failure === null) onclose();
+    if (failure === null) onsaved();
   }
 
   async function save(): Promise<void> {
@@ -468,10 +505,13 @@
    * The box the モーダル holds, bounded so the 下部操作行 can sit outside the scroll (AC #1).
    *
    * The bound is the window less what `Modal.svelte` puts between this box and the window edge: its
-   * backdrop's padding on both sides, and the dialog's own border on both. Those two numbers are
-   * declared there as custom properties and read here, so the box that is sized and the box that is
-   * drawn are the same one — a literal `4rem` copied into this file is exactly how a padding changed
-   * in one place leaves a footer two pixels below the fold in another.
+   * backdrop's padding on both sides, the dialog's own border on both, and the 破棄前確認's row while
+   * one stands (`0px` while none does). Those numbers are declared there as custom properties and read
+   * here, so the box that is sized and the box that is drawn are the same one — a literal `4rem`
+   * copied into this file is exactly how a padding changed in one place leaves a footer two pixels
+   * below the fold in another. The confirmation is the case where that was not two pixels: the row
+   * takes its height off the top, and without subtracting it the 下部操作行 goes under the window's
+   * edge just as the user is asked whether to leave by it.
    *
    * `box-sizing` because this box states a height in `rem` and carries padding (the repository has no
    * global reset — the height would otherwise be the content's and the padding would be added outside
@@ -493,7 +533,8 @@
     display: flex;
     flex-direction: column;
     max-height: calc(
-      100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2
+      100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2 -
+        var(--modal-confirm-height)
     );
     gap: 0.6rem;
     padding: 0.6rem 0 1rem;
