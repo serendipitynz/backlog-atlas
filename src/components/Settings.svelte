@@ -80,10 +80,41 @@
      * this component), and one fact must not be two flags.
      */
     saving: boolean;
-    onclose: () => void;
+    /**
+     * 変更せずに閉じる: leave without writing, and without being asked again.
+     *
+     * No 破棄前確認 in front of this one (doc-11 §7): the question and this control's own wording say
+     * the same thing, so a user who read the label and pressed it has already answered. The × and
+     * Escape do go through the question — they say only 閉じる, and Escape says nothing at all — which
+     * is the same 役割の別 §7 draws between this row and the corner, not an exception to it.
+     *
+     * It still reaches the shell's one close request, which is what refuses it while a save is
+     * unresolved; the difference is carried into that request, not around it.
+     */
+    ondiscard: () => void;
+    /**
+     * Report whether the 下書き differs from the file. What the shell's guard reads — held there rather
+     * than here because two of the three exits are not this form's controls.
+     */
+    ondirty: (dirty: boolean) => void;
+    /**
+     * The write landed; the モーダル may go. Its own way out rather than `ondiscard` above: that one
+     * leaves the 下書き unwritten and says so, this one wrote it — nothing is being discarded either
+     * way, but only one of them is true to call 変更せずに閉じる.
+     */
+    onsaved: () => void;
   }
 
-  let { loaded, path, onsave, onopenLocation, saving, onclose }: Props = $props();
+  let {
+    loaded,
+    path,
+    onsave,
+    onopenLocation,
+    saving,
+    ondiscard,
+    ondirty,
+    onsaved,
+  }: Props = $props();
 
   /** The draft the form edits. Re-seeded whenever the boundary hands back a new value. */
   let draft = $state<AppSettings | null>(null);
@@ -152,6 +183,12 @@
   let dirty = $derived(
     pending !== null && loaded !== null && isDirty(pending, loaded.settings),
   );
+  // 未保存入力があるか (doc-8 §6.3) as the shell's guard needs it. The same value the 保存する control
+  // reads, so the button that says there is nothing to save and the question that says there is
+  // something to lose cannot both be right.
+  $effect(() => {
+    ondirty(dirty);
+  });
   let storageWarning = $derived(
     draft === null ? null : emptyStorageWarning(draft.default_storage_filter),
   );
@@ -233,14 +270,18 @@
   }
 
   /**
-   * 保存する: write, and close only if the write landed (AC #2). A failure keeps the モーダル up with
-   * its text beside the button — closing on a failed save would take the draft away and leave the user
-   * to find out from the next start that nothing was stored.
+   * 保存する: write, and close only if the write landed (TASK-74 AC #2). A failure keeps the モーダル up
+   * with its text beside the button — closing on a failed save would take the draft away and leave the
+   * user to find out from the next start that nothing was stored.
+   *
+   * `onsaved`, not `ondiscard`: the 下書き was written, so 変更せずに閉じる would be false of what just
+   * happened. Nothing here reads `dirty` to tell the two apart — it is decided by which route is
+   * taken, not by a value that has to have caught up with the write by the time this line runs.
    */
   async function saveAndClose(): Promise<void> {
     if (saveBlocked !== null) return;
     await save();
-    if (failure === null) onclose();
+    if (failure === null) onsaved();
   }
 
   async function save(): Promise<void> {
@@ -444,7 +485,7 @@
         aria-disabled={closeBlocked !== null}
         aria-describedby={closeBlocked === null ? undefined : FOOTER_REASON_ID}
         title={closeBlocked ?? "書き込まずに閉じます"}
-        onclick={() => closeBlocked === null && onclose()}
+        onclick={() => closeBlocked === null && ondiscard()}
       >
         {CLOSE_WITHOUT_SAVING_LABEL}
       </button>
@@ -468,10 +509,13 @@
    * The box the モーダル holds, bounded so the 下部操作行 can sit outside the scroll (AC #1).
    *
    * The bound is the window less what `Modal.svelte` puts between this box and the window edge: its
-   * backdrop's padding on both sides, and the dialog's own border on both. Those two numbers are
-   * declared there as custom properties and read here, so the box that is sized and the box that is
-   * drawn are the same one — a literal `4rem` copied into this file is exactly how a padding changed
-   * in one place leaves a footer two pixels below the fold in another.
+   * backdrop's padding on both sides, the dialog's own border on both, and the 破棄前確認's row while
+   * one stands (`0px` while none does). Those numbers are declared there as custom properties and read
+   * here, so the box that is sized and the box that is drawn are the same one — a literal `4rem`
+   * copied into this file is exactly how a padding changed in one place leaves a footer two pixels
+   * below the fold in another. The confirmation is the case where that was not two pixels: the row
+   * takes its height off the top, and without subtracting it the 下部操作行 goes under the window's
+   * edge just as the user is asked whether to leave by it.
    *
    * `box-sizing` because this box states a height in `rem` and carries padding (the repository has no
    * global reset — the height would otherwise be the content's and the padding would be added outside
@@ -493,7 +537,8 @@
     display: flex;
     flex-direction: column;
     max-height: calc(
-      100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2
+      100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2 -
+        var(--modal-confirm-height)
     );
     gap: 0.6rem;
     padding: 0.6rem 0 1rem;

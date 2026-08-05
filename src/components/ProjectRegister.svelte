@@ -13,6 +13,7 @@
   // the user presses.
   import {
     EMPTY_REGISTER_INPUT,
+    hasRegisterInput,
     parentPath,
     registerProblems,
     resolvedBacklogRoot,
@@ -33,21 +34,36 @@
     readOnly: boolean;
     /** True while one ledger command is in flight (the shell serializes them). */
     busy: boolean;
+    /**
+     * True while *this form's* registration is unresolved. Held by the shell rather than here, as
+     * `Settings` takes `saving`: the same fact has to withhold this form's 登録 *and* stop the モーダル
+     * being dismissed out from under the write (`Modal.svelte`'s Escape reaches the shell, not this
+     * component), and one fact must not be two flags.
+     */
+    submitting: boolean;
     /** Where the ledger file is (doc-3 §2.1). `null` until it is known. */
     ledgerPath: string | null;
     onpickDirectory: (title: string) => Promise<string | null>;
     ondefaultSlug: (projectRoot: string) => Promise<string | null>;
     onregister: (request: RegisterRequest) => Promise<LedgerActionResult>;
+    /**
+     * Report whether anything has been typed that the ledger has not been told about. What the shell's
+     * 破棄前確認 reads (doc-8 §6.3, doc-11 §7): this モーダル has no exit of its own, so the two that
+     * would lose this input — the × and Escape — are both wired outside this component.
+     */
+    ondirty: (dirty: boolean) => void;
   }
 
   let {
     entries,
     readOnly,
     busy,
+    submitting,
     ledgerPath,
     onpickDirectory,
     ondefaultSlug,
     onregister,
+    ondirty,
   }: Props = $props();
 
   let input = $state<RegisterInput>({ ...EMPTY_REGISTER_INPUT });
@@ -61,8 +77,13 @@
    */
   let preview = $state<SlugPreview>({ state: "unknown" });
   let report = $state<RefusalReport | null>(null);
-  let submitting = $state(false);
   let registered = $state<string | null>(null);
+
+  // 未保存入力があるか (doc-8 §6.3). The predicate is `ledger.ts`'s, beside the shape it reads and the
+  // trimming that decides what could have been submitted at all.
+  $effect(() => {
+    ondirty(hasRegisterInput(input));
+  });
 
   let taken = $derived(entries.map((entry) => entry.slug));
   let issues = $derived(registerProblems(input, taken));
@@ -128,20 +149,19 @@
 
   async function submit(): Promise<void> {
     if (!canRegister) return;
-    submitting = true;
     report = null;
-    try {
-      const result = await onregister(toRegisterRequest(input));
-      if (result.state === "refused") {
-        report = result.report;
-        return;
-      }
-      registered = result.slug;
-      input = { ...EMPTY_REGISTER_INPUT };
-      slugPreview.clear();
-    } finally {
-      submitting = false;
+    // `submitting` is not set here: the shell raises it around the same call, because it also has to
+    // turn the モーダル's own exits away for as long as this is unresolved (`Settings` の save と同型).
+    const result = await onregister(toRegisterRequest(input));
+    if (result.state === "refused") {
+      report = result.report;
+      return;
     }
+    registered = result.slug;
+    // Emptied, so what the form holds is again what the ledger has been told — which is what stops the
+    // × raising a 破棄前確認 about input that has already been registered.
+    input = { ...EMPTY_REGISTER_INPUT };
+    slugPreview.clear();
   }
 
   function problemsFor(problems: FieldProblem[], field: LedgerField): string[] {
@@ -152,7 +172,10 @@
 <section class="register">
   <!-- 閉じる is not here any more (TASK-76): the way out is the × `Modal.svelte` draws in the corner
        (doc-11 §7). The 原文 pairs 登録 with a 取消 button (doc-12 §2.3) and this screen has never had
-       one — that difference is TASK-80's, not this task's. -->
+       one — that difference is TASK-80's, not this task's.
+       This form holds 未保存入力 all the same, and still takes no 下部操作行 (doc-11 §7): 登録 writes to
+       the ledger without leaving the layer, so there is no second way out for a wording to tell the
+       first one from. What the × does with what has been typed is said by the 破棄前確認, not here. -->
   <header>
     <h2>プロジェクトを登録</h2>
   </header>

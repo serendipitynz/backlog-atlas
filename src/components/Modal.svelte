@@ -6,8 +6,13 @@
   //
   // It is a layer and not a screen (AC #2 モーダルの外に画面遷移を作らない): the screen behind keeps its
   // rows, filter and selection, because none of the three is somewhere to work — they are answered, or
-  // read, and dismissed. Nothing is unmounted to show them, so no route into them can lose 未保存入力 and
-  // none of them needs the 破棄前確認 (doc-8 §6.3).
+  // read, and dismissed. **Opening** one unmounts nothing, so no route *in* can lose 未保存入力.
+  //
+  // **Closing one does.** Two of the three hold input of their own — the 設定's 下書き and the 登録's
+  // three fields — and the caller drops the whole form when this layer goes, so the way out is where
+  // that input is lost, not the way in. That is why `onclose` is a *request* rather than the act
+  // (TASK-86): the 破棄前確認 (doc-8 §6.3) stands in front of it, and the shell answers. Until then
+  // this comment claimed the guarantee the way in has for the way out as well.
   //
   // Both keys it answers come from the 割り当て一覧 (`shortcuts.ts`), including the Tab it holds inside:
   // doc-7 §2.1 requires every key whose default is stopped to be entered in that list, and the trap
@@ -17,17 +22,28 @@
   // **This layer covers the 上部帯, including ① 確認**, unlike the 中央モーダル詳細配置 which is drawn over
   // the grid area alone (`App.svelte`) so a 破棄前確認 stays answerable behind it. The difference is
   // deliberate: doc-7 §2.1 requires *this* layer to keep focus inside, and a trap that let Tab reach a
-  // control outside would not be one. Nothing becomes unreachable — Escape closes this modal and gives
-  // focus back, so an unanswered ① is one key away, and none of the three can raise a 破棄前確認 of its
-  // own, since opening them unmounts nothing that holds 未保存入力.
+  // control outside would not be one. An ① raised *behind* this layer is still one key away — Escape
+  // closes this modal and gives focus back. An ① raised *by* this layer cannot be, which is why the
+  // question is drawn in the box below rather than in the 帯 (doc-11 §7, TASK-86). It is the same ①,
+  // in the one place it can be read while the layer that raised it is up — not a seventh 上部帯,
+  // which doc-11 §4 does not allow.
   //
   // **The × in the corner is this layer's** (doc-11 §7, TASK-76), not each caller's. Before, every one
   // of the three drew a 閉じる text button of its own beside its heading, so the one operation the three
   // share was three controls in three files — and the 設定 had none at all after TASK-74 moved its exits
-  // to the 下部操作行. The × says only "close this layer"; a モーダル that holds a 下書き says what
-  // becomes of it in its own 下部操作行 beside it (doc-11 §7 の役割の別).
+  // to the 下部操作行. The × says only "close this layer"; a モーダル with a second way out — one that
+  // writes what it holds and leaves — says which is which in its own 下部操作行 beside it (doc-11 §7 の
+  // 役割の別). Holding input is not what calls for that row: the 登録 has input and no such exit, so
+  // there is nothing for a wording to tell apart, and what the × does with it is said by the
+  // 破棄前確認 instead.
   import type { Snippet } from "svelte";
   import Icon from "../lib/icons/Icon.svelte";
+  import {
+    DISCARD_CONFIRM_CLOSE,
+    DISCARD_CONFIRM_KEEP,
+    DISCARD_CONFIRM_QUESTION,
+    type DiscardAnswers,
+  } from "../lib/edit";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
 
@@ -44,11 +60,30 @@
      * both rather than each exit reading its own.
      */
     closeBlocked?: string | null;
+    /**
+     * The answers to a 破棄前確認 this layer's own close request raised, or `null` while none is
+     * standing (doc-8 §6.3, doc-11 §7).
+     *
+     * Not the same state as `closeBlocked` above, and the two must not be folded into one: that one
+     * means the request is *not issued* (the × goes to 無効化提示, doc-11 §5), this one means the
+     * request is issued and waiting for an answer — so the × stays pressable, and pressing it again
+     * only asks the same question again.
+     *
+     * The shell decides both, for the same reason: it is what wires the exits, and a question the
+     * form raised for itself would leave Escape asking nobody.
+     */
+    confirmDiscard?: DiscardAnswers | null;
     onclose: () => void;
     children: Snippet;
   }
 
-  let { label, closeBlocked = null, onclose, children }: Props = $props();
+  let {
+    label,
+    closeBlocked = null,
+    confirmDiscard = null,
+    onclose,
+    children,
+  }: Props = $props();
 
   /**
    * Where `aria-describedby` points while the × is withheld. A module constant rather than a generated
@@ -122,7 +157,12 @@
     // behind it (`FilterPopover` consumes its Escape the same way).
     event.stopPropagation();
     if (binding.action === "closeOverlay") {
-      onclose();
+      // The press is spent on the innermost open layer (see above), and while the 破棄前確認 stands
+      // that is the question, not the modal: Escape withdraws the request it raised rather than
+      // raising it a second time. 編集に戻る is what withdrawing it means, so this is that answer and
+      // not a third one — and it is the reason the question is answerable without reaching for Tab.
+      if (confirmDiscard !== null) confirmDiscard.onkeep();
+      else onclose();
       return;
     }
     const items = focusable();
@@ -152,6 +192,7 @@
        modal is up (that is what the trap is for), so every press passes through here on its way out. -->
   <div
     class="dialog"
+    class:confirming={confirmDiscard !== null}
     role="dialog"
     aria-modal="true"
     aria-label={label}
@@ -187,6 +228,20 @@
     <span class="unseen" id={CLOSE_BLOCKED_ID}>
       {closeBlocked === null ? "" : `いま押せません: ${closeBlocked}`}
     </span>
+    <!--
+      破棄前確認 (doc-8 §6.3), drawn here because this layer covers the 上部帯 ① where every other
+      route's confirmation goes (doc-11 §7). The three texts come from `edit.ts`, so this placement
+      cannot word the same loss differently from the 帯 — doc-8 §6.3 asks for one wording, and the
+      routes it names now have two places to be drawn rather than two questions.
+      Above the caller's own content, which is where the 帯 sits relative to the screen it is about.
+    -->
+    {#if confirmDiscard !== null}
+      <div class="confirm">
+        <span class="confirm-text">{DISCARD_CONFIRM_QUESTION}</span>
+        <button type="button" onclick={confirmDiscard.onproceed}>{DISCARD_CONFIRM_CLOSE}</button>
+        <button type="button" onclick={confirmDiscard.onkeep}>{DISCARD_CONFIRM_KEEP}</button>
+      </div>
+    {/if}
     {@render children()}
   </div>
 </div>
@@ -220,18 +275,43 @@
      * expressed in the same unit as the inset above (TASK-115 の幾何).
      */
     --modal-dialog-border: 1px;
+    // パネル 6px (doc-11 §2.2). Named because the 破棄前確認 below is drawn against this box's top
+    // corners and has to round with them — two literals would round by different amounts.
+    --modal-dialog-radius: 6px;
     /*
-     * How far the × is held off the box's top and right edges. Its own value rather than a caller's
-     * padding: the callers do not agree on one (`Settings` inlines 0.75rem, the other two pad 0.75rem
-     * all round), and the × belongs to this box, not to what is drawn inside it.
+     * How far the × is held off the box's top and right edges, and how big it is. Their own values
+     * rather than a caller's padding: the callers do not agree on one (`Settings` inlines 0.75rem, the
+     * other two pad 0.75rem all round), and the × belongs to this box, not to what is drawn inside it.
+     * The size is declared here rather than only on `.close` because what is drawn first in the box
+     * has to keep its right end clear of it.
      */
     --modal-close-inset: 0.5rem;
+    --modal-close-size: 1.5rem;
+    /*
+     * The 破棄前確認's row: its own height, and how much of the box it is taking right now (`0px`
+     * while no question stands).
+     *
+     * The second one exists because a child that bounds its own height has to subtract this as well —
+     * `Settings` does, so that its 下部操作行 stays on screen (TASK-74 AC #1) rather than being pushed
+     * below the fold by the row above. Without it the dialog grows by this much, and the backdrop
+     * scrolls instead of the body: the two exits go under the window's edge exactly while the user is
+     * being asked a question about them.
+     *
+     * A stated height rather than the row's own: the child's `calc` has to be told a number, and the
+     * content's height differs by engine (WebKit 18 / Chromium 18.8 for the same button). One line is
+     * all this row may ever be (doc-11 §4 折り返さない), so a fixed height loses nothing.
+     */
+    --modal-confirm-row: 2.25rem;
+    --modal-confirm-height: 0px;
+
+    &.confirming {
+      --modal-confirm-height: var(--modal-confirm-row);
+    }
 
     position: relative;
     width: min(44rem, 100%);
     border: var(--modal-dialog-border) solid var(--line-strong);
-    // パネル 6px (doc-11 §2.2).
-    border-radius: 6px;
+    border-radius: var(--modal-dialog-radius);
     background: var(--panel);
     box-shadow: 0 6px 24px color-mix(in srgb, var(--fg) 22%, transparent);
 
@@ -256,8 +336,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: var(--modal-close-size);
+    height: var(--modal-close-size);
     padding: 0;
     border: 1px solid transparent;
     // カード・ボタン 4px (doc-11 §2.2).
@@ -285,6 +365,61 @@
     &:focus-visible {
       outline: 2px solid var(--sel);
       outline-offset: 1px;
+    }
+  }
+
+  /*
+   * 破棄前確認 (doc-8 §6.3) inside the layer that covers the 上部帯 (doc-11 §7). Drawn as the 帯 ① is
+   * drawn — one row, `--info` down the left in 4px, no wrap — because it is the same announcement and
+   * a second look for it would say the two were different questions. It is not a 上部帯 all the same:
+   * it is inside this box, and doc-11 §4's six are the screen's own stack.
+   *
+   * The right end is held clear of the ×, which is out of the flow above whatever the box draws
+   * first — now this. Both numbers come from `.dialog`, so moving the × moves the room kept for it.
+   *
+   * The top corners are rounded with the box's, less its border: a square-cornered full-bleed row
+   * would show its colour outside the rounded edge.
+   */
+  .confirm {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    height: var(--modal-confirm-row);
+    padding: 0.4rem 0.75rem;
+    padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
+    border-bottom: 1px solid var(--line);
+    border-left: 4px solid var(--info);
+    border-radius: calc(var(--modal-dialog-radius) - var(--modal-dialog-border))
+      calc(var(--modal-dialog-radius) - var(--modal-dialog-border)) 0 0;
+    background: var(--panel);
+    font-size: 0.75rem;
+
+    // 折り返さない, as the 帯 does not (doc-11 §4): the answers keep their place at the end of the row
+    // whatever the question's length and the window's width.
+    .confirm-text {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    button {
+      flex: none;
+      padding: 0 0.4rem;
+      border: 1px solid var(--line-strong);
+      // カード・ボタン 4px (doc-11 §2.2).
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 0.7rem;
+      cursor: pointer;
+
+      &:focus-visible {
+        outline: 2px solid var(--sel);
+        outline-offset: 1px;
+      }
     }
   }
 

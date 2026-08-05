@@ -590,16 +590,57 @@ export const NOTHING_TO_SAVE_REASON = "変更はまだありません";
 // doc-8 §6.3 requires exactly that: 文言は 5 経路で同じものを使う. Held here rather than in the panel
 // because two of the five are the shell's (opening another task, switching the placement), and a
 // per-caller wording is how the five would end up describing the same loss five ways.
+//
+// The モーダル routes TASK-86 added (doc-11 §7) share the *question* — what is lost is the same thing,
+// and a second wording for it is exactly what holding these in one place rules out. Their proceed
+// answer is `DISCARD_CONFIRM_CLOSE` below rather than the one above, because 続ける is as wide as it
+// is only to cover five routes that do not share a destination. Also unlike the five, only some of a
+// モーダル's exits reach the question at all: 変更せずに閉じる states the draft's fate in its own
+// wording, so §7 leaves it out.
 
-/** What the 確認 asks. Shown as the 上部帯 ① (doc-7 §5.3), whichever route raised it. */
+/**
+ * What the 確認 asks. Drawn as the 上部帯 ① (doc-7 §5.3), or inside the モーダル that raised it when a
+ * モーダル is up (doc-11 §7) — the question is the same one either way, whatever the answers are
+ * called there.
+ */
 export const DISCARD_CONFIRM_QUESTION =
   "編集中の未保存入力があります。このまま進むと破棄されます。";
 
 /** The answer that goes ahead and loses the input. */
 export const DISCARD_CONFIRM_PROCEED = "破棄して続ける";
 
+/**
+ * The same answer where the モーダル asks it (doc-11 §7).
+ *
+ * 続ける rather than 閉じる above because doc-8 §6.3's five routes do not share a destination — three
+ * of them (別タスクを開く・前後移動・詳細配置の切替) close nothing, and the word has to cover all
+ * five. A モーダル's two are both ways of closing that one layer, so the wider word would name
+ * something wider than what the press does. The *question* stays the one above: what is lost is the
+ * same thing, and doc-8 §6.3 asks for one wording of that.
+ */
+export const DISCARD_CONFIRM_CLOSE = "破棄して閉じる";
+
 /** The answer that stays where it is. */
 export const DISCARD_CONFIRM_KEEP = "編集に戻る";
+
+/**
+ * The two answers, as the layer that draws them needs them (doc-11 §7). A pair rather than a flag and
+ * two callbacks: the question and its answers stand or fall together, so `null` is the whole of
+ * 「聞いていない」 and there is no state where one half is set and the other is not.
+ *
+ * The texts are not in here. The caller says *what happens* on each answer — that is the part only it
+ * knows — and the layer prints the constants above, so no caller can word the same loss its own way
+ * (doc-8 §6.3 文言は同じ).
+ */
+export interface DiscardAnswers {
+  /**
+    * Take the exit that was asked for, and lose the input. Printed as 破棄して続ける in the 上部帯 ① and
+    * as 破棄して閉じる in a モーダル (doc-11 §7) — the layer that draws the answers picks which.
+    */
+  onproceed: () => void;
+  /** 編集に戻る: drop the request and stay where the input is. */
+  onkeep: () => void;
+}
 
 /**
  * Whether the save control may be pressed, and the reason when it may not. A single decision for

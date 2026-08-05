@@ -4,16 +4,21 @@
  * What is fixed here is the contract as it stands. `Modal.svelte` routes every way out — its own × in
  * the corner (doc-11 §7, TASK-76) and the Escape it answers — through one `onclose`, keeps focus
  * inside while it is up, and gives focus back on the way out (doc-7 §2.1) —
- * and it is the *shell* that decides what `onclose` does, which is why the 破棄前確認 for the routes
- * that already have one is fixed in `App.component.test.ts` rather than here.
+ * and it is the *shell* that decides what `onclose` does, which is why *which* routes ask before they
+ * discard is fixed in `App.component.test.ts` rather than here.
  *
- * 設定 and プロジェクト登録 have no 破棄前確認 of their own yet: their close discards whatever was typed.
- * That is TASK-86's subject, not a contract, so nothing here asserts it in either direction — the
- * single exit these tests pin is what TASK-86 routes the confirmation through.
+ * What this layer owes the 破棄前確認 (TASK-86, doc-11 §7) is the two halves below: it draws the
+ * question where it can be read while the layer covering the 上部帯 is up, and its Escape answers that
+ * question instead of raising the request a second time.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
 import Modal from "./Modal.svelte";
+import {
+  DISCARD_CONFIRM_CLOSE,
+  DISCARD_CONFIRM_KEEP,
+  DISCARD_CONFIRM_QUESTION,
+} from "../lib/edit";
 import { byLabel, byText, cleanup, click, press, render, snippet } from "../lib/render";
 
 afterEach(cleanup);
@@ -111,6 +116,71 @@ describe("モーダルの閉じる出口", () => {
     // for a 破棄前確認.
     expect(closed).toBe(1);
     expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it("破棄前確認は、上部帯ではなくこの層の中に出る", () => {
+    // doc-11 §7: this layer covers the 上部帯 where every other route's ① goes (doc-7 §5.3), so a
+    // question raised by one of *its* exits has to be drawn inside it or it cannot be answered while
+    // it stands. All three texts are `edit.ts`'s, not this component's: the question is the one every
+    // route shares (doc-8 §6.3 の 文言は同じ), and the answer that goes ahead is the モーダル's own
+    // 破棄して閉じる, since here the destination is always this layer closing.
+    const answered: string[] = [];
+    const { host } = render(Modal, {
+      label: "設定",
+      confirmDiscard: {
+        onproceed: () => answered.push("proceed"),
+        onkeep: () => answered.push("keep"),
+      },
+      onclose: () => answered.push("onclose"),
+      children: snippet("<p>本文</p>"),
+    });
+    const dialog = dialogOf(host);
+
+    expect(dialog.textContent).toContain(DISCARD_CONFIRM_QUESTION);
+
+    click(byText(dialog, "button", DISCARD_CONFIRM_CLOSE));
+    click(byText(dialog, "button", DISCARD_CONFIRM_KEEP));
+    // Neither answer is a close request of its own: the request was already made, and what the two
+    // answer is whether it goes through. A button here that called `onclose` would be a route around
+    // the very question it is part of.
+    expect(answered).toEqual(["proceed", "keep"]);
+  });
+
+  it("確認が立っている間、Escape は要求を出し直さず「編集に戻る」を答える", () => {
+    const answered: string[] = [];
+    const { host } = render(Modal, {
+      label: "設定",
+      confirmDiscard: {
+        onproceed: () => answered.push("proceed"),
+        onkeep: () => answered.push("keep"),
+      },
+      onclose: () => answered.push("onclose"),
+      children: snippet("<p>本文</p>"),
+    });
+
+    // The press is spent on the innermost open layer, which while the question stands is the
+    // question. Raising the same request again would leave Escape doing nothing a user could see.
+    press(dialogOf(host), "Escape");
+    expect(answered).toEqual(["keep"]);
+  });
+
+  it("確認は「いま閉じられない」ではないので、その間も × は押せる", () => {
+    // The two states doc-11 §7 keeps apart (TASK-86). `closeBlocked` means the request is not issued
+    // and the × goes to 無効化提示 (doc-11 §5); a standing question means it *was* issued and is
+    // waiting — so withholding the × here would give it 「答えていないから押せません」 as its reason,
+    // with the answer sitting in the same box.
+    let closed = 0;
+    const { host } = render(Modal, {
+      label: "設定",
+      confirmDiscard: { onproceed: () => {}, onkeep: () => {} },
+      onclose: () => (closed += 1),
+      children: snippet("<p>本文</p>"),
+    });
+    const close = closeOf(host);
+
+    expect(close.getAttribute("aria-disabled")).toBe("false");
+    click(close);
+    expect(closed).toBe(1);
   });
 
   it("Escape は IME の変換中には発火しない", () => {

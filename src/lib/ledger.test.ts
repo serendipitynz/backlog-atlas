@@ -4,6 +4,7 @@ import {
   aliasProblems,
   aliasTable,
   editOf,
+  hasRegisterInput,
   isAbsolutePath,
   isValidSlug,
   moveTarget,
@@ -133,6 +134,25 @@ describe("toRegisterRequest", () => {
       backlog_root: "/elsewhere/bl",
       slug: "geo",
     });
+  });
+});
+
+// --- 未保存入力 (doc-8 §6.3 の語を doc-11 §7 のモーダルへ, TASK-86) --------------------------
+
+describe("hasRegisterInput", () => {
+  it("counts any of the three fields, so an optional one typed alone is still input", () => {
+    expect(hasRegisterInput({ projectRoot: "", backlogRoot: "", slug: "" })).toBe(false);
+    expect(hasRegisterInput({ projectRoot: "/repos/geomyth", backlogRoot: "", slug: "" })).toBe(true);
+    // 登録 is refused without a project root, so these two can only ever be input that was *not*
+    // issued — exactly what a 破棄前確認 is for.
+    expect(hasRegisterInput({ projectRoot: "", backlogRoot: "/elsewhere/bl", slug: "" })).toBe(true);
+    expect(hasRegisterInput({ projectRoot: "", backlogRoot: "", slug: "geo" })).toBe(true);
+  });
+
+  it("does not count whitespace, which could not have been submitted either", () => {
+    // `toRegisterRequest` trims, so a field holding spaces alone reaches the ledger as nothing;
+    // asking whether to discard it would be asking about a value that never existed.
+    expect(hasRegisterInput({ projectRoot: "  ", backlogRoot: "\t", slug: " " })).toBe(false);
   });
 });
 

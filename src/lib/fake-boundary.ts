@@ -126,6 +126,12 @@ export const answers = {
    * write as well as start it, and `null` is the ordinary "answers at once" case.
    */
   settingsSaveHold: null as Deferred<void> | null,
+  /**
+   * The same for `ledger_register` (登録の発行中は 2 つの出口とも閉じない). Its own deferred rather than
+   * one shared with the save above: the two モーダル are held by two flags in the shell, and a single
+   * hold could not tell a test that had wired them to one flag from one that had not.
+   */
+  ledgerRegisterHold: null as Deferred<void> | null,
 };
 
 /** The `project-reloaded` subscribers currently registered, in subscription order. */
@@ -165,6 +171,7 @@ export function reset(): void {
   answers.subscribeFails = false;
   answers.settingsReadFails = false;
   answers.settingsSaveHold = null;
+  answers.ledgerRegisterHold = null;
 }
 
 function record<T>(name: string, args: readonly unknown[], answer: () => T): T {
@@ -202,7 +209,8 @@ export const commandFakes = {
     record("ledger_default_slug", [projectRoot], () => Promise.resolve(null)),
 
   ledgerRegister: (request: RegisterRequest): Promise<RegisterResponse> =>
-    record("ledger_register", [request], () => {
+    record("ledger_register", [request], async () => {
+      if (answers.ledgerRegisterHold !== null) await answers.ledgerRegisterHold.promise;
       // The entry the ledger would have created, with the slug resolved: an absent one is derived
       // from the project-root directory name (doc-3 §3.1), which is the case a caller has to be able
       // to read back off the response rather than assume.
@@ -213,7 +221,7 @@ export const commandFakes = {
         backlog_root: request.backlog_root ?? `${request.project_root}/backlog`,
         git_remote_present: false,
       };
-      return Promise.resolve({ entry, ledger: answers.ledger });
+      return { entry, ledger: answers.ledger };
     }),
 
   ledgerRemove: (slug: string): Promise<LedgerResponse> =>

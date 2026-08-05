@@ -73,6 +73,33 @@ export const EMPTY_REGISTER_INPUT: RegisterInput = {
   slug: "",
 };
 
+/**
+ * Whether the registration form holds 未保存入力 — anything typed that the ledger has not been told
+ * about (doc-8 §6.3 の語を、doc-11 §7 のモーダルへ適用したもの。TASK-86).
+ *
+ * All three fields count, not just the required one: 登録 is refused while プロジェクトルート is empty,
+ * so a Backlog root or a slug typed on its own is exactly the input that would go silently — the form
+ * cannot have issued it, and closing the layer unmounts it.
+ *
+ * Whitespace alone is not input. It cannot become a request either (`toRegisterRequest` trims), so
+ * counting it would raise a 破棄前確認 about a value the user could not have submitted.
+ */
+export function hasRegisterInput(input: RegisterInput): boolean {
+  return (
+    input.projectRoot.trim() !== "" ||
+    input.backlogRoot.trim() !== "" ||
+    input.slug.trim() !== ""
+  );
+}
+
+/**
+ * Why the 登録モーダル will not take a close request right now (doc-11 §7 の いま閉じられない事情).
+ *
+ * Same shape and same reason as `SAVING_REASON` one screen over: the panel is what reports whether the
+ * registration was refused, and leaving takes it away while the write already issued goes on to land.
+ */
+export const REGISTERING_REASON = "登録中です";
+
 /** One row of the 別名表 editor. Ordered and possibly incomplete — see the referent table. */
 export interface AliasRow {
   key: string;

@@ -44,7 +44,7 @@
     updateApply,
     workspaceOpen,
   } from "./lib/commands";
-  import { refusalReport, type LedgerActionResult } from "./lib/ledger";
+  import { REGISTERING_REASON, refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
   import { topBands } from "./lib/band";
   import { headerMenu, type HeaderEntryId, type MenuItem } from "./lib/header";
@@ -62,6 +62,7 @@
     commandErrorDetail,
     failureDetail,
     type ApplyOutcome,
+    type DiscardAnswers,
   } from "./lib/edit";
   import { issueAvailability, outcomeMessage, type IssueOutcome } from "./lib/manage";
   import {
@@ -141,6 +142,21 @@
   let detailSlug = $state<string | null>(null);
   /** Whether the fixed header's 「プロジェクトを登録」 modal is open (doc-7 §2.1). */
   let registerOpen = $state(false);
+  /**
+   * Whether the 登録 form holds 未保存入力 — what makes the モーダル's exits ask first (doc-8 §6.3,
+   * doc-11 §7). Held here rather than in the form for the reason `settingsDirty` is: neither of the
+   * two exits that would lose it is the form's own control.
+   */
+  let registerDirty = $state(false);
+  /**
+   * Whether a registration issued from that form is still unresolved. Raised around the one call, and
+   * read by both of the モーダル's exits — the same shape as `settingsSaving` one screen over, and for
+   * the same reason (`Modal.svelte`'s Escape reaches this layer, not the form).
+   *
+   * Not `ledgerBusy`: that one also stands for a command the プロジェクト詳細画面 issued, and holding a
+   * モーダル closed for a write it is not reporting would give a reason that is not the one that held.
+   */
+  let registerSubmitting = $state(false);
   /** Whether the fixed header's メニュー is open (doc-7 §2.1). */
   let menuOpen = $state(false);
   /**
@@ -188,6 +204,12 @@
    * this layer (`Modal.svelte`), not the form. One fact, one flag.
    */
   let settingsSaving = $state(false);
+  /**
+   * Whether the 設定 form's 下書き differs from the file — what makes the three exits ask before they
+   * discard it (doc-8 §6.3, doc-11 §7). Held here because only two of the three are the form's own
+   * controls, and the third (Escape) never reaches it.
+   */
+  let settingsDirty = $state(false);
   let loadBySlug = $state<Record<string, ProjectLoad>>({});
   let hidden = $state<string[]>([]);
   let filter = $state<CardFilter>(DEFAULT_FILTER);
@@ -395,6 +417,25 @@
     selectedRef !== null && unwatchedRows.includes(selectedRef.slug),
   );
   /**
+   * Whether the 破棄前確認 standing right now belongs inside a モーダル rather than in the 上部帯
+   * (doc-11 §7). Only the two モーダル that hold input are asked about: while one of them is up nothing
+   * behind it can be pressed (the layer covers the window and keeps focus inside), so a question
+   * standing at that moment is one of its own exits' — and it is drawn where it can be answered.
+   *
+   * The 一覧モーダル is not in the list: it holds nothing, so it raises no question, and naming it here
+   * would move a question raised behind it into a layer with no way to show it.
+   */
+  let confirmInModal = $derived(pendingDiscard !== null && (settingsOpen || registerOpen));
+
+  /**
+   * The two answers, as the layer that draws them takes them (doc-8 §6.3). One value, so the question
+   * and its answers cannot be handed over half-set; `null` while nothing is being asked.
+   */
+  let modalConfirm = $derived<DiscardAnswers | null>(
+    confirmInModal ? { onproceed: discardConfirmed, onkeep: keepEditing } : null,
+  );
+
+  /**
    * 上部帯 (doc-11 §4) for whichever screen is up. Derived rather than drawn one `{#if}` per band,
    * because the order is a rule and not a property of the markup: 出現順に積むと、帯が増えるほど回答
    * 待ちの ① が通知 ⑤ の下へ押し出される。The shell owns all six for both screens — プロジェクト詳細
@@ -406,7 +447,11 @@
    */
   let bands = $derived(
     topBands({
-      confirming: pendingDiscard !== null,
+      // Not while a モーダル is up: it covers the 上部帯 (doc-7 §2.1), so the ① would stand where it
+      // cannot be read or answered while `Modal.svelte` draws the same question inside the layer
+      // (doc-11 §7). One question, drawn once — a band behind the layer would be a second copy of it
+      // that the user meets on the way back out.
+      confirming: pendingDiscard !== null && !confirmInModal,
       readiness,
       ledgerReadOnly,
       unwatchedReason:
@@ -767,7 +812,8 @@
 
   /**
    * Where every way out of the 設定モーダル meets (doc-11 §7): the × `Modal.svelte` draws, the Escape it
-   * answers, and the form's own 変更せずに閉じる.
+   * answers, and the form's own 変更せずに閉じる. A *request* — what it does with it is the two lines
+   * below, in that order.
    *
    * All three are refused while a save is unresolved, but only Escape is refused *here*. The panel is
    * what reports the write's outcome, and leaving takes it away while the write already issued goes on
@@ -775,10 +821,62 @@
    * are held one step earlier by the reason this same flag produces (`closeBlocked` for the ×,
    * `saving` for the form), so each of them can say why it will not answer (doc-11 §5). Escape has no
    * control to hang a reason on, which is why this end of it only declines.
+   *
+   * Then the 破棄前確認 (doc-8 §6.3), for the exits that do not say what becomes of the 下書き — the ×
+   * says only 閉じる and Escape says nothing at all, so the question is where the draft's fate gets
+   * stated. Behind the same gate as every other route that discards input, so the モーダル cannot grow
+   * a wording or a rule of its own; what is particular to it is only where the question is drawn
+   * (doc-11 §7 — this layer covers the 上部帯, so `Modal.svelte` draws it).
+   *
+   * — except from 変更せずに閉じる, which says it already. That is what `fateStated` carries, and it is
+   * a parameter rather than a route of its own so that all three exits still meet here (doc-11 §7 の
+   * 出口はすべて 1 つの閉じる要求へ集まる): the 発行中 refusal above, and the layer being dropped below,
+   * stay one decision made in one place. What the flag selects is only whether the question has
+   * anything left to say — 下書きの行方を語で述べる出口かどうか, which is the axis §7 already draws
+   * between the 下部操作行 and the corner.
+   *
+   * 保存する does not come through here at all: it wrote the 下書き, so 変更せずに閉じる would be false
+   * of what happened, and `settingsSaved` is its own way out.
    */
-  function closeSettings(): void {
+  function closeSettings(fateStated: boolean): void {
     if (settingsSaving) return;
+    guardDiscard(settingsDirty && !fateStated, dropSettingsModal);
+  }
+
+  /** The 設定 write landed (TASK-74 保存は成功したときだけ閉じる), so nothing is being discarded. */
+  function settingsSaved(): void {
+    dropSettingsModal();
+  }
+
+  /**
+   * Take the モーダル away, and with it any 破棄前確認 one of its exits had raised.
+   *
+   * The question goes because it was about leaving *this* layer, and every route to here leaves it
+   * one way or another — answered 破棄して閉じる (already cleared), 保存する that landed, or a draft
+   * reverted to the file's values while the question stood, which lets the next press through the
+   * gate unanswered. Left behind, an unanswered one would come back as the 上部帯 ① over the screen
+   * the layer had been covering: a question about input that is no longer anywhere, offering a
+   * continuation that has already happened. Dropping it discards nothing — the request lapses.
+   */
+  function dropSettingsModal(): void {
+    pendingDiscard = null;
     settingsOpen = false;
+  }
+
+  /** The same for the 登録モーダル (`dropSettingsModal` says why the question goes with the layer). */
+  function dropRegisterModal(): void {
+    pendingDiscard = null;
+    registerOpen = false;
+  }
+
+  /**
+   * The same for the 登録モーダル, which has two exits rather than three: the × and Escape (doc-11 §7 —
+   * 登録 writes without leaving the layer, so there is no 下部操作行 to state a fate in). Both discard
+   * whatever has been typed, so both come through the one gate.
+   */
+  function closeRegister(): void {
+    if (registerSubmitting) return;
+    guardDiscard(registerDirty, dropRegisterModal);
   }
 
   /**
@@ -934,6 +1032,9 @@
   async function registerProject(request: RegisterRequest): Promise<LedgerActionResult> {
     if (ledgerBusy) return LEDGER_BUSY_RESULT;
     ledgerBusy = true;
+    // Raised here rather than in the form: the モーダル's two exits have to be turned away for as long
+    // as this is unresolved, and neither of them is the form's control (`closeRegister`).
+    registerSubmitting = true;
     try {
       const response = await ledgerRegister(request);
       applyLedger(response.ledger);
@@ -943,6 +1044,7 @@
       return { state: "refused", report: refusalReport(asCommandError(error)) };
     } finally {
       ledgerBusy = false;
+      registerSubmitting = false;
     }
   }
 
@@ -1024,6 +1126,10 @@
    * (doc-8 §6.3). One gate for every such route, so none of them can grow its own wording or forget
    * to ask; the panel's キャンセル reaches it through `onconfirmDiscard`, being the one route the
    * shell cannot carry out itself.
+   *
+   * The モーダル's exits come through here too (TASK-86, doc-11 §7). They are not among doc-8 §6.3's
+   * five and the input they lose is not the 編集セッション's, but the question and the two answers are
+   * the same ones, and a second gate is how the same loss would come to be described two ways.
    */
   function guardDiscard(dirty: boolean, proceed: () => void): void {
     if (dirty) pendingDiscard = proceed;
@@ -1035,6 +1141,15 @@
     const proceed = pendingDiscard;
     pendingDiscard = null;
     proceed?.();
+  }
+
+  /**
+   * 編集に戻る: drop the request and leave the input where it is. Named rather than written inline at
+   * each place the answer is offered — the 帯 and the モーダル draw the same two answers, and only one
+   * of them is a continuation the caller supplied.
+   */
+  function keepEditing(): void {
+    pendingDiscard = null;
   }
 
   /**
@@ -1389,6 +1504,13 @@
    */
   function openEntry(id: HeaderEntryId): void {
     raiseModal();
+    // An unanswered 破棄前確認 from the screen behind lapses here rather than being taken over by the
+    // layer about to cover it. Where the question is drawn is decided by which layer is up
+    // (`confirmInModal`), so one raised by another route would be drawn by this モーダル as though one
+    // of its own exits had asked it — and 破棄して閉じる would then carry out that other route behind
+    // it, leaving the モーダル standing over a screen that had changed underneath. Dropping it
+    // discards nothing: the request lapses and the 未保存入力 it was about stays where it is.
+    pendingDiscard = null;
     if (id === "register") registerOpen = true;
     else settingsOpen = true;
   }
@@ -1555,15 +1677,25 @@
     <!-- 登録 (doc-3 §4.1) is the one ledger-wide operation left, so it opens from the header rather
          than from the per-project detail screen (doc-3 §4) — and as a モーダル, which is where doc-7
          §2.1 puts it: モーダルの外に画面遷移を作らない (AC #2). -->
-    <Modal label="プロジェクトを登録" onclose={() => (registerOpen = false)}>
+    <!-- Two exits rather than three (doc-11 §7): 登録 writes to the ledger without leaving the layer,
+         so there is no 下部操作行. Both of them discard what has been typed, so both are held by the
+         same flag while the registration is unresolved and both ask first when there is input. -->
+    <Modal
+      label="プロジェクトを登録"
+      closeBlocked={registerSubmitting ? REGISTERING_REASON : null}
+      confirmDiscard={modalConfirm}
+      onclose={closeRegister}
+    >
       <ProjectRegister
         {entries}
         readOnly={ledgerReadOnly}
         busy={ledgerBusy}
+        submitting={registerSubmitting}
         {ledgerPath}
         onpickDirectory={pickDirectory}
         ondefaultSlug={ledgerDefaultSlug}
         onregister={registerProject}
+        ondirty={(dirty) => (registerDirty = dirty)}
       />
     </Modal>
   {/if}
@@ -1573,11 +1705,14 @@
          shown, so losing the rows, filter and selection to open it would be backwards. -->
     <!-- The × this layer draws is turned away by the same fact that turns away Escape and the
          下部操作行's own 変更せずに閉じる, and it is told why: an exit that goes quiet without saying so
-         is the 理由の無い無効化 doc-11 §5 refuses. One flag, three exits (doc-11 §7). -->
+         is the 理由の無い無効化 doc-11 §5 refuses. One flag, three exits (doc-11 §7).
+         The 破棄前確認 is a different fact and reaches only two of them: 変更せずに閉じる says what
+         becomes of the 下書き in its own words, so the question would ask what the label answered. -->
     <Modal
       label="設定"
       closeBlocked={settingsSaving ? SAVING_REASON : null}
-      onclose={closeSettings}
+      confirmDiscard={modalConfirm}
+      onclose={() => closeSettings(false)}
     >
       <Settings
         loaded={settings}
@@ -1585,7 +1720,9 @@
         onsave={saveSettings}
         onopenLocation={openSettingsLocation}
         saving={settingsSaving}
-        onclose={closeSettings}
+        ondiscard={() => closeSettings(true)}
+        ondirty={(dirty) => (settingsDirty = dirty)}
+        onsaved={settingsSaved}
       />
     </Modal>
   {/if}
@@ -1621,7 +1758,7 @@
              別タスクを開く・前後移動・詳細配置の切替. It stays above the grid area, so it is readable
              and answerable while the 中央モーダル is up. -->
         <button type="button" onclick={discardConfirmed}>{DISCARD_CONFIRM_PROCEED}</button>
-        <button type="button" onclick={() => (pendingDiscard = null)}>{DISCARD_CONFIRM_KEEP}</button>
+        <button type="button" onclick={keepEditing}>{DISCARD_CONFIRM_KEEP}</button>
       {:else if band.kind === "hiddenRows"}
         <!-- 縮約しても帯に操作を残す (doc-11 §4): the count is the summary and すべて戻す is the band's own
              操作, so undoing every hide needs nothing opened. The per-row list is the part that grew the
