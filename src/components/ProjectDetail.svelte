@@ -41,6 +41,7 @@
     EMPTY_MILESTONE_REMOVE,
     EMPTY_MILESTONE_RENAME,
     EMPTY_TASK_CREATE,
+    DOC_TAGS_CLEARED_NOTICE,
     ISSUE_BUSY_REASON,
     MILESTONE_DESCRIPTION_NOT_EDITABLE,
     MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
@@ -56,6 +57,7 @@
     buildMilestoneRemove,
     buildMilestoneRename,
     buildTaskCreate,
+    clearsAllTags,
     docDivergence,
     followsReferences,
     hasDocCreateInput,
@@ -1220,6 +1222,11 @@
                         (value) => (newTag = value),
                         "追加するタグ",
                       )}
+                      <!-- タグ全消しであることを欄の隣で述べる (doc-10 §5): an empty tags field
+                           reads like the empty path field above it, which means 変更しない. -->
+                      {#if clearsAllTags(session)}
+                        <p class="hint">{DOC_TAGS_CLEARED_NOTICE}</p>
+                      {/if}
                     </div>
 
                     <div class="actions">

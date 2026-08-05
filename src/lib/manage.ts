@@ -332,16 +332,17 @@ export const DOC_TITLE_EMPTY_REASON =
   "title を空にはできません（doc-4 §3.2 の必須項目で、空にすると文書として読めなくなります）";
 
 /**
- * Why the last tag cannot be removed. Not a CLI limit: `--tags ""` does clear the tags, on v1.47.1
- * and v1.48.0 alike (TASK-58 実測). The original reason — that its effect was unmeasured, and that
- * the same-shaped `--ref ""`/`--depends-on ""` exit 0 while clearing nothing — turned out not to
- * hold for this flag. What is left is a product decision Atlas has not taken yet, so the reason
- * says so plainly instead of blaming the CLI (doc-10 §1 requires the stated reason to be the real
- * one; the tags decision itself is §5). TASK-109 decides whether to offer it.
+ * Said beside the tags field when the save would be a タグ全消し (doc-10 §5). An empty tags field
+ * looks exactly like the empty path field one row up, which means 変更しない — so the one that
+ * clears has to say it does, before the update is issued.
  */
-export const DOC_EMPTY_TAGS_REASON =
-  "tags を空にする操作は現在提供していません（CLI の `--tags \"\"` はタグを消せますが、" +
-  "Atlas がこの操作を出すかどうかは未決定です。doc-10 §5）";
+export const DOC_TAGS_CLEARED_NOTICE =
+  "保存すると、この文書のタグをすべて外します（`doc update --tags \"\"`）。";
+
+/** Whether saving now would clear every tag — the condition [`DOC_TAGS_CLEARED_NOTICE`] belongs to. */
+export function clearsAllTags(session: DocSession): boolean {
+  return docDirtyFields(session).includes("tags") && cleaned(session.draft.tags).length === 0;
+}
 
 /** The values a 文書更新 asserts, kept so the re-read can be checked against them ([`docDivergence`]). */
 export interface DocSubmitted {
@@ -390,8 +391,10 @@ export function buildDocUpdate(session: DocSession): DocUpdatePlan {
         update.path = draft.path.trim();
         break;
       case "tags": {
+        // 空集合の tags is タグ全消し (doc-10 §5), not "no tags to send": `--tags ""` clears them
+        // (v1.48.0 実測). What must never reach here is an *untouched* tags field — that one is
+        // absent from `dirty`, so the flag is not emitted at all and someone else's tags survive.
         const tags = cleaned(draft.tags);
-        if (tags.length === 0) return { state: "blocked", reason: DOC_EMPTY_TAGS_REASON };
         const bad = firstWithComma(tags);
         if (bad !== undefined) return { state: "blocked", reason: commaReason("タグ", bad) };
         update.tags = tags;

@@ -362,6 +362,9 @@ pub struct DocUpdate {
     pub content: Option<String>,
     pub doc_type: Option<String>,
     pub path: Option<String>,
+    /// `None` is 未タッチの tags — the flag is not emitted, so tags stay as the file has them.
+    /// `Some(empty)` is 空集合の tags: タグ全消し (doc-10 §5), emitted as `--tags ""`. The two are
+    /// not interchangeable, which is why this is an `Option<Vec<_>>` and not a `Vec<_>`.
     pub tags: Option<Vec<String>>,
 }
 
@@ -767,6 +770,9 @@ fn plan_doc_update(doc_id: &str, update: &DocUpdate) -> Result<Invocation, Rejec
         .opt_if("--type", &update.doc_type)
         .opt_if("--path", &update.path);
     if let Some(tags) = &update.tags {
+        // `opt`, not a skip-if-empty: an empty list joins to `""` and `--tags ""` is タグ全消し
+        // (doc-10 §5), which v1.48.0 performs. Contrast `--ref ""`/`--depends-on ""` below, which
+        // exit 0 having cleared nothing and are refused instead.
         inv = inv.opt("--tags", tags.join(","));
     }
     if !inv.has_options() {
@@ -2193,6 +2199,30 @@ mod tests {
             run_one(op, &cli).unwrap();
             assert_eq!(cli.calls(), vec![expected]);
         }
+    }
+
+    #[test]
+    fn empty_doc_tags_are_emitted_as_the_clear_request() {
+        let cli = FakeCli::supported();
+        run_one(
+            UpdateOperation::DocUpdate {
+                doc_id: "doc-4".to_string(),
+                update: DocUpdate {
+                    tags: Some(Vec::new()),
+                    ..Default::default()
+                },
+            },
+            &cli,
+        )
+        .unwrap();
+        // タグ全消し (doc-10 §5): `--tags ""` does clear them on v1.48.0, unlike the same-shaped
+        // `--ref ""`/`--depends-on ""` above, which exit 0 having cleared nothing and are therefore
+        // refused. An empty tag list is a request, so it is emitted — and it still counts as an
+        // option, so this is not rejected as NothingToUpdate.
+        assert_eq!(
+            cli.calls(),
+            vec![vec!["doc", "update", "doc-4", "--tags", ""]]
+        );
     }
 
     #[test]

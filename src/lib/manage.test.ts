@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  DOC_EMPTY_TAGS_REASON,
   DOC_NOTHING_TO_UPDATE_REASON,
   DOC_TITLE_EMPTY_REASON,
   DOC_TITLE_REQUIRED_REASON,
@@ -31,6 +30,7 @@ import {
   buildMilestoneRemove,
   buildMilestoneRename,
   buildTaskCreate,
+  clearsAllTags,
   followsReferences,
   referencingTasks,
   docDirtyFields,
@@ -50,7 +50,7 @@ import {
 } from "./manage";
 import { readinessReason } from "./edit";
 import { taskView } from "./fixtures";
-import type { CliReadiness, Document, Milestone } from "./wire";
+import type { CliReadiness, DocUpdate, Document, Milestone } from "./wire";
 
 function taskInput(overrides: Partial<TaskCreateInput> = {}): TaskCreateInput {
   return { ...EMPTY_TASK_CREATE, title: "Add OAuth", ...overrides };
@@ -244,9 +244,35 @@ describe("buildDocUpdate", () => {
     expect(blockedReason(buildDocUpdate(session))).toBe(DOC_TITLE_EMPTY_REASON);
   });
 
-  it("refuses emptying tags, which Atlas has not decided to offer (the CLI can do it)", () => {
+  // タグ全消し (doc-10 §5, TASK-109). The two tests below are the pair that keeps 空集合の tags
+  // apart from 未タッチの tags: the first sends `[]` so the adapter emits `--tags ""`, the second
+  // sends no tags at all. Collapsing them would let an update that never touched tags clear them.
+  it("sends 空集合の tags as the タグ全消し request", () => {
     const session = setDocField(startDocSession(document()), "tags", []);
-    expect(blockedReason(buildDocUpdate(session))).toBe(DOC_EMPTY_TAGS_REASON);
+    expect(action(buildDocUpdate(session))).toEqual([
+      { op: "docUpdate", docId: "doc-4", update: { tags: [] } },
+    ]);
+  });
+
+  it("says the save clears every tag, so an empty field does not read as 変更しない", () => {
+    expect(clearsAllTags(startDocSession(document()))).toBe(false);
+    expect(clearsAllTags(setDocField(startDocSession(document()), "tags", []))).toBe(true);
+    // Whitespace-only entries are dropped before the update is built, so they clear too.
+    expect(clearsAllTags(setDocField(startDocSession(document()), "tags", ["  "]))).toBe(true);
+    // A document that had no tags to begin with is not a タグ全消し — nothing is being sent.
+    const untagged = setDocField(startDocSession(document({ tags: [] })), "tags", []);
+    expect(clearsAllTags(untagged)).toBe(false);
+  });
+
+  it("omits tags entirely when the field was never touched", () => {
+    const session = setDocField(startDocSession(document()), "title", "読み取り層 設計（改訂）");
+    const update = action(buildDocUpdate(session))[0];
+    expect(update).toEqual({
+      op: "docUpdate",
+      docId: "doc-4",
+      update: { title: "読み取り層 設計（改訂）" },
+    });
+    expect("tags" in (update as { update: DocUpdate }).update).toBe(false);
   });
 
   it("refuses a tag containing a comma", () => {
