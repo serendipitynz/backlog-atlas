@@ -651,6 +651,64 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     }
   });
 
+  it("画面が上げた確認をモーダルが引き取らない", async () => {
+    // Where the question is drawn is decided by which layer is up, so a question raised by a route
+    // that has nothing to do with these モーダル must not become one of theirs on the way in: its
+    // 破棄して続ける would carry out that other route *behind* the layer, and the モーダル would be left
+    // standing over a screen that had changed underneath it.
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
+    await settled();
+    click(byText(host, "button.primary", "編集"));
+    fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
+    click(byText(host, "button.card .title", "隣の題").closest("button.card")!);
+    expect(confirmBand(host)).not.toBeNull();
+
+    chooseFromMenu(host, "設定");
+
+    // The question lapses rather than moving into the layer. Nothing was discarded by it lapsing.
+    expect(confirmIn(host, "設定")).toBeNull();
+    press(dialogOf(host, "設定"), "Escape");
+    expect(confirmBand(host)).toBeNull();
+    // And the route it was holding did not happen: the 編集セッション is still the first task's, which
+    // opening the neighbour would have unmounted (`goToScreen` / `openTask` replace the panel).
+    expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
+  });
+
+  it("答えられなかった確認は、モーダルが閉じたあと帯として戻らない", async () => {
+    // Every route that takes the layer away while a question of its own stands: the question was
+    // about leaving *this* layer, so it goes with it. Left behind it would stand over the screen the
+    // layer had covered — asking about input that is no longer anywhere, and offering a continuation
+    // that has already happened.
+    const saved = await withSettingsDraft();
+    press(dialogOf(saved, "設定"), "Escape");
+    expect(confirmIn(saved, "設定")).not.toBeNull();
+    // 保存する is still pressable while the question stands: it is not one of the three exits the
+    // question is in front of.
+    click(byText(saved, "footer button", "保存する"));
+    await settled();
+    expect(saved.querySelector('[aria-label="設定"]')).toBeNull();
+    expect(confirmBand(saved)).toBeNull();
+
+    cleanup();
+
+    // The other way through: the draft is put back to the file's values while the question stands, so
+    // the next press passes the gate without either answer having been given.
+    const reverted = await withSettingsDraft();
+    const before = only<HTMLInputElement>(reverted, 'input[name="card-density"]:checked');
+    press(dialogOf(reverted, "設定"), "Escape");
+    expect(confirmIn(reverted, "設定")).not.toBeNull();
+    const original = [...reverted.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
+      (radio) => radio !== before,
+    );
+    if (original === undefined) throw new Error("no other カード情報量 to go back to");
+    click(original);
+    click(closeOf(reverted, "設定"));
+
+    expect(reverted.querySelector('[aria-label="設定"]')).toBeNull();
+    expect(confirmBand(reverted)).toBeNull();
+  });
+
   it("登録の発行中は、確認より前に 2 経路とも断られる", async () => {
     // AC #3 の 登録中: the order matters. A 破棄前確認 raised while the registration is unresolved
     // would offer 破棄して続ける for input the ledger is in the middle of taking — the request must not

@@ -830,12 +830,33 @@
    */
   function closeSettings(): void {
     if (settingsSaving) return;
-    guardDiscard(settingsDirty, () => (settingsOpen = false));
+    guardDiscard(settingsDirty, dropSettingsModal);
   }
 
   /** The 設定 write landed (TASK-74 保存は成功したときだけ閉じる), so nothing is being discarded. */
   function settingsSaved(): void {
+    dropSettingsModal();
+  }
+
+  /**
+   * Take the モーダル away, and with it any 破棄前確認 one of its exits had raised.
+   *
+   * The question goes because it was about leaving *this* layer, and every route to here leaves it
+   * one way or another — answered 破棄して続ける (already cleared), 保存する that landed, or a draft
+   * reverted to the file's values while the question stood, which lets the next press through the
+   * gate unanswered. Left behind, an unanswered one would come back as the 上部帯 ① over the screen
+   * the layer had been covering: a question about input that is no longer anywhere, offering a
+   * continuation that has already happened. Dropping it discards nothing — the request lapses.
+   */
+  function dropSettingsModal(): void {
+    pendingDiscard = null;
     settingsOpen = false;
+  }
+
+  /** The same for the 登録モーダル (`dropSettingsModal` says why the question goes with the layer). */
+  function dropRegisterModal(): void {
+    pendingDiscard = null;
+    registerOpen = false;
   }
 
   /**
@@ -845,7 +866,7 @@
    */
   function closeRegister(): void {
     if (registerSubmitting) return;
-    guardDiscard(registerDirty, () => (registerOpen = false));
+    guardDiscard(registerDirty, dropRegisterModal);
   }
 
   /**
@@ -1473,6 +1494,13 @@
    */
   function openEntry(id: HeaderEntryId): void {
     raiseModal();
+    // An unanswered 破棄前確認 from the screen behind lapses here rather than being taken over by the
+    // layer about to cover it. Where the question is drawn is decided by which layer is up
+    // (`confirmInModal`), so one raised by another route would be drawn by this モーダル as though one
+    // of its own exits had asked it — and 破棄して続ける would then carry out that other route behind
+    // it, leaving the モーダル standing over a screen that had changed underneath. Dropping it
+    // discards nothing: the request lapses and the 未保存入力 it was about stays where it is.
+    pendingDiscard = null;
     if (id === "register") registerOpen = true;
     else settingsOpen = true;
   }
