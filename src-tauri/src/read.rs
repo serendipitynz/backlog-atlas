@@ -494,9 +494,11 @@ fn identity(text: &str) -> Option<((String, String), String)> {
 /// description the screen displays but cannot save back.
 ///
 /// v1.48.0's `milestone add` writes a plain `## Description` heading rather than a SECTION pair
-/// (measured 2026-08-06); the span function accepts either, as this did.
+/// (measured 2026-08-06); the span function accepts either, as this did. The **read** accepts both
+/// shapes; only the write is restricted to the heading (decision-21), and the opener the span
+/// carries is what tells them apart there.
 fn description_text(body: &str) -> Option<String> {
-    non_empty(&body[parse::description_span(body)?])
+    non_empty(&body[parse::description_span(body)?.range])
 }
 
 fn non_empty(text: &str) -> Option<String> {

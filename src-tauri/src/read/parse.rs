@@ -160,11 +160,15 @@ pub struct Body {
 ///
 /// Both opening forms are accepted because the reader accepts both: v1.48.0's `milestone add`
 /// writes the plain heading (measured 2026-08-06), while task files use the SECTION pair, and a
-/// milestone file hand-edited into the other shape still reads.
-pub fn description_span(body: &str) -> Option<std::ops::Range<usize>> {
+/// milestone file hand-edited into the other shape still reads. **Which one opened the range is
+/// returned with it**, because the write is narrower than the read: decision-21 admits only the
+/// shape the CLI itself writes, so the writer refuses a [`DescriptionOpener::Section`] range while
+/// the reader takes it. Reporting the opener is what lets the two differ deliberately — a writer
+/// that re-derived the shape from the text would be the second implementation of this rule that
+/// sharing the function exists to prevent.
+pub fn description_span(body: &str) -> Option<DescriptionRange> {
     let mut offset = 0;
-    let mut start: Option<usize> = None;
-    let mut section = false;
+    let mut start: Option<(usize, DescriptionOpener)> = None;
     for line in body.split_inclusive('\n') {
         let end = offset + line.len();
         let trimmed = line.trim_end_matches(['\n', '\r']);
@@ -174,23 +178,24 @@ pub fn description_span(body: &str) -> Option<std::ops::Range<usize>> {
                     marker(trimmed).and_then(parse_marker),
                     Some(Marker::SectionBegin(ref name)) if name.eq_ignore_ascii_case("DESCRIPTION")
                 ) {
-                    start = Some(end);
-                    section = true;
+                    start = Some((end, DescriptionOpener::Section));
                 } else if is_heading(trimmed, "Description") {
-                    start = Some(end);
+                    start = Some((end, DescriptionOpener::Heading));
                 }
             }
-            Some(from) => {
-                let closes = if section {
-                    matches!(
+            Some((from, opener)) => {
+                let closes = match opener {
+                    DescriptionOpener::Section => matches!(
                         marker(trimmed).and_then(parse_marker),
                         Some(Marker::SectionEnd(ref name)) if name.eq_ignore_ascii_case("DESCRIPTION")
-                    )
-                } else {
-                    trimmed.trim_start().starts_with("##")
+                    ),
+                    DescriptionOpener::Heading => trimmed.trim_start().starts_with("##"),
                 };
                 if closes {
-                    return Some(from..offset);
+                    return Some(DescriptionRange {
+                        opener,
+                        range: from..offset,
+                    });
                 }
             }
         }
@@ -199,7 +204,29 @@ pub fn description_span(body: &str) -> Option<std::ops::Range<usize>> {
     // No closing line: the Description runs to the end of the body. An unclosed SECTION pair is a
     // 存在時構造検査 failure for a task (doc-4 §4), but this function only reports the range —
     // `parse_body` is where that verdict is made.
-    start.map(|from| from..body.len())
+    start.map(|(from, opener)| DescriptionRange {
+        opener,
+        range: from..body.len(),
+    })
+}
+
+/// 説明の本文範囲 and what opened it (decision-21).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DescriptionRange {
+    pub opener: DescriptionOpener,
+    pub range: std::ops::Range<usize>,
+}
+
+/// What a Description was opened by. A value rather than a bool so the two shapes are named where
+/// they are decided about: only [`DescriptionOpener::Heading`] is a shape v1.48.0's `milestone add`
+/// writes, and only that one may be written back into (decision-21's first condition).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DescriptionOpener {
+    /// `## Description` — what `milestone add -d` writes (measured 2026-08-06).
+    Heading,
+    /// A `SECTION:DESCRIPTION` marker pair — a task file's shape, reachable in a milestone file
+    /// only by hand-editing.
+    Section,
 }
 
 /// A `## <name>` heading line, by the same "starts with `##`" rule [`parse_body`] uses to end a
@@ -633,7 +660,11 @@ notes body
     // --- 説明の本文範囲 (decision-21) ------------------------------------------------------------
 
     fn described(body: &str) -> Option<&str> {
-        description_span(body).map(|span| &body[span])
+        description_span(body).map(|found| &body[found.range])
+    }
+
+    fn opener(body: &str) -> Option<DescriptionOpener> {
+        description_span(body).map(|found| found.opener)
     }
 
     #[test]
@@ -646,6 +677,20 @@ notes body
     #[test]
     fn the_description_span_runs_to_the_end_when_nothing_closes_it() {
         assert_eq!(described("\n## Description\n\nonly\n"), Some("\nonly\n"));
+    }
+
+    #[test]
+    fn the_description_span_reports_which_shape_opened_it() {
+        // The write is narrower than the read (decision-21): only the heading shape may be written
+        // back into, so the opener has to reach the writer rather than be re-derived there.
+        assert_eq!(
+            opener("\n## Description\n\nonly\n"),
+            Some(DescriptionOpener::Heading)
+        );
+        assert_eq!(
+            opener("<!-- SECTION:DESCRIPTION:BEGIN -->\nheld\n<!-- SECTION:DESCRIPTION:END -->\n"),
+            Some(DescriptionOpener::Section)
+        );
     }
 
     #[test]

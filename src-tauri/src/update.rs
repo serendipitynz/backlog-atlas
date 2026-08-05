@@ -38,6 +38,7 @@
 //!   gated the same way even though it starts no process: a root Atlas cannot update through the
 //!   CLI at all is not one where a single operation should still write.
 
+use crate::read::parse::DescriptionOpener;
 use crate::subprocess::{self, Cancel, Stopped};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -1267,10 +1268,17 @@ pub struct WriteFailure {
 /// byte for byte: this function only ever concatenates the untouched head, the new description, and
 /// the untouched tail.
 ///
-/// A file without a `## Description` heading (or `SECTION:DESCRIPTION` pair) is refused rather than
-/// given one. Creating the heading would be Atlas deciding what a milestone file looks like, which
-/// is decision-21's first condition in reverse — the CLI defines the format, and Atlas writes into
-/// the shape the CLI already wrote.
+/// A file whose Description is opened any other way is refused rather than written. Two cases, one
+/// reason: a file with no Description at all would have to be given a heading, and a file whose
+/// Description is a `SECTION:DESCRIPTION` pair — a task file's shape, reachable in a milestone only
+/// by hand-editing — would have Atlas writing into a shape v1.48.0's `milestone add` never produces.
+/// Either is Atlas deciding what a milestone file looks like, which is decision-21's first condition
+/// in reverse: the CLI defines the format, and Atlas writes into the shape the CLI already wrote.
+///
+/// The SECTION case is where the read is deliberately wider than the write. Such a milestone still
+/// shows its description on screen and saving it is refused with the reason said — the refusal
+/// decision-21 provides for, not a silent divergence: what the third condition forbids is the range
+/// moving, and the range is the same one either way.
 pub fn milestone_text_with_description(
     text: &str,
     description: &str,
@@ -1283,11 +1291,19 @@ pub fn milestone_text_with_description(
     // `body` is a suffix of `text` (`split_frontmatter` returns sub-slices, and a BOM can only sit
     // at the front), so its start is what is left of the file once the body is taken off the end.
     let body_at = text.len() - body.len();
-    let Some(span) = crate::read::parse::description_span(body) else {
+    let Some(found) = crate::read::parse::description_span(body) else {
         return Err(WriteFailure {
             detail: "the milestone file has no `## Description` section to update".to_string(),
         });
     };
+    if found.opener != DescriptionOpener::Heading {
+        return Err(WriteFailure {
+            detail: "the milestone file's Description is a SECTION marker pair, which \
+                     `milestone add` does not write; Atlas updates only a `## Description` section"
+                .to_string(),
+        });
+    }
+    let span = found.range;
     let mut out = String::with_capacity(text.len() + description.len());
     out.push_str(&text[..body_at + span.start]);
     out.push_str(&filled(&body[span.clone()], description));
@@ -2937,7 +2953,7 @@ mod tests {
         assert!(out.contains("\n## Notes\n"));
         assert_eq!(
             crate::read::parse::description_span(out.split_once("---\n\n").unwrap().1).map(
-                |span| out.split_once("---\n\n").unwrap().1[span]
+                |found| out.split_once("---\n\n").unwrap().1[found.range]
                     .trim()
                     .to_string()
             ),
@@ -2980,6 +2996,24 @@ mod tests {
         assert!(error.detail.contains("Description"));
         let headless = "no frontmatter here\n";
         assert!(milestone_text_with_description(headless, "new").is_err());
+    }
+
+    #[test]
+    fn a_section_pair_description_is_read_but_not_written() {
+        // The read accepts a milestone hand-edited into a task file's shape (the span is there), but
+        // `milestone add` never writes that shape, so writing into it would be Atlas deciding what a
+        // milestone file looks like — decision-21's first condition in reverse. The read staying
+        // wider than the write is deliberate: the description is still shown, and saving says why it
+        // cannot be.
+        let sectioned = "---\nid: m-1\ntitle: \"P\"\n---\n\n<!-- SECTION:DESCRIPTION:BEGIN -->\nold\n<!-- SECTION:DESCRIPTION:END -->\n";
+        let body = sectioned.split_once("---\n\n").unwrap().1;
+        assert!(
+            crate::read::parse::description_span(body).is_some(),
+            "the reader still finds it"
+        );
+        let error = milestone_text_with_description(sectioned, "new").unwrap_err();
+        assert!(error.detail.contains("SECTION"), "{}", error.detail);
+        assert!(error.detail.contains("## Description"), "{}", error.detail);
     }
 
     #[test]
