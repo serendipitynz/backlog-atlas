@@ -1,10 +1,10 @@
 ---
 id: TASK-76
 title: モーダルの閉じる操作を右上の × に統一する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:31'
-updated_date: '2026-08-05 00:38'
+updated_date: '2026-08-05 01:17'
 labels:
   - ui
   - design-system
@@ -34,6 +34,7 @@ ordinal: 76000
 
 ## Implementation Notes
 
+<!-- SECTION:NOTES:BEGIN -->
 <!-- SECTION:NOTES:BEGIN -->
 ## 決定先行の判定（決 印は後付け・11 例目）
 
@@ -102,13 +103,31 @@ doc-7 §2.1 が持っていた）、新しい doc の節を足すのも契約の
   `border-style: dashed` が色の無い枠を描くので、`[aria-disabled="true"]` で色を戻している。
 - フォーカスは 3 モーダルとも開いた直後に × へ入る。
 
-**測っていないので目視へ回すもの**: 実機 WKWebView での見え方（フォーカスリングの見切れは
-playwright の WebKit では再現しない実績がある。TASK-74）、10 テーマでの × のコントラスト、
-`×` の図形の大きさが実機で読める太さかどうか。
+**目視は完了し、指摘は無かった（2026-08-05）。** 実機 WKWebView での 3 モーダルの見え方・
+フォーカスリングの見切れ（TASK-74 で実機だけに出た型）・図形の太さのいずれも問題なし。
+
+**目視は「Tab で × に移してもアウトラインが強調されない」で始まったが、実測の結果 欠陥ではなかった。**
+**WebKit の既定の Tab 順は `<button>` を飛ばす**（macOS の Full Keyboard Access が入っていない状態）
+ので、フォーカスがダイアログの外にある 1 打鍵だけ × がスキップされ、次のテキスト入力へ着いていた。
+× にフォーカスが来ていなかっただけで、来れば `:focus-visible` は立つ（両エンジンで `outline: solid 2px`
+を実測。巡回が呼ぶ `element.focus()` 経由でも立つ）。**リングが出ない＝そこに
+フォーカスが無い、と読んでよい。**
+
+同じ実測で**フォーカスの罠が破れていないことも確かめた**。モーダルの背景を押すと
+`document.activeElement` は `body` になるが、**次の Tab は背後の画面ではなくダイアログの中へ戻る** —
+クリックが sequential focus navigation の起点を背景（＝モーダルの DOM 内）に置くためで、
+doc-7 §2.1 の「フォーカスを内側に留める」は成立している。`activeElement === body` を「罠が外れた」と
+読まないこと。
+
+**残る未測定は 10 テーマでの × のコントラストだけ**（実測したのは `atlas-light`）。非文字要素なので
+WCAG の下限は 3:1 で、色は `currentColor`＝`--fg` を継ぐため `--fg` 対 `--panel` の比に等しく、
+decision-12 の収録条件がそれより厳しい比を全テーマで通している。**測っていないことに変わりはない**
+ので、族の色を使う TASK-77 が閾値の測り方を決めるときに併せて当たるとよい。
 
 ## 検証
 
 `pnpm test` 575（+1）・`pnpm run check` 288 ファイル 0 エラー・`pnpm run build` 成功。
 `cargo test` 347 passed / 4 ignored（Rust は触っていない）。フロントエンドに設定された
 フォーマッタは無い（prettier は依存にも設定にも無い）ので、静的解析は `pnpm run check` が担う。
+<!-- SECTION:NOTES:END -->
 <!-- SECTION:NOTES:END -->
