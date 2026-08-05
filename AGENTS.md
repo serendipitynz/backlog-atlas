@@ -15,7 +15,20 @@ start implementing — resolve the contradiction first.
 
 - Delegate updates to Backlog tasks, documents, and milestones to Backlog CLI
   calls that run with the target project as their working directory. Do not edit
-  the managed Markdown files directly.
+  the managed Markdown files directly. This rule binds you as an agent without
+  exception; the product has one, immediately below.
+- **The product's one exception — a milestone's description** (decision-21).
+  v1.48.0's `milestone` has no `update`/`edit`, so a description can only be set
+  at creation, and re-creating the milestone changes its id. Atlas therefore
+  writes that one range itself: the bytes from the line after the
+  `## Description` heading to the line before the next `##` heading (or the end
+  of the file), and nothing else — the frontmatter and the file name are left as
+  they were. The write is a 一時ファイル置換 (decision-17) and passes doc-9 §4's
+  pre-update version check, like every other update. An operation qualifies only
+  when all three hold: the CLI already writes that value somewhere, so no new
+  file format is invented; it touches neither frontmatter nor the file name; and
+  the range written is the range the read layer reads. "The CLI has no
+  sub-command for it" is not on its own a reason to write a managed file.
 - Run Backlog CLI and Git with fixed subcommands and argument arrays. Never
   concatenate user input into a shell string and execute it.
 
