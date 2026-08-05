@@ -727,6 +727,10 @@ function failureCause(kind: FailureKind): string {
       return `終了コード ${kind.code ?? "不明"}`;
     case "timedOut":
       return `${Math.round(kind.afterMs / 1000)} 秒以内に終了しなかったため中断しました`;
+    // 直接書き込み操作 (decision-21). No exit code to quote and no process to blame; the reason is
+    // the whole of what is known, and it arrives in `stderr` like a CLI's does.
+    case "write":
+      return "書き込めません";
   }
 }
 
