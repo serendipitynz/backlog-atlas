@@ -766,11 +766,15 @@
   }
 
   /**
-   * Every way out of the 設定モーダル — its own 変更せずに閉じる, and the Escape `Modal.svelte` answers.
-   * Both are turned away while a save is unresolved: the panel is what reports the write's outcome, and
-   * leaving takes it away while the write already issued goes on to store the draft — under a control
-   * whose name says nothing was written. The form withholds its own controls with the same flag and
-   * states the reason (doc-11 §5); here there is no control to hang a reason on, so this only declines.
+   * Where every way out of the 設定モーダル meets (doc-11 §7): the × `Modal.svelte` draws, the Escape it
+   * answers, and the form's own 変更せずに閉じる.
+   *
+   * All three are refused while a save is unresolved, but only Escape is refused *here*. The panel is
+   * what reports the write's outcome, and leaving takes it away while the write already issued goes on
+   * to store the draft — under a control whose name says nothing was written. The two pressable exits
+   * are held one step earlier by the reason this same flag produces (`closeBlocked` for the ×,
+   * `saving` for the form), so each of them can say why it will not answer (doc-11 §5). Escape has no
+   * control to hang a reason on, which is why this end of it only declines.
    */
   function closeSettings(): void {
     if (settingsSaving) return;
