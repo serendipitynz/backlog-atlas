@@ -6,6 +6,7 @@
   // An empty cell is drawn empty and says so — "該当タスクが無い" is a different fact from
   // "ルートが読めない", which is a row-level state (doc-7 §6).
   import TaskCard from "./TaskCard.svelte";
+  import { priorityEdge } from "../lib/card";
   import type { Snippet } from "svelte";
   import type { VersionConflict } from "../lib/mark";
   import type { CardDensity, TaskView } from "../lib/wire";
@@ -56,14 +57,17 @@
   {#if collapsed}
     <!-- 畳んだ列は、カード 1 枚を小さな四角 1 つに置き換えて並べ、その下に件数を出す (doc-7 §2.2).
          The squares are how much work is in the cell at a glance — the reading a 5rem band cannot give
-         with cards — and the number below them is the exact figure. They carry no colour: a coloured
-         square here would read as one of the 4 系統 of chip (doc-11 §3), which say something *about*
-         a task, while these say only how many there are.
+         with cards — and the number below them is the exact figure.
+         **They take 優先度色 (decision-23)**, so a folded column still says *what kind* of work is in
+         it and not only how much. This is not one of the 4 系統 of chip (doc-11 §3): those say a task
+         has a problem, and 優先度色 is not a 族の色 — which is exactly the reason doc-11 §3 gave for
+         keeping these colourless, and the reason no longer applies. A task in none of the 3 段 keeps
+         the neutral square, as its card keeps a colourless 縁.
          `aria-hidden`, because they add nothing a screen reader cannot get from the count. -->
     {#if tasks.length > 0}
       <div class="tally" aria-hidden="true">
         {#each tasks as view (view.task.sourcePath)}
-          <span class="pip"></span>
+          <span class="pip" data-priority={priorityEdge(view.task.priority)}></span>
         {/each}
       </div>
     {/if}
@@ -133,14 +137,31 @@
     gap: 0.16rem;
   }
 
-  // No border, no radius worth the name: at this size a 1px frame is most of the figure. The colour is
-  // the 強い罫線 (doc-11 §2.1) — the most neutral ink on the theme, and pointedly not a 族の色
-  // (decision-6: nothing here is a problem being reported).
+  // No border, no radius worth the name: at this size a 1px frame is most of the figure. The default
+  // is the 強い罫線 (doc-11 §2.1) — the most neutral ink on the theme — and it stays that for a task in
+  // none of the 3 段. 族の色 is still off limits here (decision-6: nothing in this band is a problem
+  // being reported); 優先度色 is not one (decision-23).
+  //
+  // 非文字要素なので満たすのは 3:1 のほう (優先度色の収録条件). At 0.35rem these are the smallest
+  // thing the palette has to carry, which is why the condition is checked against every surface rather
+  // than against the one this band happens to sit on.
   .pip {
     width: 0.35rem;
     height: 0.35rem;
     border-radius: 1px;
     background: var(--line-strong);
+
+    &[data-priority="high"] {
+      background: var(--priority-high);
+    }
+
+    &[data-priority="medium"] {
+      background: var(--priority-medium);
+    }
+
+    &[data-priority="low"] {
+      background: var(--priority-low);
+    }
   }
 
   .count {

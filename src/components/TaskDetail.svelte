@@ -23,7 +23,7 @@
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
   import Icon from "../lib/icons/Icon.svelte";
-  import { cardIdentity, crossTaskId } from "../lib/card";
+  import { cardIdentity, crossTaskId, priorityEdge } from "../lib/card";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import {
@@ -865,7 +865,12 @@
       </dd>
 
       <dt>priority</dt>
-      <dd>
+      <!-- priority の値は 優先度色 で書く (decision-23): カードが色で述べていることを、詳細でも同じ
+           色で述べる。札にはしない — 主要属性の値は素の文字で並んでおり、ここだけ札にすると
+           doc-11 §3 のチップの 4 系統に 5 つ目が現れる。3 段のどれでもない値と `—` は色を持たない
+           (`data-priority` が付かない)。編集中は `<select>` がプラットフォームの描画なので、色は
+           閲覧時の値にだけ効く。 -->
+      <dd data-priority={session === null ? priorityEdge(task.priority) : null}>
         {#if session !== null}
           <select
             aria-label="priority"
@@ -2144,6 +2149,21 @@
       flex-wrap: wrap;
       align-items: baseline;
       gap: 0.3rem;
+
+      // priority の値 (decision-23): 素の文字なので満たすのは面に対する 4.5:1 のほう
+      // (優先度色の収録条件)。`font-weight` は上げない — カードのチップと違い、ここは 6 つの属性が
+      // 同じ体裁で並ぶ表であり、1 行だけ太くすると色ではなく太さが目を引く。
+      &[data-priority="high"] {
+        color: var(--priority-high);
+      }
+
+      &[data-priority="medium"] {
+        color: var(--priority-medium);
+      }
+
+      &[data-priority="low"] {
+        color: var(--priority-low);
+      }
     }
   }
 

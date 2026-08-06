@@ -28,8 +28,8 @@ describe("themeAttribute", () => {
 
 // --- 収録条件の検算 (decision-12・decision-22・decision-23) -------------------------------------
 //
-// There are three conditions. Two of them are about 印, because there are two ways a 印 is drawn;
-// the third is about 優先度の縁, which is not a 印 at all.
+// There are two conditions on the 族, because there are two ways a 印 is drawn, and three on the
+// 優先度色, which are not 族 colours and are not drawn as 印 at all.
 //
 // **印チップ** (decision-12) draws 文字＝族の色 / 背景＝族の色 12% 混色 / 枠＝族の色 45% 混色, so its
 // legibility is the ratio between the family colour and that 12% mix once it has been composited onto
@@ -43,14 +43,20 @@ describe("themeAttribute", () => {
 // borrow the chip's 4.5:1: the recorded themes clear it today by a wide margin, and a limit chosen
 // because it happens to hold is one nobody can re-derive when adding the eleventh theme.
 //
-// **優先度の縁** (decision-23) draws a 3px left edge on a task card in one of the 優先度色, which are
-// not 族 colours and are never borrowed by a 印. It is a non-text element like the 印グリフ, so it takes
-// the same 3:1 — the ratio between the edge's colour and the surfaces it touches. It is checked apart
-// from the families because the values are apart: `--priority-*` is its own set, and a change to one
-// must not be able to pass by resembling a family colour that happens to clear the bar.
+// **優先度色** (decision-23) are drawn four ways, and the conditions follow the drawing rather than
+// the value: as the priority チップ they take the 印チップ配色規則's 4.5:1 against their own 12% mix; as
+// the task detail's priority value they are plain text, so 4.5:1 against the bare surface; as the
+// 優先度の縁 and the 畳んだ列の四角 they are non-text elements, so 3:1 against the bare surface. **The
+// chip condition binds** — a value clearing it clears the other two — but all three are asserted,
+// because which of them binds is a property of today's palette and not something a later editor
+// should have to re-derive.
 //
-// All three are computed here from `app.scss` itself — not from a copy of the values — and cover
-// every recorded theme, every 族 plus `--info`, on every surface.
+// They are checked apart from the families because the values are apart: `--priority-*` is its own
+// set, and a change to one must not be able to pass by resembling a family colour that happens to
+// clear the bar.
+//
+// All of it is computed here from `app.scss` itself — not from a copy of the values — and covers
+// every recorded theme, every 族 plus `--info`, every 段, on every surface.
 
 /** The surfaces a 印 can sit on. `--panel`/`--inset` are what decision-12 requires; `--bg` is the
  *  page ground the 上部帯 (doc-11 §4) sits on, and it is cheaper to hold all three than to argue
@@ -77,11 +83,17 @@ const REQUIRED_RATIO = 4.5;
 /** 印グリフの収録条件 (decision-22): 族の色 対 それが載る面. WCAG 1.4.11 の非文字要素の下限. */
 const REQUIRED_GLYPH_RATIO = 3;
 
-/** 優先度色 (decision-23): the three values 優先度の縁 draws. Not 族 — no 印 borrows them. */
+/** 優先度色 (decision-23): the three values priority 3 段 draws with. Not 族 — no 印 borrows them. */
 const PRIORITY_COLOURS = ["--priority-high", "--priority-medium", "--priority-low"] as const;
 
-/** 優先度の縁の収録条件 (decision-23): 縁の色 対 それが接する面. Same 1.4.11 floor as the 印グリフ. */
-const REQUIRED_EDGE_RATIO = 3;
+/** 優先度色の収録条件 ①: priority チップ として、自分の 12% 混色背景に対して (印チップ配色規則). */
+const REQUIRED_PRIORITY_CHIP_RATIO = 4.5;
+
+/** 優先度色の収録条件 ②: タスク詳細の priority の値 — 素の文字なので面に対して. */
+const REQUIRED_PRIORITY_TEXT_RATIO = 4.5;
+
+/** 優先度色の収録条件 ③: 優先度の縁・畳んだ列の四角 — 非文字要素なので WCAG 1.4.11 の下限. */
+const REQUIRED_PRIORITY_NONTEXT_RATIO = 3;
 
 // Compiled by `sass` from the path rather than read and compiled as a string: the stylesheet is the
 // only place the values exist (decision-12), and letting sass open it keeps this test free of Node's
@@ -203,33 +215,55 @@ describe("収録した表示テーマ (decision-12)", () => {
     },
   );
 
-  // 優先度の縁 (decision-23). The edge sits on the card's own border: `--panel` on its inside, and the
-  // lane cell's ground on its outside, which is `--bg` — `--inset` is held with them for the same
-  // reason the two conditions above hold it, so a later screen putting a card on a くぼみ面 does not
-  // need this file reopened.
-  it.each(RECORDED_THEMES.map((theme) => [theme.id] as const))(
-    "%s: 優先度の縁 — 優先度色 3 つが接する面に対して 3:1 以上 (--panel / --inset / --bg)",
-    (id) => {
-      const block = BLOCKS.get(id);
-      if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
-      const ratios: Record<string, number> = {};
-      for (const colour of PRIORITY_COLOURS) {
-        for (const surface of SURFACES) {
-          const edge = block.get(colour);
-          const under = block.get(surface);
-          if (edge === undefined || under === undefined) {
-            throw new Error(`${id} に ${colour} または ${surface} がありません`);
-          }
-          ratios[`${colour} on ${surface}`] = contrast(hex(edge), hex(under));
-        }
-      }
-      expect(failing(ratios, REQUIRED_EDGE_RATIO)).toEqual({});
+  /** The three ways 優先度色 are drawn, each with the ratio its drawing implies (decision-23). */
+  const PRIORITY_CONDITIONS = [
+    {
+      drawn: "priority チップ",
+      floor: REQUIRED_PRIORITY_CHIP_RATIO,
+      // Against its own 12% mix, exactly as a 印チップ — the chip borrows the 規則, not the 族.
+      against: (colour: string, surface: string) => markBackground(colour, surface),
     },
-  );
+    {
+      drawn: "タスク詳細の priority の値",
+      floor: REQUIRED_PRIORITY_TEXT_RATIO,
+      // Plain text on the panel: no mix to composite, so the surface itself is the other side.
+      against: (_colour: string, surface: string) => hex(surface),
+    },
+    {
+      drawn: "優先度の縁・畳んだ列の四角",
+      floor: REQUIRED_PRIORITY_NONTEXT_RATIO,
+      against: (_colour: string, surface: string) => hex(surface),
+    },
+  ] as const;
+
+  // The edge sits on the card's own border — `--panel` inside, the lane cell's ground (`--bg`)
+  // outside — and the 四角 sit on the folded column's band. `--inset` is held with them for the same
+  // reason the two conditions above hold it, so a later screen putting either on a くぼみ面 does not
+  // need this file reopened.
+  it.each(
+    RECORDED_THEMES.flatMap((theme) =>
+      PRIORITY_CONDITIONS.map((condition) => [theme.id, condition] as const),
+    ),
+  )("%s: 優先度色 — %s として収録条件を満たす (--panel / --inset / --bg)", (id, condition) => {
+    const block = BLOCKS.get(id);
+    if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
+    const ratios: Record<string, number> = {};
+    for (const colour of PRIORITY_COLOURS) {
+      for (const surface of SURFACES) {
+        const step = block.get(colour);
+        const under = block.get(surface);
+        if (step === undefined || under === undefined) {
+          throw new Error(`${id} に ${colour} または ${surface} がありません`);
+        }
+        ratios[`${colour} on ${surface}`] = contrast(hex(step), condition.against(step, under));
+      }
+    }
+    expect(failing(ratios, condition.floor)).toEqual({});
+  });
 
   // 優先度色 は族ではない (decision-23): a theme that set one of them to a family's value would put the
   // family's hue on a card edge as a priority — exactly what decision-12 refused and what decision-23
-  // only re-opened for *the edge's position*, not for the family colours themselves.
+  // only re-opened for *where priority may be coloured*, not for the family colours themselves.
   it.each(RECORDED_THEMES.map((theme) => [theme.id] as const))(
     "%s: 優先度色 が族の色そのものではない",
     (id) => {

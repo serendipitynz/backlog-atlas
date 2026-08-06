@@ -87,8 +87,11 @@
 >
   <span class="line">
     <span class="identity">{identity}</span>
+    <!-- priority チップ: the word as the file wrote it, coloured by the 段 it normalises to. The
+         attribute is `priorityStep`, not a second normalisation of the same string — the chip and the
+         優先度の縁 must not be able to disagree about which 段 one task is in. -->
     {#if view.task.priority}
-      <span class="priority" data-priority={view.task.priority.trim().toLowerCase()}>
+      <span class="priority" data-priority={priorityStep}>
         {view.task.priority}
       </span>
     {/if}
@@ -267,15 +270,17 @@
     gap: 0.2rem;
   }
 
-  // priority チップ は無彩 3 段のまま (decision-23 が反転したのは 優先度の縁 だけ): チップは語を持つ
-  // 文字要素なので印チップ配色規則の 4.5:1 が対応し、非文字要素の 3:1 で選んだ 優先度色 をそのまま
-  // 文字に使えない。3 段は `--fg`／`--bg` の濃淡と枠線だけで作る (doc-11 §3). An unrecognised value
-  // keeps this base style rather than being guessed into one of the three — the file's own word is
-  // still shown, and the card simply carries no 優先度の縁 for it.
+  // priority チップ (decision-23): 優先度色 を 印チップ配色規則 (decision-12) の形で描く — 文字＝
+  // 優先度色、背景＝12% 混色、枠＝45% 混色。**族の色ではないので decision-6 の族の分離は破っていない**
+  // (印がこの色を借りることはない)。無彩 3 段だった間は、同じ priority を縁が色で・チップが濃淡で
+  // 述べていて、1 枚のカードが 1 つのことを 2 通りの表現で言っていた。
   //
   // 角丸は 3px (doc-11 §2.2 の チップ 3px). 999px だった間、priority は角丸の軸では 通常ラベル と
   // 同じ形をしていた — その 999px は画面設計案 04 の契約 #4「Type とラベルを混ぜない」が
   // 通常ラベル に与えた形であって、priority のものではない。
+  //
+  // priority 未知 は色を持たない基本の姿のまま (優先度の縁 と同じ判断): 3 段のどれかへ寄せると、
+  // 画面が frontmatter の書いていないことを述べる。語だけは原文のまま出る。
   .priority {
     padding: 0 0.3rem;
     border: 1px solid var(--line);
@@ -285,15 +290,26 @@
     text-transform: uppercase;
     letter-spacing: 0.02em;
 
+    // 段の色は `--step` として届き、各段はそれだけを設定する — チップは段を名指すだけで色相を
+    // 選ばない。印チップ が族に対して取っているのと同じ形である。
+    &[data-priority="high"],
+    &[data-priority="medium"],
+    &[data-priority="low"] {
+      border-color: color-mix(in srgb, var(--step) 45%, transparent);
+      background: color-mix(in srgb, var(--step) 12%, transparent);
+      color: var(--step);
+    }
+
     &[data-priority="high"] {
-      border-color: var(--fg);
-      background: var(--fg);
-      color: var(--bg);
+      --step: var(--priority-high);
     }
 
     &[data-priority="medium"] {
-      border-color: var(--line-strong);
-      color: var(--fg);
+      --step: var(--priority-medium);
+    }
+
+    &[data-priority="low"] {
+      --step: var(--priority-low);
     }
   }
 
