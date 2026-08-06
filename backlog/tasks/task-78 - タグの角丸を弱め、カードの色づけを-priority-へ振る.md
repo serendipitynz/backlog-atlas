@@ -1,10 +1,10 @@
 ---
 id: TASK-78
 title: タグの角丸を弱め、カードの色づけを priority へ振る
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:32'
-updated_date: '2026-08-06 12:51'
+updated_date: '2026-08-06 20:17'
 labels:
   - ui
   - design-system
