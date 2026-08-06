@@ -23,7 +23,7 @@
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
   import Icon from "../lib/icons/Icon.svelte";
-  import { cardIdentity, crossTaskId, priorityEdge } from "../lib/card";
+  import { cardIdentity, crossTaskId, priorityStep } from "../lib/card";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import {
@@ -870,7 +870,7 @@
            doc-11 §3 のチップの 4 系統に 5 つ目が現れる。3 段のどれでもない値と `—` は色を持たない
            (`data-priority` が付かない)。編集中は `<select>` がプラットフォームの描画なので、色は
            閲覧時の値にだけ効く。 -->
-      <dd data-priority={session === null ? priorityEdge(task.priority) : null}>
+      <dd data-priority={session === null ? priorityStep(task.priority) : null}>
         {#if session !== null}
           <select
             aria-label="priority"

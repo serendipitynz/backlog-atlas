@@ -11,7 +11,8 @@
  * | doc-7 §1 カード情報量 | `CardDensity` (`wire.ts`) | the S・M・L setting itself (decision-13) |
  * | doc-7 §3 割当表 | [`cardFields`] | which items a 段 draws, and how many lines its title gets |
  * | doc-7 §3 既定は M | [`DEFAULT_CARD_DENSITY`] | the 段 in force before the settings read answers |
- * | decision-23 priority 3 段 | [`priorityEdge`] | which of the three 優先度の縁 a task draws, if any |
+ * | decision-23 priority 3 段 | [`priorityStep`] | which 段 a task is in, for all four renderers |
+ * | decision-23 畳んだ列の四角 | [`priorityTally`] | the 段 breakdown a 畳んだ列 draws and announces |
  */
 
 import type { CardDensity, TaskView } from "./wire";
@@ -39,41 +40,105 @@ export function cardIdentity(view: TaskView): string {
 
 /**
  * Priority values are compared case-insensitively so `High` and `high` are one facet — and so the
- * 絞り込み and the 優先度の縁 agree about which tasks are `high`. Lives here rather than in `filter.ts`
- * for the reason this module exists: what the card shows and what the filter matches must not be
- * derived twice.
+ * 絞り込み and everything that colours a priority agree about which tasks are `high`. Lives here
+ * rather than in `filter.ts` for the reason this module exists: what the card shows and what the
+ * filter matches must not be derived twice.
  */
 export function normalizePriority(priority: string): string {
   return priority.trim().toLowerCase();
 }
 
-/** priority 3 段 (decision-23) — the values 優先度の縁 has a colour for. */
+/** priority 3 段 (decision-23) — the values 優先度色 exist for. */
 export type PriorityStep = "high" | "medium" | "low";
 
 /**
  * Not `edit.ts` の `PRIORITIES`, which happens to hold the same three words. That list is the value
- * range `task edit --priority` accepts — what Atlas may *write*; this one is what the card *colours*,
- * and a file may perfectly well carry a priority the CLI would not take. If the CLI ever accepted a
- * fourth word, that would not by itself give the edge a fourth colour: 優先度色 would have to be added
- * to every 表示テーマ and cleared against the 収録条件 first. Two referents, so two lists.
+ * range `task edit --priority` accepts — what Atlas may *write*; this one is what the screens
+ * *colour*, and a file may perfectly well carry a priority the CLI would not take. If the CLI ever
+ * accepted a fourth word, that would not by itself give it a fourth colour: 優先度色 would have to be
+ * added to every 表示テーマ and cleared against the 収録条件 first. Two referents, so two lists.
  */
 const PRIORITY_STEPS: readonly PriorityStep[] = ["high", "medium", "low"];
 
 /**
- * Which 優先度の縁 a task draws (decision-23), or `null` for no edge at all.
+ * Which priority 3 段 a task is in (decision-23), or `null` for none of them.
+ *
+ * **The one derivation all four renderers read** — 優先度の縁 と priority チップ (`TaskCard`),
+ * 畳んだ列のレーンセルに並ぶ四角 (`LaneCell`), タスク詳細の priority の値 (`TaskDetail`) — and the
+ * same normalisation the priority facet filters on. Two of them deciding separately is how a card
+ * ends up coloured for a value the filter says it does not have.
  *
  * `null` is two states the decision treats alike — **priority 未設定** (the frontmatter has no
- * priority) and **priority 未知** (it has one that is not among the three, e.g. `urgent`). Neither
- * gets an edge: 縁が無いこと itself says 未設定 (decision-6 の中立表示), and guessing an unknown word
- * into one of the three would put a colour on a value the file never gave. The priority チップ goes on
+ * priority) and **priority 未知** (it has one that is not among the three, e.g. `urgent`). Neither is
+ * coloured: 色が無いこと itself says 未設定 (decision-6 の中立表示), and guessing an unknown word into
+ * one of the three would put a colour on a value the file never gave. The priority チップ goes on
  * showing the word as written either way, so 未知 is not hidden — it is only uncoloured.
  */
-export function priorityEdge(priority: string | null): PriorityStep | null {
+export function priorityStep(priority: string | null): PriorityStep | null {
   if (priority === null) return null;
   const value = normalizePriority(priority);
   // `find` rather than `includes` + a cast: the returned element already has the narrow type, so
   // nothing here asserts that a string is one of the three.
   return PRIORITY_STEPS.find((step) => step === value) ?? null;
+}
+
+/**
+ * The 段 in the order a 畳んだ列 lays them out, most urgent first. `null` — priority 未設定 and
+ * priority 未知 together — comes last, because it is the absence of a 段 rather than a fourth one.
+ */
+const TALLY_ORDER: readonly (PriorityStep | null)[] = ["high", "medium", "low", null];
+
+/** One 段's worth of a 畳んだ列's tally: which 段, and how many of the cell's tasks are in it. */
+export interface PriorityTallyGroup {
+  readonly step: PriorityStep | null;
+  readonly count: number;
+}
+
+/**
+ * 畳んだ列のレーンセルに並ぶ四角 (doc-7 §2.2) の内訳, grouped and ordered by 段.
+ *
+ * Grouping is what keeps the band readable **without relying on the colour** (decision-23): the
+ * squares run most-urgent-first and each 段 has its own height, so the distribution is a shape as
+ * well as a hue. Empty 段 are dropped — a group of zero would put a gap in the run for a 段 nothing
+ * is in.
+ *
+ * The same value is what the cell's count announces to a screen reader, so the figure and the
+ * accessible name cannot describe different distributions.
+ */
+export function priorityTally(views: readonly TaskView[]): PriorityTallyGroup[] {
+  const counts = new Map<PriorityStep | null, number>();
+  for (const view of views) {
+    const step = priorityStep(view.task.priority);
+    counts.set(step, (counts.get(step) ?? 0) + 1);
+  }
+  return TALLY_ORDER.filter((step) => (counts.get(step) ?? 0) > 0).map((step) => ({
+    step,
+    count: counts.get(step) ?? 0,
+  }));
+}
+
+/** How a 畳んだ列 says its tally in words — the aggregate an `aria-hidden` run of figures cannot. */
+export const PRIORITY_STEP_LABEL: Record<string, string> = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+  none: "priority 未設定・未知",
+};
+
+/**
+ * The accessible name of a 畳んだ列 のレーンセル: the column, the total, and the 段 breakdown.
+ *
+ * The breakdown is here because the squares are `aria-hidden` and the total alone does not carry
+ * what their colour added (PR #70 の [P2]). Naming the cell rather than each square is what keeps it
+ * from being read out as N nameless figures.
+ */
+export function collapsedCellLabel(label: string, views: readonly TaskView[]): string {
+  const groups = priorityTally(views);
+  if (groups.length === 0) return `${label} ${views.length} 件`;
+  const breakdown = groups
+    .map((group) => `${PRIORITY_STEP_LABEL[group.step ?? "none"]} ${group.count}`)
+    .join("・");
+  return `${label} ${views.length} 件（${breakdown}）`;
 }
 
 /** The items doc-7 §3 の割当表 varies by 段, as one card's worth of answers. */

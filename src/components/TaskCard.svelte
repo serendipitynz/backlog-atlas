@@ -2,7 +2,7 @@
   // タスクカード (doc-7 §3): the display unit inside a lane cell. It carries only what a
   // cross-project list needs to identify a task and judge its priority — dependencies, AC
   // progress and the rest stay in the task detail screen (doc-8), so the grid keeps its density.
-  import { cardFields, cardIdentity, priorityEdge } from "../lib/card";
+  import { cardFields, cardIdentity, priorityStep } from "../lib/card";
   import Icon from "../lib/icons/Icon.svelte";
   import { inconsistencyLabel, inconsistencyReasons, type VersionConflict } from "../lib/mark";
   import type { CardDensity, TaskView } from "../lib/wire";
@@ -44,10 +44,10 @@
   };
 
   let identity = $derived(cardIdentity(view));
-  // 優先度の縁 (decision-23): the 3 段 the edge can draw. `null` covers both priority 未設定 (no value
-  // in the frontmatter) and priority 未知 (a value that is not one of the three, e.g. `urgent`) — the
-  // edge is absent for either, and the chip goes on showing the file's own word.
-  let priorityStep = $derived(priorityEdge(view.task.priority));
+  // priority 3 段 (decision-23): which 段 this task is in, or `null` for both priority 未設定 (no value
+  // in the frontmatter) and priority 未知 (a value that is not one of the three, e.g. `urgent`). The
+  // 優先度の縁 and the priority チップ both read this one derivation, so they cannot disagree.
+  let step = $derived(priorityStep(view.task.priority));
   let fields = $derived(cardFields(density));
   let types = $derived(view.interpretation.types);
   // 不整合 (decision-22) comes from one derivation shared with the detail heading and the detail's
@@ -82,16 +82,16 @@
   type="button"
   class="card"
   class:selected
-  data-priority-edge={priorityStep}
+  data-priority-edge={step}
   onclick={() => onselect(view)}
 >
   <span class="line">
     <span class="identity">{identity}</span>
     <!-- priority チップ: the word as the file wrote it, coloured by the 段 it normalises to. The
-         attribute is `priorityStep`, not a second normalisation of the same string — the chip and the
+         attribute is `step`, not a second normalisation of the same string — the chip and the
          優先度の縁 must not be able to disagree about which 段 one task is in. -->
     {#if view.task.priority}
-      <span class="priority" data-priority={priorityStep}>
+      <span class="priority" data-priority={step}>
         {view.task.priority}
       </span>
     {/if}
