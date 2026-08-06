@@ -1,10 +1,10 @@
 ---
 id: TASK-77
 title: 不整合の表示を ⚠️ に一元化し、族名の表示をやめる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:31'
-updated_date: '2026-08-06 02:25'
+updated_date: '2026-08-06 08:44'
 labels:
   - ui
   - design-system
