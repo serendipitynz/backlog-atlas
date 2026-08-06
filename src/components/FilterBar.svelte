@@ -122,7 +122,9 @@
   />
 
   <!-- 値の一覧は「＋ 絞り込み」から開くポップオーバーで選ぶ (doc-7 §5.2). Kept outside the token
-       area so it stays put while the tokens scroll. -->
+       area so it stays put while the tokens scroll. The anchor is what the popover treats as
+       「内側」, which is why pressing this button while it is open closes rather than reopens: the
+       press never reaches that listener, so this handler is the whole of that 閉じる契機. -->
   <div class="add" bind:this={anchor}>
     <button
       type="button"
