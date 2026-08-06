@@ -471,7 +471,7 @@ export function acDeltaForCli(delta: AcDelta, baseline: TaskView): AcDelta {
 }
 
 export const EMPTY_TITLE_REASON =
-  "title は空にできません（doc-4 §3.1 の必須項目で、空にすると解析不能として縮退表示になります）";
+  "title は空にできません（doc-4 §3.1 の必須項目で、空にすると解析不能として不整合表示になります）";
 
 /**
  * Whether one more removal is allowed from a 非空全置換 field (doc-5 §3.1). The last element stays:

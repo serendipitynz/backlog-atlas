@@ -121,7 +121,7 @@ export interface ReferenceSplit {
 /**
  * Separate Pull Request URLs from ordinary references (doc-8 §4). A pure function of the task and
  * its interpretation — no Git read is involved — so the two 区画 are populated the moment the
- * panel opens, for every task the read layer produced (doc-8 §6.5 参照系, doc-4 §5 縮退).
+ * panel opens, for every task the read layer produced (doc-8 §6.5 参照系, doc-4 §5 不整合表示).
  */
 export function referenceSplit(view: TaskView): ReferenceSplit {
   const dangling = new Set(

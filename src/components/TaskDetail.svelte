@@ -6,7 +6,7 @@
   // The same panel is drawn three ways (doc-8 §2.1 詳細配置). What the placement changes is *where*
   // the shell puts this element and, through `layoutFor`, how much of each 区画 is open and how much
   // of the Git 履歴欄 is shown (doc-8 §3 の割当表). What it never changes is which 区画 exist: the
-  // panel shows the same task either way, and 縮退表示 stays 常設 in all three (doc-8 §3).
+  // panel shows the same task either way, and 不整合区画 stays 常設 in all three (doc-8 §3).
   //
   // 参照系 (Type・References・Pull Request・Git 履歴) is read and shown for every 保存区分
   // (doc-8 §6.5); what changes with the 保存区分 is which operations are *offered*, and an
@@ -1624,7 +1624,7 @@
   <DetailSection title="外部エディタで開く" section="transitions" {layout}>
     <!-- 管理ファイルのパス (doc-8 §7): 見出しから移した (TASK-72). 開く操作の隣がパスの置き場である —
          何を開こうとしているのかは押す前に読めていなければならない。画面でこのパスを出しているのは
-         ここだけなので、縮退や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
+         ここだけなので、不整合や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
     <p class="path">{task.sourcePath}</p>
     <p class="hint">{CLI_LIMIT_GUIDANCE}</p>
     <!-- 開く前に示す (doc-8 §7 難点と受け方): the frontmatter is exposed and the CLI's schema checking

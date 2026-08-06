@@ -85,7 +85,7 @@ describe("Type filter (decision-5, doc-7 §5)", () => {
   });
 });
 
-describe("label / priority / assignee / text / 縮退", () => {
+describe("label / priority / assignee / text / 不整合", () => {
   it("matches any selected normal label", () => {
     const view = taskView({ labels: ["ui", "backend"] });
     expect(matchesFilter(view, filter({ labels: ["backend"] }), readInconsistent)).toBe(true);
