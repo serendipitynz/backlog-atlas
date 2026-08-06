@@ -89,6 +89,7 @@ describe("候補は行ごとに決まる", () => {
       ),
       hidden: new Set(),
       filter: DEFAULT_FILTER,
+      inconsistent: () => false,
     });
     const candidatesOf = (slug: string) => {
       const row = rows.find((candidate) => candidate.slug === slug);
@@ -106,6 +107,7 @@ describe("候補は行ごとに決まる", () => {
       loads: loadMap(loaded("atlas", [taskView({ id: "TASK-1" })])),
       hidden: new Set(),
       filter: { ...DEFAULT_FILTER, text: "該当しない語" },
+      inconsistent: () => false,
     });
     const row = rows[0];
     expect(row.state === "loaded" && row.cells[0].tasks).toEqual([]);
@@ -122,6 +124,7 @@ describe("候補は行ごとに決まる", () => {
       loads: loadMap(unreadable("gone")),
       hidden: new Set(),
       filter: DEFAULT_FILTER,
+      inconsistent: () => false,
     });
     expect(rows[0].state).toBe("unreadable");
   });

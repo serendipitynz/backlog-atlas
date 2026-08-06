@@ -12,7 +12,7 @@
  * | priority | `CardFilter.priorities` | normalized (trimmed, lower-cased) priority values |
  * | assignee | `CardFilter.assignees` | frontmatter assignee entries, verbatim |
  * | テキスト | `CardFilter.text` | 横断タスクID・title 部分一致, case-insensitive |
- * | 縮退 | `CardFilter.degradedOnly` | keep only tasks whose health is 縮退 (doc-4 §5) |
+ * | 不整合 | `CardFilter.inconsistentOnly` | keep only 不整合 tasks (decision-22) |
  * | タスク保存区分 | `CardFilter.storage` | `StorageSelection`, defaulting to `active` alone |
  * | §5.2 条件を足した順 | `CardFilter.order` | the keys of the above, in the order they were added |
  *
@@ -27,6 +27,14 @@
 
 import { cardIdentity } from "./card";
 import type { StorageSelection, TaskView } from "./wire";
+
+/**
+ * Whether one task is 不整合 (decision-22). Passed in rather than read off the view, because
+ * 不整合 is not a property of the file alone: バージョン不整合 is what the shell observed about a save
+ * (`lib/mark.ts`), and this module has no way to reach that record. Reading only `health` here would
+ * make the 不整合 facet hide cards that are showing a ⚠️, on the same screen, at the same time.
+ */
+export type InconsistentLookup = (view: TaskView) => boolean;
 
 export type { StorageSelection };
 
@@ -59,7 +67,7 @@ export interface CardFilter {
   priorities: string[];
   assignees: string[];
   text: string;
-  degradedOnly: boolean;
+  inconsistentOnly: boolean;
   storage: StorageSelection[];
   /**
    * 条件を足した順 (doc-7 §5.2): the keys of the conditions above — `conditionKey` in `token.ts` —
@@ -83,7 +91,7 @@ export const DEFAULT_FILTER: CardFilter = {
   priorities: [],
   assignees: [],
   text: "",
-  degradedOnly: false,
+  inconsistentOnly: false,
   storage: ["active"],
   order: [],
 };
@@ -124,7 +132,7 @@ export function isDefaultFilter(filter: CardFilter, storage: readonly StorageSel
     filter.priorities.length === 0 &&
     filter.assignees.length === 0 &&
     filter.text.trim() === "" &&
-    !filter.degradedOnly &&
+    !filter.inconsistentOnly &&
     filter.storage.length === storage.length &&
     filter.storage.every((state, index) => state === storage[index])
   );
@@ -162,7 +170,11 @@ export function toggleValue<T extends string>(values: readonly T[], value: T): T
 }
 
 /** Does this task's card survive the filter? (doc-7 §5) */
-export function matchesFilter(view: TaskView, filter: CardFilter): boolean {
+export function matchesFilter(
+  view: TaskView,
+  filter: CardFilter,
+  inconsistent: InconsistentLookup,
+): boolean {
   return (
     matchesStorage(view, filter.storage) &&
     matchesTypes(view, filter.types) &&
@@ -170,7 +182,7 @@ export function matchesFilter(view: TaskView, filter: CardFilter): boolean {
     matchesAny(filter.priorities, priorityValues(view)) &&
     matchesAny(filter.assignees, view.task.assignee) &&
     matchesText(view, filter.text) &&
-    (!filter.degradedOnly || view.task.health.state === "degraded")
+    (!filter.inconsistentOnly || inconsistent(view))
   );
 }
 
@@ -243,8 +255,8 @@ export interface Facets {
   labels: FacetValue<string>[];
   priorities: FacetValue<string>[];
   assignees: FacetValue<string>[];
-  /** 縮退 tasks (doc-4 §5). The facet has one condition rather than a value list, so it is a count. */
-  degraded: number;
+  /** 不整合 tasks (decision-22). The facet has one condition rather than a value list, so it is a count. */
+  inconsistent: number;
 }
 
 /** The 保存区分 offered whatever the workspace holds (doc-4 §3.4), in the order they are drawn. */
@@ -256,13 +268,16 @@ const STORAGE_VALUES: readonly StorageSelection[] = ["active", "draft", "complet
  * 未設定・未知 appear only when some task is in that state (doc-7 §5 lets them be selected;
  * offering them against nothing would just be noise).
  */
-export function collectFacets(views: Iterable<TaskView>): Facets {
+export function collectFacets(
+  views: Iterable<TaskView>,
+  inconsistent: InconsistentLookup,
+): Facets {
   const types = new Map<string, FacetValue<TypeSelection>>();
   const labels = new Map<string, number>();
   const priorities = new Map<string, number>();
   const assignees = new Map<string, number>();
   const storage = new Map<StorageSelection, number>(STORAGE_VALUES.map((value) => [value, 0]));
-  let degraded = 0;
+  let inconsistentCount = 0;
 
   for (const view of views) {
     const values = view.interpretation.types;
@@ -277,7 +292,7 @@ export function collectFacets(views: Iterable<TaskView>): Facets {
     if (view.task.priority !== null) bump(priorities, normalizePriority(view.task.priority));
     for (const assignee of view.task.assignee) bump(assignees, assignee);
     bump(storage, view.task.storageState ?? "indeterminate");
-    if (view.task.health.state === "degraded") degraded += 1;
+    if (inconsistent(view)) inconsistentCount += 1;
   }
 
   return {
@@ -290,7 +305,7 @@ export function collectFacets(views: Iterable<TaskView>): Facets {
     // Ordered by rank, not alphabetically, so the control reads high → low.
     priorities: sortByValue(priorities, byPriorityRank),
     assignees: sortByValue(assignees),
-    degraded,
+    inconsistent: inconsistentCount,
   };
 }
 

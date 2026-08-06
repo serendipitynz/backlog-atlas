@@ -48,9 +48,9 @@ export type FilterFacet =
   | "priority"
   | "assignee"
   | "text"
-  | "degraded";
+  | "inconsistent";
 
-/** One 絞り込み条件: a facet and, for all but 縮退, the value selected inside it. */
+/** One 絞り込み条件: a facet and, for all but 不整合, the value selected inside it. */
 export type FilterCondition =
   | { facet: "storage"; value: StorageSelection }
   | { facet: "type"; value: TypeSelection }
@@ -58,7 +58,7 @@ export type FilterCondition =
   | { facet: "priority"; value: string }
   | { facet: "assignee"; value: string }
   | { facet: "text"; value: string }
-  | { facet: "degraded" };
+  | { facet: "inconsistent" };
 
 /** 属性名 as the bar and the popover name it (doc-7 §5.2 lists the facets in this order). */
 export const FACET_LABEL: Record<FilterFacet, string> = {
@@ -68,7 +68,7 @@ export const FACET_LABEL: Record<FilterFacet, string> = {
   priority: "priority",
   assignee: "assignee",
   text: "テキスト",
-  degraded: "縮退",
+  inconsistent: "不整合",
 };
 
 /** The order facets are drawn in, wherever they are listed together (bar tokens, popover sections). */
@@ -80,7 +80,7 @@ export const FACET_ORDER: readonly FilterFacet[] = [
   "label",
   "priority",
   "assignee",
-  "degraded",
+  "inconsistent",
 ];
 
 const STORAGE_LABEL: Record<StorageSelection, string> = {
@@ -122,8 +122,8 @@ export function conditionKey(condition: FilterCondition): string {
     // editing the search box keeps the position the condition was added at.
     case "text":
       return "text";
-    case "degraded":
-      return "degraded";
+    case "inconsistent":
+      return "inconsistent";
     default:
       return `${condition.facet}:${condition.value}`;
   }
@@ -136,7 +136,7 @@ export function conditionValueLabel(condition: FilterCondition): string | null {
       return storageLabel(condition.value);
     case "type":
       return typeLabel(condition.value);
-    case "degraded":
+    case "inconsistent":
       return null;
     default:
       return condition.value;
@@ -157,8 +157,8 @@ export function hasCondition(filter: CardFilter, condition: FilterCondition): bo
       return filter.assignees.includes(condition.value);
     case "text":
       return filter.text.trim() !== "";
-    case "degraded":
-      return filter.degradedOnly;
+    case "inconsistent":
+      return filter.inconsistentOnly;
   }
 }
 
@@ -212,8 +212,8 @@ function applyCondition(
       return { ...filter, assignees: toggleValue(filter.assignees, condition.value) };
     case "text":
       return { ...filter, text: add ? condition.value : "" };
-    case "degraded":
-      return { ...filter, degradedOnly: add };
+    case "inconsistent":
+      return { ...filter, inconsistentOnly: add };
   }
 }
 
@@ -253,7 +253,7 @@ export interface FilterToken {
   condition: FilterCondition;
   /** 属性名 (doc-7 §1). */
   facet: string;
-  /** 値, or `null` when the facet name is the whole condition (縮退). */
+  /** 値, or `null` when the facet name is the whole condition (不整合). */
   value: string | null;
   /**
    * True for a condition the user never added — 保存区分's 既定. Drawn like any other token and
@@ -347,8 +347,8 @@ function heldConditions(filter: CardFilter): FilterCondition[] {
       case "assignee":
         for (const value of filter.assignees) held.push({ facet, value });
         break;
-      case "degraded":
-        if (filter.degradedOnly) held.push({ facet });
+      case "inconsistent":
+        if (filter.inconsistentOnly) held.push({ facet });
         break;
     }
   }
