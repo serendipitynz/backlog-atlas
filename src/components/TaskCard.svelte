@@ -2,7 +2,7 @@
   // タスクカード (doc-7 §3): the display unit inside a lane cell. It carries only what a
   // cross-project list needs to identify a task and judge its priority — dependencies, AC
   // progress and the rest stay in the task detail screen (doc-8), so the grid keeps its density.
-  import { cardFields, cardIdentity } from "../lib/card";
+  import { cardFields, cardIdentity, priorityStep } from "../lib/card";
   import Icon from "../lib/icons/Icon.svelte";
   import { inconsistencyLabel, inconsistencyReasons, type VersionConflict } from "../lib/mark";
   import type { CardDensity, TaskView } from "../lib/wire";
@@ -44,6 +44,10 @@
   };
 
   let identity = $derived(cardIdentity(view));
+  // priority 3 段 (decision-23): which 段 this task is in, or `null` for both priority 未設定 (no value
+  // in the frontmatter) and priority 未知 (a value that is not one of the three, e.g. `urgent`). The
+  // 優先度の縁 and the priority チップ both read this one derivation, so they cannot disagree.
+  let step = $derived(priorityStep(view.task.priority));
   let fields = $derived(cardFields(density));
   let types = $derived(view.interpretation.types);
   // 不整合 (decision-22) comes from one derivation shared with the detail heading and the detail's
@@ -71,11 +75,23 @@
   );
 </script>
 
-<button type="button" class="card" class:selected onclick={() => onselect(view)}>
+<!-- 優先度の縁 (decision-23) is `data-priority-edge` on the card itself, not a child: it is the card's
+     own left border, which is where TASK-77 freed the space (decision-22). Absent for priority 未設定
+     と priority 未知 — the attribute is not written at all, so the card keeps its ordinary 1px 枠. -->
+<button
+  type="button"
+  class="card"
+  class:selected
+  data-priority-edge={step}
+  onclick={() => onselect(view)}
+>
   <span class="line">
     <span class="identity">{identity}</span>
+    <!-- priority チップ: the word as the file wrote it, coloured by the 段 it normalises to. The
+         attribute is `step`, not a second normalisation of the same string — the chip and the
+         優先度の縁 must not be able to disagree about which 段 one task is in. -->
     {#if view.task.priority}
-      <span class="priority" data-priority={view.task.priority.trim().toLowerCase()}>
+      <span class="priority" data-priority={step}>
         {view.task.priority}
       </span>
     {/if}
@@ -175,11 +191,36 @@
       outline: 2px solid var(--sel);
       outline-offset: 1px;
     }
+
+    // 優先度の縁 (decision-23): the 3px left edge TASK-77 freed, now saying priority instead of 族.
+    // Same device as 問題の縁 (doc-11 §2.3) on purpose — decision-23 accepts that the two share the
+    // form and separates them by what carries them (a card vs a レーンヘッダ行・上部帯), not by hue.
+    //
+    // The padding gives back exactly what the wider border takes, so a card with an edge and a card
+    // without one line their text up in the same column. Without it every priority 未設定 card in a
+    // cell would sit 2px off the ones around it — the family edge could ignore this because 不整合 was
+    // rare, and priority is not.
+    &[data-priority-edge] {
+      border-left-width: 3px;
+      padding-left: calc(0.5rem - 2px);
+    }
+
+    &[data-priority-edge="high"] {
+      border-left-color: var(--priority-high);
+    }
+
+    &[data-priority-edge="medium"] {
+      border-left-color: var(--priority-medium);
+    }
+
+    &[data-priority-edge="low"] {
+      border-left-color: var(--priority-low);
+    }
   }
 
   // 印グリフ (decision-22): 族の色は図形そのものが持ち、チップの背景も枠も無い。カード左 3px の
-  // 族色はここで外れた — 同じ 1 つのことを図形と縁の 2 つで述べていたためで、縁は TASK-78 が
-  // priority へ渡す。`cursor: help` は 印チップ と同じ理由 (doc-11 §3): 図形は理由の全部ではない。
+  // 族色は TASK-77 で外れ、decision-23 がその縁を priority へ渡した — 不整合をカードで述べるのは
+  // この図形だけである。`cursor: help` は 印チップ と同じ理由 (doc-11 §3): 図形は理由の全部ではない。
   .inconsistent {
     display: inline-flex;
     align-items: center;
@@ -229,28 +270,46 @@
     gap: 0.2rem;
   }
 
-  // priority は族の色を借りない (decision-12): high の赤と medium の黄土は読取不能・不整合の族の色と
-  // 同色で、赤い priority を読取不能と読み違える経路になっていた。3 段は `--fg`／`--bg` の濃淡と
-  // 枠線だけで作る (doc-11 §3). An unrecognised value keeps this base style rather than being
-  // guessed into one of the three — the file's own word is still shown.
+  // priority チップ (decision-23): 優先度色 を 印チップ配色規則 (decision-12) の形で描く — 文字＝
+  // 優先度色、背景＝12% 混色、枠＝45% 混色。**族の色ではないので decision-6 の族の分離は破っていない**
+  // (印がこの色を借りることはない)。無彩 3 段だった間は、同じ priority を縁が色で・チップが濃淡で
+  // 述べていて、1 枚のカードが 1 つのことを 2 通りの表現で言っていた。
+  //
+  // 角丸は 3px (doc-11 §2.2 の チップ 3px). 999px だった間、priority は角丸の軸では 通常ラベル と
+  // 同じ形をしていた — その 999px は画面設計案 04 の契約 #4「Type とラベルを混ぜない」が
+  // 通常ラベル に与えた形であって、priority のものではない。
+  //
+  // priority 未知 は色を持たない基本の姿のまま (優先度の縁 と同じ判断): 3 段のどれかへ寄せると、
+  // 画面が frontmatter の書いていないことを述べる。語だけは原文のまま出る。
   .priority {
     padding: 0 0.3rem;
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: 3px;
     color: var(--muted);
     font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 0.02em;
 
+    // 段の色は `--step` として届き、各段はそれだけを設定する — チップは段を名指すだけで色相を
+    // 選ばない。印チップ が族に対して取っているのと同じ形である。
+    &[data-priority="high"],
+    &[data-priority="medium"],
+    &[data-priority="low"] {
+      border-color: color-mix(in srgb, var(--step) 45%, transparent);
+      background: color-mix(in srgb, var(--step) 12%, transparent);
+      color: var(--step);
+    }
+
     &[data-priority="high"] {
-      border-color: var(--fg);
-      background: var(--fg);
-      color: var(--bg);
+      --step: var(--priority-high);
     }
 
     &[data-priority="medium"] {
-      border-color: var(--line-strong);
-      color: var(--fg);
+      --step: var(--priority-medium);
+    }
+
+    &[data-priority="low"] {
+      --step: var(--priority-low);
     }
   }
 

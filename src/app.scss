@@ -13,6 +13,10 @@
 // four until decision-22 bundled 縮退 and バージョン不整合 into 不整合; the values are the ones that were already
 // recorded, and none of them moved for that change. 印グリフ (decision-22) is checked against the same
 // values on a second condition — 族の色 対 それが載る面 で 3:1 以上 — because it has no mixed background.
+// decision-23 added a third set that is *not* a 族 — 優先度色 (`--priority-*`) — and four things draw
+// with it, so it answers to three conditions at once: 4.5:1 as a 印チップ against its own 12% mix
+// (the priority チップ), 4.5:1 as plain text against a surface (the detail's priority value), and 3:1
+// as a non-text element (優先度の縁, 畳んだ列の四角). The first binds; values clearing it clear the rest.
 // `theme.test.ts` recomputes those cells from this file, so no theme can be added or edited into
 // breaking the condition unnoticed (decision-12 の費用: 検算を怠ると画面上は気付けない).
 //
@@ -41,6 +45,9 @@ $themes: (
     unreadable: #af2f1f,
     info: #21648f,
     sel: #21648f,
+    priority-high: #a82d2e,
+    priority-medium: #8b4e00,
+    priority-low: #076b29,
   ),
   "atlas-dark": (
     scheme: dark,
@@ -57,6 +64,9 @@ $themes: (
     unreadable: #f68270,
     info: #66acdc,
     sel: #66acdc,
+    priority-high: #ff847d,
+    priority-medium: #eb9643,
+    priority-low: #67bb75,
   ),
   "one-light": (
     scheme: light,
@@ -75,6 +85,9 @@ $themes: (
     // Not this theme's `--info`: doc-12 §6.3 has 3 テーマ where 選択のアウトライン and 通知 differ in
     // the 設計案, and the transcription keeps them apart rather than tidying them into one.
     sel: #4078f2,
+    priority-high: #aa2f2f,
+    priority-medium: #8b4e00,
+    priority-low: #0b6c2b,
   ),
   "one-dark": (
     scheme: dark,
@@ -91,6 +104,9 @@ $themes: (
     unreadable: #ff8f95,
     info: #69b7f7,
     sel: #69b7f7,
+    priority-high: #ff9890,
+    priority-medium: #f6a14f,
+    priority-low: #73c881,
   ),
   "solarized-light": (
     scheme: light,
@@ -107,6 +123,9 @@ $themes: (
     unreadable: #b50d16,
     info: #006099,
     sel: #268bd2,
+    priority-high: #a5292b,
+    priority-medium: #854a00,
+    priority-low: #016826,
   ),
   "solarized-dark": (
     scheme: dark,
@@ -123,6 +142,9 @@ $themes: (
     unreadable: #ff8276,
     info: #5cb4f5,
     sel: #5cb4f5,
+    priority-high: #ff8a83,
+    priority-medium: #ee9947,
+    priority-low: #6fc37c,
   ),
   "catppuccin-latte": (
     scheme: light,
@@ -139,6 +161,9 @@ $themes: (
     unreadable: #b5002e,
     info: #024edc,
     sel: #024edc,
+    priority-high: #a5292b,
+    priority-medium: #854a00,
+    priority-low: #016826,
   ),
   "catppuccin-mocha": (
     scheme: dark,
@@ -155,6 +180,9 @@ $themes: (
     unreadable: #f38ba8,
     info: #89b4fa,
     sel: #89b4fa,
+    priority-high: #ff7e77,
+    priority-medium: #e5913e,
+    priority-low: #63b772,
   ),
   "rose-pine-dawn": (
     scheme: light,
@@ -171,6 +199,9 @@ $themes: (
     unreadable: #a33458,
     info: #23647e,
     sel: #56949f,
+    priority-high: #a72b2c,
+    priority-medium: #874b00,
+    priority-low: #046928,
   ),
   "rose-pine": (
     scheme: dark,
@@ -187,6 +218,9 @@ $themes: (
     unreadable: #eb6f92,
     info: #9ccfd8,
     sel: #9ccfd8,
+    priority-high: #f2716a,
+    priority-medium: #d8852f,
+    priority-low: #57ab66,
   ),
 );
 
@@ -230,6 +264,17 @@ $themes: (
   // family's hue (a blue 確認 is not a 不整合).
   --info: #{map.get($theme, info)};
   --sel: #{map.get($theme, sel)}; // 選択のアウトライン (doc-11 §2.3)
+
+  // 優先度色 (decision-23): priority 3 段を述べる 4 つの表示要素が引く色 — 優先度の縁・
+  // priority チップ・畳んだ列のレーンセルに並ぶ四角・タスク詳細の priority の値。**族ではない** —
+  // 印がこれを借りることはなく、`--mark-*` の集合にも入らない。色相の役割 (high＝赤・
+  // medium＝アンバー・low＝緑) は backlog.md の web UI から取り、明度だけを動かして
+  // 優先度色の収録条件 3 本を全テーマで満たす。上流の値そのままでは満たせない — 実測で
+  // yellow-500 は白地に 1.91:1、green-500 は 2.22:1 しかない。decision-12 が借用パレット 8 組に
+  // 対して採ったのと同じ調整である。
+  --priority-high: #{map.get($theme, priority-high)};
+  --priority-medium: #{map.get($theme, priority-medium)};
+  --priority-low: #{map.get($theme, priority-low)};
 }
 
 // 未選択 (アプリ設定 theme = null) は OS の明暗に従って Atlas Light / Atlas Dark (decision-12 の既定).

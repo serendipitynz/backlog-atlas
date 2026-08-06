@@ -6,6 +6,7 @@
   // An empty cell is drawn empty and says so — "該当タスクが無い" is a different fact from
   // "ルートが読めない", which is a row-level state (doc-7 §6).
   import TaskCard from "./TaskCard.svelte";
+  import { collapsedCellLabel, priorityTally } from "../lib/card";
   import type { Snippet } from "svelte";
   import type { VersionConflict } from "../lib/mark";
   import type { CardDensity, TaskView } from "../lib/wire";
@@ -50,20 +51,33 @@
     onselect,
     createEntry,
   }: Props = $props();
+
+  // One derivation for both the figures and the count's accessible name (decision-23): the shape a
+  // sighted user reads and the words a screen reader hears describe the same distribution because
+  // they come from the same call.
+  let groups = $derived(priorityTally(tasks));
 </script>
 
 <div class="cell" class:unmapped class:collapsed>
   {#if collapsed}
     <!-- 畳んだ列は、カード 1 枚を小さな四角 1 つに置き換えて並べ、その下に件数を出す (doc-7 §2.2).
          The squares are how much work is in the cell at a glance — the reading a 5rem band cannot give
-         with cards — and the number below them is the exact figure. They carry no colour: a coloured
-         square here would read as one of the 4 系統 of chip (doc-11 §3), which say something *about*
-         a task, while these say only how many there are.
-         `aria-hidden`, because they add nothing a screen reader cannot get from the count. -->
+         with cards — and the number below them is the exact figure.
+         **They take 優先度色 (decision-23)**, so a folded column still says *what kind* of work is in
+         it and not only how much. This is not one of the 4 系統 of chip (doc-11 §3): those say a task
+         has a problem, and 優先度色 is not a 族の色 — which is exactly the reason doc-11 §3 gave for
+         keeping these colourless, and the reason no longer applies.
+         **色だけでは述べない**: the squares are grouped 段 by 段, most urgent first, and each 段 has its
+         own height, so the distribution is a shape before it is a hue. A task in none of the 3 段 keeps
+         the neutral square, as its card keeps a colourless 縁.
+         `aria-hidden` still, because a run of N nameless figures is noise — the breakdown they carry
+         goes into the count's accessible name below instead. -->
     {#if tasks.length > 0}
       <div class="tally" aria-hidden="true">
-        {#each tasks as view (view.task.sourcePath)}
-          <span class="pip"></span>
+        {#each groups as group (group.step ?? "none")}
+          {#each { length: group.count } as _, index (index)}
+            <span class="pip" data-priority={group.step}></span>
+          {/each}
         {/each}
       </div>
     {/if}
@@ -73,7 +87,7 @@
          be read down the grid, which is the reading the count was kept for. `—` stays the form of an
          空セル in an open column (doc-11 §6), where the absence is what has to be shown rather than a
          number. -->
-    <span class="count" aria-label="{label} {tasks.length} 件">{tasks.length}</span>
+    <span class="count" aria-label={collapsedCellLabel(label, tasks)}>{tasks.length}</span>
   {:else}
     {#if tasks.length === 0}
       <!-- 空セル (doc-7 §6): 該当タスク無し is normal, so it is neutral — opacity only, no colour
@@ -126,21 +140,52 @@
   // カード 1 枚ぶんの四角の列 (doc-7 §2.2). Wraps and fills the band from its left edge, so the shape
   // of the block is itself the quantity; it is not a fixed-width gauge and never truncates, because a
   // capped row of squares would say the same thing for 20 cards as for 200.
+  //
+  // `align-items: flex-end` puts the 段 の高さ差 on one baseline, so the run reads as a row of bars
+  // rather than as figures floating at different heights.
   .tally {
     display: flex;
     flex-wrap: wrap;
+    align-items: flex-end;
     align-self: stretch;
     gap: 0.16rem;
   }
 
-  // No border, no radius worth the name: at this size a 1px frame is most of the figure. The colour is
-  // the 強い罫線 (doc-11 §2.1) — the most neutral ink on the theme, and pointedly not a 族の色
-  // (decision-6: nothing here is a problem being reported).
+  // No border, no radius worth the name: at this size a 1px frame is most of the figure. The default
+  // is the 強い罫線 (doc-11 §2.1) — the most neutral ink on the theme — and it stays that for a task in
+  // none of the 3 段. 族の色 is still off limits here (decision-6: nothing in this band is a problem
+  // being reported); 優先度色 is not one (decision-23).
+  //
+  // 非文字要素なので満たすのは 3:1 のほう (優先度色の収録条件). At this size these are the smallest
+  // thing the palette has to carry, which is why the condition is checked against every surface rather
+  // than against the one this band happens to sit on.
+  //
+  // **高さが段ごとに違う**ので、色を見分けられなくても分布が読める (WCAG 1.4.1). The width is the same
+  // for the three 段 so that the run still counts as one square per card; only the 段 なし square is
+  // narrower as well, because it is the one that would otherwise differ from `low` by hue alone.
   .pip {
     width: 0.35rem;
-    height: 0.35rem;
+    height: 0.17rem;
     border-radius: 1px;
     background: var(--line-strong);
+
+    &:not([data-priority]) {
+      width: 0.17rem;
+    }
+
+    &[data-priority="high"] {
+      height: 0.35rem;
+      background: var(--priority-high);
+    }
+
+    &[data-priority="medium"] {
+      height: 0.26rem;
+      background: var(--priority-medium);
+    }
+
+    &[data-priority="low"] {
+      background: var(--priority-low);
+    }
   }
 
   .count {
