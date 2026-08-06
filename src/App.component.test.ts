@@ -32,7 +32,7 @@ import {
   order,
   reset,
 } from "./lib/fake-boundary";
-import { entry, history, loaded, snapshot, taskView, unreadable } from "./lib/fixtures";
+import { documentView, entry, history, loaded, snapshot, taskView, unreadable } from "./lib/fixtures";
 import { SHORTCUT_HELP_LABEL } from "./lib/header";
 import { CLOSE_WITHOUT_SAVING_LABEL } from "./lib/settings";
 import { SHORTCUTS } from "./lib/shortcuts";
@@ -77,6 +77,9 @@ const TASK = taskView({
   ordinal: 1000,
   references: ["https://example.test/1"],
 });
+
+/** One document in the 文書区画, so a card is there to select (doc-10 §5). */
+const DOCUMENT = documentView({ id: "doc-1", title: "設計の題" });
 
 /** A second task in the same cell as [`TASK`], so 別タスクを開く and 前後移動 have a destination. */
 const NEIGHBOUR = taskView({
@@ -807,6 +810,37 @@ describe("プロジェクト詳細の離脱", () => {
     // and the return would otherwise look like nothing happened. Only the mark's presence is
     // asserted: jsdom runs no animation, so the fade and its end are not observable here.
     expect(only(host, ".lane-head").classList.contains("landed")).toBe(true);
+  });
+
+  /**
+   * 文書を読むだけでは、離脱の確認は立たない (doc-10 §5, TASK-116).
+   *
+   * The gate above is the shell's: leaving プロジェクト詳細 unmounts one component holding all four
+   * 区画's input, so it asks whenever anything is unsaved. Until TASK-116 a card press opened a
+   * 編集セッション, which put the 未保存 question one click away from merely reading a document.
+   * This holds the other half of that change from the shell's side — 閲覧 has no input, so the exit
+   * stays open — and it is the one assertion no pure function can make: 閲覧 is component state.
+   */
+  it("文書を選んで読むだけでは、スイムレーンへ戻る確認は立たない", async () => {
+    const host = await startWith([loaded("atlas", [TASK], undefined, [DOCUMENT])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+    click(byText(host, "nav.sections button", "文書"));
+
+    click(only(host, "button.card"));
+    await settled();
+
+    // 閲覧 is what opened: the body is on screen, and the 編集セッション is not — its 出口
+    //「編集を閉じる」 exists only while one is open.
+    expect(only(host, "pre.doc-body").textContent).toBe(DOCUMENT.body);
+    expect(byText(host, ".view-head button", "編集")).not.toBeNull();
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent === "編集を閉じる")).toBe(
+      false,
+    );
+
+    click(byText(host, "button", "← スイムレーン"));
+    expect(confirmBand(host)).toBeNull();
+    expect(host.querySelector("button.card")).not.toBeNull();
   });
 });
 

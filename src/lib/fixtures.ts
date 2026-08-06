@@ -9,6 +9,7 @@ import type {
   Commit,
   CommitSearch,
   Config,
+  Document,
   Milestone,
   ProjectEntry,
   ProjectLoad,
@@ -129,18 +130,35 @@ export const CREATE_STATUS_CANDIDATES: ColumnCreateStatuses[] = [
   { column: "done", statuses: ["Done"] },
 ];
 
+/** One 文書 as the read layer hands it over. Every field filled in, as everything here is. */
+export function documentView(options: Partial<Document> = {}): Document {
+  const id = options.id ?? "doc-1";
+  return {
+    sourcePath: options.sourcePath ?? `/repos/atlas/backlog/docs/${id}.md`,
+    id,
+    title: options.title ?? `Document ${id}`,
+    type: options.type ?? "specification",
+    tags: options.tags ?? ["design"],
+    createdDate: options.createdDate ?? "2026-08-01 09:00",
+    updatedDate: options.updatedDate ?? "2026-08-01 09:00",
+    body: options.body ?? "本文の 1 行目\n本文の 2 行目",
+    health: options.health ?? { state: "ok" },
+  };
+}
+
 export function snapshot(
   slug: string,
   tasks: TaskView[],
   milestones: Milestone[] = [],
   createStatusCandidates: ColumnCreateStatuses[] = CREATE_STATUS_CANDIDATES,
+  documents: Document[] = [],
 ): ProjectSnapshot {
   return {
     slug,
     config: CONFIG,
     tasks,
     milestones,
-    documents: [],
+    documents,
     decisions: [],
     unmappedFiles: [],
     createStatusCandidates,
@@ -151,8 +169,12 @@ export function loaded(
   slug: string,
   tasks: TaskView[],
   createStatusCandidates: ColumnCreateStatuses[] = CREATE_STATUS_CANDIDATES,
+  documents: Document[] = [],
 ): ProjectLoad {
-  return { state: "loaded", project: snapshot(slug, tasks, [], createStatusCandidates) };
+  return {
+    state: "loaded",
+    project: snapshot(slug, tasks, [], createStatusCandidates, documents),
+  };
 }
 
 export function entry(slug: string, gitRemotePresent = true): ProjectEntry {
