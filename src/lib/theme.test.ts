@@ -123,6 +123,21 @@ const contrast = (a: readonly number[], b: readonly number[]): number => {
   return (high + 0.05) / (low + 0.05);
 };
 
+/**
+ * The cells that miss the floor, rounded for reading.
+ *
+ * **The comparison is on the raw ratio and the rounding happens after it** (PR #70 の [P2]): rounding
+ * first lets 2.999:1 become 3.00 and clear a 3:1 floor, so a theme edit could land just under the
+ * condition and be told it passed. Two decimals is what makes a failure legible — it is a diagnostic,
+ * not the judgement.
+ */
+const failing = (ratios: Record<string, number>, floor: number): Record<string, number> =>
+  Object.fromEntries(
+    Object.entries(ratios)
+      .filter(([, ratio]) => ratio < floor)
+      .map(([cell, ratio]) => [cell, Math.round(ratio * 100) / 100]),
+  );
+
 /** `color-mix(in srgb, <族の色> 12%, transparent)` composited onto an opaque surface. */
 const markBackground = (family: string, surface: string): number[] => {
   const mark = hex(family);
@@ -156,17 +171,12 @@ describe("収録した表示テーマ (decision-12)", () => {
           if (mark === undefined || under === undefined) {
             throw new Error(`${id} に ${family} または ${surface} がありません`);
           }
-          ratios[`${family} on ${surface}`] =
-            Math.round(contrast(hex(mark), markBackground(mark, under)) * 100) / 100;
+          ratios[`${family} on ${surface}`] = contrast(hex(mark), markBackground(mark, under));
         }
       }
       // Asserted as one object so a failure names every cell and its ratio, rather than stopping at
       // the first — a palette is adjusted family by family, and the whole picture is what guides it.
-      expect(
-        Object.fromEntries(
-          Object.entries(ratios).filter(([, ratio]) => ratio < REQUIRED_RATIO),
-        ),
-      ).toEqual({});
+      expect(failing(ratios, REQUIRED_RATIO)).toEqual({});
     },
   );
 
@@ -186,15 +196,10 @@ describe("収録した表示テーマ (decision-12)", () => {
           if (glyph === undefined || under === undefined) {
             throw new Error(`${id} に ${family} または ${surface} がありません`);
           }
-          ratios[`${family} on ${surface}`] =
-            Math.round(contrast(hex(glyph), hex(under)) * 100) / 100;
+          ratios[`${family} on ${surface}`] = contrast(hex(glyph), hex(under));
         }
       }
-      expect(
-        Object.fromEntries(
-          Object.entries(ratios).filter(([, ratio]) => ratio < REQUIRED_GLYPH_RATIO),
-        ),
-      ).toEqual({});
+      expect(failing(ratios, REQUIRED_GLYPH_RATIO)).toEqual({});
     },
   );
 
@@ -215,15 +220,10 @@ describe("収録した表示テーマ (decision-12)", () => {
           if (edge === undefined || under === undefined) {
             throw new Error(`${id} に ${colour} または ${surface} がありません`);
           }
-          ratios[`${colour} on ${surface}`] =
-            Math.round(contrast(hex(edge), hex(under)) * 100) / 100;
+          ratios[`${colour} on ${surface}`] = contrast(hex(edge), hex(under));
         }
       }
-      expect(
-        Object.fromEntries(
-          Object.entries(ratios).filter(([, ratio]) => ratio < REQUIRED_EDGE_RATIO),
-        ),
-      ).toEqual({});
+      expect(failing(ratios, REQUIRED_EDGE_RATIO)).toEqual({});
     },
   );
 
