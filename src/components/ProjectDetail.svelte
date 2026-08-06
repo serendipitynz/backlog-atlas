@@ -692,9 +692,24 @@
    * 理由行 for whichever document / milestone the pane currently holds (doc-10 §5/§6). Derived once
    * here rather than at each use, so the ⚠️ on the card and the lines in the pane can never be
    * built from two different readings of the same file (decision-22 「導出は 1 回」).
+   *
+   * Taken from the **current read**, not from `docSession.baseline`. The baseline is the read the
+   * *input* was made against and it deliberately survives a reload (that is how 未保存入力 stays
+   * comparable), but the card beside it draws its ⚠️ from the current read — so reading the reasons
+   * off the baseline would let a document broken while its editor is open show a ⚠️ with no lines
+   * under it, which is the state doc-11 §2.4 admits the mark only on condition of avoiding.
+   * `selectedMilestone` already resolves against the current read for the same reason (PR #71 [P2]).
    */
   let openDocReasons = $derived(
-    docSession === null ? [] : fileInconsistencyReasons(docSession.baseline.health, "文書"),
+    docSession === null
+      ? []
+      : fileInconsistencyReasons(
+          (
+            project?.documents.find((candidate) => candidate.id === docSession?.baseline.id) ??
+            docSession.baseline
+          ).health,
+          "文書",
+        ),
   );
 
   /**
@@ -1289,8 +1304,11 @@
                       <!-- 理由行 (decision-22, doc-10 §5): the place doc-11 §2.4 requires the ⚠️'s
                            full reason to be readable without hovering. No 区画 of its own — one
                            line per reason is the whole of it. -->
+                      <!-- Keyed by index, not by the string: two reasons can read identically
+                           (two same-named unclosed SECTION pairs, two stray `:END`s), and a
+                           duplicate key throws in production Svelte (PR #71 [P2]). -->
                       <ul class="reason-lines">
-                        {#each openDocReasons as reason (reason)}
+                        {#each openDocReasons as reason, at (at)}
                           <li>{reason}</li>
                         {/each}
                       </ul>
@@ -1579,8 +1597,9 @@
                     {#if openMilestoneReasons.length > 0}
                       <!-- 理由行 (decision-22, doc-10 §6): where the ⚠️'s full reason is readable
                            without hovering, as doc-11 §2.4 requires of every 印グリフ. -->
+                      <!-- Keyed by index for the reason the 文書区画's copy gives. -->
                       <ul class="reason-lines">
-                        {#each openMilestoneReasons as reason (reason)}
+                        {#each openMilestoneReasons as reason, at (at)}
                           <li>{reason}</li>
                         {/each}
                       </ul>

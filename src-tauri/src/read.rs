@@ -224,18 +224,21 @@ fn parse_task(path: &Path, text: &str, slug: &str, dir: ScanDir, config: &Config
         }]);
     }
 
-    let Some((yaml, body)) = parse::split_frontmatter(text) else {
-        return with_event(
-            task,
-            DegradeEvent::Unparseable {
-                missing_required: vec![
-                    RequiredField::Id,
-                    RequiredField::Title,
-                    RequiredField::Status,
-                ],
-                detail: Some("no closing frontmatter fence".to_string()),
-            },
-        );
+    let (yaml, body) = match parse::split_frontmatter(text) {
+        Ok(split) => split,
+        Err(gap) => {
+            return with_event(
+                task,
+                DegradeEvent::Unparseable {
+                    missing_required: vec![
+                        RequiredField::Id,
+                        RequiredField::Title,
+                        RequiredField::Status,
+                    ],
+                    detail: Some(gap.detail().to_string()),
+                },
+            );
+        }
     };
 
     let front = match parse::parse_frontmatter(yaml) {
@@ -527,11 +530,17 @@ fn identity(
         // list stays empty and `detail` carries the reason — the same split `parse_task` makes.
         Err(e) => return write_off(Vec::new(), Some(format!("file could not be read: {e}"))),
     };
-    let Some((yaml, body)) = parse::split_frontmatter(&text) else {
-        return write_off(
-            vec![RequiredField::Id, RequiredField::Title],
-            Some("no closing frontmatter fence".to_string()),
-        );
+    let (yaml, body) = match parse::split_frontmatter(&text) {
+        Ok(split) => split,
+        // Which way it was absent matters here more than anywhere: `scan.rs` lists *every* `.md`
+        // in the directory, so a `docs/README.md` that was never a managed document reaches this
+        // arm too, and「no closing frontmatter fence」would state a breakage it does not have.
+        Err(gap) => {
+            return write_off(
+                vec![RequiredField::Id, RequiredField::Title],
+                Some(gap.detail().to_string()),
+            )
+        }
     };
     let front = match parse::parse_frontmatter(yaml) {
         Ok(front) => front,
@@ -1148,6 +1157,25 @@ ordinal: 1000\n\
         assert_eq!(
             milestone.detail.as_deref(),
             Some("no closing frontmatter fence")
+        );
+    }
+
+    #[test]
+    fn a_file_with_no_frontmatter_at_all_is_not_reported_as_a_broken_fence() {
+        // `scan.rs` lists every `.md` in the directory, so an ordinary `docs/README.md` reaches
+        // the same arm as a managed document whose fence broke. The reason has to tell the two
+        // apart — one is not a document at all, the other is a document that stopped reading
+        // (PR #71 [P2]).
+        let source = MemorySource::new().file(
+            ScanDir::Docs,
+            "README.md",
+            "# Notes\n\nJust a file someone dropped in docs/.\n",
+        );
+
+        let model = read(&source);
+        assert_eq!(
+            unmapped(&model, "README.md").unwrap().detail.as_deref(),
+            Some("no frontmatter block")
         );
     }
 
