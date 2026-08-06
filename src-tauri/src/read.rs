@@ -11,20 +11,27 @@
 //!
 //! | event | scope | representation |
 //! |---|---|---|
-//! | 解析不能 | one file | [`DegradeEvent::Unparseable`] on that task |
-//! | 想定外スキーマ | one field/section | [`DegradeEvent::UnexpectedSchema`] on that task |
+//! | 解析不能 | one file | [`DegradeEvent::Unparseable`], or an [`UnmappedFile`] |
+//! | 想定外スキーマ | one field/section | [`DegradeEvent::UnexpectedSchema`] on that file |
 //! | 参照欠損 | one reference | [`DegradeEvent::DanglingReference`] on that task |
 //! | ルート読取不能 | the whole root | [`RootError`] returned instead of a model |
 //!
-//! Only the last aborts a read. Everything else is confined to the one task it came from, so
+//! Only the last aborts a read. Everything else is confined to the one file it came from, so
 //! a single broken file never costs the rest of the root.
+//!
+//! **The first row splits by kind** (decision-24, TASK-88). A task that loses a required field
+//! is still a [`Task`], with `id: None` and the event in its health. The three non-task kinds
+//! cannot be — an entry with no id can neither be ordered in a list nor named as an update's
+//! target — so the failure becomes an [`UnmappedFile`] carrying the path, the kind and the
+//! reason. Either way the fact survives; before TASK-88 the non-task side was four silent
+//! `continue`s and the file simply left the model.
 
 pub mod parse;
 pub mod scan;
 
 use crate::domain::{
-    Config, Decision, DegradeEvent, Document, Milestone, ProjectModel, ReferenceKind,
-    RequiredField, StorageState, Task, TaskHealth,
+    Config, Decision, DegradeEvent, Document, FileHealth, ManagedFileKind, Milestone, ProjectModel,
+    ReferenceKind, RequiredField, StorageState, Task, UnmappedFile,
 };
 // The Type/status *rules* live in `interpret` (decision-4, decision-5); doc-4 §3.3 only fixes
 // where the label separation is applied — here, at the read boundary — so this layer calls
@@ -86,9 +93,14 @@ pub fn read_project(slug: &str, source: &dyn ScanSource) -> Result<ProjectModel,
 
     // Milestones and documents are read before tasks because they are the resolution targets
     // for a task's references; without them every reference would look dangling.
-    let milestones = read_milestones(source)?;
-    let documents = read_documents(source)?;
-    let decisions = read_decisions(source)?;
+    //
+    // The three non-task reads share one `unmapped` sink (decision-24): a file none of them
+    // could assemble is kept as a 写せなかったファイル rather than dropped, and the collection
+    // it was meant for simply does not gain an entry.
+    let mut unmapped = Vec::new();
+    let milestones = read_milestones(source, &mut unmapped)?;
+    let documents = read_documents(source, &mut unmapped)?;
+    let decisions = read_decisions(source, &mut unmapped)?;
     let mut tasks = read_tasks(source, slug, &config)?;
 
     resolve_references(
@@ -107,6 +119,7 @@ pub fn read_project(slug: &str, source: &dyn ScanSource) -> Result<ProjectModel,
         milestones,
         documents,
         decisions,
+        unmapped_files: unmapped,
     })
 }
 
@@ -392,100 +405,165 @@ fn required_string(
     }
 }
 
-fn read_milestones(source: &dyn ScanSource) -> Result<Vec<Milestone>, RootError> {
+fn read_milestones(
+    source: &dyn ScanSource,
+    unmapped: &mut Vec<UnmappedFile>,
+) -> Result<Vec<Milestone>, RootError> {
     let mut out = Vec::new();
     for path in list_dir(source, ScanDir::Milestones)? {
-        let Ok(text) = source.read(&path) else {
+        let Some(file) = identity(source, &path, ManagedFileKind::Milestone, unmapped) else {
             continue;
         };
-        let Some((front, body)) = identity(&text) else {
-            continue;
-        };
-        let (id, title) = front;
+        // A milestone has no optional *frontmatter* field — `milestone add` writes id and title
+        // and nothing else (measured on v1.48.0) — so its only 存在時構造検査 is the body's, and
+        // `parse_body` is where doc-4 §4 makes that verdict (see `parse::description_span`).
+        // What it catches here is a `SECTION:DESCRIPTION` pair that never closes: the range then
+        // runs to the end of the file, and decision-21's writer refuses that shape, so without
+        // this the screen would show a description that silently cannot be saved.
+        let structure = parse::parse_body(&file.body).events;
         out.push(Milestone {
             source_path: path,
-            id,
-            title,
-            description: description_text(&body),
+            id: file.id,
+            title: file.title,
+            // Still read through `description_span`, not through the `parse_body` call above:
+            // decision-21's third condition holds because the read and the write ask the *same*
+            // function for the range, and taking it from a second parse would give that up.
+            description: description_text(&file.body),
+            health: merge_health(FileHealth::Ok, structure),
         });
     }
     Ok(out)
 }
 
-fn read_documents(source: &dyn ScanSource) -> Result<Vec<Document>, RootError> {
+fn read_documents(
+    source: &dyn ScanSource,
+    unmapped: &mut Vec<UnmappedFile>,
+) -> Result<Vec<Document>, RootError> {
     let mut out = Vec::new();
     for path in list_dir(source, ScanDir::Docs)? {
-        let Ok(text) = source.read(&path) else {
+        let Some(file) = identity(source, &path, ManagedFileKind::Document, unmapped) else {
             continue;
         };
-        let Some((yaml, body)) = parse::split_frontmatter(&text) else {
-            continue;
-        };
-        let Ok(front) = parse::parse_frontmatter(yaml) else {
-            continue;
-        };
-        let mut ignored = Vec::new();
-        let (Some(id), Some(title)) = (
-            parse::string_field(&front, "id", &mut ignored),
-            parse::string_field(&front, "title", &mut ignored),
-        ) else {
-            continue;
-        };
+        // Optional fields are read into `events`, not into a discarded sink: AC #3 wants the
+        // discernible id/title/body kept *and* the out-of-range field named. Before TASK-88 this
+        // vector was `ignored` and a `type:` written as a list left the field silently empty.
+        let mut events = Vec::new();
         out.push(Document {
-            source_path: path.clone(),
-            id,
-            title,
-            doc_type: parse::string_field(&front, "type", &mut ignored),
-            tags: parse::string_list_field(&front, "tags", &mut ignored),
-            created_date: parse::string_field(&front, "created_date", &mut ignored),
-            updated_date: parse::string_field(&front, "updated_date", &mut ignored),
-            body: non_empty(body),
+            source_path: path,
+            id: file.id,
+            title: file.title,
+            doc_type: parse::string_field(&file.front, "type", &mut events),
+            tags: parse::string_list_field(&file.front, "tags", &mut events),
+            created_date: parse::string_field(&file.front, "created_date", &mut events),
+            updated_date: parse::string_field(&file.front, "updated_date", &mut events),
+            body: non_empty(&file.body),
+            health: merge_health(FileHealth::Ok, events),
         });
     }
     Ok(out)
 }
 
-fn read_decisions(source: &dyn ScanSource) -> Result<Vec<Decision>, RootError> {
+fn read_decisions(
+    source: &dyn ScanSource,
+    unmapped: &mut Vec<UnmappedFile>,
+) -> Result<Vec<Decision>, RootError> {
     let mut out = Vec::new();
     for path in list_dir(source, ScanDir::Decisions)? {
-        let Ok(text) = source.read(&path) else {
+        let Some(file) = identity(source, &path, ManagedFileKind::Decision, unmapped) else {
             continue;
         };
-        let Some((yaml, body)) = parse::split_frontmatter(&text) else {
-            continue;
-        };
-        let Ok(front) = parse::parse_frontmatter(yaml) else {
-            continue;
-        };
-        let mut ignored = Vec::new();
-        let (Some(id), Some(title)) = (
-            parse::string_field(&front, "id", &mut ignored),
-            parse::string_field(&front, "title", &mut ignored),
-        ) else {
-            continue;
-        };
+        let mut events = Vec::new();
         out.push(Decision {
-            id,
-            title,
-            status: parse::string_field(&front, "status", &mut ignored),
-            date: parse::string_field(&front, "date", &mut ignored),
-            body: non_empty(body),
+            source_path: path,
+            id: file.id,
+            title: file.title,
+            status: parse::string_field(&file.front, "status", &mut events),
+            date: parse::string_field(&file.front, "date", &mut events),
+            body: non_empty(&file.body),
+            health: merge_health(FileHealth::Ok, events),
         });
     }
     Ok(out)
 }
 
-/// `(id, title)` plus the body, for the non-task files whose only required fields are those
-/// two. A file missing either is skipped rather than degraded: milestones and documents have
-/// no per-file health in the model (doc-4 §5 scopes degradation to tasks), and skipping makes
-/// the omission visible where it matters — as a 参照欠損 on whichever task referenced it.
-fn identity(text: &str) -> Option<((String, String), String)> {
-    let (yaml, body) = parse::split_frontmatter(text)?;
-    let front = parse::parse_frontmatter(yaml).ok()?;
-    let mut ignored = Vec::new();
-    let id = parse::string_field(&front, "id", &mut ignored)?;
-    let title = parse::string_field(&front, "title", &mut ignored)?;
-    Some(((id, title), body.to_string()))
+/// What the three non-task reads have in common: the file's bytes, its frontmatter, and the two
+/// required identity fields doc-4 §3.2 gives them (`id`/`title` — `status` is a task's).
+struct Identity {
+    front: Value,
+    body: String,
+    id: String,
+    title: String,
+}
+
+/// Read one non-task management file up to its identity, or record why it could not be read.
+///
+/// `None` means the file became a 写せなかったファイル on `unmapped` and its collection gains
+/// nothing (doc-4 §5, decision-24). This is where TASK-88's four silent `continue`s went: the
+/// caller still skips the file, but the skip now carries a path, a kind and a reason.
+///
+/// The three non-task kinds cannot do what [`parse_task`] does with a missing required field —
+/// keep the value with `id: None` — because an id-less entry can be neither ordered in a list
+/// nor named as the target of an update. Failing here is therefore *terminal for that file*,
+/// while a task in the same state is still a task.
+fn identity(
+    source: &dyn ScanSource,
+    path: &Path,
+    kind: ManagedFileKind,
+    unmapped: &mut Vec<UnmappedFile>,
+) -> Option<Identity> {
+    let mut write_off = |missing: Vec<RequiredField>, detail: Option<String>| {
+        unmapped.push(UnmappedFile {
+            source_path: path.to_path_buf(),
+            kind,
+            missing_required: missing,
+            detail,
+        });
+        None
+    };
+
+    let text = match source.read(path) {
+        Ok(text) => text,
+        // Which required fields are present is unknowable when the bytes never arrived, so the
+        // list stays empty and `detail` carries the reason — the same split `parse_task` makes.
+        Err(e) => return write_off(Vec::new(), Some(format!("file could not be read: {e}"))),
+    };
+    let Some((yaml, body)) = parse::split_frontmatter(&text) else {
+        return write_off(
+            vec![RequiredField::Id, RequiredField::Title],
+            Some("no closing frontmatter fence".to_string()),
+        );
+    };
+    let front = match parse::parse_frontmatter(yaml) {
+        Ok(front) => front,
+        Err(detail) => return write_off(Vec::new(), Some(detail)),
+    };
+
+    let mut events = Vec::new();
+    let mut missing = Vec::new();
+    let id = required_string(&front, "id", RequiredField::Id, &mut missing, &mut events);
+    let title = required_string(
+        &front,
+        "title",
+        RequiredField::Title,
+        &mut missing,
+        &mut events,
+    );
+    let (Some(id), Some(title)) = (id, title) else {
+        // `required_string` records *both* the gap and, when the key was present in an
+        // unusable shape, the schema event explaining it. Folding that text into `detail` is
+        // what keeps「`id` is not a scalar value」distinguishable from「no `id` key at all」.
+        return write_off(
+            missing,
+            (!events.is_empty()).then(|| describe_events(&events)),
+        );
+    };
+    let body = body.to_string();
+    Some(Identity {
+        front,
+        body,
+        id,
+        title,
+    })
 }
 
 /// A milestone's Description, read as the text of 説明の本文範囲 (decision-21). The range comes
@@ -561,7 +639,7 @@ fn resolve_references(
                 });
             }
         }
-        task.health = merge_health(std::mem::replace(&mut task.health, TaskHealth::Ok), events);
+        task.health = merge_health(std::mem::replace(&mut task.health, FileHealth::Ok), events);
     }
 }
 
@@ -668,7 +746,7 @@ fn empty_task(path: &Path, slug: &str, storage_state: Option<StorageState>) -> T
         implementation_plan: None,
         implementation_notes: None,
         unknown_sections: Vec::new(),
-        health: TaskHealth::Ok,
+        health: FileHealth::Ok,
     }
 }
 
@@ -688,19 +766,19 @@ fn with_event(mut task: Task, event: DegradeEvent) -> Task {
     task
 }
 
-fn degraded(events: Vec<DegradeEvent>) -> TaskHealth {
-    TaskHealth::Degraded { events }
+fn degraded(events: Vec<DegradeEvent>) -> FileHealth {
+    FileHealth::Degraded { events }
 }
 
 /// Fold new events into an existing health value, keeping `Ok` only when nothing degraded.
-fn merge_health(health: TaskHealth, mut events: Vec<DegradeEvent>) -> TaskHealth {
+fn merge_health(health: FileHealth, mut events: Vec<DegradeEvent>) -> FileHealth {
     let mut all = match health {
-        TaskHealth::Ok => Vec::new(),
-        TaskHealth::Degraded { events } => events,
+        FileHealth::Ok => Vec::new(),
+        FileHealth::Degraded { events } => events,
     };
     all.append(&mut events);
     if all.is_empty() {
-        TaskHealth::Ok
+        FileHealth::Ok
     } else {
         degraded(all)
     }
@@ -747,7 +825,21 @@ date_format: yyyy-mm-dd\n";
                 .push((PathBuf::from(dir.rel_path()).join(name), text.to_string()));
             self
         }
+
+        /// A file the listing shows but the read cannot open — a permission change or a partial
+        /// save. Modelled as a listed path with no contents rather than a flag, because that is
+        /// exactly the state a real root is in between `read_dir` and `read_to_string`.
+        fn unreadable_file(mut self, dir: ScanDir, name: &str) -> Self {
+            self.dirs.entry(dir.rel_path()).or_default().push((
+                PathBuf::from(dir.rel_path()).join(name),
+                UNREADABLE.to_string(),
+            ));
+            self
+        }
     }
+
+    /// Marker contents for [`MemorySource::unreadable_file`].
+    const UNREADABLE: &str = "\u{0}unreadable\u{0}";
 
     impl ScanSource for MemorySource {
         fn read_config(&self) -> io::Result<String> {
@@ -764,12 +856,19 @@ date_format: yyyy-mm-dd\n";
         }
 
         fn read(&self, path: &Path) -> io::Result<String> {
-            self.dirs
+            match self
+                .dirs
                 .values()
                 .flatten()
                 .find(|(p, _)| p == path)
                 .map(|(_, text)| text.clone())
-                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such file"))
+            {
+                Some(text) if text == UNREADABLE => {
+                    Err(io::Error::new(io::ErrorKind::PermissionDenied, "denied"))
+                }
+                Some(text) => Ok(text),
+                None => Err(io::Error::new(io::ErrorKind::NotFound, "no such file")),
+            }
         }
 
         // Mirrors a real root, whose directory is conventionally `<project>/backlog` — that is
@@ -806,8 +905,8 @@ ordinal: 1000\n\
 
     fn events(task: &Task) -> &[DegradeEvent] {
         match &task.health {
-            TaskHealth::Degraded { events } => events,
-            TaskHealth::Ok => &[],
+            FileHealth::Degraded { events } => events,
+            FileHealth::Ok => &[],
         }
     }
 
@@ -952,6 +1051,263 @@ ordinal: 1000\n\
         assert_eq!(decision.status.as_deref(), Some("accepted"));
         // A decision must not answer a documentation lookup (doc-4 §3.2).
         assert!(model.document("decision-3").is_none());
+    }
+
+    // --- TASK-88 / decision-24: non-task management files keep their failures ------------------
+    //
+    // The five shapes AC #4 names — 読取失敗・YAML 破損・必須項目欠損・任意項目の型不正・
+    // 未参照ファイル — across マイルストーン・文書・意思決定. Before TASK-88 every one of these
+    // left the file out of the model with nothing recorded anywhere.
+
+    /// The 写せなかったファイル for `path`, or `None` if the read mapped the file after all.
+    fn unmapped<'m>(model: &'m ProjectModel, name: &str) -> Option<&'m UnmappedFile> {
+        model
+            .unmapped_files
+            .iter()
+            .find(|f| f.source_path.file_name().is_some_and(|n| n == name))
+    }
+
+    /// The `detail` strings of a file's 想定外スキーマ events.
+    fn schema_details(health: &FileHealth) -> Vec<String> {
+        match health {
+            FileHealth::Degraded { events } => events
+                .iter()
+                .filter_map(|e| match e {
+                    DegradeEvent::UnexpectedSchema { detail } => Some(detail.clone()),
+                    _ => None,
+                })
+                .collect(),
+            FileHealth::Ok => Vec::new(),
+        }
+    }
+
+    #[test]
+    fn an_unreadable_non_task_file_is_kept_as_an_unmapped_file() {
+        let source = MemorySource::new()
+            .unreadable_file(ScanDir::Milestones, "m-1 - impl.md")
+            .unreadable_file(ScanDir::Docs, "doc-4 - design.md")
+            .unreadable_file(ScanDir::Decisions, "decision-3 - branch.md");
+
+        let model = read(&source);
+        assert!(model.milestones.is_empty());
+        assert!(model.documents.is_empty());
+        assert!(model.decisions.is_empty());
+        assert_eq!(model.unmapped_files.len(), 3);
+
+        let kinds: Vec<_> = model.unmapped_files.iter().map(|f| f.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                ManagedFileKind::Milestone,
+                ManagedFileKind::Document,
+                ManagedFileKind::Decision
+            ]
+        );
+        for file in &model.unmapped_files {
+            // Which required fields are present is unknowable when the bytes never arrived, so
+            // the list stays empty and the reason is the read error itself.
+            assert!(file.missing_required.is_empty());
+            assert!(file
+                .detail
+                .as_deref()
+                .unwrap()
+                .starts_with("file could not be read:"));
+        }
+    }
+
+    #[test]
+    fn broken_yaml_in_a_non_task_file_is_kept_as_an_unmapped_file() {
+        let source = MemorySource::new()
+            .file(
+                ScanDir::Docs,
+                "doc-4 - design.md",
+                "---\nid: doc-4\n  title: bad indent\n---\nbody\n",
+            )
+            .file(
+                ScanDir::Milestones,
+                "m-1 - impl.md",
+                "---\nid: m-1\ntitle: impl\n\nno closing fence\n",
+            );
+
+        let model = read(&source);
+        assert!(model.documents.is_empty());
+        assert!(model.milestones.is_empty());
+
+        // YAML that does not parse: which required fields exist is unknowable, so the reason is
+        // the parser's message alone.
+        let doc = unmapped(&model, "doc-4 - design.md").unwrap();
+        assert!(doc.missing_required.is_empty());
+        assert!(doc.detail.is_some());
+
+        // A fence that never closes: nothing was read, so *both* required fields are named.
+        let milestone = unmapped(&model, "m-1 - impl.md").unwrap();
+        assert_eq!(
+            milestone.missing_required,
+            [RequiredField::Id, RequiredField::Title]
+        );
+        assert_eq!(
+            milestone.detail.as_deref(),
+            Some("no closing frontmatter fence")
+        );
+    }
+
+    #[test]
+    fn a_non_task_file_missing_a_required_field_names_which_one() {
+        let source = MemorySource::new()
+            .file(
+                ScanDir::Docs,
+                "doc-4 - design.md",
+                "---\ntitle: design\ntype: specification\n---\nbody\n",
+            )
+            .file(
+                ScanDir::Decisions,
+                "decision-3 - branch.md",
+                "---\nid: decision-3\n---\n## Context\n",
+            )
+            .file(
+                ScanDir::Milestones,
+                "m-1 - impl.md",
+                "---\nid: m-1\ntitle:\n  nested: mapping\n---\n## Description\n\nphase\n",
+            );
+
+        let model = read(&source);
+        assert!(model.documents.is_empty() && model.decisions.is_empty());
+        assert!(model.milestones.is_empty());
+
+        assert_eq!(
+            unmapped(&model, "doc-4 - design.md")
+                .unwrap()
+                .missing_required,
+            [RequiredField::Id]
+        );
+        assert_eq!(
+            unmapped(&model, "decision-3 - branch.md")
+                .unwrap()
+                .missing_required,
+            [RequiredField::Title]
+        );
+
+        // `status` is a task's required field, never one of these three (doc-4 §3.2).
+        for file in &model.unmapped_files {
+            assert!(!file.missing_required.contains(&RequiredField::Status));
+        }
+
+        // A required field that is *present in an unusable shape* keeps that distinction: the
+        // gap says which field, the detail says why it could not be taken.
+        let milestone = unmapped(&model, "m-1 - impl.md").unwrap();
+        assert_eq!(milestone.missing_required, [RequiredField::Title]);
+        assert_eq!(
+            milestone.detail.as_deref(),
+            Some("frontmatter `title` is not a scalar value")
+        );
+    }
+
+    #[test]
+    fn a_non_task_file_with_only_an_optional_field_out_of_range_keeps_what_it_has() {
+        // AC #3: id/title/body survive; only the out-of-range field is left unset.
+        let source = MemorySource::new()
+            .file(
+                ScanDir::Docs,
+                "doc-4 - design.md",
+                "---\nid: doc-4\ntitle: design\ntype: [a, b]\ntags: reading\n---\nbody text\n",
+            )
+            .file(
+                ScanDir::Decisions,
+                "decision-3 - branch.md",
+                "---\nid: decision-3\ntitle: branch\nstatus:\n  - accepted\n---\n## Context\n",
+            )
+            .file(
+                ScanDir::Milestones,
+                "m-1 - impl.md",
+                // A milestone has no optional frontmatter field, so its only 存在時構造検査 is
+                // the body's: a SECTION pair that never closes (doc-4 §4).
+                "---\nid: m-1\ntitle: impl\n---\n<!-- SECTION:DESCRIPTION:BEGIN -->\nphase two\n",
+            );
+
+        let model = read(&source);
+        assert!(model.unmapped_files.is_empty());
+
+        let doc = model.document("doc-4").unwrap();
+        assert_eq!(doc.title, "design");
+        assert_eq!(doc.body.as_deref(), Some("body text"));
+        assert_eq!(doc.doc_type, None);
+        assert!(doc.tags.is_empty());
+        assert_eq!(
+            schema_details(&doc.health),
+            [
+                "frontmatter `type` is not a scalar value",
+                "frontmatter `tags` is not a list"
+            ]
+        );
+
+        let decision = model.decision("decision-3").unwrap();
+        assert_eq!(decision.title, "branch");
+        assert_eq!(decision.status, None);
+        assert_eq!(
+            schema_details(&decision.health),
+            ["frontmatter `status` is not a scalar value"]
+        );
+
+        let milestone = model.milestone("m-1").unwrap();
+        assert_eq!(milestone.title, "impl");
+        // The description still reads — the range runs to the end of the body — but the unclosed
+        // pair is now named, which is what tells the user why decision-21's save will refuse it.
+        assert_eq!(milestone.description.as_deref(), Some("phase two"));
+        assert_eq!(
+            schema_details(&milestone.health),
+            ["SECTION:DESCRIPTION:BEGIN is never closed"]
+        );
+    }
+
+    #[test]
+    fn an_unmapped_file_no_task_references_is_still_reported() {
+        // 未参照ファイル: the case that used to leave no trace anywhere on screen. A task that
+        // *does* reference it gets a 参照欠損 as before, and the two coexist.
+        let source = MemorySource::new()
+            .file(
+                ScanDir::Tasks,
+                "task-1 - a.md",
+                &task_file("TASK-1", "To Do"),
+            )
+            .file(
+                ScanDir::Docs,
+                "doc-9 - orphan.md",
+                "---\ntitle: no id here\n---\nbody\n",
+            );
+
+        let model = read(&source);
+        assert!(
+            model.tasks.iter().all(|t| !t.health.is_degraded()),
+            "no task referenced it"
+        );
+        assert_eq!(model.unmapped_files.len(), 1);
+        assert_eq!(
+            unmapped(&model, "doc-9 - orphan.md").unwrap().kind,
+            ManagedFileKind::Document
+        );
+    }
+
+    #[test]
+    fn a_reference_to_an_unmapped_file_still_dangles() {
+        // The referencing side cannot tell "absent" from "unmappable" — that distinction lives
+        // in the 一覧 for the referenced kind (doc-4 §5, decision-24). Both facts are recorded.
+        let mut text = task_file("TASK-1", "To Do");
+        text = text.replace("labels: []\n", "labels: []\ndocumentation: [doc-9]\n");
+        let source = MemorySource::new()
+            .file(ScanDir::Tasks, "task-1 - a.md", &text)
+            .file(
+                ScanDir::Docs,
+                "doc-9 - orphan.md",
+                "---\ntitle: no id here\n---\nbody\n",
+            );
+
+        let model = read(&source);
+        let task = model.task("TASK-1").unwrap();
+        assert!(events(task).contains(&DegradeEvent::DanglingReference {
+            kind: ReferenceKind::Documentation,
+            target: "doc-9".to_string(),
+        }));
+        assert_eq!(model.unmapped_files.len(), 1);
     }
 
     #[test]
@@ -1126,7 +1482,7 @@ updated_date: '2026-07-22 12:25'\n\
         );
         let model = read(&source);
         let task = only_task(&model);
-        assert_eq!(task.health, TaskHealth::Ok);
+        assert_eq!(task.health, FileHealth::Ok);
         assert!(task.acceptance_criteria.is_empty());
         assert!(task.implementation_plan.is_none());
         assert!(task.milestone.is_none());
@@ -1604,7 +1960,7 @@ updated_date: '2026-07-22 12:25'\n\
         assert_eq!(from_memory.config, from_disk.config);
         // Everything except the source path — which is the one thing a scan source may differ
         // on — must match, including scan order and storage state.
-        let facts = |m: &ProjectModel| -> Vec<(Option<String>, Option<StorageState>, TaskHealth)> {
+        let facts = |m: &ProjectModel| -> Vec<(Option<String>, Option<StorageState>, FileHealth)> {
             m.tasks
                 .iter()
                 .map(|t| (t.id.clone(), t.storage_state, t.health.clone()))

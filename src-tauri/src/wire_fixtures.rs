@@ -25,8 +25,8 @@ use crate::commands::{
     ProjectSnapshot, RegisterResponse, ReloadEvent, TaskHistory, TaskView, UpdateResult,
 };
 use crate::domain::{
-    AcceptanceCriterion, Config, Decision, DegradeEvent, Document, Milestone, ReferenceKind,
-    RequiredField, StorageState, Task, TaskHealth, UnknownSection,
+    AcceptanceCriterion, Config, Decision, DegradeEvent, Document, FileHealth, ManagedFileKind,
+    Milestone, ReferenceKind, RequiredField, StorageState, Task, UnknownSection, UnmappedFile,
 };
 use crate::editor::{
     ConfiguredEditor, EditorCommand, EditorLaunch, EditorReadiness, EditorSource, LaunchMethod,
@@ -127,7 +127,7 @@ fn task() -> Task {
             name: "REVIEW".to_string(),
             body: "Kept rather than dropped.".to_string(),
         }],
-        health: TaskHealth::Degraded {
+        health: FileHealth::Degraded {
             events: vec![DegradeEvent::DanglingReference {
                 kind: ReferenceKind::Documentation,
                 target: "doc-99".to_string(),
@@ -161,7 +161,7 @@ fn degraded_task() -> Task {
         implementation_plan: None,
         implementation_notes: None,
         unknown_sections: Vec::new(),
-        health: TaskHealth::Degraded {
+        health: FileHealth::Degraded {
             events: vec![DegradeEvent::Unparseable {
                 missing_required: vec![RequiredField::Id, RequiredField::Title],
                 detail: Some("mapping values are not allowed in this context".to_string()),
@@ -210,6 +210,7 @@ fn snapshot() -> ProjectSnapshot {
             id: "m-1".to_string(),
             title: "Phase one".to_string(),
             description: Some("The first phase.".to_string()),
+            health: FileHealth::Ok,
         }],
         documents: vec![Document {
             source_path: PathBuf::from("/repos/atlas/backlog/docs/doc-7 - screen.md"),
@@ -220,13 +221,29 @@ fn snapshot() -> ProjectSnapshot {
             created_date: Some("2026-07-01 10:00".to_string()),
             updated_date: Some("2026-07-20 11:00".to_string()),
             body: Some("The screen.".to_string()),
+            // Degraded on purpose: a document keeps its id/title/body when only an optional
+            // field is out of range (AC #3), and this is the sample that carries a non-task
+            // `FileHealth::Degraded` across the wire.
+            health: FileHealth::Degraded {
+                events: vec![DegradeEvent::UnexpectedSchema {
+                    detail: "frontmatter `tags` is not a list".to_string(),
+                }],
+            },
         }],
         decisions: vec![Decision {
+            source_path: PathBuf::from("/repos/atlas/backlog/decisions/decision-12 - colours.md"),
             id: "decision-12".to_string(),
             title: "Colour tokens".to_string(),
             status: Some("accepted".to_string()),
             date: Some("2026-07-10".to_string()),
             body: Some("The tokens.".to_string()),
+            health: FileHealth::Ok,
+        }],
+        unmapped_files: vec![UnmappedFile {
+            source_path: PathBuf::from("/repos/atlas/backlog/docs/doc-9 - broken.md"),
+            kind: ManagedFileKind::Document,
+            missing_required: vec![RequiredField::Id, RequiredField::Title],
+            detail: Some("no closing frontmatter fence".to_string()),
         }],
         create_status_candidates: crate::interpret::status::create_status_candidates(
             &config(),
@@ -655,6 +672,20 @@ fn every_status_declaration() -> Vec<StatusDeclaration> {
     all
 }
 
+fn every_managed_file_kind() -> Vec<ManagedFileKind> {
+    let all = vec![
+        ManagedFileKind::Milestone,
+        ManagedFileKind::Document,
+        ManagedFileKind::Decision,
+    ];
+    for value in &all {
+        match value {
+            ManagedFileKind::Milestone | ManagedFileKind::Document | ManagedFileKind::Decision => {}
+        }
+    }
+    all
+}
+
 fn every_reference_kind() -> Vec<ReferenceKind> {
     let all = vec![
         ReferenceKind::Milestone,
@@ -759,11 +790,11 @@ fn every_detail_placement() -> Vec<DetailPlacement> {
     all
 }
 
-fn every_task_health() -> Vec<TaskHealth> {
-    let all = vec![TaskHealth::Ok, TaskHealth::Degraded { events: Vec::new() }];
+fn every_file_health() -> Vec<FileHealth> {
+    let all = vec![FileHealth::Ok, FileHealth::Degraded { events: Vec::new() }];
     for value in &all {
         match value {
-            TaskHealth::Ok | TaskHealth::Degraded { .. } => {}
+            FileHealth::Ok | FileHealth::Degraded { .. } => {}
         }
     }
     all
@@ -1086,6 +1117,7 @@ fn every_union_token_is_recorded() {
     );
     tokens.insert("ReferenceKind", unit_tokens(&every_reference_kind()));
     tokens.insert("RequiredField", unit_tokens(&every_required_field()));
+    tokens.insert("ManagedFileKind", unit_tokens(&every_managed_file_kind()));
     tokens.insert("RemoteHostKind", unit_tokens(&every_remote_host_kind()));
     tokens.insert("LookupFailure", unit_tokens(&every_lookup_failure()));
     tokens.insert("LaunchMethod", unit_tokens(&every_launch_method()));
@@ -1093,7 +1125,7 @@ fn every_union_token_is_recorded() {
     tokens.insert("CardDensity", unit_tokens(&every_card_density()));
     tokens.insert("DetailPlacement", unit_tokens(&every_detail_placement()));
 
-    tokens.insert("TaskHealth", tag_tokens(&every_task_health(), "state"));
+    tokens.insert("FileHealth", tag_tokens(&every_file_health(), "state"));
     tokens.insert("DegradeEvent", tag_tokens(&every_degrade_event(), "event"));
     tokens.insert("ProjectLoad", tag_tokens(&every_project_load(), "state"));
     tokens.insert("CommitSearch", tag_tokens(&every_commit_search(), "state"));

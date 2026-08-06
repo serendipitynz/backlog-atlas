@@ -36,10 +36,14 @@ export type DegradeEvent =
   | { event: "unexpectedSchema"; detail: string }
   | { event: "danglingReference"; kind: ReferenceKind; target: string };
 
-/** Per-task parse health (doc-4 §5). `degraded` is one source of the 不整合印 the card shows
+/** Per-file parse health (doc-4 §5). `degraded` is one source of the 不整合印 the card shows
  *  (doc-7 §3, decision-22). The token stays 縮退-flavoured on purpose: it names what the read layer
- *  recorded, not the state the screen bundles it into. */
-export type TaskHealth = { state: "ok" } | { state: "degraded"; events: DegradeEvent[] };
+ *  recorded, not the state the screen bundles it into.
+ *
+ *  Named for a management file since decision-24 widened 不整合's object from タスク 1 件 to
+ *  管理ファイル 1 件: `Task`, `Milestone`, `Document` and `Decision` each carry one. Only the type
+ *  name moved — the tokens are as decision-22 left them. */
+export type FileHealth = { state: "ok" } | { state: "degraded"; events: DegradeEvent[] };
 
 export interface AcceptanceCriterion {
   number: number;
@@ -86,7 +90,7 @@ export interface Task {
   implementationPlan: string | null;
   implementationNotes: string | null;
   unknownSections: UnknownSection[];
-  health: TaskHealth;
+  health: FileHealth;
 }
 
 export interface Config {
@@ -106,6 +110,8 @@ export interface Milestone {
   id: string;
   title: string;
   description: string | null;
+  /** 想定外スキーマ met while mapping this milestone (doc-4 §5, decision-24). */
+  health: FileHealth;
 }
 
 export interface Document {
@@ -117,14 +123,41 @@ export interface Document {
   createdDate: string | null;
   updatedDate: string | null;
   body: string | null;
+  /** 想定外スキーマ met while mapping this document's optional fields (doc-4 §5, decision-24).
+   *  `id`, `title` and `body` are what the file said; only the out-of-range field is unset. */
+  health: FileHealth;
 }
 
 export interface Decision {
+  /** Added with TASK-88: naming which decision file is 不整合 needs it. */
+  sourcePath: string;
   id: string;
   title: string;
   status: string | null;
   date: string | null;
   body: string | null;
+  health: FileHealth;
+}
+
+/** Which non-task management file an `UnmappedFile` came from (doc-4 §3.2). Tasks are absent by
+ *  construction — a task that loses a required field is still a `Task` (doc-4 §5). */
+export type ManagedFileKind = "milestone" | "document" | "decision";
+
+/**
+ * 写せなかったファイル (doc-4 §1, decision-24): a `milestones/`, `docs/` or `decisions/` file
+ * 解析不能 kept out of its collection entirely, reduced to where it is, what it was meant to be,
+ * and why it did not read.
+ *
+ * The fields are `DegradeEvent`'s `unparseable` payload without the tag: 解析不能 is the only
+ * event that can produce one, since a file that got as far as 想定外スキーマ has an id and is in
+ * its collection instead.
+ */
+export interface UnmappedFile {
+  sourcePath: string;
+  kind: ManagedFileKind;
+  /** `status` never appears — doc-4 §3.2 makes `id`/`title` the required set for these kinds. */
+  missingRequired: RequiredField[];
+  detail: string | null;
 }
 
 // --- interpretation (TASK-29, decision-4 / decision-5) -------------------------------------
@@ -182,6 +215,9 @@ export interface ProjectSnapshot {
   milestones: Milestone[];
   documents: Document[];
   decisions: Decision[];
+  /** 写せなかったファイル across all three non-task kinds, in scan order (decision-24). Each 区画
+   *  filters it to its own kind and draws it below its cards (doc-10 §5/§6). */
+  unmappedFiles: UnmappedFile[];
   /** 列の作成時 status 候補, one entry per canonical column (doc-7 §4.1). */
   createStatusCandidates: ColumnCreateStatuses[];
 }

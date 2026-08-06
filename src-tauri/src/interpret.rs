@@ -68,7 +68,7 @@ pub fn interpret_task(
 mod tests {
     use super::status::{StatusColumn, StatusDeclaration};
     use super::*;
-    use crate::domain::{DegradeEvent, RequiredField, StorageState, TaskHealth};
+    use crate::domain::{DegradeEvent, FileHealth, RequiredField, StorageState};
     use std::path::PathBuf;
 
     fn config() -> Config {
@@ -110,7 +110,7 @@ mod tests {
             implementation_plan: None,
             implementation_notes: None,
             unknown_sections: vec![],
-            health: TaskHealth::Ok,
+            health: FileHealth::Ok,
         }
     }
 
@@ -152,7 +152,7 @@ mod tests {
     fn task_without_status_has_no_mapping() {
         let mut t = task(None, &[], &[]);
         t.id = None;
-        t.health = TaskHealth::Degraded {
+        t.health = FileHealth::Degraded {
             events: vec![DegradeEvent::Unparseable {
                 missing_required: vec![RequiredField::Status],
                 detail: None,

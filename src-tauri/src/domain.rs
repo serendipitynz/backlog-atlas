@@ -7,7 +7,7 @@
 //!
 //! 1. "判別できた事実" and "未確定・不足の明示" live side by side, so nothing is dropped and
 //!    a task can always be pushed to 縮退表示 (§5). That is why a [`Task`]'s required
-//!    identity fields are optional and every task carries [`TaskHealth`]: a file that failed
+//!    identity fields are optional and every task carries [`FileHealth`]: a file that failed
 //!    required-field parsing is still represented, with the gap named explicitly rather than
 //!    discarded.
 //! 2. Facets Backlog stores mixed together are split at the type level so the UI can never
@@ -70,6 +70,10 @@ pub struct Milestone {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
+    /// 想定外スキーマ found while mapping this milestone's optional fields (doc-4 §5,
+    /// decision-24). A milestone whose required fields failed is not here at all — it is an
+    /// [`UnmappedFile`].
+    pub health: FileHealth,
 }
 
 /// A document (`docs/doc-N`) — the resolution target of a task's documentation reference
@@ -91,6 +95,10 @@ pub struct Document {
     pub created_date: Option<String>,
     pub updated_date: Option<String>,
     pub body: Option<String>,
+    /// 想定外スキーマ found while mapping this document's optional fields (doc-4 §5,
+    /// decision-24) — a `type` written as a list, say. `id`, `title` and `body` are kept as
+    /// read; only the out-of-range field is left unset (AC #3).
+    pub health: FileHealth,
 }
 
 /// An architecture decision record (`decisions/decision-N`). doc-4 §2 has the read layer scan
@@ -99,13 +107,22 @@ pub struct Document {
 /// folded into [`Document`]: they carry `status`/`date` instead of `type`/`tags`, and mixing
 /// them would let `decision-N` answer a documentation lookup that can only mean `doc-N`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Decision {
+    /// Source file path, the same facet the other three kinds carry. Added by TASK-88: naming
+    /// which file is 不整合 needs it, and the read layer has no other handle on a decision file
+    /// (there is no `decision update` to give it a second use — v1.48.0 has `create` only).
+    pub source_path: PathBuf,
     pub id: String,
     pub title: String,
     /// frontmatter `status`, e.g. `accepted` / `proposed`. Unrelated to a task's status.
     pub status: Option<String>,
     pub date: Option<String>,
     pub body: Option<String>,
+    /// 想定外スキーマ found while mapping this decision's optional fields (doc-4 §5,
+    /// decision-24). No screen reads it yet — プロジェクト詳細 has no decisions 区画 until
+    /// TASK-118 — but the read layer records all three kinds alike (doc-10 §9).
+    pub health: FileHealth,
 }
 
 /// A body fragment under a `SECTION:NAME` this layer does not know. doc-4 §4 requires such a
@@ -176,22 +193,65 @@ pub enum DegradeEvent {
     DanglingReference { kind: ReferenceKind, target: String },
 }
 
-/// Per-task parse health (doc-4 §5, AC #4). `Degraded` carries the events that explain what is
-/// missing or out of range, so the UI can switch that one task to 縮退表示 on this evidence.
+/// Per-file parse health (doc-4 §5, AC #4). `Degraded` carries the events that explain what is
+/// missing or out of range, so the UI can switch that one file to 不整合表示 on this evidence.
+///
+/// Named for a management file rather than a task because decision-24 widened 不整合's object
+/// from タスク 1 件 to 管理ファイル 1 件: [`Task`], [`Milestone`], [`Document`] and [`Decision`]
+/// all carry one. Only the Rust type name moved — `Degraded`, [`DegradeEvent`] and the wire
+/// tokens stay as decision-22 left them, because what that decision froze was the word 縮退,
+/// not the `Task` prefix.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
-pub enum TaskHealth {
+pub enum FileHealth {
     /// Fully parsed, nothing degraded.
     Ok,
     /// One or more degradation events (§5); `events` is non-empty by construction.
     Degraded { events: Vec<DegradeEvent> },
 }
 
-impl TaskHealth {
-    /// True when this task must be shown in 縮退表示.
+impl FileHealth {
+    /// True when this file must be shown in 不整合表示.
     pub fn is_degraded(&self) -> bool {
-        matches!(self, TaskHealth::Degraded { .. })
+        matches!(self, FileHealth::Degraded { .. })
     }
+}
+
+/// Which non-task management file a [`UnmappedFile`] came from (doc-4 §3.2). Tasks are absent
+/// by construction: a task that fails required-field parsing is still kept as a [`Task`], so it
+/// never becomes 写せなかったファイル (doc-4 §5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ManagedFileKind {
+    Milestone,
+    Document,
+    Decision,
+}
+
+/// 写せなかったファイル (doc-4 §1, decision-24): a `milestones/`, `docs/` or `decisions/` file
+/// that 解析不能 kept out of its collection entirely, reduced to where it is, what it was meant
+/// to be, and why it did not read.
+///
+/// The three non-task kinds cannot do what [`Task`] does with a failed required field — keep the
+/// value with `id: None` — because an id-less entry can be neither ordered in a list nor named
+/// as the target of a `doc update`. So the failure lands here instead of vanishing, which is the
+/// whole of TASK-88.
+///
+/// The fields *are* [`DegradeEvent::Unparseable`]'s payload, held without the event tag: 解析不能
+/// is the only event that can produce this record, since a file that got as far as 想定外スキーマ
+/// has an id and is in its collection instead. Carrying the tag would imply the other two
+/// variants can appear here, and they cannot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnmappedFile {
+    pub source_path: PathBuf,
+    pub kind: ManagedFileKind,
+    /// Which of the two required identity fields were absent. `status` never appears — doc-4
+    /// §3.2 makes `id`/`title` the required set for these three kinds.
+    pub missing_required: Vec<RequiredField>,
+    /// The read or YAML error, when the failure was one. `None` when the file parsed but the
+    /// required fields were the gap, matching [`DegradeEvent::Unparseable`]'s own convention.
+    pub detail: Option<String>,
 }
 
 /// One task mirrored from a Backlog root (doc-4 §3.1). Holds discernible facts and explicit
@@ -261,7 +321,7 @@ pub struct Task {
     /// Bodies of SECTION names outside the known set, kept rather than dropped (§4).
     pub unknown_sections: Vec<UnknownSection>,
     /// Parse health and, when degraded, the missing/out-of-range account (§5, AC #4).
-    pub health: TaskHealth,
+    pub health: FileHealth,
 }
 
 /// One project (one Backlog root) fully mirrored: its config plus tasks, milestones and
@@ -269,6 +329,7 @@ pub struct Task {
 /// only within a project; cross-project reference goes through the ledger's cross-task-id, not
 /// this type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectModel {
     /// The owning project's ledger slug (matches each [`Task::project`]).
     pub slug: String,
@@ -277,6 +338,11 @@ pub struct ProjectModel {
     pub milestones: Vec<Milestone>,
     pub documents: Vec<Document>,
     pub decisions: Vec<Decision>,
+    /// 写せなかったファイル across all three non-task kinds, in scan order (decision-24). Held
+    /// as one list rather than one per collection because the kind is already on the record and
+    /// each screen filters to its own — splitting it would make the three lists disagree about
+    /// what counts as a failure.
+    pub unmapped_files: Vec<UnmappedFile>,
 }
 
 impl ProjectModel {
@@ -322,7 +388,7 @@ mod tests {
         }
     }
 
-    fn task(id: Option<&str>, storage_state: Option<StorageState>, health: TaskHealth) -> Task {
+    fn task(id: Option<&str>, storage_state: Option<StorageState>, health: FileHealth) -> Task {
         Task {
             source_path: PathBuf::from(format!("tasks/{}.md", id.unwrap_or("unparseable"))),
             project: "atlas".into(),
@@ -362,6 +428,7 @@ mod tests {
             milestones,
             documents,
             decisions: vec![],
+            unmapped_files: vec![],
         }
     }
 
@@ -372,13 +439,14 @@ mod tests {
             vec![task(
                 Some("TASK-1"),
                 Some(StorageState::Active),
-                TaskHealth::Ok,
+                FileHealth::Ok,
             )],
             vec![Milestone {
                 source_path: PathBuf::from("milestones/m-1.md"),
                 id: "m-1".into(),
                 title: "impl".into(),
                 description: None,
+                health: FileHealth::Ok,
             }],
             vec![Document {
                 source_path: PathBuf::from("docs/doc-4.md"),
@@ -389,6 +457,7 @@ mod tests {
                 created_date: None,
                 updated_date: None,
                 body: None,
+                health: FileHealth::Ok,
             }],
         );
 
@@ -406,7 +475,7 @@ mod tests {
     // project's documents, and an absent target is the input for a 参照欠損 degradation.
     #[test]
     fn task_documentation_references_resolve_or_dangle() {
-        let mut t = task(Some("TASK-1"), Some(StorageState::Active), TaskHealth::Ok);
+        let mut t = task(Some("TASK-1"), Some(StorageState::Active), FileHealth::Ok);
         t.documentation = vec!["doc-2".into(), "doc-404".into()];
         let m = model(
             vec![t],
@@ -420,6 +489,7 @@ mod tests {
                 created_date: None,
                 updated_date: None,
                 body: None,
+                health: FileHealth::Ok,
             }],
         );
 
@@ -445,14 +515,14 @@ mod tests {
     // stays Active; a To Do task in completed/ is Completed.
     #[test]
     fn storage_state_is_independent_of_status() {
-        let mut done_in_tasks = task(Some("TASK-1"), Some(StorageState::Active), TaskHealth::Ok);
+        let mut done_in_tasks = task(Some("TASK-1"), Some(StorageState::Active), FileHealth::Ok);
         done_in_tasks.status = Some("Done".into());
         assert_eq!(done_in_tasks.storage_state, Some(StorageState::Active));
 
         let mut todo_in_completed = task(
             Some("TASK-2"),
             Some(StorageState::Completed),
-            TaskHealth::Ok,
+            FileHealth::Ok,
         );
         todo_in_completed.status = Some("To Do".into());
         assert_eq!(
@@ -464,7 +534,7 @@ mod tests {
     // AC #2: project comes from the scan root, not frontmatter.
     #[test]
     fn task_carries_project_and_storage_state() {
-        let t = task(Some("DRAFT-1"), Some(StorageState::Draft), TaskHealth::Ok);
+        let t = task(Some("DRAFT-1"), Some(StorageState::Draft), FileHealth::Ok);
         assert_eq!(t.project, "atlas");
         assert_eq!(t.storage_state, Some(StorageState::Draft));
     }
@@ -477,7 +547,7 @@ mod tests {
         let t = task(
             Some("TASK-9"),
             None,
-            TaskHealth::Degraded {
+            FileHealth::Degraded {
                 events: vec![DegradeEvent::UnexpectedSchema {
                     detail: "task file outside known scan locations".into(),
                 }],
@@ -494,7 +564,7 @@ mod tests {
     // AC #3: kind-derived Type and normal labels are separate fields; raw labels never mix.
     #[test]
     fn type_and_normal_labels_are_separated() {
-        let mut t = task(Some("TASK-1"), Some(StorageState::Active), TaskHealth::Ok);
+        let mut t = task(Some("TASK-1"), Some(StorageState::Active), FileHealth::Ok);
         t.type_candidates = vec!["feature".into()];
         t.labels = vec!["ui".into(), "backend".into()];
         assert_eq!(t.type_candidates, vec!["feature".to_string()]);
@@ -504,7 +574,7 @@ mod tests {
     // AC #4: AC items keep number / text / checked in order.
     #[test]
     fn acceptance_criteria_keep_number_text_checked() {
-        let mut t = task(Some("TASK-1"), Some(StorageState::Active), TaskHealth::Ok);
+        let mut t = task(Some("TASK-1"), Some(StorageState::Active), FileHealth::Ok);
         t.acceptance_criteria = vec![
             AcceptanceCriterion {
                 number: 1,
@@ -530,7 +600,7 @@ mod tests {
         let t = task(
             None,
             Some(StorageState::Active),
-            TaskHealth::Degraded {
+            FileHealth::Degraded {
                 events: vec![DegradeEvent::Unparseable {
                     missing_required: vec![RequiredField::Id, RequiredField::Status],
                     detail: None,
@@ -549,7 +619,7 @@ mod tests {
     // the doc's lowercase tokens.
     #[test]
     fn serializes_with_doc_field_names() {
-        let t = task(Some("TASK-1"), Some(StorageState::Active), TaskHealth::Ok);
+        let t = task(Some("TASK-1"), Some(StorageState::Active), FileHealth::Ok);
         let mut t = t;
         t.type_candidates = vec!["feature".into()];
         let json = serde_json::to_value(&t).unwrap();
@@ -566,7 +636,7 @@ mod tests {
 
     #[test]
     fn degraded_event_serializes_with_tag() {
-        let health = TaskHealth::Degraded {
+        let health = FileHealth::Degraded {
             events: vec![DegradeEvent::DanglingReference {
                 kind: ReferenceKind::Milestone,
                 target: "m-9".into(),

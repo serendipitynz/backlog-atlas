@@ -54,6 +54,10 @@
     "timedOut",
     "write"
   ],
+  "FileHealth": [
+    "ok",
+    "degraded"
+  ],
   "LaunchMethod": [
     "configured",
     "association"
@@ -73,6 +77,11 @@
     "invalidReference",
     "queryFailed",
     "timedOut"
+  ],
+  "ManagedFileKind": [
+    "milestone",
+    "document",
+    "decision"
   ],
   "ProjectLoad": [
     "loaded",
@@ -126,10 +135,6 @@
     "draft",
     "completed",
     "archive"
-  ],
-  "TaskHealth": [
-    "ok",
-    "degraded"
   ],
   "UpdateOutcome": [
     "succeeded",

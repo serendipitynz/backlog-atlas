@@ -19,7 +19,7 @@ import type {
   StatusMapping,
   StorageState,
   Task,
-  TaskHealth,
+  FileHealth,
   TaskHistory,
   TaskView,
   TypeValue,
@@ -49,7 +49,7 @@ export interface TaskViewOptions {
   labels?: string[];
   types?: TypeValue[];
   assignee?: string[];
-  health?: TaskHealth;
+  health?: FileHealth;
   sourcePath?: string;
   /** Extracted PR URLs — the interpretation's view of `references` (doc-6 §4, doc-8 §4). */
   pullRequests?: PullRequestRef[];
@@ -142,6 +142,7 @@ export function snapshot(
     milestones,
     documents: [],
     decisions: [],
+    unmappedFiles: [],
     createStatusCandidates,
   };
 }

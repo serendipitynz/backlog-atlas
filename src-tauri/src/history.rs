@@ -101,7 +101,7 @@ pub struct PrRelation {
 }
 
 /// What became of one PR during relation resolution (doc-6 §6). Serialized with a `state` tag,
-/// mirroring [`crate::domain::TaskHealth`], so the frontend switches on one field.
+/// mirroring [`crate::domain::FileHealth`], so the frontend switches on one field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum RelationOutcome {
