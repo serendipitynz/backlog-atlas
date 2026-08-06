@@ -75,6 +75,7 @@ function document(overrides: Partial<Document> = {}): Document {
     createdDate: "2026-07-21 10:05",
     updatedDate: null,
     body: "# 読み取り層 設計\n\n本文。\n",
+    health: { state: "ok" },
     ...overrides,
   };
 }
@@ -346,6 +347,7 @@ const MILESTONE: Milestone = {
   id: "m-1",
   title: "Phase One",
   description: null,
+  health: { state: "ok" },
 };
 
 describe("参照タスク集合 (doc-9 §4.2.2)", () => {

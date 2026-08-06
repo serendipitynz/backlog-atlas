@@ -1283,7 +1283,7 @@ pub fn milestone_text_with_description(
     text: &str,
     description: &str,
 ) -> Result<String, WriteFailure> {
-    let Some((_, body)) = crate::read::parse::split_frontmatter(text) else {
+    let Ok((_, body)) = crate::read::parse::split_frontmatter(text) else {
         return Err(WriteFailure {
             detail: "the milestone file does not open with a frontmatter block".to_string(),
         });

@@ -15,7 +15,7 @@ import {
 } from "./detail";
 import { CANONICAL_COLUMN_LABEL } from "./swimlane";
 import { commit, entry, history, pullRequest, relation, snapshot, taskView } from "./fixtures";
-import type { LookupFailure, TaskHistory } from "./wire";
+import type { LookupFailure, Milestone, TaskHistory } from "./wire";
 
 const PR_URL = "https://github.com/serendipitynz/backlog-atlas/pull/10";
 const DOC_URL = "https://example.com/spec";
@@ -33,12 +33,13 @@ describe("AC #1 heading: 横断タスクID・status の正準対応・milestone"
 
   it("resolves the milestone id to its title, and marks one that resolves to nothing", () => {
     const view = taskView({ milestone: "m-1" });
-    const milestones = [
+    const milestones: Milestone[] = [
       {
         sourcePath: "/repos/atlas/backlog/milestones/m-1 - read.md",
         id: "m-1",
         title: "m-1 読み取りと表示",
         description: null,
+        health: { state: "ok" },
       },
     ];
     expect(milestoneRef(view, milestones)).toEqual({ id: "m-1", title: "m-1 読み取りと表示" });

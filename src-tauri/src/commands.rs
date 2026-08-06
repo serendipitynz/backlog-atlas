@@ -62,7 +62,7 @@
 //! ([`CommandError::UncheckableTarget`], "we have no way to check whether the version diverged")
 //! from 更新前競合 ([`UpdateResult::Conflict`], "we checked and it did diverge").
 
-use crate::domain::{Config, Decision, Document, Milestone, ProjectModel, Task};
+use crate::domain::{Config, Decision, Document, Milestone, ProjectModel, Task, UnmappedFile};
 use crate::editor::{
     self, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod,
     Launcher, SystemEnv, SystemLauncher,
@@ -122,6 +122,11 @@ pub struct ProjectSnapshot {
     pub milestones: Vec<Milestone>,
     pub documents: Vec<Document>,
     pub decisions: Vec<Decision>,
+    /// 写せなかったファイル (decision-24) — the `milestones/`, `docs/` and `decisions/` files the
+    /// read layer could not assemble at all. Carried beside the three collections rather than
+    /// inside them because these have no id to be listed or selected by; each 区画 filters this
+    /// list to its own kind and draws it below its cards (doc-10 §5/§6).
+    pub unmapped_files: Vec<UnmappedFile>,
     /// 列の作成時 status 候補 (doc-7 §4.1) — which of this project's declared statuses the 列内新規
     /// タスク入力 may pass for each canonical column. Sent with the snapshot rather than derived on
     /// the frontend because its inputs are exactly the pair this constructor already holds
@@ -151,6 +156,7 @@ impl ProjectSnapshot {
             milestones: model.milestones.clone(),
             documents: model.documents.clone(),
             decisions: model.decisions.clone(),
+            unmapped_files: model.unmapped_files.clone(),
         }
     }
 }

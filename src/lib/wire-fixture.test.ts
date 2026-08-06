@@ -43,6 +43,7 @@ import type {
   Ledger,
   LedgerResponse,
   LoadedSettings,
+  ManagedFileKind,
   Milestone,
   ProjectEntry,
   ProjectLoad,
@@ -63,13 +64,14 @@ import type {
   RemoteHost,
   RemoteHostKind,
   RequiredField,
+  UnmappedFile,
   SettingsStatus,
   StatusColumn,
   StatusDeclaration,
   StatusMapping,
   StorageSelection,
   StorageState,
-  TaskHealth,
+  FileHealth,
   UpdateOutcome,
   Task,
   TaskHistory,
@@ -267,6 +269,11 @@ const LAUNCH_METHODS = unionValues<LaunchMethod>()("configured", "association");
 const EDITOR_SOURCES = unionValues<EditorSource>()("appSettings", "visual", "editor");
 const CARD_DENSITIES = unionValues<CardDensity>()("s", "m", "l");
 const DETAIL_PLACEMENTS = unionValues<DetailPlacement>()("sidebar", "modal", "full");
+const MANAGED_FILE_KINDS = unionValues<ManagedFileKind>()(
+  "milestone",
+  "document",
+  "decision",
+);
 const LOOKUP_FAILURES = unionValues<LookupFailure>()(
   "toolMissing",
   "invalidReference",
@@ -276,7 +283,7 @@ const LOOKUP_FAILURES = unionValues<LookupFailure>()(
 
 // The variant tags. A tag is the field every consumer switches on, so a moved one is the change that
 // silently sends a payload down the wrong branch — `wire.ts`'s unions are what these are locked to.
-const HEALTH_STATES = unionValues<TaskHealth["state"]>()("ok", "degraded");
+const HEALTH_STATES = unionValues<FileHealth["state"]>()("ok", "degraded");
 const DEGRADE_EVENTS = unionValues<DegradeEvent["event"]>()(
   "unparseable",
   "unexpectedSchema",
@@ -408,6 +415,7 @@ const SNAPSHOT_EXEMPLAR: ProjectSnapshot = {
       id: "m-1",
       title: "Phase one",
       description: "The first phase.",
+      health: { state: "ok" },
     },
   ],
   documents: [
@@ -420,15 +428,31 @@ const SNAPSHOT_EXEMPLAR: ProjectSnapshot = {
       createdDate: "2026-07-01 10:00",
       updatedDate: "2026-07-20 11:00",
       body: "The screen.",
+      // Degraded on purpose: this is the recording that carries a non-task `FileHealth`
+      // (decision-24). A document keeps id/title/body when only an optional field is out of range.
+      health: {
+        state: "degraded",
+        events: [{ event: "unexpectedSchema", detail: "frontmatter `tags` is not a list" }],
+      },
     },
   ],
   decisions: [
     {
+      sourcePath: "/repos/atlas/backlog/decisions/decision-12 - colours.md",
       id: "decision-12",
       title: "Colour tokens",
       status: "accepted",
       date: "2026-07-10",
       body: "The tokens.",
+      health: { state: "ok" },
+    },
+  ],
+  unmappedFiles: [
+    {
+      sourcePath: "/repos/atlas/backlog/docs/doc-9 - broken.md",
+      kind: "document",
+      missingRequired: ["id", "title"],
+      detail: "no closing frontmatter fence",
     },
   ],
   createStatusCandidates: [{ column: "toDo", statuses: ["To Do"] }],
@@ -528,6 +552,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
         "milestones",
         "documents",
         "decisions",
+        "unmappedFiles",
         "createStatusCandidates",
       ),
     );
@@ -599,7 +624,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
   it("Milestone と Document と Decision", () => {
     const snapshot = snapshotOf(LOADED);
     expect(keysOf(snapshot.milestones[0])).toEqual(
-      keysOfType<Milestone>()("sourcePath", "id", "title", "description"),
+      keysOfType<Milestone>()("sourcePath", "id", "title", "description", "health"),
     );
     expect(keysOf(snapshot.documents[0])).toEqual(
       keysOfType<Document>()(
@@ -611,13 +636,23 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
         "createdDate",
         "updatedDate",
         "body",
+        "health",
       ),
     );
     // decision-4 keeps decisions out of `Document`: they carry `status`/`date` instead of
-    // `type`/`tags`, and no `sourcePath` — which is exactly the kind of difference a shared key list
-    // would paper over.
+    // `type`/`tags` — which is exactly the kind of difference a shared key list would paper over.
+    // `sourcePath` and `health` are the two TASK-88 gave all three kinds alike (decision-24).
     expect(keysOf(snapshot.decisions[0])).toEqual(
-      keysOfType<Decision>()("id", "title", "status", "date", "body"),
+      keysOfType<Decision>()("sourcePath", "id", "title", "status", "date", "body", "health"),
+    );
+  });
+
+  it("UnmappedFile — 写せなかったファイルは所在・種別・理由を運ぶ", () => {
+    const snapshot = snapshotOf(LOADED);
+    // AC #1: source path, kind and the reason it did not read. `event` is absent by design —
+    // 解析不能 is the only event that produces one (decision-24).
+    expect(keysOf(snapshot.unmappedFiles[0])).toEqual(
+      keysOfType<UnmappedFile>()("sourcePath", "kind", "missingRequired", "detail"),
     );
   });
 
@@ -845,13 +880,14 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     StatusDeclaration: STATUS_DECLARATIONS,
     ReferenceKind: REFERENCE_KINDS,
     RequiredField: REQUIRED_FIELDS,
+    ManagedFileKind: MANAGED_FILE_KINDS,
     RemoteHostKind: REMOTE_HOST_KINDS,
     LookupFailure: LOOKUP_FAILURES,
     LaunchMethod: LAUNCH_METHODS,
     EditorSource: EDITOR_SOURCES,
     CardDensity: CARD_DENSITIES,
     DetailPlacement: DETAIL_PLACEMENTS,
-    TaskHealth: HEALTH_STATES,
+    FileHealth: HEALTH_STATES,
     DegradeEvent: DEGRADE_EVENTS,
     ProjectLoad: LOAD_STATES,
     CommitSearch: COMMIT_SEARCH_STATES,

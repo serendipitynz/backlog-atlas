@@ -15,16 +15,40 @@ use serde_yaml_ng::Value;
 /// SECTION: kept as a body fragment and flagged (§4).
 const KNOWN_SECTIONS: [&str; 3] = ["DESCRIPTION", "PLAN", "NOTES"];
 
-/// Split a leading `---` … `---` frontmatter block from the body. Returns `None` when the file
-/// does not open with a frontmatter fence or the fence never closes — both are 解析不能 for a
-/// task file (doc-4 §5), so the distinction is left to the caller's message.
-pub fn split_frontmatter(text: &str) -> Option<(&str, &str)> {
+/// Why a file has no frontmatter to read. Both are 解析不能 (doc-4 §5), but they are different
+/// facts about the file and the reason a screen shows says which — a `docs/README.md` that never
+/// opened a fence is not a managed document with a broken one (TASK-88, PR #71 [P2]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoFrontmatter {
+    /// The file does not begin with `---`.
+    NotOpened,
+    /// It begins with `---` and nothing closes the block.
+    NotClosed,
+}
+
+impl NoFrontmatter {
+    /// The reason text, so the two callers that report it cannot word the same fact differently.
+    pub fn detail(self) -> &'static str {
+        match self {
+            NoFrontmatter::NotOpened => "no frontmatter block",
+            NoFrontmatter::NotClosed => "no closing frontmatter fence",
+        }
+    }
+}
+
+/// Split a leading `---` … `---` frontmatter block from the body, or say which way it was absent.
+///
+/// The distinction is decided here rather than by the caller because it is the same scan that
+/// finds it: a caller re-deciding「開いていたか」would be a second implementation of the fence
+/// rule, and the BOM handling below is exactly the sort of detail the two would drift on.
+pub fn split_frontmatter(text: &str) -> Result<(&str, &str), NoFrontmatter> {
     // A UTF-8 BOM survives some editors' round-trips and would otherwise make an entirely
     // valid file look fence-less.
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let rest = text
         .strip_prefix("---\n")
-        .or_else(|| text.strip_prefix("---\r\n"))?;
+        .or_else(|| text.strip_prefix("---\r\n"))
+        .ok_or(NoFrontmatter::NotOpened)?;
 
     let mut offset = 0;
     for line in rest.split_inclusive('\n') {
@@ -32,11 +56,11 @@ pub fn split_frontmatter(text: &str) -> Option<(&str, &str)> {
         // `...` closes a YAML document just as `---` does; accept both so a file written by a
         // stricter YAML emitter is not read as unterminated.
         if trimmed == "---" || trimmed == "..." {
-            return Some((&rest[..offset], &rest[offset + line.len()..]));
+            return Ok((&rest[..offset], &rest[offset + line.len()..]));
         }
         offset += line.len();
     }
-    None
+    Err(NoFrontmatter::NotClosed)
 }
 
 /// Parse a frontmatter block into a YAML value. The error text is carried into
@@ -501,8 +525,16 @@ mod tests {
 
     #[test]
     fn rejects_missing_or_unterminated_fence() {
-        assert!(split_frontmatter("no fence here\n").is_none());
-        assert!(split_frontmatter("---\nid: TASK-1\n").is_none());
+        // The two absences are told apart, because the reason a screen shows says which
+        // (TASK-88, PR #71 [P2]): a file that never opened a fence is not one with a broken one.
+        assert_eq!(
+            split_frontmatter("no fence here\n"),
+            Err(NoFrontmatter::NotOpened)
+        );
+        assert_eq!(
+            split_frontmatter("---\nid: TASK-1\n"),
+            Err(NoFrontmatter::NotClosed)
+        );
     }
 
     #[test]

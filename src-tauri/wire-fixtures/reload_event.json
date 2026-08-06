@@ -148,7 +148,10 @@
           "sourcePath": "/repos/atlas/backlog/milestones/m-1 - phase.md",
           "id": "m-1",
           "title": "Phase one",
-          "description": "The first phase."
+          "description": "The first phase.",
+          "health": {
+            "state": "ok"
+          }
         }
       ],
       "documents": [
@@ -162,16 +165,40 @@
           ],
           "createdDate": "2026-07-01 10:00",
           "updatedDate": "2026-07-20 11:00",
-          "body": "The screen."
+          "body": "The screen.",
+          "health": {
+            "state": "degraded",
+            "events": [
+              {
+                "event": "unexpectedSchema",
+                "detail": "frontmatter `tags` is not a list"
+              }
+            ]
+          }
         }
       ],
       "decisions": [
         {
+          "sourcePath": "/repos/atlas/backlog/decisions/decision-12 - colours.md",
           "id": "decision-12",
           "title": "Colour tokens",
           "status": "accepted",
           "date": "2026-07-10",
-          "body": "The tokens."
+          "body": "The tokens.",
+          "health": {
+            "state": "ok"
+          }
+        }
+      ],
+      "unmappedFiles": [
+        {
+          "sourcePath": "/repos/atlas/backlog/docs/doc-9 - broken.md",
+          "kind": "document",
+          "missingRequired": [
+            "id",
+            "title"
+          ],
+          "detail": "no closing frontmatter fence"
         }
       ],
       "createStatusCandidates": [
