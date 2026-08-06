@@ -1,10 +1,10 @@
 ---
 id: TASK-119
 title: 絞り込みの値を選ぶとアプリがフリーズするのを直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-06 07:56'
-updated_date: '2026-08-06 09:49'
+updated_date: '2026-08-06 10:32'
 labels:
   - ui
   - decision
