@@ -38,11 +38,11 @@
     canReorder: boolean;
     /**
      * Rows whose 継続検出 is not running (doc-9 §3). Marked on the row rather than only in a banner:
-     * the staleness is a property of *these* cards, and `undetectable` — not 版ずれ — because Atlas
+     * the staleness is a property of *these* cards, and `undetectable` — not バージョン不整合 — because Atlas
      * cannot say whether the version moved (doc-9 §5 forbids the two reading alike).
      */
     unwatched: readonly string[];
-    /** 版ずれ (doc-9) per task, from the shell's record. */
+    /** バージョン不整合 (doc-9) per task, from the shell's record. */
     conflictOf: (view: TaskView) => VersionConflict | null;
     /**
      * The row to bring into view, or `null`. Set by プロジェクト詳細画面's 「このプロジェクトのレーンへ」
@@ -429,8 +429,8 @@
         </div>
       {/if}
       {#if unwatched.includes(row.slug)}
-        <!-- 継続検出停止: the cards below are only as fresh as the last read, and 版ずれ の有無は
-             確かめられない — a distinct family from both 縮退 and 版ずれ (doc-9 §3/§5). -->
+        <!-- 継続検出停止: the cards below are only as fresh as the last read, and バージョン不整合 の有無は
+             確かめられない — a distinct family from 不整合 (doc-9 §3/§5). -->
         <span
           class="mark"
           data-kind={UNWATCHED_MARK.kind}

@@ -3,7 +3,8 @@
   // cross-project list needs to identify a task and judge its priority — dependencies, AC
   // progress and the rest stay in the task detail screen (doc-8), so the grid keeps its density.
   import { cardFields, cardIdentity } from "../lib/card";
-  import { taskMarks, type VersionConflict } from "../lib/mark";
+  import Icon from "../lib/icons/Icon.svelte";
+  import { inconsistencyLabel, inconsistencyReasons, type VersionConflict } from "../lib/mark";
   import type { CardDensity, TaskView } from "../lib/wire";
 
   interface Props {
@@ -16,9 +17,9 @@
      */
     density: CardDensity;
     /**
-     * 版ずれ (doc-9) observed for this task, or `null`. Not read off the view: the file reads fine,
-     * so a divergence is something the shell observed about a save — not a property of the task
-     * (`lib/mark.ts`).
+     * バージョン不整合 (doc-9) observed for this task, or `null`. Not read off the view: the file
+     * reads fine, so a divergence is something the shell observed about a save — not a property of
+     * the task (`lib/mark.ts`).
      */
     conflict: VersionConflict | null;
     /**
@@ -45,11 +46,10 @@
   let identity = $derived(cardIdentity(view));
   let fields = $derived(cardFields(density));
   let types = $derived(view.interpretation.types);
-  // 縮退印 and 版ずれ印 come from one derivation shared with the detail heading, so the two screens
-  // cannot disagree about which marks a task has (decision-6 三者を同じ印へ混ぜない).
-  let marks = $derived(taskMarks(view, conflict));
-  let degraded = $derived(marks.some((mark) => mark.kind === "degraded"));
-  let conflicted = $derived(marks.some((mark) => mark.kind === "versionConflict"));
+  // 不整合 (decision-22) comes from one derivation shared with the detail heading and the detail's
+  // 不整合区画, so the card, the heading and the panel cannot disagree about the same task. The card
+  // shows the ⚠️ only — 由来名も族名も出さない — and the reasons travel in the accessible name.
+  let reasons = $derived(inconsistencyReasons(view, conflict));
   // The mark distinguishes the added divisions from active, so active itself stays unmarked.
   let storageMark = $derived(
     showStorageMark && view.task.storageState !== "active"
@@ -71,14 +71,7 @@
   );
 </script>
 
-<button
-  type="button"
-  class="card"
-  class:selected
-  class:degraded
-  class:conflicted
-  onclick={() => onselect(view)}
->
+<button type="button" class="card" class:selected onclick={() => onselect(view)}>
   <span class="line">
     <span class="identity">{identity}</span>
     {#if view.task.priority}
@@ -86,14 +79,20 @@
         {view.task.priority}
       </span>
     {/if}
-    <!-- 縮退（解析起因）と版ずれ（doc-9 の競合）は別の印 (decision-6, AC #4): different chips,
-         different colours, and both can be on one card at once — a file can be degraded *and*
-         have had a save stopped by a version divergence. -->
-    {#each marks as mark (mark.kind)}
-      <span class="mark" data-kind={mark.kind} title={mark.detail} aria-label="{mark.label}: {mark.detail}">
-        {mark.label}
+    <!-- 不整合印 (decision-22): ⚠️ ひとつだけで、「縮退」「版ずれ」「バージョン不整合」のどの語も
+         カードには出さない。理由はタスク詳細の不整合区画が持ち、ここでは読み上げとホバーへ回る。
+         `<span role="img">` rather than a bare figure: `Icon.svelte` is always `aria-hidden`
+         (doc-11 §2.4), so without a named wrapper the mark would exist for the eye only. -->
+    {#if reasons.length > 0}
+      <span
+        class="inconsistent"
+        role="img"
+        aria-label={inconsistencyLabel(reasons)}
+        title={inconsistencyLabel(reasons)}
+      >
+        <Icon name="triangle-alert" />
       </span>
-    {/each}
+    {/if}
   </span>
 
   <!-- title は段ごとに 1・2・3 行で切り詰める (doc-7 §3). The count travels as a custom property so the
@@ -176,16 +175,23 @@
       outline: 2px solid var(--sel);
       outline-offset: 1px;
     }
+  }
 
-    // The edge says which one without reading the chips. Both at once puts the 版ずれ colour on
-    // the edge and leaves 縮退 to its chip: the divergence is the one with an action attached.
-    &.degraded {
-      border-left: 3px solid var(--mark-degraded);
-    }
-
-    &.conflicted {
-      border-left: 3px solid var(--mark-version-conflict);
-    }
+  // 印グリフ (decision-22): 族の色は図形そのものが持ち、チップの背景も枠も無い。カード左 3px の
+  // 族色はここで外れた — 同じ 1 つのことを図形と縁の 2 つで述べていたためで、縁は TASK-78 が
+  // priority へ渡す。`cursor: help` は 印チップ と同じ理由 (doc-11 §3): 図形は理由の全部ではない。
+  .inconsistent {
+    display: inline-flex;
+    align-items: center;
+    color: var(--mark-inconsistent);
+    // 1em はこの箱の font-size に従う (doc-11 §2.4). .8rem は隣の 横断タスクID (.72rem) と
+    // カード title (.85rem) の間で、印チップ の .65rem ではない — 語を持たない図形は、同じ高さの
+    // 文字より小さく見えるためである。アイコン専用の寸法つまみは足していない。
+    font-size: 0.8rem;
+    // `.line` は baseline 揃えで、`Icon.svelte` の SVG は `display: block` なので baseline を
+    // 持たない（行末で揃えられ、文字より下がって見える）。この 1 つだけ中央で揃える。
+    align-self: center;
+    cursor: help;
   }
 
   .line {
@@ -223,7 +229,7 @@
     gap: 0.2rem;
   }
 
-  // priority は族の色を借りない (decision-12): high の赤と medium の黄土は読取不能・縮退の族の色と
+  // priority は族の色を借りない (decision-12): high の赤と medium の黄土は読取不能・不整合の族の色と
   // 同色で、赤い priority を読取不能と読み違える経路になっていた。3 段は `--fg`／`--bg` の濃淡と
   // 枠線だけで作る (doc-11 §3). An unrecognised value keeps this base style rather than being
   // guessed into one of the three — the file's own word is still shown.
@@ -245,43 +251,6 @@
     &[data-priority="medium"] {
       border-color: var(--line-strong);
       color: var(--fg);
-    }
-  }
-
-  // 印チップ配色規則 (decision-12): 文字＝族の色、背景＝族の色 12% 混色、枠＝族の色 45% 混色。The
-  // family colour arrives as `--family` and every family sets only that, so the chip names its
-  // family and never picks a hue — 縮退 and 版ずれ cannot converge on one colour here (decision-6).
-  // The old ベタ塗り＋白文字 left the chip's own text at about 2.8:1; this rule holds every recorded
-  // theme's five families at 4.5:1 or better (`lib/theme.test.ts`).
-  .mark {
-    padding: 0 0.3rem;
-    border: 1px solid color-mix(in srgb, var(--family) 45%, transparent);
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--family) 12%, transparent);
-    color: var(--family);
-    font-size: 0.65rem;
-
-    // 印は `cursor: help` と説明を伴う (doc-11 §3): the short word on the chip is not the whole finding.
-    // Keyed on the explanation being present, as in the detail heading — inside a pressable card the
-    // help cursor is the one thing that says this chip has more to read than the card's own title.
-    &[title] {
-      cursor: help;
-    }
-
-    &[data-kind="degraded"] {
-      --family: var(--mark-degraded);
-    }
-
-    &[data-kind="versionConflict"] {
-      --family: var(--mark-version-conflict);
-    }
-
-    &[data-kind="undetectable"] {
-      --family: var(--mark-undetectable);
-    }
-
-    &[data-kind="unreadable"] {
-      --family: var(--mark-unreadable);
     }
   }
 

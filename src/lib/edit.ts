@@ -688,7 +688,7 @@ export type ApplyOutcome =
   /**
    * 照合不能 (doc-9 §4.2): no CLI ran either, but for the opposite reason — no divergence was
    * observed, there is no defined way to look for one. Split from `failed` so the panel can put it
-   * in its own family (`undetectable`, `lib/mark.ts`) instead of borrowing 版ずれ's, which doc-9 §5
+   * in its own family (`undetectable`, `lib/mark.ts`) instead of borrowing 不整合's, which doc-9 §5
    * forbids: the user must not read this as "a conflict happened".
    */
   | { state: "uncheckable"; detail: string }

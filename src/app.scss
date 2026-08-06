@@ -8,12 +8,15 @@
 @use "sass:map";
 
 // 表示テーマ 10 組 (decision-12 収録テーマ). The palettes come from 画面設計案 05 (transcribed in
-// doc-12 §6.2/§6.3), with the 4 族 + `--info` moved in lightness until every one of them clears the
-// 収録条件 — 印の文字色と 12% 混色背景の比 4.5:1 以上 — on every surface an 印 sits on.
+// doc-12 §6.2/§6.3), with the 3 族 + `--info` moved in lightness until every one of them clears the
+// 収録条件 — 印チップの文字色と 12% 混色背景の比 4.5:1 以上 — on every surface an 印 sits on. The 族 were
+// four until decision-22 bundled 縮退 and バージョン不整合 into 不整合; the values are the ones that were already
+// recorded, and none of them moved for that change. 印グリフ (decision-22) is checked against the same
+// values on a second condition — 族の色 対 それが載る面 で 3:1 以上 — because it has no mixed background.
 // `theme.test.ts` recomputes those cells from this file, so no theme can be added or edited into
 // breaking the condition unnoticed (decision-12 の費用: 検算を怠ると画面上は気付けない).
 //
-// Only lightness moves. The hue role (縮退＝黄土・版ずれ＝紫・照合不能／継続検出停止＝灰青・
+// Only lightness moves. The hue role (不整合＝黄土・照合不能／継続検出停止＝灰青・
 // 読取不能＝赤・通知＝青) is what tells the families apart alongside the chip's wording
 // (decision-6), so it is fixed across all ten; chroma is kept as drawn and only trimmed where the
 // darker or lighter value left the sRGB gamut. That is why the borrowed palettes (One / Solarized /
@@ -33,8 +36,7 @@ $themes: (
     faint: 40%,
     line: 14%,
     line-strong: 30%,
-    degraded: #7b5a00,
-    version-conflict: #71489f,
+    inconsistent: #7b5a00,
     undetectable: #556171,
     unreadable: #af2f1f,
     info: #21648f,
@@ -50,8 +52,7 @@ $themes: (
     faint: 40%,
     line: 14%,
     line-strong: 30%,
-    degraded: #d9a83e,
-    version-conflict: #b997e2,
+    inconsistent: #d9a83e,
     undetectable: #99a7b8,
     unreadable: #f68270,
     info: #66acdc,
@@ -67,8 +68,7 @@ $themes: (
     faint: 40%,
     line: 14%,
     line-strong: 30%,
-    degraded: #7a5d00,
-    version-conflict: #7d3f9e,
+    inconsistent: #7a5d00,
     undetectable: #5b626f,
     unreadable: #bd003a,
     info: #2a58cb,
@@ -86,8 +86,7 @@ $themes: (
     faint: 42%,
     line: 15%,
     line-strong: 32%,
-    degraded: #e5c07b,
-    version-conflict: #e191f8,
+    inconsistent: #e5c07b,
     undetectable: #a9b2c0,
     unreadable: #ff8f95,
     info: #69b7f7,
@@ -103,8 +102,7 @@ $themes: (
     faint: 45%,
     line: 16%,
     line-strong: 32%,
-    degraded: #755800,
-    version-conflict: #5154a4,
+    inconsistent: #755800,
     undetectable: #4d6066,
     unreadable: #b50d16,
     info: #006099,
@@ -120,8 +118,7 @@ $themes: (
     faint: 45%,
     line: 16%,
     line-strong: 32%,
-    degraded: #cda41f,
-    version-conflict: #9ea5f8,
+    inconsistent: #cda41f,
     undetectable: #97b0bb,
     unreadable: #ff8276,
     info: #5cb4f5,
@@ -137,8 +134,7 @@ $themes: (
     faint: 40%,
     line: 14%,
     line-strong: 30%,
-    degraded: #765800,
-    version-conflict: #7628db,
+    inconsistent: #765800,
     undetectable: #585b76,
     unreadable: #b5002e,
     info: #024edc,
@@ -154,8 +150,7 @@ $themes: (
     faint: 40%,
     line: 14%,
     line-strong: 30%,
-    degraded: #f2d5a0,
-    version-conflict: #cba6f7,
+    inconsistent: #f2d5a0,
     undetectable: #9ba1be,
     unreadable: #f38ba8,
     info: #89b4fa,
@@ -171,8 +166,7 @@ $themes: (
     faint: 42%,
     line: 15%,
     line-strong: 32%,
-    degraded: #7a5800,
-    version-conflict: #685586,
+    inconsistent: #7a5800,
     undetectable: #5f5b76,
     unreadable: #a33458,
     info: #23647e,
@@ -188,8 +182,7 @@ $themes: (
     faint: 40%,
     line: 14%,
     line-strong: 30%,
-    degraded: #f6c177,
-    version-conflict: #c4a7e7,
+    inconsistent: #f6c177,
     undetectable: #9692b0,
     unreadable: #eb6f92,
     info: #9ccfd8,
@@ -205,10 +198,10 @@ $themes: (
 /// else follows the chosen theme.
 ///
 /// 印の族ごとの色 (decision-6, `lib/mark.ts` の MarkKind) belong to this set on purpose, against the
-/// component-scoped default: decision-6's rule is 三者を同じ印へ混ぜない, and a hue chosen inside each
+/// component-scoped default: decision-6's rule is 族を同じ印へ混ぜない, and a hue chosen inside each
 /// component is exactly how two families quietly converge on one colour. One definition per theme
-/// means a component names the family, never the colour — so 縮退 and 版ずれ cannot become the same
-/// amber by accident, on either screen. neutral (正常な不在) and setting (未設定) get no hue at all:
+/// means a component names the family, never the colour — so 不整合 and 読取不能 cannot become the same
+/// red by accident, on either screen. neutral (正常な不在) and setting (未設定) get no hue at all:
 /// decision-6 asks for them to read as 中立 and as 未設定, which a colour would contradict.
 @mixin theme-vars($theme) {
   color-scheme: map.get($theme, scheme);
@@ -227,12 +220,14 @@ $themes: (
       transparent
     )};
 
-  --mark-degraded: #{map.get($theme, degraded)}; // 解析縮退 (doc-4 §5)
-  --mark-version-conflict: #{map.get($theme, version-conflict)}; // 版ずれ (doc-9) — observed divergence
+  // 不整合 (decision-22): 判別できなかった項目・参照欠損 (doc-4 §5) と バージョン不整合 (doc-9) を
+  // 束ねた 1 族。上部帯② CLI 縮退 (doc-11 §4) もこの色を借りる — 対象は別だが、同じ 1 つのものに
+  // 両方が付くことはない。旧 `--mark-degraded`。旧 `--mark-version-conflict`（紫）は廃止した。
+  --mark-inconsistent: #{map.get($theme, inconsistent)};
   --mark-undetectable: #{map.get($theme, undetectable)}; // 照合不能・継続検出停止 (doc-9 §4.2/§3)
   --mark-unreadable: #{map.get($theme, unreadable)}; // ルート読取不能・破損 (decision-6 エラー提示)
   // Not a member of the set above: ordinary notices and confirmations, which must not borrow any
-  // family's hue (a blue 確認 is not a 版ずれ).
+  // family's hue (a blue 確認 is not a 不整合).
   --info: #{map.get($theme, info)};
   --sel: #{map.get($theme, sel)}; // 選択のアウトライン (doc-11 §2.3)
 }

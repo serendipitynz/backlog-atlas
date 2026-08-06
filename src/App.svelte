@@ -76,7 +76,12 @@
     launchFailureDetail,
     type OpenOutcome,
   } from "./lib/external-editor";
-  import { conflictKeyOf, type ConflictTarget, type VersionConflict } from "./lib/mark";
+  import {
+    conflictKeyOf,
+    isInconsistent,
+    type ConflictTarget,
+    type VersionConflict,
+  } from "./lib/mark";
   import { DEFAULT_CARD_DENSITY } from "./lib/card";
   import {
     createHistoryLoader,
@@ -281,7 +286,7 @@
    */
   let reloadFeed = $state<"live" | "unavailable">("live");
   /**
-   * 版ずれ (doc-9) per task, keyed by (slug, source path). Owned by the shell rather than the panel
+   * バージョン不整合 (doc-9) per task, keyed by (slug, source path). Owned by the shell rather than the panel
    * because the mark has to outlive the panel: a divergence observed while editing one task is
    * still true after the user goes to look at another, and the swimlane is where they would find it
    * again (AC #4 横断的に適用する). Cleared by the panel when the divergence is resolved — a clean
@@ -334,15 +339,30 @@
 
   let order = $derived(entries.map((entry) => entry.slug));
   let loads = $derived(new Map(Object.entries(loadBySlug)));
+  /**
+   * 不整合 (decision-22) for one task: the read's own findings plus this shell's バージョン不整合
+   * record. Defined here because that record is held here — the grid and the facet counts both ask
+   * this one function, so the 不整合 facet cannot hide a card that is drawing a ⚠️.
+   */
+  function conflictFor(view: TaskView): VersionConflict | null {
+    return conflicts[conflictKeyOf(view.task.project, view.task.sourcePath)] ?? null;
+  }
+  let inconsistentView = $derived((view: TaskView) => isInconsistent(view, conflictFor(view)));
   let rows = $derived(
-    buildSwimlane({ order, loads, hidden: new Set(hidden), filter }),
+    buildSwimlane({
+      order,
+      loads,
+      hidden: new Set(hidden),
+      filter,
+      inconsistent: inconsistentView,
+    }),
   );
   let allViews = $derived(
     Object.values(loadBySlug).flatMap((load) =>
       load.state === "loaded" ? load.project.tasks : [],
     ),
   );
-  let facets = $derived(collectFacets(allViews));
+  let facets = $derived(collectFacets(allViews, inconsistentView));
   /**
    * 総件数 for the 固定ヘッダ, beside the 画面名 (doc-7 §2.1). `order` rather than `rows` for the lane
    * side: the ledger is what 全件 counts, so a hidden row leaves 表示数 and stays in it.
@@ -533,7 +553,7 @@
    * is not showing the task, which the panel states instead of offering a move.
    */
   let neighbours = $derived(selectedRef === null ? null : laneNeighbours(rows, selectedRef));
-  /** The 版ずれ record for the open task, so the panel shows what its card shows. */
+  /** The バージョン不整合 record for the open task, so the panel shows what its card shows. */
   let selectedConflict = $derived(
     selectedRef === null
       ? null
@@ -1051,7 +1071,7 @@
   /**
    * Remove a project from the ledger (doc-3 §4.2) and let go of its row. The boundary has already
    * closed its session and stopped its watch; what is left here is the screen state keyed by that
-   * slug, which would otherwise keep a row — and a 版ずれ mark — for a project Atlas no longer reads.
+   * slug, which would otherwise keep a row — and a バージョン不整合 mark — for a project Atlas no longer reads.
    */
   async function removeProject(slug: string): Promise<LedgerActionResult> {
     if (ledgerBusy) return LEDGER_BUSY_RESULT;
@@ -1204,7 +1224,7 @@
   }
 
   /**
-   * Record or clear one task's 版ずれ (doc-9). Reported by the panel rather than derived here:
+   * Record or clear one task's バージョン不整合 (doc-9). Reported by the panel rather than derived here:
    * 更新前競合 is visible to `apply` below, but the 事後通知 is not — it is the comparison between
    * what was submitted and what the re-read says, and only the panel holds the former.
    *
@@ -1286,7 +1306,7 @@
       // fall through to "現在の読み取り結果にありません" keeps a deliberate move from reading like
       // a task that went missing.
       if (action.some((operation) => TRANSITIONS.includes(operation.op))) {
-        // The 版ずれ record is keyed by the file path, and the transition moved the file — the old
+        // The バージョン不整合 record is keyed by the file path, and the transition moved the file — the old
         // key would mark a card that no longer exists while the moved task carried none.
         noteConflict(null, target);
         // Closed only if it is still the transitioned task on screen: the panel may have been
@@ -1391,7 +1411,7 @@
         // the moment it is read. Said here because otherwise「作成しました」and an unchanged cell are
         // indistinguishable from a create that silently did nothing — and the filter is reversible from
         // the フィルタ帯, so the card is one 解除 away rather than lost.
-        (created !== null && !matchesFilter(created, filter)
+        (created !== null && !matchesFilter(created, filter, inconsistentView)
           ? "（今の絞り込みでは表示されないため、カードは出ていません。フィルタ帯で条件を外すと出ます）"
           : "");
       if (outcome.state === "applied") laneCreateTitle = "";
@@ -1848,8 +1868,7 @@
           selectedPath={selectedRef?.sourcePath ?? null}
           canReorder={!ledgerReadOnly}
           unwatched={unwatchedRows}
-          conflictOf={(view) =>
-            conflicts[conflictKeyOf(view.task.project, view.task.sourcePath)] ?? null}
+          conflictOf={conflictFor}
           focusSlug={focusRow}
           createOpen={laneCreateAt}
           createTitle={laneCreateTitle}
@@ -2005,7 +2024,7 @@
 
   // 上部帯 (doc-11 §4). One rule for all six: 1 行に収め、折り返さず、族の色は左端 4px だけが持つ
   // (doc-11 §2.3 の 問題の縁). The band names its family through `data-band` and never picks a hue,
-  // so 縮退・読取不能・継続検出停止 cannot converge on one colour here (decision-6).
+  // so 不整合・読取不能・継続検出停止 cannot converge on one colour here (decision-6).
   .band {
     display: flex;
     align-items: center;
@@ -2074,22 +2093,25 @@
       margin-left: 0.3rem;
     }
 
-    // ① 確認 and ⑤ 通知 are `--info`: neither is one of decision-6's 族 (青い確認は版ずれではない).
+    // ① 確認 and ⑤ 通知 are `--info`: neither is one of decision-6's 族 (青い確認は不整合ではない).
     &[data-band="confirm"],
     &[data-band="notice"] {
       --family: var(--info);
     }
 
+    // ② CLI 縮退 borrows 不整合's colour (decision-22): its object is the app's ability to issue
+    // anything, not one task, so it is not 不整合 — but it does not get a family of its own either,
+    // because a family is a unit for choosing a colour and the two never sit on the same thing.
     &[data-band="cliDegraded"] {
-      --family: var(--mark-degraded);
+      --family: var(--mark-inconsistent);
     }
 
     &[data-band="ledgerReadOnly"] {
       --family: var(--mark-unreadable);
     }
 
-    // 継続検出停止 は縮退でも版ずれでもない (doc-9 §3/§5): its own family, so it cannot be read as
-    // either. It used to share 縮退's amber, which is what decision-6 forbids.
+    // 継続検出停止 は不整合ではない (doc-9 §3/§5): its own family, so it cannot be read as one. It
+    // used to share the amber that is now 不整合's, which is what decision-6 forbids.
     &[data-band="unwatched"] {
       --family: var(--mark-undetectable);
     }
