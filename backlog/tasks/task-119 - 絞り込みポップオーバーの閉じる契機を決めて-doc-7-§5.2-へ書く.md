@@ -1,10 +1,10 @@
 ---
 id: TASK-119
 title: 絞り込みの値を選ぶとアプリがフリーズするのを直す
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-08-06 07:56'
-updated_date: '2026-08-06 08:43'
+updated_date: '2026-08-06 09:49'
 labels:
   - ui
   - decision
@@ -47,11 +47,11 @@ ordinal: 116500
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Type・ラベル・priority・assignee・不整合のいずれの値を選んでも、アプリが操作を受け付け続ける
-- [ ] #2 「不整合のみ」を選択した後も、「閉じる」ボタンと Escape の両方でポップオーバーが閉じる
-- [ ] #3 再現条件と原因が Implementation Notes に書かれている（main でも起きるかを含む）
-- [ ] #4 回帰を止める試験がある。実エンジンでしか出ない現象なら、それを記録した理由と代わりに何で押さえたかを書く
-- [ ] #5 ポップオーバーの閉じる契機が doc-7 §5.2 に書かれている（値の選択で閉じるかどうかを含む）
+- [x] #1 Type・ラベル・priority・assignee・不整合のいずれの値を選んでも、アプリが操作を受け付け続ける
+- [x] #2 「不整合のみ」を選択した後も、「閉じる」ボタンと Escape の両方でポップオーバーが閉じる
+- [x] #3 再現条件と原因が Implementation Notes に書かれている（main でも起きるかを含む）
+- [x] #4 回帰を止める試験がある。実エンジンでしか出ない現象なら、それを記録した理由と代わりに何で押さえたかを書く
+- [x] #5 ポップオーバーの閉じる契機が doc-7 §5.2 に書かれている（値の選択で閉じるかどうかを含む）
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -89,4 +89,86 @@ TypeError: null is not an object (evaluating 'element.getBoundingClientRect')
 **同じ穴がもう 1 か所ある**: 同ファイルの 着地 の `$effect` は `laneMarks[slug]`・`laneHeads[slug]` を `=== undefined` で見ており、行が消えた直後は同じく `null` を掴みうる。型 `Record<string, HTMLElement>` が 3 つとも嘘をついている（`null` を持つ）ので、直すのは判定だけでなく型も。
 
 **TASK-77 とは無関係**（main で再現。`measureHead` は TASK-61 の実装）。
+
+## 再現条件（2026-08-06 に確定）
+
+**未分類 status のタスクが 1 件以上あり、選んだ値がその 1 件を落とすこと。** これだけである。
+データ量・実際の Backlog ルート・ファイル監視の実イベント・WKWebView 固有の挙動はいずれも無関係だった
+（前 4 環境が外していたのは「未分類区画のカードが全行から消える」条件そのもの）。
+
+- `_sandbox/app-check/` に未分類 status のタスクを 1 件混ぜ（`?unmapped=0` で外せる）、WebKit で
+  priority の値を選んだところ、ユーザーが devtools から出した例外と同一の
+  `TypeError: null is not an object (evaluating 'element.getBoundingClientRect')` が出て、
+  以降 Escape も「閉じる」も効かなくなった。**報告どおりの症状を手元で再現できた。**
+- **保存区分だけ無事だった理由もこれで説明が付く。** 保存区分の選択は未分類区画のカードを落とさない
+  （draft を足しても未分類列は残る）ので、列ヘッダが unmount されない。帯の高さの変化は関係なかった。
+- **main でも再現する**ので TASK-77（PR #68）は原因ではない。既存の不具合である。
+
+## 原因（既述の確定内容の補足）
+
+`bind:this` は要素の unmount 時に束縛先へ **`null`** を書き、キー付きレコードではキーを残す
+（`svelte/src/internal/client/dom/elements/bindings/this.js` の `update(null, ...parts)`。
+`{#each}` の項が動いたときも旧キーへ同じことをする）。`Swimlane.svelte` の
+`columnHeads`・`laneHeads`・`laneMarks` はこれを `Record<string, HTMLElement>` と宣言しており、
+**型が嘘をついていた**。`measureHead()` の選別が `!== undefined` だったので `null` が素通りし、
+`getBoundingClientRect()` が投げた。レコードは `$state` なので、書き換わった時点で観測の `$effect` が
+再実行され、例外が `$effect` の外へ出て Svelte の flush が中断する（本タスクではこの状態を **更新停止**
+と呼ぶ）。メインスレッドは動いたままなので、ブラウザだけで完結する文字入力・ホバー・⌘Q は効き続け、
+画面の更新だけが止まる — 報告の症状そのもの。
+
+## 直したもの
+
+- 3 つのレコードの型を `Record<string, HTMLElement | null | undefined>`（`BoundElements`）に改め、
+  読み出しを `boundElements()` / `boundElement()` の 2 つに集約した。判定だけでなく型を直したのは、
+  `!== undefined` が通ってしまったのは型が `null` を許していなかったからで、同じ間違いが次に書く人にも
+  できる状態が残るためである。
+- 着地の `$effect` も同型だった（`laneMarks`/`laneHeads` を `=== undefined` で見ていた）ので同時に直した。
+  こちらは行が並べ替わった瞬間にしか起きないので報告には出ていないが、原因は同じ 1 つである。
+- `FilterPopover.svelte`・`FilterBar.svelte` のコード註を doc-7 §5.2 を引く形に改めた。
+
+## 回帰試験の置き場（AC #4）
+
+**`src/App.component.test.ts` に画面横断契約 1 件として置いた**（3 件 → 4 件）。3 例あり、
+どれも修正を外すと `Cannot read properties of null (reading 'getBoundingClientRect')` で落ちることを
+確かめてある。
+
+**「実エンジンでしか出ない現象」ではなかった。** 引き継ぎ指示書は「jsdom は `getBoundingClientRect` が
+必ず値を返すのでコンポーネントテストでは捕まえられない」と見ていたが、**これは誤り**である。投げていたのは
+`null` に対するプロパティ参照であって測定ではないので、レイアウトを持たない jsdom でも同じ TypeError に
+なる（`render.ts` の箱の規則は無関係で、`ResizeObserver` のスタブが発火しなくても、観測の `$effect` は
+本体で 1 度測るので通る）。数値には一切触れていないので `render.ts` の「返す数を assert しない」規則も
+守れている。
+
+`Swimlane.svelte` 側ではなく `App.svelte` 側に置いたのは、壊れていたものの形がそうだからである —
+絞り込みはシェルのもの、列はグリッドのもので、壊れるのはそのどちらでもなく**その後のすべての更新**である。
+assert しているのも幾何ではなく「その後の操作が届くか」である。
+
+## 実エンジンでの確認（AC #1・#2）
+
+`_sandbox/app-check/`（3 プロジェクト × 12 タスク＋未分類 1 件、WebKit）で
+**Type・ラベル・priority・assignee・不整合・保存区分の 6 ファセット × Escape・「閉じる」ボタンの
+12 通りすべて**を通した。例外ゼロ、12 通りともポップオーバーが閉じた。修正前は同じ手順で
+priority を選んだ時点で例外が出て Escape が効かなかった。
+
+## doc-7 §5.2 へ書いたこと（AC #5）
+
+閉じる契機を **5 つ**として書いた（「閉じる」ボタン・Escape・ポップオーバーの外側の押下・
+「＋ 絞り込み」の再押下・別の被せ層を上げる操作）。併せて、閉じる契機に含まれないもの
+（値の選択・`addFilter` の押鍵）と、閉じ方が条件の適用に影響しないことも書いた。
+対応表は `_sandbox/handoff/referent-table-task-119.md`。
+
+**数は 3 → 4 → 5 と 2 度動いた。動いた理由がそれぞれ違うので、両方を記録する。**
+
+- **3 → 4**（着手時、実装を数え直して）: 外側の押下の判定範囲が anchor 全体（控えを含む）なので、
+  「＋ 絞り込み」自身での開閉は外側の押下では拾われず、控え自身の click が別経路として存在する。
+- **4 → 5**（PR #69 のレビュー [P2]）: `App.svelte` の `raiseModal()`・`openMenu()` が被せ層を
+  上げる前にポップオーバーを降ろしており、これも利用者の押下（⌘N・⌘,・メニュー項目・☰・⌘M）が
+  契機である。**「限る」と書いた列挙が網羅でなかった。** 対応表を先に確定していても、表に載せる行を
+  実装から拾い切れていなければ同じ穴が開く — 数え方は「その状態を変える代入をコード全体で探す」で、
+  画面の部品だけを見ているとシェルが持つ状態を落とす経路が見えない。
+
+**この 5 つ目が立脚している「被せ層は同時に 1 枚だけ」という規則は、`backlog/` のどこにも
+書かれていない**（実装では `raiseModal` のコード註にしかない）。被せ層の列挙は doc-7 §2.1 が
+持つので規則もそこへ書くべきだが、**同じ節を触る TASK-117（m-2・決定先行）が控えている**ので
+先回りせず、**TASK-120 として起票**し §5.2 の当該箇所から名指しした。黙って前提にはしていない。
 <!-- SECTION:NOTES:END -->

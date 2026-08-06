@@ -3,8 +3,11 @@
   // ＋ 絞り込み. It is what replaces the always-expanded checkbox groups — 検索・スクロール・値ごとの
   // 件数・選択数 — so the bar itself only ever carries the conditions actually chosen.
   //
-  // Selecting a value applies it at once and leaves the popover open: picking three labels is one
-  // errand, and a popover that closed on each pick would make it three.
+  // 閉じる契機 は doc-7 §5.2 が 4 つに定める: the 「閉じる」 button below, Escape, a press outside the
+  // anchor, and a second press on ＋ 絞り込み (that last one is `FilterBar.svelte`'s, since the button
+  // is). Selecting a value is deliberately none of them — it applies the condition at once and
+  // leaves the popover up. The rule used to live in this comment alone, which is what TASK-119 fixed:
+  // a rule only a code comment holds is not a contract anything else can be checked against.
   import {
     conditionCount,
     conditionKey,
@@ -144,7 +147,7 @@
     field?.focus();
   });
 
-  // Closed by a press outside or by Escape. `pointerdown` rather than `click`, so a press that
+  // ポップオーバーの外側の押下 (doc-7 §5.2). `pointerdown` rather than `click`, so a press that
   // starts outside cannot first land on whatever the popover was covering.
   $effect(() => {
     function outside(event: PointerEvent): void {
