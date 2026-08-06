@@ -4,7 +4,7 @@ title: モーダルの閉じる操作を右上の × に統一する
 status: Done
 assignee: []
 created_date: '2026-07-31 23:31'
-updated_date: '2026-08-05 01:17'
+updated_date: '2026-08-06 10:33'
 labels:
   - ui
   - design-system
@@ -34,7 +34,6 @@ ordinal: 76000
 
 ## Implementation Notes
 
-<!-- SECTION:NOTES:BEGIN -->
 <!-- SECTION:NOTES:BEGIN -->
 ## 決定先行の判定（決 印は後付け・11 例目）
 
@@ -130,4 +129,4 @@ decision-12 の収録条件がそれより厳しい比を全テーマで通し�
 `cargo test` 347 passed / 4 ignored（Rust は触っていない）。フロントエンドに設定された
 フォーマッタは無い（prettier は依存にも設定にも無い）ので、静的解析は `pnpm run check` が担う。
 <!-- SECTION:NOTES:END -->
-<!-- SECTION:NOTES:END -->
+
