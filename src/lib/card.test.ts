@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CARD_DENSITY, cardFields } from "./card";
+import { DEFAULT_CARD_DENSITY, cardFields, normalizePriority, priorityEdge } from "./card";
 import type { CardDensity } from "./wire";
 
 const DENSITIES: CardDensity[] = ["s", "m", "l"];
@@ -53,5 +53,34 @@ describe("カード情報量の割当表 (doc-7 §3)", () => {
     // nobody chose the state that stops the card's height from being predictable.
     expect(DEFAULT_CARD_DENSITY).toBe("m");
     expect(cardFields(DEFAULT_CARD_DENSITY).titleLines).toBe(2);
+  });
+});
+
+describe("優先度の縁 (decision-23)", () => {
+  it("draws one edge per priority 3 段", () => {
+    expect(priorityEdge("high")).toBe("high");
+    expect(priorityEdge("medium")).toBe("medium");
+    expect(priorityEdge("low")).toBe("low");
+  });
+
+  it("reads the 3 段 the way the 絞り込み does, so one task is `high` to both", () => {
+    // The same normalisation, not a second one: a card edge that took `High` while the priority facet
+    // did not would show a colour for a value the filter says the task does not have.
+    for (const written of ["High", " HIGH ", "hIgH"]) {
+      expect(priorityEdge(written)).toBe("high");
+      expect(normalizePriority(written)).toBe("high");
+    }
+  });
+
+  it("gives priority 未設定 no edge — 縁が無いことが未設定を述べる (decision-6 の中立表示)", () => {
+    expect(priorityEdge(null)).toBeNull();
+  });
+
+  it("gives priority 未知 no edge rather than guessing it into one of the three", () => {
+    // A word the file actually carries: 未知 is not 未設定, and colouring it would claim the frontmatter
+    // said something it did not. The priority チップ still shows `urgent` as written.
+    expect(priorityEdge("urgent")).toBeNull();
+    expect(priorityEdge("")).toBeNull();
+    expect(priorityEdge("highest")).toBeNull();
   });
 });

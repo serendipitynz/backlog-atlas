@@ -13,6 +13,8 @@
 // four until decision-22 bundled 縮退 and バージョン不整合 into 不整合; the values are the ones that were already
 // recorded, and none of them moved for that change. 印グリフ (decision-22) is checked against the same
 // values on a second condition — 族の色 対 それが載る面 で 3:1 以上 — because it has no mixed background.
+// decision-23 added a third set that is *not* a 族 — 優先度色 (`--priority-*`), which 優先度の縁 draws
+// on a task card — held to the same 3:1 against the surfaces the edge touches.
 // `theme.test.ts` recomputes those cells from this file, so no theme can be added or edited into
 // breaking the condition unnoticed (decision-12 の費用: 検算を怠ると画面上は気付けない).
 //
@@ -41,6 +43,9 @@ $themes: (
     unreadable: #af2f1f,
     info: #21648f,
     sel: #21648f,
+    priority-high: #bb3f3d,
+    priority-medium: #9e5a03,
+    priority-low: #217937,
   ),
   "atlas-dark": (
     scheme: dark,
@@ -57,6 +62,9 @@ $themes: (
     unreadable: #f68270,
     info: #66acdc,
     sel: #66acdc,
+    priority-high: #ec6c66,
+    priority-medium: #d38029,
+    priority-low: #52a661,
   ),
   "one-light": (
     scheme: light,
@@ -75,6 +83,9 @@ $themes: (
     // Not this theme's `--info`: doc-12 §6.3 has 3 テーマ where 選択のアウトライン and 通知 differ in
     // the 設計案, and the transcription keeps them apart rather than tidying them into one.
     sel: #4078f2,
+    priority-high: #bd413f,
+    priority-medium: #a05b01,
+    priority-low: #237b39,
   ),
   "one-dark": (
     scheme: dark,
@@ -91,6 +102,9 @@ $themes: (
     unreadable: #ff8f95,
     info: #69b7f7,
     sel: #69b7f7,
+    priority-high: #f7766f,
+    priority-medium: #df8b36,
+    priority-low: #5cb06a,
   ),
   "solarized-light": (
     scheme: light,
@@ -107,6 +121,9 @@ $themes: (
     unreadable: #b50d16,
     info: #006099,
     sel: #268bd2,
+    priority-high: #b63b39,
+    priority-medium: #995600,
+    priority-low: #1d7635,
   ),
   "solarized-dark": (
     scheme: dark,
@@ -123,6 +140,9 @@ $themes: (
     unreadable: #ff8276,
     info: #5cb4f5,
     sel: #5cb4f5,
+    priority-high: #f3726c,
+    priority-medium: #da8631,
+    priority-low: #58ac67,
   ),
   "catppuccin-latte": (
     scheme: light,
@@ -139,6 +159,9 @@ $themes: (
     unreadable: #b5002e,
     info: #024edc,
     sel: #024edc,
+    priority-high: #b83c3b,
+    priority-medium: #995600,
+    priority-low: #1d7635,
   ),
   "catppuccin-mocha": (
     scheme: dark,
@@ -155,6 +178,9 @@ $themes: (
     unreadable: #f38ba8,
     info: #89b4fa,
     sel: #89b4fa,
+    priority-high: #e96963,
+    priority-medium: #cf7d24,
+    priority-low: #4fa35f,
   ),
   "rose-pine-dawn": (
     scheme: light,
@@ -171,6 +197,9 @@ $themes: (
     unreadable: #a33458,
     info: #23647e,
     sel: #56949f,
+    priority-high: #b83c3b,
+    priority-medium: #9a5802,
+    priority-low: #1f7836,
   ),
   "rose-pine": (
     scheme: dark,
@@ -187,6 +216,9 @@ $themes: (
     unreadable: #eb6f92,
     info: #9ccfd8,
     sel: #9ccfd8,
+    priority-high: #de5f5a,
+    priority-medium: #c57415,
+    priority-low: #459956,
   ),
 );
 
@@ -230,6 +262,15 @@ $themes: (
   // family's hue (a blue 確認 is not a 不整合).
   --info: #{map.get($theme, info)};
   --sel: #{map.get($theme, sel)}; // 選択のアウトライン (doc-11 §2.3)
+
+  // 優先度色 (decision-23): 優先度の縁 が priority 3 段へ引く色。**族ではない** — 印がこれを借りる
+  // ことはなく、`--mark-*` の集合にも入らない。色相の役割 (high＝赤・medium＝アンバー・low＝緑) は
+  // backlog.md の web UI から取り、明度だけを動かして 優先度の縁の収録条件 (色 対 それが接する面で
+  // 3:1) を全テーマで満たす。上流の値そのままでは満たせない — 実測で yellow-500 は白地に 1.91:1、
+  // green-500 は 2.22:1 しかない。decision-12 が借用パレット 8 組に対して採ったのと同じ調整である。
+  --priority-high: #{map.get($theme, priority-high)};
+  --priority-medium: #{map.get($theme, priority-medium)};
+  --priority-low: #{map.get($theme, priority-low)};
 }
 
 // 未選択 (アプリ設定 theme = null) は OS の明暗に従って Atlas Light / Atlas Dark (decision-12 の既定).

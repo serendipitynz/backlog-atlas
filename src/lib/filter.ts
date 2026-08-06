@@ -25,7 +25,9 @@
  *   タスクはいずれか一致で残す" states for Type and what the others need to stay usable.
  */
 
-import { cardIdentity } from "./card";
+// `normalizePriority` lives in `card.ts` (decision-23): the 絞り込み and the 優先度の縁 have to call a
+// task `high` on the same terms, and this module already owns that agreement for the identity.
+import { cardIdentity, normalizePriority } from "./card";
 import type { StorageSelection, TaskView } from "./wire";
 
 /**
@@ -136,11 +138,6 @@ export function isDefaultFilter(filter: CardFilter, storage: readonly StorageSel
     filter.storage.length === storage.length &&
     filter.storage.every((state, index) => state === storage[index])
   );
-}
-
-/** Priority values are compared case-insensitively so `High` and `high` are one facet. */
-export function normalizePriority(priority: string): string {
-  return priority.trim().toLowerCase();
 }
 
 /** A stable key for a Type selection, for `{#each}` keys and set membership in the UI. */

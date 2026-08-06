@@ -26,9 +26,10 @@ describe("themeAttribute", () => {
   });
 });
 
-// --- 収録条件の検算 (decision-12・decision-22, AC #3 / TASK-77 AC #7) --------------------------
+// --- 収録条件の検算 (decision-12・decision-22・decision-23) -------------------------------------
 //
-// There are two conditions, because there are two ways a 印 is drawn.
+// There are three conditions. Two of them are about 印, because there are two ways a 印 is drawn;
+// the third is about 優先度の縁, which is not a 印 at all.
 //
 // **印チップ** (decision-12) draws 文字＝族の色 / 背景＝族の色 12% 混色 / 枠＝族の色 45% 混色, so its
 // legibility is the ratio between the family colour and that 12% mix once it has been composited onto
@@ -42,8 +43,14 @@ describe("themeAttribute", () => {
 // borrow the chip's 4.5:1: the recorded themes clear it today by a wide margin, and a limit chosen
 // because it happens to hold is one nobody can re-derive when adding the eleventh theme.
 //
-// Both are computed here from `app.scss` itself — not from a copy of the values — and cover every
-// recorded theme, every 族 plus `--info`, on every surface.
+// **優先度の縁** (decision-23) draws a 3px left edge on a task card in one of the 優先度色, which are
+// not 族 colours and are never borrowed by a 印. It is a non-text element like the 印グリフ, so it takes
+// the same 3:1 — the ratio between the edge's colour and the surfaces it touches. It is checked apart
+// from the families because the values are apart: `--priority-*` is its own set, and a change to one
+// must not be able to pass by resembling a family colour that happens to clear the bar.
+//
+// All three are computed here from `app.scss` itself — not from a copy of the values — and cover
+// every recorded theme, every 族 plus `--info`, on every surface.
 
 /** The surfaces a 印 can sit on. `--panel`/`--inset` are what decision-12 requires; `--bg` is the
  *  page ground the 上部帯 (doc-11 §4) sits on, and it is cheaper to hold all three than to argue
@@ -69,6 +76,12 @@ const REQUIRED_RATIO = 4.5;
 
 /** 印グリフの収録条件 (decision-22): 族の色 対 それが載る面. WCAG 1.4.11 の非文字要素の下限. */
 const REQUIRED_GLYPH_RATIO = 3;
+
+/** 優先度色 (decision-23): the three values 優先度の縁 draws. Not 族 — no 印 borrows them. */
+const PRIORITY_COLOURS = ["--priority-high", "--priority-medium", "--priority-low"] as const;
+
+/** 優先度の縁の収録条件 (decision-23): 縁の色 対 それが接する面. Same 1.4.11 floor as the 印グリフ. */
+const REQUIRED_EDGE_RATIO = 3;
 
 // Compiled by `sass` from the path rather than read and compiled as a string: the stylesheet is the
 // only place the values exist (decision-12), and letting sass open it keeps this test free of Node's
@@ -182,6 +195,50 @@ describe("収録した表示テーマ (decision-12)", () => {
           Object.entries(ratios).filter(([, ratio]) => ratio < REQUIRED_GLYPH_RATIO),
         ),
       ).toEqual({});
+    },
+  );
+
+  // 優先度の縁 (decision-23). The edge sits on the card's own border: `--panel` on its inside, and the
+  // lane cell's ground on its outside, which is `--bg` — `--inset` is held with them for the same
+  // reason the two conditions above hold it, so a later screen putting a card on a くぼみ面 does not
+  // need this file reopened.
+  it.each(RECORDED_THEMES.map((theme) => [theme.id] as const))(
+    "%s: 優先度の縁 — 優先度色 3 つが接する面に対して 3:1 以上 (--panel / --inset / --bg)",
+    (id) => {
+      const block = BLOCKS.get(id);
+      if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      const ratios: Record<string, number> = {};
+      for (const colour of PRIORITY_COLOURS) {
+        for (const surface of SURFACES) {
+          const edge = block.get(colour);
+          const under = block.get(surface);
+          if (edge === undefined || under === undefined) {
+            throw new Error(`${id} に ${colour} または ${surface} がありません`);
+          }
+          ratios[`${colour} on ${surface}`] =
+            Math.round(contrast(hex(edge), hex(under)) * 100) / 100;
+        }
+      }
+      expect(
+        Object.fromEntries(
+          Object.entries(ratios).filter(([, ratio]) => ratio < REQUIRED_EDGE_RATIO),
+        ),
+      ).toEqual({});
+    },
+  );
+
+  // 優先度色 は族ではない (decision-23): a theme that set one of them to a family's value would put the
+  // family's hue on a card edge as a priority — exactly what decision-12 refused and what decision-23
+  // only re-opened for *the edge's position*, not for the family colours themselves.
+  it.each(RECORDED_THEMES.map((theme) => [theme.id] as const))(
+    "%s: 優先度色 が族の色そのものではない",
+    (id) => {
+      const block = BLOCKS.get(id);
+      if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      const families = FAMILIES.map((family) => block.get(family)?.toLowerCase());
+      for (const colour of PRIORITY_COLOURS) {
+        expect(families).not.toContain(block.get(colour)?.toLowerCase());
+      }
     },
   );
 });

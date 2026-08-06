@@ -11,6 +11,7 @@
  * | doc-7 §1 カード情報量 | `CardDensity` (`wire.ts`) | the S・M・L setting itself (decision-13) |
  * | doc-7 §3 割当表 | [`cardFields`] | which items a 段 draws, and how many lines its title gets |
  * | doc-7 §3 既定は M | [`DEFAULT_CARD_DENSITY`] | the 段 in force before the settings read answers |
+ * | decision-23 priority 3 段 | [`priorityEdge`] | which of the three 優先度の縁 a task draws, if any |
  */
 
 import type { CardDensity, TaskView } from "./wire";
@@ -34,6 +35,45 @@ export function sourceFileName(view: TaskView): string {
 /** What the card shows as its identifier, and what the text filter matches against. */
 export function cardIdentity(view: TaskView): string {
   return crossTaskId(view) ?? sourceFileName(view);
+}
+
+/**
+ * Priority values are compared case-insensitively so `High` and `high` are one facet — and so the
+ * 絞り込み and the 優先度の縁 agree about which tasks are `high`. Lives here rather than in `filter.ts`
+ * for the reason this module exists: what the card shows and what the filter matches must not be
+ * derived twice.
+ */
+export function normalizePriority(priority: string): string {
+  return priority.trim().toLowerCase();
+}
+
+/** priority 3 段 (decision-23) — the values 優先度の縁 has a colour for. */
+export type PriorityStep = "high" | "medium" | "low";
+
+/**
+ * Not `edit.ts` の `PRIORITIES`, which happens to hold the same three words. That list is the value
+ * range `task edit --priority` accepts — what Atlas may *write*; this one is what the card *colours*,
+ * and a file may perfectly well carry a priority the CLI would not take. If the CLI ever accepted a
+ * fourth word, that would not by itself give the edge a fourth colour: 優先度色 would have to be added
+ * to every 表示テーマ and cleared against the 収録条件 first. Two referents, so two lists.
+ */
+const PRIORITY_STEPS: readonly PriorityStep[] = ["high", "medium", "low"];
+
+/**
+ * Which 優先度の縁 a task draws (decision-23), or `null` for no edge at all.
+ *
+ * `null` is two states the decision treats alike — **priority 未設定** (the frontmatter has no
+ * priority) and **priority 未知** (it has one that is not among the three, e.g. `urgent`). Neither
+ * gets an edge: 縁が無いこと itself says 未設定 (decision-6 の中立表示), and guessing an unknown word
+ * into one of the three would put a colour on a value the file never gave. The priority チップ goes on
+ * showing the word as written either way, so 未知 is not hidden — it is only uncoloured.
+ */
+export function priorityEdge(priority: string | null): PriorityStep | null {
+  if (priority === null) return null;
+  const value = normalizePriority(priority);
+  // `find` rather than `includes` + a cast: the returned element already has the narrow type, so
+  // nothing here asserts that a string is one of the three.
+  return PRIORITY_STEPS.find((step) => step === value) ?? null;
 }
 
 /** The items doc-7 §3 の割当表 varies by 段, as one card's worth of answers. */
