@@ -6,7 +6,7 @@
  * property, and a component picks a kind instead of a colour.
  *
  * **decision-22 turned two of those families into one.** 判別できなかった項目・参照欠損 (doc-4 §5)
- * and バージョン不整合 (doc-9, 旧称 バージョン不整合) say the same thing about a task — その表示をそのまま信じて
+ * and バージョン不整合 (doc-9, 旧称 版ずれ) say the same thing about a task — その表示をそのまま信じて
  * よいかどうか — so they are bundled as **不整合** and drawn as a single ⚠️, with no family name and no
  * 由来名 on the card. What decision-6 still forbids is bundling anything *else* in: 読取不能 is about a
  * root rather than a task, and 照合不能・継続検出停止 are the absence of a way to look rather than a
@@ -21,7 +21,8 @@
  * |---|---|---|
  * | decision-6 正常な不在（空セル・コミット該当なし） | `MarkKind` `"neutral"` | the user's work is simply not there yet |
  * | decision-6 未設定（Git 対象不在・Git remote 不在） | `MarkKind` `"setting"` | a ledger attribute or environment the user can configure |
- * | decision-22 不整合 | `MarkKind` `"inconsistent"` | this one task has at least one reason not to be trusted as shown |
+ * | decision-22 不整合 | `MarkKind` `"inconsistent"` | this one management file has at least one reason not to be trusted as shown (decision-24 widened it past tasks) |
+ * | decision-24 写せなかったファイル | [`unmappedFileReason`] | a non-task file that never reached its collection — path and reason, no id |
  * | doc-9 §4.2 照合不能 / §3 継続検出停止 | `MarkKind` `"undetectable"` | there is no way to look for a divergence — not a divergence |
  * | decision-6 エラー提示（ルート読取不能・破損） | `MarkKind` `"unreadable"` | the read itself does not succeed |
  * | doc-9 §5 防げる競合（更新前競合） | [`VersionConflict`] `"preUpdate"` | caught by the pre-update check; no CLI ran |
@@ -35,7 +36,14 @@
  * failure decision-6 was written against.
  */
 
-import type { ConflictSet, ReferenceKind, TaskView } from "./wire";
+import type {
+  ConflictSet,
+  FileHealth,
+  ReferenceKind,
+  RequiredField,
+  TaskView,
+  UnmappedFile,
+} from "./wire";
 
 /**
  * The presentation families decision-6 keeps apart, as decision-22 left them. Ordered from "normal"
@@ -49,7 +57,7 @@ export type MarkKind =
   | "unreadable";
 
 /**
- * バージョン不整合 (doc-9, 旧称 バージョン不整合): a divergence Atlas *observed*, in the two stages doc-9 §5
+ * バージョン不整合 (doc-9, 旧称 版ずれ): a divergence Atlas *observed*, in the two stages doc-9 §5
  * splits the presentation into. Kept as one value with a kind rather than two booleans, because a
  * task is in one of them at a time and the two carry different evidence — the file whose version
  * moved, or the fields the re-read disagreed about.
@@ -143,35 +151,87 @@ export function inconsistencyReasons(
   view: TaskView,
   conflict: VersionConflict | null,
 ): string[] {
+  const reasons = healthReasons(view.task.health, "タスク");
+  if (conflict !== null) reasons.push(versionConflictReason(conflict));
+  return reasons;
+}
+
+/**
+ * 不整合の理由行 for a management file that is not a task (decision-24): マイルストーン・文書・
+ * 意思決定. Only 想定外スキーマ can reach here — a non-task file that fails 解析不能 never enters its
+ * collection and becomes a 写せなかったファイル instead (doc-4 §5) — but the derivation is the shared
+ * one, because「同じ理由を 2 か所で組み立てない」is what keeps the ⚠️ and the lines agreeing.
+ *
+ * There is no `conflict` parameter: doc-9's バージョン不整合 is recorded against a task's save, and
+ * these three kinds have no such record to consult.
+ */
+export function fileInconsistencyReasons(health: FileHealth, kind: ManagedFileNoun): string[] {
+  return healthReasons(health, kind);
+}
+
+/**
+ * 写せなかったファイル as one 理由行 (decision-24). The same wording as an `unparseable` event's,
+ * because it *is* one — the record just carries the payload without the tag (doc-4 §5).
+ */
+export function unmappedFileReason(file: UnmappedFile): string {
+  return unparseableReasons(
+    file.missingRequired,
+    file.detail,
+    MANAGED_FILE_NOUN[file.kind],
+  ).join(" / ");
+}
+
+/** What a file is called in a 理由行. Not a family name — the noun of the thing that failed. */
+export type ManagedFileNoun = "タスク" | "マイルストーン" | "文書" | "意思決定";
+
+const MANAGED_FILE_NOUN: Record<UnmappedFile["kind"], ManagedFileNoun> = {
+  milestone: "マイルストーン",
+  document: "文書",
+  decision: "意思決定",
+};
+
+/** The one event→line mapping every 理由行 goes through (decision-22 「導出は 1 回」). */
+function healthReasons(health: FileHealth, noun: ManagedFileNoun): string[] {
+  if (health.state !== "degraded") return [];
   const reasons: string[] = [];
-  const health = view.task.health;
-  if (health.state === "degraded") {
-    for (const event of health.events) {
-      switch (event.event) {
-        case "unparseable": {
-          // Both lines say 解析不能, including the `detail` one. doc-4 §5 defines 想定外スキーマ as
-          // 「frontmatter は読めるが」, and an `unparseable` is the case where it could not be read at
-          // all — labelling its detail 想定外スキーマ would put a reason on screen under the name of
-          // the event that did not happen.
-          if (event.missingRequired.length > 0) {
-            reasons.push(`解析不能: ${event.missingRequired.join("・")} を読めません`);
-          }
-          if (event.detail !== null) reasons.push(`解析不能: ${event.detail}`);
-          if (event.missingRequired.length === 0 && event.detail === null) {
-            reasons.push("解析不能: このファイルをタスクとして写せませんでした");
-          }
-          break;
-        }
-        case "unexpectedSchema":
-          reasons.push(`想定外スキーマ: ${event.detail}`);
-          break;
-        case "danglingReference":
-          reasons.push(`参照欠損: ${REFERENCE_KIND_LABEL[event.kind]} ${event.target}`);
-          break;
-      }
+  for (const event of health.events) {
+    switch (event.event) {
+      case "unparseable":
+        reasons.push(...unparseableReasons(event.missingRequired, event.detail, noun));
+        break;
+      case "unexpectedSchema":
+        reasons.push(`想定外スキーマ: ${event.detail}`);
+        break;
+      case "danglingReference":
+        reasons.push(`参照欠損: ${REFERENCE_KIND_LABEL[event.kind]} ${event.target}`);
+        break;
     }
   }
-  if (conflict !== null) reasons.push(versionConflictReason(conflict));
+  return reasons;
+}
+
+/**
+ * 解析不能 as lines. Both say 解析不能, including the `detail` one: doc-4 §5 defines 想定外スキーマ as
+ * 「frontmatter は読めるが」, and an 解析不能 is the case where it could not be read at all — labelling
+ * its detail 想定外スキーマ would put a reason on screen under the name of the event that did not
+ * happen.
+ *
+ * **Always at least one line.** A record carrying neither a field list nor a detail would otherwise
+ * leave a ⚠️ whose panel says nothing, which is indistinguishable from a bug in this function.
+ */
+function unparseableReasons(
+  missingRequired: readonly RequiredField[],
+  detail: string | null,
+  noun: ManagedFileNoun,
+): string[] {
+  const reasons: string[] = [];
+  if (missingRequired.length > 0) {
+    reasons.push(`解析不能: ${missingRequired.join("・")} を読めません`);
+  }
+  if (detail !== null) reasons.push(`解析不能: ${detail}`);
+  if (reasons.length === 0) {
+    reasons.push(`解析不能: このファイルを${noun}として写せませんでした`);
+  }
   return reasons;
 }
 

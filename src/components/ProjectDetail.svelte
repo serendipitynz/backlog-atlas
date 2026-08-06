@@ -18,6 +18,12 @@
   // is typing — the same IME rule the other screens follow.
   import { tick, untrack } from "svelte";
   import Editor from "./Editor.svelte";
+  import Icon from "../lib/icons/Icon.svelte";
+  import {
+    fileInconsistencyReasons,
+    inconsistencyLabel,
+    unmappedFileReason,
+  } from "../lib/mark";
   import { PRIORITIES } from "../lib/edit";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
@@ -669,6 +675,29 @@
   }
 
   /**
+   * 写せなかったファイル for one 区画 (doc-10 §1, decision-24). Filtered by kind here rather than sent
+   * as three lists, because the record already carries its kind and one list is what keeps the three
+   * 区画 from disagreeing about what counts as a failure.
+   *
+   * `decisions` are read and recorded but have no 区画 to draw them in; TASK-118 adds one (doc-10 §9).
+   */
+  let unmappedDocuments = $derived(
+    (project?.unmappedFiles ?? []).filter((file) => file.kind === "document"),
+  );
+  let unmappedMilestones = $derived(
+    (project?.unmappedFiles ?? []).filter((file) => file.kind === "milestone"),
+  );
+
+  /**
+   * 理由行 for whichever document / milestone the pane currently holds (doc-10 §5/§6). Derived once
+   * here rather than at each use, so the ⚠️ on the card and the lines in the pane can never be
+   * built from two different readings of the same file (decision-22 「導出は 1 回」).
+   */
+  let openDocReasons = $derived(
+    docSession === null ? [] : fileInconsistencyReasons(docSession.baseline.health, "文書"),
+  );
+
+  /**
    * The selected milestone as the current read holds it (doc-10 §6). Derived rather than stored, so
    * an external change that removes it drops the 操作ペイン back to the 作成フォーム instead of
    * leaving operations pointed at a milestone that is no longer there.
@@ -677,6 +706,12 @@
     milestoneSelection === null
       ? null
       : (project?.milestones.find((candidate) => candidate.id === milestoneSelection) ?? null),
+  );
+
+  let openMilestoneReasons = $derived(
+    selectedMilestone === null
+      ? []
+      : fileInconsistencyReasons(selectedMilestone.health, "マイルストーン"),
   );
 
   /** What the 説明 box shows: the draft while one is being typed, the current read otherwise. */
@@ -1164,6 +1199,7 @@
                   <ul class="cards">
                     {#each project.documents as document (document.id)}
                       {@const current = docSession?.baseline.id === document.id}
+                      {@const reasons = fileInconsistencyReasons(document.health, "文書")}
                       <li>
                         <!-- カード (doc-10 §5): the whole area is the selection — no separate 編集
                              button, and the current card is marked (目視反映: which document is
@@ -1192,6 +1228,21 @@
                                    editor has scrolled out of view. -->
                               <span class="unsaved">未保存</span>
                             {/if}
+                            {#if reasons.length > 0}
+                              <!-- 不整合印 (decision-22, widened to 管理ファイル 1 件 by decision-24):
+                                   one ⚠️, no family name and no 由来名. `role="img"` on the wrapper
+                                   because `Icon.svelte` is always `aria-hidden` (doc-11 §2.4). The
+                                   lines themselves are read in the 編集ペイン — the ⚠️ is allowed
+                                   only where そこが用意されている (doc-11 §2.4). -->
+                              <span
+                                class="inconsistent"
+                                role="img"
+                                aria-label={inconsistencyLabel(reasons)}
+                                title={inconsistencyLabel(reasons)}
+                              >
+                                <Icon name="triangle-alert" />
+                              </span>
+                            {/if}
                           </span>
                           <span class="card-title">{document.title}</span>
                           {#if document.tags.length > 0}
@@ -1201,6 +1252,22 @@
                       </li>
                     {/each}
                   </ul>
+                {/if}
+                {#if unmappedDocuments.length > 0}
+                  <!-- 写せなかったファイルの一覧 (doc-10 §1, decision-24): not cards — these have no
+                       id, so there is nothing to select or load into the pane. The heading above
+                       still counts only the cards; this region states its own count. -->
+                  <div class="unmapped">
+                    <h3>写せなかったファイル {unmappedDocuments.length} 件</h3>
+                    <ul>
+                      {#each unmappedDocuments as file (file.sourcePath)}
+                        <li>
+                          <code>{displayPath(file.sourcePath, entry.project_root)}</code>
+                          <span class="reason-line">{unmappedFileReason(file)}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  </div>
                 {/if}
               </div>
 
@@ -1218,6 +1285,16 @@
                     <p class="path">
                       <code>{displayPath(session.baseline.sourcePath, entry.project_root)}</code>
                     </p>
+                    {#if openDocReasons.length > 0}
+                      <!-- 理由行 (decision-22, doc-10 §5): the place doc-11 §2.4 requires the ⚠️'s
+                           full reason to be readable without hovering. No 区画 of its own — one
+                           line per reason is the whole of it. -->
+                      <ul class="reason-lines">
+                        {#each openDocReasons as reason (reason)}
+                          <li>{reason}</li>
+                        {/each}
+                      </ul>
+                    {/if}
 
                     <label class="field">
                       <span class="label">title</span>
@@ -1418,6 +1495,7 @@
                         (view) => view.task.milestone === milestone.id,
                       ).length}
                       {@const current = milestoneSelection === milestone.id}
+                      {@const reasons = fileInconsistencyReasons(milestone.health, "マイルストーン")}
                       <li>
                         <!-- カード (doc-10 §6): id・title・所属タスク件数. No 説明 — the 一覧列 is
                              16rem and the description is stated in the pane instead (§6's recorded
@@ -1442,12 +1520,38 @@
                                    the 操作ペイン has scrolled out of view. -->
                               <span class="unsaved">未保存</span>
                             {/if}
+                            {#if reasons.length > 0}
+                              <!-- 不整合印 — same figure and same rule as the 文書カード (doc-10 §6
+                                   defers to §5 here rather than deciding it again). -->
+                              <span
+                                class="inconsistent"
+                                role="img"
+                                aria-label={inconsistencyLabel(reasons)}
+                                title={inconsistencyLabel(reasons)}
+                              >
+                                <Icon name="triangle-alert" />
+                              </span>
+                            {/if}
                           </span>
                           <span class="card-title">{milestone.title}</span>
                         </button>
                       </li>
                     {/each}
                   </ul>
+                {/if}
+                {#if unmappedMilestones.length > 0}
+                  <!-- 写せなかったファイルの一覧 — same form as the 文書区画's (doc-10 §1/§6). -->
+                  <div class="unmapped">
+                    <h3>写せなかったファイル {unmappedMilestones.length} 件</h3>
+                    <ul>
+                      {#each unmappedMilestones as file (file.sourcePath)}
+                        <li>
+                          <code>{displayPath(file.sourcePath, entry.project_root)}</code>
+                          <span class="reason-line">{unmappedFileReason(file)}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  </div>
                 {/if}
               </div>
 
@@ -1472,6 +1576,15 @@
                       <span class="title">{milestone.title}</span>
                       <span class="meta">所属タスク {held} 件</span>
                     </div>
+                    {#if openMilestoneReasons.length > 0}
+                      <!-- 理由行 (decision-22, doc-10 §6): where the ⚠️'s full reason is readable
+                           without hovering, as doc-11 §2.4 requires of every 印グリフ. -->
+                      <ul class="reason-lines">
+                        {#each openMilestoneReasons as reason (reason)}
+                          <li>{reason}</li>
+                        {/each}
+                      </ul>
+                    {/if}
                     <!-- 説明 (doc-10 §6): stated here rather than on the card, which is the second
                          of this 区画's departures from design 07 — and editable, which is the third
                          (decision-21). The box is not one of the 改称・削除・アーカイブ operations:
@@ -2341,6 +2454,70 @@
     color: var(--muted);
     font-size: 0.68rem;
     word-break: break-all;
+  }
+
+  // 不整合印 (decision-22, decision-24) on a 文書カード / マイルストーンカード. A 印グリフ: the family
+  // colour is the figure's own, with no chip background and no word (doc-11 §2.4). The size matches
+  // `TaskCard.svelte`'s .8rem — a figure carrying no word reads smaller than text of the same height
+  // — and the 収録条件 is decision-22's 3:1, which `theme.test.ts` recomputes from `app.scss`.
+  .inconsistent {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    color: var(--mark-inconsistent);
+    font-size: 0.8rem;
+    cursor: help;
+  }
+
+  // 理由行 (decision-22) in the 編集ペイン / 操作ペイン — the place doc-11 §2.4 requires the ⚠️'s
+  // reason to be readable without hovering. Plain lines, not a 区画: they carry no heading of their
+  // own because the ⚠️ above already said there is something to read.
+  .reason-lines {
+    margin: 0.35rem 0 0;
+    padding-left: 1.1rem;
+    color: var(--mark-inconsistent);
+    font-size: 0.7rem;
+
+    li {
+      margin-bottom: 0.15rem;
+    }
+  }
+
+  // 写せなかったファイルの一覧 (doc-10 §1). Below the cards and outside their scroller, so a short
+  // list is not pushed out of view by a long one. Deliberately not `.card`: nothing here is
+  // selectable, and giving it the card's shape would put a dead target in the list.
+  .unmapped {
+    flex: none;
+    margin: 0.35rem 0.25rem 0.5rem 0.15rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--line);
+    color: var(--mark-inconsistent);
+
+    h3 {
+      margin: 0 0 0.25rem;
+      font-size: 0.7rem;
+    }
+
+    ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      margin-bottom: 0.3rem;
+    }
+
+    code {
+      display: block;
+      font-size: 0.66rem;
+      word-break: break-all;
+    }
+  }
+
+  .reason-line {
+    display: block;
+    font-size: 0.66rem;
   }
 
   // The 未保存入力 mark (doc-10 §5). Not one of decision-6's 印の族 — nothing is degraded and nothing

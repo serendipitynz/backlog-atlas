@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   UNWATCHED_MARK,
   conflictKeyOf,
+  fileInconsistencyReasons,
   inconsistencyLabel,
   inconsistencyReasons,
   isInconsistent,
+  unmappedFileReason,
   versionConflictReason,
   type ConflictTarget,
   type MarkKind,
   type VersionConflict,
 } from "./mark";
 import { taskView } from "./fixtures";
+import type { FileHealth, UnmappedFile } from "./wire";
 
 const PRE_UPDATE: VersionConflict = {
   kind: "preUpdate",
@@ -188,5 +191,83 @@ describe("conflictKeyOf", () => {
   it("cannot collide two (slug, path) pairs into one key", () => {
     // A concatenated key would make these two the same string.
     expect(conflictKeyOf("a", "b/c.md")).not.toBe(conflictKeyOf("a/b", "c.md"));
+  });
+});
+
+// --- TASK-88 / decision-24: 不整合 の対象が管理ファイル 1 件へ広がった ------------------------
+
+describe("fileInconsistencyReasons", () => {
+  it("emits nothing for a non-task file that mapped cleanly", () => {
+    expect(fileInconsistencyReasons({ state: "ok" }, "文書")).toEqual([]);
+  });
+
+  // AC #3: the id/title/body survive and only the out-of-range field is named — so the line has to
+  // name the field, not the file.
+  it("names the field a 想定外スキーマ left unset", () => {
+    expect(
+      fileInconsistencyReasons(
+        {
+          state: "degraded",
+          events: [{ event: "unexpectedSchema", detail: "frontmatter `type` is not a scalar value" }],
+        },
+        "文書",
+      ),
+    ).toEqual(["想定外スキーマ: frontmatter `type` is not a scalar value"]);
+  });
+
+  // The derivation is the task one (decision-22「導出は 1 回」), so a line reads identically on
+  // either side of the widened object — only the noun in the fallback can differ.
+  it("reads the same as a task's line for the same event", () => {
+    const health: FileHealth = {
+      state: "degraded",
+      events: [{ event: "danglingReference", kind: "milestone", target: "m-9" }],
+    };
+    expect(fileInconsistencyReasons(health, "マイルストーン")).toEqual(
+      inconsistencyReasons(taskView({ health }), null),
+    );
+  });
+});
+
+describe("unmappedFileReason", () => {
+  const file = (overrides: Partial<UnmappedFile> = {}): UnmappedFile => ({
+    sourcePath: "/repos/atlas/backlog/docs/doc-9 - broken.md",
+    kind: "document",
+    missingRequired: [],
+    detail: null,
+    ...overrides,
+  });
+
+  it("names which required field was missing", () => {
+    expect(unmappedFileReason(file({ missingRequired: ["id"] }))).toBe(
+      "解析不能: id を読めません",
+    );
+  });
+
+  it("carries the read or YAML error when there is one", () => {
+    expect(unmappedFileReason(file({ detail: "file could not be read: denied" }))).toBe(
+      "解析不能: file could not be read: denied",
+    );
+  });
+
+  it("keeps both facts apart when a required field was present in an unusable shape", () => {
+    expect(
+      unmappedFileReason(
+        file({
+          missingRequired: ["title"],
+          detail: "frontmatter `title` is not a scalar value",
+        }),
+      ),
+    ).toBe("解析不能: title を読めません / 解析不能: frontmatter `title` is not a scalar value");
+  });
+
+  // A ⚠️ with no reason is indistinguishable from a bug in the derivation, so a record carrying
+  // neither fact still yields a line — and the noun says what the file was meant to be.
+  it("still says something when the record carries neither a field list nor a detail", () => {
+    expect(unmappedFileReason(file({ kind: "milestone" }))).toBe(
+      "解析不能: このファイルをマイルストーンとして写せませんでした",
+    );
+    expect(unmappedFileReason(file({ kind: "decision" }))).toBe(
+      "解析不能: このファイルを意思決定として写せませんでした",
+    );
   });
 });
