@@ -4,7 +4,7 @@ title: 絞り込みの値を選ぶとアプリがフリーズするのを直す
 status: In Review
 assignee: []
 created_date: '2026-08-06 07:56'
-updated_date: '2026-08-06 09:45'
+updated_date: '2026-08-06 09:49'
 labels:
   - ui
   - decision
@@ -56,7 +56,6 @@ ordinal: 116500
 
 ## Implementation Notes
 
-<!-- SECTION:NOTES:BEGIN -->
 <!-- SECTION:NOTES:BEGIN -->
 ## 切り分けの経過（2026-08-06、TASK-77 のセッション）
 
