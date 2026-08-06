@@ -1,10 +1,10 @@
 ---
 id: TASK-88
 title: 非タスク管理ファイルの読取・解析失敗を表示モデルへ残す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-06 21:09'
+updated_date: '2026-08-06 22:48'
 labels:
   - robustness
   - rust
