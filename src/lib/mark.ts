@@ -149,10 +149,14 @@ export function inconsistencyReasons(
     for (const event of health.events) {
       switch (event.event) {
         case "unparseable": {
+          // Both lines say 解析不能, including the `detail` one. doc-4 §5 defines 想定外スキーマ as
+          // 「frontmatter は読めるが」, and an `unparseable` is the case where it could not be read at
+          // all — labelling its detail 想定外スキーマ would put a reason on screen under the name of
+          // the event that did not happen.
           if (event.missingRequired.length > 0) {
             reasons.push(`解析不能: ${event.missingRequired.join("・")} を読めません`);
           }
-          if (event.detail !== null) reasons.push(`想定外スキーマ: ${event.detail}`);
+          if (event.detail !== null) reasons.push(`解析不能: ${event.detail}`);
           if (event.missingRequired.length === 0 && event.detail === null) {
             reasons.push("解析不能: このファイルをタスクとして写せませんでした");
           }

@@ -125,7 +125,6 @@
     LaunchMethod,
     ProjectEntry,
     ProjectSnapshot,
-    ReferenceKind,
     StorageState,
     TaskView,
     UpdateOperation,
@@ -239,12 +238,6 @@
     draft: "draft",
     completed: "completed",
     archive: "archive",
-  };
-
-  const REFERENCE_KIND_LABEL: Record<ReferenceKind, string> = {
-    milestone: "milestone",
-    documentation: "documentation",
-    reference: "references",
   };
 
   let task = $derived(view.task);
@@ -1135,7 +1128,10 @@
      引き継がれる形で起こりうる。**理由行だけを並べ、族名も総称も行には出さない** — 何件あるかと
      「不整合である」ことは、区画が在ることと見出しの ⚠️ が既に述べている。 -->
 {#snippet inconsistencyPanel()}
-  {#if reasons.length > 0 || task.unknownSections.length > 0}
+  <!-- 条件は理由行の有無だけである。未知セクションは読み取り層が想定外スキーマとして記録する
+       (`domain.rs` の `UnknownSection`) ので、それを持つタスクは必ず理由行を持つ — `||` で足すと、
+       ⚠️ の無いタスクに「⚠️ 不整合」の見出しを描く枝ができる。 -->
+  {#if reasons.length > 0}
     <section class="inconsistency-panel">
       <h3>
         <span class="glyph"><Icon name="triangle-alert" /></span>
@@ -1715,7 +1711,7 @@
   {@const draw = {
     heading,
     editConsole,
-    degrade: inconsistencyPanel,
+    inconsistency: inconsistencyPanel,
     description: descriptionSection,
     ac: acSection,
     plan: planSection,

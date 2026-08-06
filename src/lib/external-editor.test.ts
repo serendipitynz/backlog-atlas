@@ -112,9 +112,9 @@ describe("editorOffers", () => {
 });
 
 describe("開く前の表示 (AC #3)", () => {
-  it("states the frontmatter exposure, the degradation it causes, and the missing CLI check", () => {
+  it("states the frontmatter exposure, the 不整合表示 it causes, and the missing CLI check", () => {
     expect(FRONTMATTER_NOTICE).toContain("frontmatter");
-    expect(FRONTMATTER_NOTICE).toContain("縮退表示");
+    expect(FRONTMATTER_NOTICE).toContain("不整合表示");
     // The exception doc-8 §7 names: these bytes do not pass the CLI's option checking.
     expect(FRONTMATTER_NOTICE).toContain("スキーマ検査");
   });

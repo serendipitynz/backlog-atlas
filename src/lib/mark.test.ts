@@ -65,8 +65,10 @@ describe("inconsistencyReasons", () => {
   });
 
   // AC #4 の理由行は 1 件 1 行. A 解析不能 that names fields *and* carries a detail is two findings,
-  // and folding them into one line would hide the second behind the first.
-  it("splits an unparseable event's fields and detail into separate lines", () => {
+  // and folding them into one line would hide the second behind the first. **Both lines say
+  // 解析不能**: doc-4 §5 のもう一方 (想定外スキーマ) は「frontmatter は読めるが」を定義に持つので、
+  // frontmatter が読めなかった事象の detail をその名で出すと、起きていない事象の名前になる。
+  it("labels both of an unparseable event's lines 解析不能, never 想定外スキーマ", () => {
     const view = taskView({
       health: {
         state: "degraded",
@@ -77,7 +79,7 @@ describe("inconsistencyReasons", () => {
     });
     expect(inconsistencyReasons(view, null)).toEqual([
       "解析不能: id・title を読めません",
-      "想定外スキーマ: YAML が読めません",
+      "解析不能: YAML が読めません",
     ]);
   });
 
