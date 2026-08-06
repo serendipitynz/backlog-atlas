@@ -4,7 +4,7 @@ title: タグの角丸を弱め、カードの色づけを priority へ振る
 status: In Review
 assignee: []
 created_date: '2026-07-31 23:32'
-updated_date: '2026-08-06 12:43'
+updated_date: '2026-08-06 12:51'
 labels:
   - ui
   - design-system
@@ -145,4 +145,10 @@ low と色相でしか違わなくなるため）。**内訳は件数のアク�
 しており、共有 helper も `priorityEdge` のままだった。**`priorityStep` へ改名**し（縁ではなく段を
 判定する関数で、いま 4 か所が呼ぶ）、doc-11 には**「優先度の縁の収録条件という縁だけの契約は無い」**
 と書いた。**改題した decision に合わせて、それを引く語彙と識別子も動かす。**
+
+**4 ラウンド目の [P2] 1 件** — decision-23 が改名前の `priorityEdge` を参照し、さらに「絞り込みの
+priority ファセットも同じ関数を通る」と書いていた。**後者は事実として誤り** — ファセットが共有して
+いるのは `normalizePriority`（正規化）までで、3 段への写像ではない。ファセットが 3 段へ写していたら
+`urgent` を絞り込めなくなる。**改名したときに、その識別子を引いている散文を grep する**（TASK-77 の
+①と同型で、こちらは自分が同じ PR の中で作った不一致である）。
 <!-- SECTION:NOTES:END -->
