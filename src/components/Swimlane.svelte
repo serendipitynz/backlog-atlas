@@ -107,8 +107,16 @@
     onfocused,
   }: Props = $props();
 
-  /** The scrollport both header rows are stuck to, and the box a 着地 scrolls. */
-  let grid = $state<HTMLElement>();
+  /**
+   * The scrollport both header rows are stuck to, and the box a 着地 scrolls.
+   *
+   * `| null` for the same reason as [`BoundElements`] below: `bind:this` writes `null` on unmount,
+   * never `undefined`. This one sits on the template's root and no branch removes it, so nothing can
+   * reach the effect with it emptied — but a declaration that says `undefined` beside a comment
+   * saying `null` is what the reader has to reconcile, and reconciling it wrongly is the whole of
+   * TASK-119.
+   */
+  let grid = $state<HTMLElement | null>(null);
 
   /**
    * What a keyed `bind:this` actually holds: the element while it is mounted, **`null` once it is
@@ -218,7 +226,7 @@
     const mark = boundElement(laneMarks, slug);
     const head = boundElement(laneHeads, slug);
     const container = grid;
-    if (mark === null || head === null || container === undefined) return;
+    if (mark === null || head === null || container === null) return;
     // The head is measured here rather than read from `headHeight`, because this effect can run
     // before the observer has reported for the first time — and it does exactly that on the path the
     // landing exists for: 「このプロジェクトのレーンへ」 mounts the grid with `focusSlug` already set,
