@@ -23,7 +23,6 @@
  * | doc-8 §5 配置ごとの粒度（件数のみ） | [`commitCountLine`] + [`relationLine`] | the same two facts in one line each, for the narrow placements |
  * | decision-6 コミット該当なし / Git 対象不在 | [`CommitListView`] states `noCommits` / `noRepository` | searched-and-empty (neutral) vs. the root not being a Git repository |
  * | decision-6 Git remote 不在 | [`RelationAvailability`] state `remoteAbsent` | the ledger's Git remote 有無属性 is false — a setting, not a failure |
- * | doc-4 §5 縮退表示（不足内容） | [`DegradeSummary`] | the task's degrade events grouped by what each one costs the display |
  * | doc-8 §3 AC の checked 状態 | [`AcProgress`] | how many acceptance criteria are checked, of how many |
  *
  * Two rules the whole module follows:
@@ -425,45 +424,6 @@ export interface AcProgress {
 export function acProgress(view: TaskView): AcProgress {
   const items = view.task.acceptanceCriteria;
   return { checked: items.filter((item) => item.checked).length, total: items.length };
-}
-
-/**
- * 縮退表示の不足内容 (doc-4 §5, doc-8 §3), grouped by what each event costs the display: which
- * required fields could not be read, which values were out of range, and which references
- * resolve to nothing. Grouped rather than listed flat so the panel can put each mark where the
- * missing thing would have been, and still show the rest of the task.
- */
-export interface DegradeSummary {
-  degraded: boolean;
-  /** id / title / status that could not be read — the fields the heading has to do without. */
-  missingRequired: RequiredField[];
-  /** 想定外スキーマ details (unknown status, unknown SECTION, broken structure). */
-  schemaIssues: string[];
-  danglingReferences: { kind: ReferenceKind; target: string }[];
-}
-
-export function degradeSummary(view: TaskView): DegradeSummary {
-  const summary: DegradeSummary = {
-    degraded: view.task.health.state === "degraded",
-    missingRequired: [],
-    schemaIssues: [],
-    danglingReferences: [],
-  };
-  for (const event of degradeEvents(view)) {
-    switch (event.event) {
-      case "unparseable":
-        summary.missingRequired.push(...event.missingRequired);
-        if (event.detail !== null) summary.schemaIssues.push(event.detail);
-        break;
-      case "unexpectedSchema":
-        summary.schemaIssues.push(event.detail);
-        break;
-      case "danglingReference":
-        summary.danglingReferences.push({ kind: event.kind, target: event.target });
-        break;
-    }
-  }
-  return summary;
 }
 
 function degradeEvents(view: TaskView): DegradeEvent[] {

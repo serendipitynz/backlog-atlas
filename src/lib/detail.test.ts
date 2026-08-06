@@ -3,7 +3,6 @@ import {
   acProgress,
   commitCountLine,
   commitList,
-  degradeSummary,
   dependencyLinks,
   milestoneRef,
   pullRequestsByCommit,
@@ -310,39 +309,7 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
   });
 });
 
-describe("AC #5 縮退時は判別できた項目だけを出し、不足を明示する", () => {
-  it("groups the degrade events by what each one costs the display", () => {
-    const view = taskView({
-      status: null,
-      health: {
-        state: "degraded",
-        events: [
-          { event: "unparseable", missingRequired: ["id", "title"], detail: "invalid YAML" },
-          { event: "unexpectedSchema", detail: "status `Blocked` is not declared in config.yml" },
-          { event: "danglingReference", kind: "milestone", target: "m-9" },
-        ],
-      },
-    });
-    const summary = degradeSummary(view);
-
-    expect(summary.degraded).toBe(true);
-    expect(summary.missingRequired).toEqual(["id", "title"]);
-    expect(summary.schemaIssues).toEqual([
-      "invalid YAML",
-      "status `Blocked` is not declared in config.yml",
-    ]);
-    expect(summary.danglingReferences).toEqual([{ kind: "milestone", target: "m-9" }]);
-  });
-
-  it("reports a healthy task as not degraded, with nothing missing", () => {
-    expect(degradeSummary(taskView())).toEqual({
-      degraded: false,
-      missingRequired: [],
-      schemaIssues: [],
-      danglingReferences: [],
-    });
-  });
-
+describe("AC #5 不整合でも判別できた項目は出す", () => {
   it("still separates 参照系 for a completed or archived task", () => {
     // doc-8 §6.5: 編集可否 is per 保存区分, but reading Type・References・PR is not.
     for (const storageState of ["completed", "archive", "draft", null] as const) {

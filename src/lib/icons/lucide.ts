@@ -55,7 +55,8 @@ export type IconName =
   | "clipboard-check"
   | "arrow-up"
   | "arrow-down"
-  | "x";
+  | "x"
+  | "triangle-alert";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -220,5 +221,18 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
   x: [
     { shape: "path", d: "M18 6 6 18" },
     { shape: "path", d: "m6 6 12 12" },
+  ],
+  // 不整合印 (decision-22). The one figure here that replaces an emoji rather than a character glyph:
+  // ⚠️ is coloured by the platform's own font and redrawn by each of them, and Atlas runs on three
+  // webviews (decision-11) with a theme it picks itself — so the emoji would be the one mark that
+  // neither follows 表示テーマ nor looks the same twice. Drawn as a 印グリフ: the family colour is the
+  // stroke, and there is no chip around it.
+  "triangle-alert": [
+    {
+      shape: "path",
+      d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
+    },
+    { shape: "path", d: "M12 9v4" },
+    { shape: "path", d: "M12 17h.01" },
   ],
 };

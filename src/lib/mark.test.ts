@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   UNWATCHED_MARK,
   conflictKeyOf,
-  degradeMark,
-  taskMarks,
-  versionConflictMark,
+  inconsistencyLabel,
+  inconsistencyReasons,
+  isInconsistent,
+  versionConflictReason,
   type ConflictTarget,
   type MarkKind,
   type VersionConflict,
@@ -25,40 +26,28 @@ const DEGRADED = taskView({
   },
 });
 
-describe("taskMarks", () => {
+describe("inconsistencyReasons", () => {
   it("emits nothing for a task that reads cleanly and has no observed divergence", () => {
-    expect(taskMarks(taskView(), null)).toEqual([]);
+    expect(inconsistencyReasons(taskView(), null)).toEqual([]);
+    expect(isInconsistent(taskView(), null)).toBe(false);
   });
 
-  // decision-6 三者を同じ印へ混ぜない: the whole point of the module is that these two never share
-  // one kind, so a display cannot reach for one colour for both.
-  it("keeps 解析縮退 and 版ずれ in separate kinds", () => {
-    const marks = taskMarks(DEGRADED, PRE_UPDATE);
-    expect(marks.map((mark) => mark.kind)).toEqual(["degraded", "versionConflict"]);
-    expect(new Set(marks.map((mark) => mark.label)).size).toBe(2);
+  // decision-22: 判別できなかった項目 と バージョン不整合 は 1 つの 不整合 へ束ねる。族名を分けていた
+  // 旧 2 チップと違い、どちらも同じ ⚠️ の理由行として並ぶ。
+  it("bundles 読み取りの由来 and バージョン不整合 into one list, in that order", () => {
+    const reasons = inconsistencyReasons(DEGRADED, PRE_UPDATE);
+    expect(reasons).toHaveLength(2);
+    expect(reasons[0]).toContain("解析不能: status を読めません");
+    expect(reasons[1]).toContain("バージョン不整合");
+    expect(isInconsistent(DEGRADED, PRE_UPDATE)).toBe(true);
   });
 
-  it("marks 版ずれ on a task that parses cleanly", () => {
-    const marks = taskMarks(taskView(), POST_WINDOW);
-    expect(marks.map((mark) => mark.kind)).toEqual(["versionConflict"]);
+  it("is 不整合 on a task that parses cleanly but had a divergence observed", () => {
+    expect(inconsistencyReasons(taskView(), POST_WINDOW)).toHaveLength(1);
+    expect(isInconsistent(taskView(), POST_WINDOW)).toBe(true);
   });
 
-  it("marks 縮退 without a divergence", () => {
-    expect(taskMarks(DEGRADED, null).map((mark) => mark.kind)).toEqual(["degraded"]);
-  });
-
-  it("orders marks the same way whatever the task", () => {
-    const both = taskMarks(DEGRADED, POST_WINDOW).map((mark) => mark.kind);
-    expect(both).toEqual(["degraded", "versionConflict"]);
-  });
-});
-
-describe("degradeMark", () => {
-  it("is null for a healthy task", () => {
-    expect(degradeMark(taskView())).toBeNull();
-  });
-
-  it("names every degrade event in its detail", () => {
+  it("names every 由来 without printing the word 不整合 on a 読み取り由来の行", () => {
     const view = taskView({
       health: {
         state: "degraded",
@@ -68,34 +57,73 @@ describe("degradeMark", () => {
         ],
       },
     });
-    const mark = degradeMark(view);
-    expect(mark?.label).toBe("縮退");
-    expect(mark?.detail).toContain("想定外スキーマ: unknown status");
-    expect(mark?.detail).toContain("参照欠損: milestone m-9");
+    const reasons = inconsistencyReasons(view, null);
+    expect(reasons).toEqual([
+      "想定外スキーマ: unknown status",
+      "参照欠損: milestone m-9",
+    ]);
+  });
+
+  // AC #4 の理由行は 1 件 1 行. A 解析不能 that names fields *and* carries a detail is two findings,
+  // and folding them into one line would hide the second behind the first.
+  it("splits an unparseable event's fields and detail into separate lines", () => {
+    const view = taskView({
+      health: {
+        state: "degraded",
+        events: [
+          { event: "unparseable", missingRequired: ["id", "title"], detail: "YAML が読めません" },
+        ],
+      },
+    });
+    expect(inconsistencyReasons(view, null)).toEqual([
+      "解析不能: id・title を読めません",
+      "想定外スキーマ: YAML が読めません",
+    ]);
+  });
+
+  // A ⚠️ whose panel says nothing is indistinguishable from a bug in this function, so an event
+  // carrying neither a field list nor a detail still yields a line.
+  it("never leaves a degraded task with an empty reason list", () => {
+    const view = taskView({
+      health: {
+        state: "degraded",
+        events: [{ event: "unparseable", missingRequired: [], detail: null }],
+      },
+    });
+    expect(inconsistencyReasons(view, null)).toHaveLength(1);
   });
 });
 
-describe("versionConflictMark", () => {
-  // doc-9 §5 splits the presentation into 防げる競合 and 防げない喪失の事後通知; both are 版ずれ, so
-  // they share the word, and the evidence differs because the user's next step does.
+describe("inconsistencyLabel", () => {
+  // doc-11 §2.4: the figure leaves nothing for a screen reader, so the word and every reason are
+  // given in text — the card has nowhere else to put them.
+  it("names 不整合 and carries every reason", () => {
+    const label = inconsistencyLabel(inconsistencyReasons(DEGRADED, POST_WINDOW));
+    expect(label.startsWith("不整合: ")).toBe(true);
+    expect(label).toContain("解析不能");
+    expect(label).toContain("バージョン不整合");
+  });
+});
+
+describe("versionConflictReason", () => {
+  // doc-9 §5 splits the presentation into 防げる競合 and 防げない喪失の事後通知; both are バージョン不整合,
+  // so they share the word, and the evidence differs because the user's next step does.
   it("uses one word for both stages and states which one it is", () => {
-    const pre = versionConflictMark(PRE_UPDATE);
-    const post = versionConflictMark(POST_WINDOW);
-    expect(pre.label).toBe("版ずれ");
-    expect(post.label).toBe("版ずれ");
-    expect(pre.kind).toBe("versionConflict");
-    expect(post.kind).toBe("versionConflict");
-    expect(pre.detail).toContain("更新前競合");
-    expect(pre.detail).toContain("backlog/tasks/task-1.md");
-    expect(post.detail).toContain("照合後競合窓");
-    expect(post.detail).toContain("title");
+    const pre = versionConflictReason(PRE_UPDATE);
+    const post = versionConflictReason(POST_WINDOW);
+    expect(pre.startsWith("バージョン不整合: ")).toBe(true);
+    expect(post.startsWith("バージョン不整合: ")).toBe(true);
+    expect(pre).toContain("更新前競合");
+    expect(pre).toContain("backlog/tasks/task-1.md");
+    expect(post).toContain("照合後競合窓");
+    expect(post).toContain("title");
   });
 });
 
 describe("継続検出停止", () => {
   // doc-9 §5 forbids 照合不能 from reading as a conflict; the same holds for a stopped watch, which
   // is likewise "no way to look" rather than "a divergence was found".
-  it("is undetectable, never 版ずれ", () => {
+  it("is undetectable, never バージョン不整合", () => {
     const kind: MarkKind = UNWATCHED_MARK.kind;
     expect(kind).toBe("undetectable");
     expect(UNWATCHED_MARK.detail).toContain("版がずれているとは限りません");
