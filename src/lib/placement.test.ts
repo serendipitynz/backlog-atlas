@@ -54,7 +54,7 @@ const DOC_8_SECTION_3: Record<
   references: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
   pullRequest: { sidebar: "always", modal: "always", full: "always" },
   gitHistory: { sidebar: "always", modal: "always", full: "always" },
-  degrade: { sidebar: "always", modal: "always", full: "always" },
+  inconsistency: { sidebar: "always", modal: "always", full: "always" },
   transitions: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
 };
 
@@ -212,19 +212,19 @@ describe("TASK-73 開閉印", () => {
   });
 });
 
-describe("AC #6 縮退表示は 3 配置とも常設", () => {
-  it("never folds the 縮退 区画, whichever placement is in force", () => {
+describe("AC #6 不整合区画は 3 配置とも常設", () => {
+  it("never folds the 不整合区画, whichever placement is in force", () => {
     for (const placement of PLACEMENTS) {
-      expect([placement, layoutFor(placement).sections.degrade]).toEqual([placement, "always"]);
+      expect([placement, layoutFor(placement).sections.inconsistency]).toEqual([placement, "always"]);
     }
   });
 
-  // Until TASK-113 the 縮退 spanned both columns, on the grounds that one column's reader would
+  // Until TASK-113 the 不整合区画 spanned both columns, on the grounds that one column's reader would
   // otherwise miss it. doc-8 §3.1 answers that with a position instead: at the head of the 主列 it is
   // above both columns' contents, so neither can be read without passing it.
   it("leads the 主列 rather than spanning the columns (doc-8 §3.1)", () => {
-    expect(SECTION_COLUMN.degrade).toBe("main");
-    expect(MAIN_COLUMN_ORDER[0]).toBe("degrade");
+    expect(SECTION_COLUMN.inconsistency).toBe("main");
+    expect(MAIN_COLUMN_ORDER[0]).toBe("inconsistency");
   });
 });
 
@@ -232,7 +232,7 @@ describe("AC #1・#2・#3 区画の並びは doc-8 §3.1 の正本", () => {
   // Written out from doc-8 §3.1 rather than from `placement.ts`, for the reason the assignment table
   // above is: a test that reads the module cannot disagree with it.
   const MAIN_FROM_DOC: DetailSection[] = [
-    "degrade",
+    "inconsistency",
     "description",
     "ac",
     "plan",

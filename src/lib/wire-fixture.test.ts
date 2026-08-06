@@ -26,7 +26,7 @@ import { refusalReport } from "./ledger";
 import { historyKeyOf } from "./history-read";
 import { statusNotice, saveAvailability, editorArgsText } from "./settings";
 import { buildSwimlane } from "./swimlane";
-import { degradeMark, taskMarks } from "./mark";
+import { inconsistencyReasons, isInconsistent } from "./mark";
 import type {
   AcceptanceCriterion,
   AppSettings,
@@ -694,6 +694,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       loads: new Map([[event.slug, event.load]]),
       hidden: new Set(),
       filter: defaultFilter(["active", "indeterminate"]),
+      inconsistent: () => false,
     });
     expect(rows[0].state).toBe("loaded");
   });
@@ -1027,6 +1028,7 @@ describe("記録した payload を画面の関数がそのまま読める", () =
       // The filter reads `storageState`, so a rename on the Rust side drops both tasks out of the
       // 既定の保存区分 and this row comes back empty.
       filter: defaultFilter(["active", "indeterminate"]),
+      inconsistent: () => false,
     });
 
     expect(rows).toHaveLength(1);
@@ -1044,13 +1046,16 @@ describe("記録した payload を画面の関数がそのまま読める", () =
     expect(row.totalBeforeFilter).toBe(2);
   });
 
-  it("縮退の印は記録した health から立つ", () => {
+  it("不整合印は記録した health から立ち、理由行がその中身を読む", () => {
     const [ok, broken] = snapshotOf(LOADED).tasks;
 
-    // `health.state` is a tagged variant, so this fails if the tag key or its spelling moves.
-    expect(degradeMark(ok)).not.toBeNull();
-    expect(degradeMark(broken)).not.toBeNull();
-    expect(taskMarks(broken, null).map((mark) => mark.kind)).toContain("degraded");
+    // `health.state` is a tagged variant, so this fails if the tag key or its spelling moves; the
+    // reason lines fail if a *event* tag or its payload field moves, which the tag alone would not
+    // catch (decision-22 puts the payload on screen one line at a time).
+    expect(isInconsistent(ok, null)).toBe(true);
+    expect(isInconsistent(broken, null)).toBe(true);
+    expect(inconsistencyReasons(ok, null).join(" ")).toContain("参照欠損: documentation");
+    expect(inconsistencyReasons(broken, null).join(" ")).toContain("解析不能:");
   });
 
   it("履歴読取のキーは記録した References から作られる", () => {

@@ -36,7 +36,9 @@ export type DegradeEvent =
   | { event: "unexpectedSchema"; detail: string }
   | { event: "danglingReference"; kind: ReferenceKind; target: string };
 
-/** Per-task parse health (doc-4 §5). `degraded` is the 縮退印 the card shows (doc-7 §3). */
+/** Per-task parse health (doc-4 §5). `degraded` is one source of the 不整合印 the card shows
+ *  (doc-7 §3, decision-22). The token stays 縮退-flavoured on purpose: it names what the read layer
+ *  recorded, not the state the screen bundles it into. */
 export type TaskHealth = { state: "ok" } | { state: "degraded"; events: DegradeEvent[] };
 
 export interface AcceptanceCriterion {

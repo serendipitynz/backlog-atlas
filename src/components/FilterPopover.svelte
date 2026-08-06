@@ -91,11 +91,11 @@
           entry({ facet: "assignee", value: value.value }, value.count),
         ),
       },
-      // 縮退 has no value list — the facet *is* the condition — so it is offered as a single entry
+      // 不整合 has no value list — the facet *is* the condition — so it is offered as a single entry
       // rather than as a section that would otherwise be missing from the search results.
       {
-        facet: "degraded" as const,
-        entries: [entry({ facet: "degraded" }, facets.degraded, "縮退のみ")],
+        facet: "inconsistent" as const,
+        entries: [entry({ facet: "inconsistent" }, facets.inconsistent, "不整合のみ")],
       },
     ].map((section) => ({ ...section, label: FACET_LABEL[section.facet] })),
   );

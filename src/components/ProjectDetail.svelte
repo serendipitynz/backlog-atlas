@@ -1004,7 +1004,7 @@
                 {#if row.key.trim() !== ""}
                   {#if note !== null}
                     <!-- Whether the alias actually applies (doc-10 §4.2). Only the one ineffective
-                         state takes the 縮退 family's colour. -->
+                         state takes the 不整合 family's colour. -->
                     <span class="alias-effect" class:ineffective={note.ineffective} title={note.note}>
                       {note.label}
                     </span>
@@ -2245,7 +2245,7 @@
     }
   }
 
-  // How one alias row takes effect (doc-10 §4.2). Only the one ineffective state takes the 縮退
+  // How one alias row takes effect (doc-10 §4.2). Only the one ineffective state takes the 不整合
   // family's colour; the rest stay the colour of a secondary sentence — which is what keeps
   // 宣言集合なし, where the alias works without a declaration behind it, out of that mark.
   .alias-effect {
@@ -2253,7 +2253,7 @@
     font-size: 0.68rem;
 
     &.ineffective {
-      color: var(--mark-degraded);
+      color: var(--mark-inconsistent);
     }
   }
 
@@ -2263,7 +2263,7 @@
     font-size: 0.68rem;
 
     &.ineffective {
-      color: var(--mark-degraded);
+      color: var(--mark-inconsistent);
     }
   }
 
@@ -2406,7 +2406,7 @@
   // input the user can fix, not a root Atlas failed to read.
   .problem {
     margin: 0.15rem 0;
-    color: var(--mark-degraded);
+    color: var(--mark-inconsistent);
     font-size: 0.72rem;
   }
 
@@ -2434,7 +2434,7 @@
   }
 
   // 照合不能 is neither a conflict nor a failure (doc-9 §4.2/§5): its own family's colour, so it
-  // cannot be read as a 版ずれ (decision-6's「三者を同じ印へ混ぜない」).
+  // cannot be read as 不整合 (decision-6・decision-22 の「族を同じ印へ混ぜない」).
   .warn,
   .undetectable,
   .withheld,

@@ -6,7 +6,7 @@
   // The same panel is drawn three ways (doc-8 §2.1 詳細配置). What the placement changes is *where*
   // the shell puts this element and, through `layoutFor`, how much of each 区画 is open and how much
   // of the Git 履歴欄 is shown (doc-8 §3 の割当表). What it never changes is which 区画 exist: the
-  // panel shows the same task either way, and 縮退表示 stays 常設 in all three (doc-8 §3).
+  // panel shows the same task either way, and 不整合区画 stays 常設 in all three (doc-8 §3).
   //
   // 参照系 (Type・References・Pull Request・Git 履歴) is read and shown for every 保存区分
   // (doc-8 §6.5); what changes with the 保存区分 is which operations are *offered*, and an
@@ -29,7 +29,6 @@
   import {
     CROSS_ID_UNAVAILABLE,
     acProgress,
-    degradeSummary,
     dependencyLinks,
     milestoneRef,
     referenceSplit,
@@ -84,8 +83,9 @@
   } from "../lib/external-editor";
   import {
     conflictSetDetail,
-    taskMarks,
-    versionConflictMark,
+    inconsistencyLabel,
+    inconsistencyReasons,
+    versionConflictReason,
     type ConflictTarget,
     type VersionConflict,
   } from "../lib/mark";
@@ -125,7 +125,6 @@
     LaunchMethod,
     ProjectEntry,
     ProjectSnapshot,
-    ReferenceKind,
     StorageState,
     TaskView,
     UpdateOperation,
@@ -175,13 +174,13 @@
     /** Re-read this task's root (doc-8 §7 戻ってきたときに読み直せる; same operation as the row's). */
     onreread: () => void;
     /**
-     * 版ずれ (doc-9) recorded for this task, or `null`. Held by the shell so the mark outlives the
+     * バージョン不整合 (doc-9) recorded for this task, or `null`. Held by the shell so the mark outlives the
      * panel and reaches the swimlane card (AC #4); the panel reads it back so the two surfaces say
      * the same thing about the same task.
      */
     conflict: VersionConflict | null;
     /**
-     * Record or clear a 版ずれ for one task. `target` is passed explicitly rather than resolved from
+     * Record or clear a バージョン不整合 for one task. `target` is passed explicitly rather than resolved from
      * the shell's current selection: an operation is awaited, and the selection can move while it is
      * in flight, which would file this task's divergence against whatever is open when the answer
      * arrives.
@@ -241,12 +240,6 @@
     archive: "archive",
   };
 
-  const REFERENCE_KIND_LABEL: Record<ReferenceKind, string> = {
-    milestone: "milestone",
-    documentation: "documentation",
-    reference: "references",
-  };
-
   let task = $derived(view.task);
   let status = $derived(view.interpretation.status);
   let types = $derived(view.interpretation.types);
@@ -254,13 +247,12 @@
   let dependencies = $derived(dependencyLinks(view, snapshot.tasks));
   let references = $derived(referenceSplit(view));
   let ac = $derived(acProgress(view));
-  let degrade = $derived(degradeSummary(view));
   /**
-   * 縮退印 and 版ずれ印 for the heading, from the derivation the swimlane card shares (`lib/mark.ts`).
-   * One source so the two screens cannot disagree about a task's marks or their wording, which is
-   * what decision-6's 三者を同じ印へ混ぜない asks of a cross-cutting display (AC #4).
+   * 不整合の理由行 (decision-22), from the derivation the swimlane card shares (`lib/mark.ts`). One
+   * source so the card's ⚠️, this heading's ⚠️ and the 不整合区画 below cannot disagree about the same
+   * task — which is what decision-6's 族を同じ印へ混ぜない asks of a cross-cutting display (AC #4).
    */
-  let marks = $derived(taskMarks(view, conflict));
+  let reasons = $derived(inconsistencyReasons(view, conflict));
 
   // --- 詳細配置 (doc-8 §2) -----------------------------------------------------------------
 
@@ -371,7 +363,7 @@
     else endSession();
   }
 
-  /** The task a 版ずれ report is about, as of now. Captured before any await (see `save`). */
+  /** The task a バージョン不整合 report is about, as of now. Captured before any await (see `save`). */
   function conflictTarget(): ConflictTarget {
     return { slug: task.project, sourcePath: task.sourcePath };
   }
@@ -387,7 +379,7 @@
     try {
       const outcome = await onapply(plan.action);
       // Whether the panel still holds the operated task's read. `saveState` and the session are about
-      // what is on screen, so they are only touched while that is still true; the 版ずれ record is
+      // what is on screen, so they are only touched while that is still true; the バージョン不整合 record is
       // about the task and is always filed against `target`.
       const stillOpen = task.sourcePath === target.sourcePath;
       switch (outcome.state) {
@@ -395,7 +387,7 @@
           // 事後通知 (doc-9 §5): compared against the operated task's own re-read, which the outcome
           // carries — not against `view`, which is whatever the panel is showing by now. Skipping the
           // comparison when the selection moved would be worse than wrong: a clean result clears the
-          // task's 版ずれ record, so an unchecked save would erase a mark it never checked.
+          // task's バージョン不整合 record, so an unchecked save would erase a mark it never checked.
           const diverged = divergence(submitted, outcome.view);
           if (stillOpen) {
             session = null;
@@ -404,7 +396,7 @@
             saveState =
               diverged.length === 0 ? { state: "applied" } : { state: "diverged", fields: diverged };
           }
-          // The 版ずれ record follows the same split: a clean save clears it, and the 事後通知 is
+          // The バージョン不整合 record follows the same split: a clean save clears it, and the 事後通知 is
           // recorded so it survives leaving this task (doc-9 §5, AC #4).
           onconflict(
             diverged.length === 0 ? null : { kind: "postWindow", fields: diverged },
@@ -429,7 +421,7 @@
           break;
         case "uncheckable":
           // 照合不能 (doc-9 §4.2): no CLI ran and no divergence was observed, so this deliberately
-          // does *not* record a 版ずれ — doc-9 §5 requires the user not to read it as a conflict.
+          // does *not* record a バージョン不整合 — doc-9 §5 requires the user not to read it as a conflict.
           if (stillOpen) saveState = { state: "uncheckable", detail: outcome.detail };
           break;
         case "failed":
@@ -448,7 +440,7 @@
     session = startSession(view);
     saveState = { state: "idle" };
     // Both doc-9 §5 paths 帰着させる the situation to 最新の版に対する新しい更新操作, so the recorded
-    // divergence is resolved: what remains is unsaved input against the current read, not a 版ずれ.
+    // divergence is resolved: what remains is unsaved input against the current read, not a バージョン不整合.
     onconflict(null, conflictTarget());
   }
 
@@ -736,22 +728,24 @@
         <Icon name={copied ? "clipboard-check" : "clipboard"} />
       </button>
       {#if crossId === null}
-        <!-- 解析不能 (doc-4 §5): a required field the read layer could not get — the 縮退 family,
-             not the 版ずれ one, since the divergence has nothing to do with it. -->
-        <span class="mark" data-kind="degraded">TASK-ID 不明</span>
+        <!-- 解析不能 (doc-4 §5): a required field the read layer could not get. Still a 印チップ and
+             not part of the ⚠️ — it names the field that is missing *here*, where the ID would have
+             been, which is a different act from listing the task's reasons (decision-22). -->
+        <span class="mark" data-kind="inconsistent">TASK-ID 不明</span>
       {/if}
-      <!-- 縮退（解析起因）と版ずれ（doc-9 の競合）は別の印 (decision-6, AC #4): the same chips, in
-           the same words and colours, as the card in the swimlane. -->
-      {#each marks as mark (mark.kind)}
+      <!-- 不整合印 (decision-22): カードと同じ ⚠️ 1 つで、族名も由来名も出さない。理由は下の
+           不整合区画が持つ。同じ 1 つの derivation から出るので、カード・見出し・区画が同じタスク
+           について食い違うことがない。 -->
+      {#if reasons.length > 0}
         <span
-          class="mark"
-          data-kind={mark.kind}
-          title={mark.detail}
-          aria-label="{mark.label}: {mark.detail}"
+          class="inconsistent"
+          role="img"
+          aria-label={inconsistencyLabel(reasons)}
+          title={inconsistencyLabel(reasons)}
         >
-          {mark.label}
+          <Icon name="triangle-alert" />
         </span>
-      {/each}
+      {/if}
       {#if missing}
         <span class="mark" data-kind="unreadable">ファイル不明</span>
       {/if}
@@ -819,7 +813,7 @@
 
 
     <!-- 2 行目: title と編集入口 (画面設計案 02。doc-12 §3, doc-8 §3). 編集入口は押しボタンだけで、
-         保存キーの注記・未保存の予告・版ずれの告知は編集卓に残る — それらは長さが変わる文であり、
+         保存キーの注記・未保存の予告・バージョン不整合の告知は編集卓に残る — それらは長さが変わる文であり、
          見出しは固定されているので、伸びた分だけ本文の高さを奪うことになる。 -->
     <div class="line title-line">
       {#if session === null}
@@ -851,7 +845,7 @@
             {/each}
           </select>
         {:else if status === null}
-          <span class="mark" data-kind="degraded">status を読めません</span>
+          <span class="mark" data-kind="inconsistent">status を読めません</span>
         {:else}
           <span class="raw">{status.raw}</span>
           <!-- 正準対応を併記 (AC #1): 未分類 status is stated as such rather than shown blank. -->
@@ -1046,12 +1040,12 @@
         </p>
       {/if}
       {#if externalChange}
-        <!-- 編集中の継続検出 (doc-8 §6.4). The 版ずれ family, not a generic notice: the version has
+        <!-- 編集中の継続検出 (doc-8 §6.4). 不整合 の色を取り、generic notice ではない: the version has
              *been observed* to move against this session's baseline. It is not recorded on the card,
              though — no save has been attempted, and doc-8 §6.4 keeps this stated rather than acted
              on, so it belongs to the live session and ends with it. -->
         <p class="conflict">
-          このタスクのファイルが編集中に外部で変わりました（版ずれ）。入力はそのまま保持しています。
+          このタスクのファイルが編集中に外部で変わりました（バージョン不整合）。入力はそのまま保持しています。
           保存時に更新前競合検出を通します（doc-8 §6.4）。
         </p>
       {/if}
@@ -1103,16 +1097,16 @@
         </p>
       </div>
     {:else if conflict !== null}
-      <!-- A 版ずれ recorded on an earlier visit to this task: the banners above belong to the save
-           that just happened, and this one is what the swimlane card is still marking. Kept
+      <!-- A バージョン不整合 recorded on an earlier visit to this task: the banners above belong to
+           the save that just happened, and this one is what the swimlane card is still marking. Kept
            dismissible so the mark can be retired without a save — the input it belonged to is gone,
            so neither doc-9 §5 path applies any more. -->
       <div class="conflict">
-        <p>{versionConflictMark(conflict).detail}</p>
+        <p>{versionConflictReason(conflict)}</p>
         <p class="hint">表示は再読込後の最新内容です。未保存入力は残っていません。</p>
         <div class="buttons">
           <button type="button" onclick={() => onconflict(null, conflictTarget())}>
-            確認した（版ずれ印を消す）
+            確認した（不整合の印を消す）
           </button>
         </div>
       </div>
@@ -1129,23 +1123,24 @@
   </section>
 {/snippet}
 
-<!-- 縮退表示 (doc-4 §5, doc-8 §3): 3 配置とも常設で、折り畳めない。折畳みへ落とすと問題のあるタスクが
-     正常に見えるためであり（doc-8 §3）、それは開閉できる折畳みでも「前のタスクで閉じた状態」が引き継
-     がれる形で起こりうる。 -->
-{#snippet degradePanel()}
-  {#if degrade.degraded || task.unknownSections.length > 0}
-    <section class="degrade-panel">
-      <h3>縮退（判別できなかった項目）</h3>
-      {#if degrade.missingRequired.length > 0}
-        <p>解析不能: {degrade.missingRequired.join("・")} を読めません</p>
-      {/if}
-      {#each degrade.schemaIssues as issue, index (index)}
-        <p>想定外スキーマ: {issue}</p>
+<!-- 不整合区画 (decision-22, doc-8 §3): 3 配置とも常設で、折り畳めない。折畳みへ落とすと問題のある
+     タスクが正常に見えるためであり（doc-8 §3）、それは開閉できる折畳みでも「前のタスクで閉じた状態」が
+     引き継がれる形で起こりうる。**理由行だけを並べ、族名も総称も行には出さない** — 何件あるかと
+     「不整合である」ことは、区画が在ることと見出しの ⚠️ が既に述べている。 -->
+{#snippet inconsistencyPanel()}
+  <!-- 条件は理由行の有無だけである。未知セクションは読み取り層が想定外スキーマとして記録する
+       (`domain.rs` の `UnknownSection`) ので、それを持つタスクは必ず理由行を持つ — `||` で足すと、
+       ⚠️ の無いタスクに「⚠️ 不整合」の見出しを描く枝ができる。 -->
+  {#if reasons.length > 0}
+    <section class="inconsistency-panel">
+      <h3>
+        <span class="glyph"><Icon name="triangle-alert" /></span>
+        不整合
+      </h3>
+      {#each reasons as reason, index (index)}
+        <p>{reason}</p>
       {/each}
-      {#each degrade.danglingReferences as dangling, index (index)}
-        <p>参照欠損: {REFERENCE_KIND_LABEL[dangling.kind]} {dangling.target}</p>
-      {/each}
-      <!-- 未知セクション は区画ではなく縮退表示の中の項目だが、開閉の記号は折畳み区画に揃える
+      <!-- 未知セクション は区画ではなく不整合区画の中の項目だが、開閉の記号は折畳み区画に揃える
            (doc-8 §3) — 同じ面の中で UA 既定マーカーと 開閉印 が並ぶと、同じ操作が 2 通りの記号で
            出ることになる。向きは `[open]` から CSS で選ぶ: 開いているかを持つのは要素自身で、
            それを写した変数を別に置くと、タスクを移った先の別のセクションへ前の開閉が付く
@@ -1629,7 +1624,7 @@
   <DetailSection title="外部エディタで開く" section="transitions" {layout}>
     <!-- 管理ファイルのパス (doc-8 §7): 見出しから移した (TASK-72). 開く操作の隣がパスの置き場である —
          何を開こうとしているのかは押す前に読めていなければならない。画面でこのパスを出しているのは
-         ここだけなので、縮退や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
+         ここだけなので、不整合や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
     <p class="path">{task.sourcePath}</p>
     <p class="hint">{CLI_LIMIT_GUIDANCE}</p>
     <!-- 開く前に示す (doc-8 §7 難点と受け方): the frontmatter is exposed and the CLI's schema checking
@@ -1716,7 +1711,7 @@
   {@const draw = {
     heading,
     editConsole,
-    degrade: degradePanel,
+    inconsistency: inconsistencyPanel,
     description: descriptionSection,
     ac: acSection,
     plan: planSection,
@@ -2326,35 +2321,32 @@
     font-size: 0.66rem;
   }
 
-  // 印は `cursor: help` と説明を伴う (doc-11 §3). Keyed on the explanation actually being there: the
-  // 見出し carries chips that are their own whole statement (TASK-ID 不明・ファイル不明), and a help
-  // cursor over one of those would promise something more to read that does not exist.
-  .mark[title] {
+  // 不整合印 (decision-22): 印グリフ なので族の色は図形自身が持ち、背景も枠も無い。カードと同じ扱いで、
+  // 大きさは隣の 印チップ・横断タスクID より 1 段大きい .8rem — 語を持たない図形は、同じ高さの文字より
+  // 小さく見えるためである（カード側と同じ理由・同じ値）。
+  .inconsistent {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    color: var(--mark-inconsistent);
+    font-size: 0.8rem;
     cursor: help;
   }
 
-  // 解析縮退・版ずれ・未分類・中立の印を混ぜない (decision-6): each family takes its own colour from
-  // the 表示テーマ's one definition in `app.scss` (`lib/mark.ts` の MarkKind), an unmapped or dangling
-  // reference is outlined, and a merely-informative state stays plain.
+  // 印の族を混ぜない (decision-6, decision-22): each family takes
+  // its own colour from the 表示テーマ's one definition in `app.scss` (`lib/mark.ts` の MarkKind), an
+  // unmapped or dangling reference is outlined, and a merely-informative state stays plain.
   //
   // 印チップ配色規則 (decision-12): 文字＝族の色、背景＝族の色 12% 混色、枠＝族の色 45% 混色。Each family
-  // sets `--family` and nothing else, so the same three declarations serve all four.
+  // sets `--family` and nothing else, so the same three declarations serve all of them.
   .mark[data-kind] {
     border: 1px solid color-mix(in srgb, var(--family) 45%, transparent);
     background: color-mix(in srgb, var(--family) 12%, transparent);
     color: var(--family);
   }
 
-  .mark[data-kind="degraded"] {
-    --family: var(--mark-degraded);
-  }
-
-  .mark[data-kind="versionConflict"] {
-    --family: var(--mark-version-conflict);
-  }
-
-  .mark[data-kind="undetectable"] {
-    --family: var(--mark-undetectable);
+  .mark[data-kind="inconsistent"] {
+    --family: var(--mark-inconsistent);
   }
 
   .mark[data-kind="unreadable"] {
@@ -2387,10 +2379,24 @@
     color: var(--muted);
   }
 
-  .degrade-panel {
+  // 不整合区画 (decision-22). 面の左端の 3px は残る — doc-11 §2.3 の 問題の縁 のうち外れたのは
+  // カードの側だけで、こちらは区画そのものが何の区画かを述べている（カードでは ⚠️ がそれを述べる）。
+  .inconsistency-panel {
     padding: 0.35rem 0.45rem;
-    border-left: 3px solid var(--mark-degraded);
-    background: color-mix(in srgb, var(--mark-degraded) 10%, transparent);
+    border-left: 3px solid var(--mark-inconsistent);
+    background: color-mix(in srgb, var(--mark-inconsistent) 10%, transparent);
+
+    // 区画見出しの中の 印グリフ (decision-22): 見出しの語と同じ色で、同じ 1em に従う。
+    h3 {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      color: var(--mark-inconsistent);
+    }
+
+    .glyph {
+      display: inline-flex;
+    }
 
     details {
       font-size: 0.72rem;
@@ -2565,9 +2571,9 @@
     opacity: 0.8;
   }
 
-  // 競合は縮退印と別の表現 (doc-9 §5, decision-6): the file reads fine, its version moved — so 版ずれ
-  // takes its own colour rather than 縮退's amber *or* the generic notice blue it used to share with
-  // every other warning here.
+  // 更新前競合の告知 は 不整合 の色を取る (decision-22): バージョン不整合 が持っていた紫の族は廃されたので、
+  // 同じ 1 つの事象（バージョン不整合）を告知と理由行で 2 色に描くことがなくなった。generic notice
+  // blue (`--info`) へは戻さない — 通知は族ではなく、青い確認は不整合ではない (doc-11 §2.1)。
   .warn,
   .conflict,
   .undetectable {
@@ -2585,11 +2591,11 @@
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
-    border-left-color: var(--mark-version-conflict);
-    background: color-mix(in srgb, var(--mark-version-conflict) 14%, transparent);
+    border-left-color: var(--mark-inconsistent);
+    background: color-mix(in srgb, var(--mark-inconsistent) 14%, transparent);
   }
 
-  // 照合不能 is neither: 版がずれているとは限らず、確かめる方法が無い (doc-9 §4.2/§5).
+  // 照合不能 は不整合ではない: 版がずれているとは限らず、確かめる方法が無い (doc-9 §4.2/§5).
   .undetectable {
     border-left-color: var(--mark-undetectable);
     background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);

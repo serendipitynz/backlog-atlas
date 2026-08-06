@@ -846,7 +846,7 @@ describe("再読込イベント後の選択・未保存・履歴の整合", () =
     await settled();
 
     // A reload is not one of doc-8 §6.3's five routes: nothing was asked for, so nothing may be
-    // thrown away — the 版ずれ is reported instead, and the user decides.
+    // thrown away — the バージョン不整合 is reported instead, and the user decides.
     expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
     expect(confirmBand(host)).toBeNull();
   });

@@ -26,14 +26,24 @@ describe("themeAttribute", () => {
   });
 });
 
-// --- 収録条件の検算 (decision-12, AC #3) -------------------------------------------------------
+// --- 収録条件の検算 (decision-12・decision-22, AC #3 / TASK-77 AC #7) --------------------------
 //
-// The 印チップ配色規則 draws a 印 as 文字＝族の色 / 背景＝族の色 12% 混色 / 枠＝族の色 45% 混色, so its
+// There are two conditions, because there are two ways a 印 is drawn.
+//
+// **印チップ** (decision-12) draws 文字＝族の色 / 背景＝族の色 12% 混色 / 枠＝族の色 45% 混色, so its
 // legibility is the ratio between the family colour and that 12% mix once it has been composited onto
 // whatever surface the chip sits on. decision-12 makes 4.5:1 on every such cell the condition for
 // recording a theme at all, and names the cost of not checking: a theme that fails it looks fine on
-// screen. So the check is computed here from `app.scss` itself — not from a copy of the values — and
-// covers every recorded theme, every 族 plus `--info`, on every surface.
+// screen.
+//
+// **印グリフ** (decision-22) has no mixed background — the family colour *is* the figure's stroke — so
+// the 12% rule has nothing to measure and the ratio is the family colour against the bare surface.
+// decision-22 sets that at 3:1, the WCAG 2.2 1.4.11 minimum for a non-text element, and refuses to
+// borrow the chip's 4.5:1: the recorded themes clear it today by a wide margin, and a limit chosen
+// because it happens to hold is one nobody can re-derive when adding the eleventh theme.
+//
+// Both are computed here from `app.scss` itself — not from a copy of the values — and cover every
+// recorded theme, every 族 plus `--info`, on every surface.
 
 /** The surfaces a 印 can sit on. `--panel`/`--inset` are what decision-12 requires; `--bg` is the
  *  page ground the 上部帯 (doc-11 §4) sits on, and it is cheaper to hold all three than to argue
@@ -46,15 +56,19 @@ describe("themeAttribute", () => {
  *  numbers below true of the stylesheet and false of the screen. */
 const SURFACES = ["--panel", "--inset", "--bg"] as const;
 
+/** The 3 族 decision-22 left, plus `--info`, which is not one of them (doc-11 §2.1). */
 const FAMILIES = [
-  "--mark-degraded",
-  "--mark-version-conflict",
+  "--mark-inconsistent",
   "--mark-undetectable",
   "--mark-unreadable",
   "--info",
 ] as const;
 
+/** 印チップの収録条件 (decision-12): 族の色 対 その族の 12% 混色背景. */
 const REQUIRED_RATIO = 4.5;
+
+/** 印グリフの収録条件 (decision-22): 族の色 対 それが載る面. WCAG 1.4.11 の非文字要素の下限. */
+const REQUIRED_GLYPH_RATIO = 3;
 
 // Compiled by `sass` from the path rather than read and compiled as a string: the stylesheet is the
 // only place the values exist (decision-12), and letting sass open it keeps this test free of Node's
@@ -117,7 +131,7 @@ describe("収録した表示テーマ (decision-12)", () => {
   });
 
   it.each(RECORDED_THEMES.map((theme) => [theme.id] as const))(
-    "%s: 4 族 と --info が 12%% 混色背景に対して 4.5:1 以上 (--panel / --inset / --bg)",
+    "%s: 印チップ — 3 族 と --info が 12%% 混色背景に対して 4.5:1 以上 (--panel / --inset / --bg)",
     (id) => {
       const block = BLOCKS.get(id);
       if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
@@ -138,6 +152,34 @@ describe("収録した表示テーマ (decision-12)", () => {
       expect(
         Object.fromEntries(
           Object.entries(ratios).filter(([, ratio]) => ratio < REQUIRED_RATIO),
+        ),
+      ).toEqual({});
+    },
+  );
+
+  // 印グリフ (decision-22). The same families on the same surfaces, without the 12% mix: 不整合印 is the
+  // only glyph today, but the condition is stated over every family — a second one would otherwise be
+  // drawn against a number nobody had checked.
+  it.each(RECORDED_THEMES.map((theme) => [theme.id] as const))(
+    "%s: 印グリフ — 3 族 と --info が載る面に対して 3:1 以上 (--panel / --inset / --bg)",
+    (id) => {
+      const block = BLOCKS.get(id);
+      if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      const ratios: Record<string, number> = {};
+      for (const family of FAMILIES) {
+        for (const surface of SURFACES) {
+          const glyph = block.get(family);
+          const under = block.get(surface);
+          if (glyph === undefined || under === undefined) {
+            throw new Error(`${id} に ${family} または ${surface} がありません`);
+          }
+          ratios[`${family} on ${surface}`] =
+            Math.round(contrast(hex(glyph), hex(under)) * 100) / 100;
+        }
+      }
+      expect(
+        Object.fromEntries(
+          Object.entries(ratios).filter(([, ratio]) => ratio < REQUIRED_GLYPH_RATIO),
         ),
       ).toEqual({});
     },

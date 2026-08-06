@@ -38,7 +38,7 @@ import type {
   StatusColumn,
   TaskView,
 } from "./wire";
-import { matchesFilter, type CardFilter } from "./filter";
+import { matchesFilter, type CardFilter, type InconsistentLookup } from "./filter";
 
 /** 正準ステータス列 in left-to-right order (decision-4, doc-7 §2). Fixed for every row. */
 export const CANONICAL_COLUMNS: readonly StatusColumn[] = [
@@ -112,6 +112,11 @@ export interface SwimlaneInput {
   /** Rows the user hid for now (doc-7 §5). Screen-local, never written to the ledger. */
   hidden: ReadonlySet<string>;
   filter: CardFilter;
+  /**
+   * Whether one task is 不整合 (decision-22) — the 不整合 facet's predicate. Supplied by the shell
+   * because バージョン不整合 lives in its record rather than in the read (`lib/mark.ts`).
+   */
+  inconsistent: InconsistentLookup;
 }
 
 /** Rank for priority 降順 (doc-7 §5). Backlog's three values; anything else sorts last. */
@@ -159,13 +164,14 @@ function compareOptional<T>(a: T | null, b: T | null, compare: (a: T, b: T) => n
 export function buildSwimlane(input: SwimlaneInput): SwimlaneRow[] {
   return input.order
     .filter((slug) => !input.hidden.has(slug))
-    .map((slug) => buildRow(slug, input.loads.get(slug), input.filter));
+    .map((slug) => buildRow(slug, input.loads.get(slug), input.filter, input.inconsistent));
 }
 
 function buildRow(
   slug: string,
   load: ProjectLoad | undefined,
   filter: CardFilter,
+  inconsistent: InconsistentLookup,
 ): SwimlaneRow {
   if (load === undefined) return { state: "pending", slug };
   if (load.state === "unreadable") {
@@ -177,7 +183,7 @@ function buildRow(
   const unmapped: TaskView[] = [];
 
   for (const view of load.project.tasks) {
-    if (!matchesFilter(view, filter)) continue;
+    if (!matchesFilter(view, filter, inconsistent)) continue;
     // doc-7 §4: placement is the interpretation's column, with no second rule here. No column
     // — 未分類 status, or a 解析不能 task with no status at all — goes to the 未分類区画, never
     // into a canonical column.

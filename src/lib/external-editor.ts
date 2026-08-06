@@ -69,7 +69,7 @@ export interface EditorOffer {
  */
 export const FRONTMATTER_NOTICE =
   "外部エディタでは管理ファイル全体が開きます（frontmatter を含む）。id・status・labels などの" +
-  "構造化フィールドを壊すと、次の読み取りで縮退表示になります（doc-4 §5。壊れても破棄はしません）。" +
+  "構造化フィールドを壊すと、次の読み取りで不整合表示になります（doc-4 §5。壊れても破棄はしません）。" +
   "この経路の編集は Backlog CLI のスキーマ検査を通りません（doc-8 §7）。";
 
 /** 書き戻し (doc-8 §7): the watch is the return path, so nothing waits for the editor to close. */

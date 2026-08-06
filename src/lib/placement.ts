@@ -34,7 +34,7 @@
  * - **A 区画 borrows no other 区画's row.** Every row doc-8 §3 has is a key here, even where two rows
  *   currently carry the same three values: the day the document moves one of them, the borrower moves
  *   with it silently. `assignee` was such a borrower until TASK-73 (it read `labels`).
- * - **縮退表示 is never collapsible** (doc-8 §3). It is `"always"` in all three placements, and the
+ * - **不整合区画 is never collapsible** (doc-8 §3). It is `"always"` in all three placements, and the
  *   panel draws it as a plain section rather than a foldable one: doc-8 gives the reason — 折畳みへ
  *   落とすと問題のあるタスクが正常に見える — and an openable fold would still start closed once the
  *   user had closed it on the previous task.
@@ -62,7 +62,7 @@ export type DetailSection =
   | "references"
   | "pullRequest"
   | "gitHistory"
-  | "degrade"
+  | "inconsistency"
   /** 状態遷移・外部エディタ — one row of doc-8 §3, so one key here. */
   | "transitions";
 
@@ -146,21 +146,21 @@ const DISPOSITIONS: Record<DetailSection, Record<DetailPlacement, Disposition>> 
   // The Git 履歴欄's own row is a granularity rather than a fold (`HistoryDetail`); the section
   // itself stays open in all three, since even 件数のみ is something to read.
   gitHistory: { sidebar: "always", modal: "always", full: "always" },
-  degrade: { sidebar: "always", modal: "always", full: "always" },
+  inconsistency: { sidebar: "always", modal: "always", full: "always" },
   transitions: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
 };
 
 /**
  * Which column each 区画 takes (doc-8 §2.1・§3). Used by both two-column placements. Only 見出し and
  * 編集卓 are `"wide"`: they are fixed rows above the columns (doc-8 §2.2), so they are not in either
- * column's order below. **縮退表示 is `"main"`** — it used to span both columns on the grounds that
+ * column's order below. **不整合区画 is `"main"`** — it used to span both columns on the grounds that
  * one column's reader would otherwise miss it, but doc-8 §3.1 puts it at the *head* of the 主列,
  * which is above both columns' contents and so is passed before either is read.
  */
 export const SECTION_COLUMN: Record<DetailSection, SectionColumn> = {
   heading: "wide",
   editConsole: "wide",
-  degrade: "main",
+  inconsistency: "main",
   description: "main",
   ac: "main",
   plan: "main",
@@ -181,9 +181,9 @@ export const SECTION_COLUMN: Record<DetailSection, SectionColumn> = {
 // reason the assignment table is: an order spelled out in markup is an order no test can read, and
 // this one has to agree with `SECTION_COLUMN` (checked in the tests) and hold for three placements.
 
-/** 主列の並び (doc-8 §3.1). 縮退表示 leads — see [`SECTION_COLUMN`]. */
+/** 主列の並び (doc-8 §3.1). 不整合区画 leads — see [`SECTION_COLUMN`]. */
 export const MAIN_COLUMN_ORDER: readonly DetailSection[] = [
-  "degrade",
+  "inconsistency",
   "description",
   "ac",
   "plan",
@@ -416,7 +416,7 @@ export const PLACEMENT_ICON: Record<DetailPlacement, IconName> = {
  *
  * Held beside the placement tables for the same reason as [`PLACEMENT_ICON`]: `lucide.ts` holds figures
  * and knows nothing about 区画, and one record is what keeps the 区画見出し and the 未知セクション inside
- * the 縮退表示 from drifting into two different pairs of chevrons.
+ * the 不整合区画 from drifting into two different pairs of chevrons.
  */
 export const DISCLOSURE_ICON: Record<"open" | "closed", IconName> = {
   open: "chevron-down",

@@ -404,7 +404,7 @@
   // input the user can fix, not a root Atlas failed to read.
   .problem {
     margin: 0;
-    color: var(--mark-degraded);
+    color: var(--mark-inconsistent);
     font-size: 0.72rem;
   }
 

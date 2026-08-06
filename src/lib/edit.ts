@@ -471,7 +471,7 @@ export function acDeltaForCli(delta: AcDelta, baseline: TaskView): AcDelta {
 }
 
 export const EMPTY_TITLE_REASON =
-  "title は空にできません（doc-4 §3.1 の必須項目で、空にすると解析不能として縮退表示になります）";
+  "title は空にできません（doc-4 §3.1 の必須項目で、空にすると解析不能として不整合表示になります）";
 
 /**
  * Whether one more removal is allowed from a 非空全置換 field (doc-5 §3.1). The last element stays:
@@ -688,7 +688,7 @@ export type ApplyOutcome =
   /**
    * 照合不能 (doc-9 §4.2): no CLI ran either, but for the opposite reason — no divergence was
    * observed, there is no defined way to look for one. Split from `failed` so the panel can put it
-   * in its own family (`undetectable`, `lib/mark.ts`) instead of borrowing 版ずれ's, which doc-9 §5
+   * in its own family (`undetectable`, `lib/mark.ts`) instead of borrowing 不整合's, which doc-9 §5
    * forbids: the user must not read this as "a conflict happened".
    */
   | { state: "uncheckable"; detail: string }

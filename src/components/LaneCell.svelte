@@ -26,7 +26,7 @@
     density: CardDensity;
     showStorageMark: boolean;
     selectedPath: string | null;
-    /** 版ずれ (doc-9) per task, from the shell's record — a lookup, not a copy of the map. */
+    /** バージョン不整合 (doc-9) per task, from the shell's record — a lookup, not a copy of the map. */
     conflictOf: (view: TaskView) => VersionConflict | null;
     onselect: (view: TaskView) => void;
     /**

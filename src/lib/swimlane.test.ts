@@ -35,6 +35,7 @@ function swimlane(
     loads,
     hidden: new Set(hidden),
     filter: { ...DEFAULT_FILTER, ...overrides },
+    inconsistent: () => false,
   });
 }
 

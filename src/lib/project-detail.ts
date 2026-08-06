@@ -30,7 +30,7 @@
  * `interpret/status.rs`'s `StatusDeclaration` has a fourth, `NoDeclaredSet`: a root whose
  * `config.yml` declares no statuses at all (decision-4 measured `geomyth` in that state). There
  * `map_status` does not cut the column mapping, so the alias *does* apply — folding it into the
- * third would have put「効果なし」and the 縮退 colour on an alias that works. The doc was revised to
+ * third would have put「効果なし」and the 不整合 colour on an alias that works. The doc was revised to
  * name the fourth state, and this module states one per row.
  *
  * Nothing here writes anything: the outputs are request values for the ledger commands and the
@@ -193,7 +193,7 @@ export interface AliasEffectNote {
   label: string;
   note: string;
   /**
-   * Whether an alias here changes nothing. doc-10 §4.2 gives the 縮退 colour to this one state only,
+   * Whether an alias here changes nothing. doc-10 §4.2 gives the 不整合 colour to this one state only,
    * which is what keeps `noDeclaredSet` — where the alias works, just without a declaration behind
    * it — out of the same mark.
    */

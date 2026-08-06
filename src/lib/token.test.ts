@@ -46,10 +46,10 @@ describe("絞り込みトークン (doc-7 §5.2)", () => {
   });
 
   it("names the facet and the value, and drops the value where the facet is the condition", () => {
-    const tokens = filterTokens(built({ facet: "degraded" }, { facet: "priority", value: "high" }));
+    const tokens = filterTokens(built({ facet: "inconsistent" }, { facet: "priority", value: "high" }));
     expect(tokens.map((token) => [token.facet, token.value])).toEqual([
       ["保存区分", "active"],
-      ["縮退", null],
+      ["不整合", null],
       ["priority", "high"],
     ]);
   });
@@ -125,7 +125,7 @@ describe("直前の 1 つを戻す・全解除 (doc-7 §5.2)", () => {
   });
 
   it("returns to the 既定の保存区分 on 全解除, not to an empty selection", () => {
-    const filter = built({ facet: "label", value: "ui" }, { facet: "degraded" });
+    const filter = built({ facet: "label", value: "ui" }, { facet: "inconsistent" });
     const cleared = defaultFilter(["active", "draft"]);
     expect(cleared.storage).toEqual(["active", "draft"]);
     expect(conditionCount(cleared)).toBe(2);
