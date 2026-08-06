@@ -111,6 +111,39 @@
   let grid = $state<HTMLElement>();
 
   /**
+   * What a keyed `bind:this` actually holds: the element while it is mounted, **`null` once it is
+   * not**, and nothing at all until it first mounts.
+   *
+   * The `null` is Svelte's, not this component's — `bind_this`'s teardown writes `null` into the
+   * binding and *leaves the key in place*, and it does the same to the old key when an `{#each}`
+   * item moves. So a record written this way is never `Record<string, HTMLElement>`; declaring it
+   * that way is what let TASK-119's 更新停止 through, since a filter for `undefined` alone passes a
+   * `null` straight to the measurement below.
+   */
+  type BoundElements = Record<string, HTMLElement | null | undefined>;
+
+  /**
+   * The elements such a record currently holds, with the unmounted keys dropped.
+   *
+   * Every read of these records goes through this or [`boundElement`], because the case is not
+   * hypothetical on this screen: 未分類区画 は常設ではない (doc-7 §2.2), so a filter that empties it
+   * unmounts that head while the grid stays mounted — and the record is `$state`, so its own change
+   * re-runs the effects that read it. An exception thrown there leaves the `$effect` rather than the
+   * callback, which stops Svelte's flush for good: the window keeps its last paint and answers
+   * nothing further (TASK-119).
+   */
+  function boundElements(bound: BoundElements): HTMLElement[] {
+    return Object.values(bound).filter(
+      (element) => element !== null && element !== undefined,
+    );
+  }
+
+  /** The one element `key` holds, or `null` for both ways it can hold none. */
+  function boundElement(bound: BoundElements, key: string): HTMLElement | null {
+    return bound[key] ?? null;
+  }
+
+  /**
    * The レーンヘッダ行 elements and the zero-height markers that sit immediately above them, by slug.
    * Held here rather than resolved with a DOM query, because the grid is the only thing that knows
    * which element is which row.
@@ -119,8 +152,8 @@
    * soon as it is held at the top, so the marker — which nothing moves — is what says where the row
    * begins, and the header is only measured for its height (`laneScrollDelta`).
    */
-  let laneHeads = $state<Record<string, HTMLElement>>({});
-  let laneMarks = $state<Record<string, HTMLElement>>({});
+  let laneHeads = $state<BoundElements>({});
+  let laneMarks = $state<BoundElements>({});
 
   /**
    * The 列ヘッダ行 elements, by column, so the レーンヘッダ行 can be stuck to the row's lower edge.
@@ -133,7 +166,7 @@
    * parts and the 未分類列 carried two sentences, so folding a column moved this by two lines; those
    * two causes are gone, the measurement is not.)
    */
-  let columnHeads = $state<Record<string, HTMLElement>>({});
+  let columnHeads = $state<BoundElements>({});
   let headHeight = $state(0);
 
   /**
@@ -154,13 +187,13 @@
    * content showing through the seam half the time.
    */
   function measureHead(): number {
-    const elements = Object.values(columnHeads).filter((element) => element !== undefined);
+    const elements = boundElements(columnHeads);
     if (elements.length === 0) return 0;
     return Math.max(...elements.map((element) => element.getBoundingClientRect().height));
   }
 
   $effect(() => {
-    const elements = Object.values(columnHeads).filter((element) => element !== undefined);
+    const elements = boundElements(columnHeads);
     if (elements.length === 0) return;
     // Measured once here as well as from the callback: a `ResizeObserver` reports asynchronously, so
     // without this the grid's first paint would put every レーンヘッダ行 at the top of the scrollport,
@@ -182,10 +215,10 @@
   $effect(() => {
     const slug = focusSlug;
     if (slug === null) return;
-    const mark = laneMarks[slug];
-    const head = laneHeads[slug];
+    const mark = boundElement(laneMarks, slug);
+    const head = boundElement(laneHeads, slug);
     const container = grid;
-    if (mark === undefined || head === undefined || container === undefined) return;
+    if (mark === null || head === null || container === undefined) return;
     // The head is measured here rather than read from `headHeight`, because this effect can run
     // before the observer has reported for the first time — and it does exactly that on the path the
     // landing exists for: 「このプロジェクトのレーンへ」 mounts the grid with `focusSlug` already set,

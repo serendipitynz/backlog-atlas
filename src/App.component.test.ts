@@ -1,10 +1,12 @@
 /**
- * 画面横断契約 3 件 (TASK-91): 起動時の設定・workspace・監視の順序, タスク詳細・プロジェクト詳細の
- * 離脱と保存中状態, 再読込イベント後の選択・未保存・履歴の整合.
+ * 画面横断契約 4 件 (TASK-91, TASK-119): 起動時の設定・workspace・監視の順序, タスク詳細・プロジェクト
+ * 詳細の離脱と保存中状態, 再読込イベント後の選択・未保存・履歴の整合, 絞り込みが列を消しても画面が
+ * 更新を受け付け続けること.
  *
- * All three are `App.svelte`'s, and none is a rule a pure function holds — they are about *when* the
- * shell calls the boundary and about what survives an unmount. `src/lib/*.test.ts` fixes the rules;
- * this fixes the sequence they are called in.
+ * All four are `App.svelte`'s, and none is a rule a pure function holds — they are about *when* the
+ * shell calls the boundary, about what survives an unmount, and about what one screen's binding may
+ * do to every later update. `src/lib/*.test.ts` fixes the rules; this fixes the sequence they are
+ * called in.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -805,6 +807,126 @@ describe("プロジェクト詳細の離脱", () => {
     // and the return would otherwise look like nothing happened. Only the mark's presence is
     // asserted: jsdom runs no animation, so the fade and its end are not observable here.
     expect(only(host, ".lane-head").classList.contains("landed")).toBe(true);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+/**
+ * 絞り込みが列を消しても画面が更新を受け付け続けること (TASK-119).
+ *
+ * The bug this holds against was not a filtering bug: 未分類区画 は常設ではない (doc-7 §2.2), so a
+ * value that leaves no task in it unmounts that column head, `bind:this` writes `null` into the
+ * grid's keyed record, and the measuring `$effect` — re-run by that very write — threw. An exception
+ * that leaves an `$effect` stops Svelte's flush, so *every later* update was lost: the window kept
+ * its last paint while text entry and hover, which the browser answers by itself, went on working.
+ *
+ * It belongs here rather than beside the grid because that is the shape of it — the filter is the
+ * shell's, the column is the grid's, and what breaks is neither of them but everything after. The
+ * assertions are 「その後の操作が届くか」 for that reason, not the geometry the effect was measuring.
+ */
+describe("絞り込みが列を消しても画面は更新を受け付ける", () => {
+  /** In a canonical column, and the only task carrying the priority the test selects. */
+  const MAPPED = taskView({
+    id: "TASK-1",
+    title: "列に載る題",
+    status: "In Progress",
+    column: "inProgress",
+    priority: "high",
+    // A second facet to select, so the popover can be used twice over one already-missing column.
+    labels: ["ui"],
+    ordinal: 1000,
+  });
+
+  /**
+   * 未分類区画 の 1 件 (doc-7 §2.2). Its status maps to no column and it carries no priority, so
+   * selecting one empties the column and takes its head off screen — the condition the whole
+   * contract turns on.
+   */
+  const UNMAPPED = taskView({
+    id: "TASK-9",
+    title: "未分類の題",
+    status: "Blocked",
+    column: null,
+    ordinal: 2000,
+  });
+
+  /** The popover behind ＋ 絞り込み, opened. */
+  async function popover(host: HTMLElement): Promise<HTMLElement> {
+    click(byLabel(host, "button", "＋ 絞り込み"));
+    await settled();
+    return only<HTMLElement>(host, '[role="dialog"][aria-label="絞り込みを追加"]');
+  }
+
+  /** Press the popover's entry for one facet value, by the name it prints. */
+  function pick(open: HTMLElement, name: string): void {
+    const entries = [...open.querySelectorAll<HTMLElement>("button.value")].filter(
+      (button) => button.querySelector(".name")?.textContent === name,
+    );
+    if (entries.length !== 1) {
+      throw new Error(`expected exactly one 値 named "${name}", found ${entries.length}`);
+    }
+    click(entries[0]);
+  }
+
+  it("値を選んで未分類区画が消えても、Escape がポップオーバーを閉じる", async () => {
+    const host = await startWith([loaded("atlas", [MAPPED, UNMAPPED])]);
+    expect(host.querySelectorAll("button.card")).toHaveLength(2);
+    expect(host.querySelector(".head.unmapped")).not.toBeNull();
+
+    const open = await popover(host);
+    pick(open, "high");
+    await settled();
+
+    // 1 回目の更新は通る — this is what made the report read as a freeze rather than as a crash.
+    expect(host.querySelectorAll("button.card")).toHaveLength(1);
+    expect(host.querySelector(".head.unmapped")).toBeNull();
+
+    // …and so does the next one. Escape is answered by the popover, but what it takes to remove the
+    // popover from the page is a flush, which is exactly what the thrown effect had stopped.
+    press(open, "Escape");
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="絞り込みを追加"]')).toBeNull();
+  });
+
+  it("値を選んだ後も「閉じる」ボタンが効き、絞り込みを重ねられる", async () => {
+    const host = await startWith([loaded("atlas", [MAPPED, UNMAPPED])]);
+
+    const open = await popover(host);
+    pick(open, "high");
+    await settled();
+    // A second selection through the same popover: the record was written once already, so this is
+    // the press that would land on a screen whose flush had stopped.
+    pick(open, "ui");
+    await settled();
+    expect(host.querySelectorAll("button.card")).toHaveLength(1);
+
+    click(byText(open, "button.plain", "閉じる"));
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="絞り込みを追加"]')).toBeNull();
+    // 絞り込みトークン (doc-7 §5.2) for both conditions, drawn after the popover went away — the
+    // bar is `App.svelte`'s and the column was the grid's, so this is an update that crosses both.
+    expect(host.querySelectorAll(".tokens .token:not(.baseline)")).toHaveLength(2);
+  });
+
+  it("未分類区画が戻ってくるときも同じ", async () => {
+    const host = await startWith([loaded("atlas", [MAPPED, UNMAPPED])]);
+    const open = await popover(host);
+    pick(open, "high");
+    await settled();
+    expect(host.querySelector(".head.unmapped")).toBeNull();
+
+    // Taking the condition back remounts the head, which writes the element back over the `null`.
+    // The remount is the half a filter for `undefined` alone happened to survive, so a regression
+    // would show only in the first two — this one is here so the pair is stated, not assumed.
+    pick(open, "high");
+    await settled();
+    expect(host.querySelector(".head.unmapped")).not.toBeNull();
+    expect(host.querySelectorAll("button.card")).toHaveLength(2);
+
+    press(open, "Escape");
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="絞り込みを追加"]')).toBeNull();
   });
 });
 
