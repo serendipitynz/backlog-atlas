@@ -165,6 +165,12 @@
   /** Whether the fixed header's メニュー is open (doc-7 §2.1). */
   let menuOpen = $state(false);
   /**
+   * What プロジェクト詳細画面 last reported through its `onoverlay` — whether its 作成モーダル
+   * (doc-10 §1) is up. Held beside the header's own three because `modalOpen` reads all four, but it
+   * is not one of them: this screen raises it, and `detailOverlay` is the whole of the shell's part.
+   */
+  let detailModalOpen = $state(false);
+  /**
    * Whether the 一覧モーダル is open — the 割り当て一覧 (doc-7 §2.1) as something read. It is a モーダル and
    * not part of the menu since TASK-67: the table is the longest thing the menu held, and a reference
    * folded under the entries pushed the entries themselves out of the menu's own height.
@@ -489,8 +495,15 @@
   /**
    * Whether a モーダル is up. While one is, the shell answers no chord at all: doc-7 §2.1 keeps a modal's
    * focus inside itself, and the modal is what answers Escape and Tab there (`Modal.svelte`).
+   *
+   * The fourth term is プロジェクト詳細画面's 作成モーダル (doc-10 §1), which that screen raises for
+   * itself — a 被せ層 is no longer only what the fixed header opens (doc-11 §7 as TASK-117 revised it),
+   * so the shell has to be told rather than to know. Read together with `screen` so that a report left
+   * behind by an unmounted 詳細画面 cannot mute the swimlane's own chords.
    */
-  let modalOpen = $derived(registerOpen || settingsOpen || shortcutHelpOpen);
+  let modalOpen = $derived(
+    registerOpen || settingsOpen || shortcutHelpOpen || (screen === "project" && detailModalOpen),
+  );
 
   /**
    * The open 列内新規タスク入力's cell as the *current* read of its root has it (doc-7 §4.1). Resolved
@@ -1518,6 +1531,32 @@
   }
 
   /**
+   * The same, for a 被せ層 プロジェクト詳細画面 raises itself — its 作成モーダル (doc-10 §1). Since
+   * TASK-117 a 被せ層 is defined by its form rather than by which header opened it (doc-11 §7), and
+   * this is the one the fixed header does not open.
+   *
+   * **Unlike `raiseModal` this moves no focus, and must not.** `raiseModal` focuses the ☰ because the
+   * menu line the user pressed is unmounted by the opening, leaving the layer nothing on screen to
+   * hand focus back to; the 作成の入口 is not unmounted and needs no such stand-in. And this runs from
+   * an effect *after* the layer has mounted and taken focus onto its own ×, so a `focus()` here would
+   * not redirect the opener — it would put focus outside the layer that is up, which is the opposite
+   * of doc-7 §2.1's フォーカスを内側に留める.
+   *
+   * What is left is the part that is genuinely the shell's: 被せ層 は 1 枚だけ, and the header's own
+   * メニュー sits above that screen.
+   */
+  function detailOverlay(open: boolean): void {
+    detailModalOpen = open;
+    if (!open) return;
+    // 被せ層 は 1 枚だけ (see `raiseModal`).
+    menuOpen = false;
+    filterPopoverOpen = false;
+    // An unanswered 破棄前確認 from behind lapses under the layer about to cover it, for the reason
+    // `openEntry` spells out: which layer draws the question is decided by which one is frontmost.
+    pendingDiscard = null;
+  }
+
+  /**
    * Open one 共通入口 (doc-7 §2.1). Both are モーダル over the screen that is up, never a screen of their
    * own (AC #2): the swimlane behind keeps its rows, filter and selection, and nothing is unmounted, so
    * no route in can lose 未保存入力.
@@ -1835,6 +1874,7 @@
           onremove={removeProject}
           onissue={issue}
           ondirty={(dirty) => (projectDirty = dirty)}
+          onoverlay={detailOverlay}
           onback={() => leaveProject(false)}
           ontoLane={() => leaveProject(true)}
         />

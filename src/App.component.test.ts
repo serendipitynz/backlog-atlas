@@ -35,6 +35,7 @@ import {
 import { documentView, entry, history, loaded, snapshot, taskView, unreadable } from "./lib/fixtures";
 import { SHORTCUT_HELP_LABEL } from "./lib/header";
 import { CLOSE_WITHOUT_SAVING_LABEL } from "./lib/settings";
+import { MAC_KEYBOARD } from "./lib/platform";
 import { SHORTCUTS } from "./lib/shortcuts";
 import type { ProjectLoad, UpdateResult } from "./lib/wire";
 
@@ -753,6 +754,138 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     await settled();
     click(closeOf(host, "プロジェクトを登録"));
     expect(host.querySelector('[aria-label="プロジェクトを登録"]')).toBeNull();
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+/**
+ * 画面が自分で上げる被せ層 (doc-10 §1, doc-11 §7 as TASK-117 revised it).
+ *
+ * Until TASK-117 every 被せ層 was one the fixed header opened, and the shell both raised it and knew
+ * it was there. The 作成モーダル is the first one a *screen* raises, which splits that in two — the
+ * layer belongs to プロジェクト詳細画面 (the control it hands focus back to exists only there), and the
+ * two things that must still be the shell's are the ones fixed here.
+ *
+ * Neither is a rule a pure function holds: one is about a `window` listener staying quiet while a
+ * component two levels down has a layer up, and the other is about what survives an unmount.
+ */
+describe("プロジェクト詳細が自分で上げる被せ層", () => {
+  /**
+   * The 共通修飾キー as a press carries it (doc-7 §2.1): Command on macOS, Control elsewhere, and
+   * never both — `chordMatches` rejects a press holding the other platform's modifier as well. Read
+   * from the same module the app reads it from, so the chord here is the one this run answers.
+   */
+  const MOD: KeyboardEventInit = MAC_KEYBOARD ? { metaKey: true } : { ctrlKey: true };
+
+  /**
+   * Press a control the way a pointer does, focus and all.
+   *
+   * jsdom's `click()` does not move focus, and what this describe fixes includes where focus goes
+   * *back* to — so a press that left focus on `body` would make the layer capture `body` as its
+   * opener and every assertion about the return vacuous.
+   */
+  function pressControl(control: HTMLElement): void {
+    control.focus();
+    click(control);
+  }
+
+  /** Reach the 文書区画's 作成の入口 in the 一覧見出し行 and open the layer (doc-10 §1). */
+  async function openDocumentCreate(): Promise<HTMLElement> {
+    const host = await startWith([loaded("atlas", [TASK], undefined, [DOCUMENT])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+    click(byText(host, "nav.sections button", "文書"));
+    pressControl(byText(host, "button.create-entry", "新規文書"));
+    return host;
+  }
+
+  /** The layer's own exit — the × `Modal.svelte` draws (doc-11 §7), named by what it announces. */
+  function closeOfCreate(host: HTMLElement): HTMLButtonElement {
+    return byLabel<HTMLButtonElement>(
+      host,
+      '[role="dialog"][aria-label="新規文書"] button',
+      "閉じる",
+    );
+  }
+
+  /** title 欄, told apart from the path 欄 beside it by the placeholder that one carries. */
+  function titleField(host: HTMLElement): HTMLInputElement {
+    return only<HTMLInputElement>(
+      host,
+      '[role="dialog"][aria-label="新規文書"] input[type="text"]:not([placeholder])',
+    );
+  }
+
+  it("被せ層 は 1 枚だけ — 上がっている間はシェルの和音が届かない", async () => {
+    const host = await openDocumentCreate();
+    expect(host.querySelector('[role="dialog"][aria-label="新規文書"]')).not.toBeNull();
+
+    // ⌘/Ctrl+, は 適用範囲 bothScreens なので、プロジェクト詳細でもシェルが答える和音である
+    // (doc-7 §2.1)。層が上がっている間だけそれが止まる、というのがここで固定する契約で、
+    // シェルは自分が上げていない層についてもそれを守らなければならない。
+    press(document.body, ",", MOD);
+    await settled();
+
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).toBeNull();
+    expect(host.querySelector('[role="dialog"][aria-label="新規文書"]')).not.toBeNull();
+
+    // 層を閉じれば同じ和音が届く — 止めていたのが層の存在であって、画面ではないこと。
+    click(closeOfCreate(host));
+    await settled();
+    press(document.body, ",", MOD);
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
+  });
+
+  it("層の出口は入力を破棄し、画面の離脱確認はそれを数えない", async () => {
+    const host = await openDocumentCreate();
+    fill(titleField(host), "新しい設計");
+
+    // 破棄前確認 は層の中に出る (doc-11 §7): この画面の 上部帯 は層が覆っているので、そこに置くと
+    // 問いの対象が消えるまで読めない。文言は doc-8 §6.3 のもので、この 区画 が §5 に持っている
+    // 2 経路 (「破棄して続行」「入力に戻る」) とは別である。
+    click(closeOfCreate(host));
+    const dialog = only(host, '[role="dialog"][aria-label="新規文書"]');
+    click(byText(dialog, ".confirm button", "編集に戻る"));
+    expect(titleField(host).value).toBe("新しい設計");
+
+    click(closeOfCreate(host));
+    click(byText(only(host, '[role="dialog"][aria-label="新規文書"]'), ".confirm button", "破棄して閉じる"));
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="新規文書"]')).toBeNull();
+
+    // 破棄 が本当に起きている: 入口はいつも空のフォームを開く。
+    pressControl(byText(host, "button.create-entry", "新規文書"));
+    expect(titleField(host).value).toBe("");
+    click(closeOfCreate(host));
+    await settled();
+
+    // そしてシェルの離脱確認はこれを数えない (`ProjectDetail` の `dirty`)。作成フォームの入力は
+    // 層と一緒に消えるので、画面を離れられるどの瞬間にも残っていない — TASK-117 がその項を
+    // `dirty` から外した根拠が、ここで観測できる形になっている。
+    click(byText(host, "button", "← スイムレーン"));
+    expect(confirmBand(host)).toBeNull();
+    expect(host.querySelector("button.card")).not.toBeNull();
+  });
+
+  it("開いている間フォーカスは層の内側にあり、閉じたら 作成の入口 へ戻る", async () => {
+    const host = await openDocumentCreate();
+
+    // フォーカスを内側に留める (doc-7 §2.1). `Modal.svelte` puts it on its × as it mounts, and the
+    // shell is told about this layer from an effect that runs afterwards — so anything the shell did
+    // with focus on being told would land *outside* the layer it was just told about. That is the
+    // failure this line catches, and it cannot be seen from either component alone.
+    const dialog = only(host, '[role="dialog"][aria-label="新規文書"]');
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    click(closeOfCreate(host));
+    await settled();
+
+    // 閉じたら開く前の操作へフォーカスを戻す (doc-7 §2.1). ここが `raiseModal` と分かれる一点で、
+    // あちらは層を上げる前に ☰ へフォーカスを移す — 押されたメニュー行が層と一緒に消えるためで、
+    // この層にその事情は無い。同じことをすると、どの 作成モーダル も ヘッダ へ閉じることになる。
+    expect(document.activeElement).toBe(byText(host, "button.create-entry", "新規文書"));
   });
 });
 
