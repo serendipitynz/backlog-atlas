@@ -1026,7 +1026,7 @@ export function transitionOffers(
             { op: "taskComplete", taskId: id },
             view.task.status === COMPLETABLE_STATUS
               ? null
-              : `status が ${COMPLETABLE_STATUS} のときのみ能動化します（現在: ${
+              : `status が ${COMPLETABLE_STATUS} のときのみ実行可能です（現在: ${
                   view.task.status ?? "不明"
                 }）`,
           ),
