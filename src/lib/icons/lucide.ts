@@ -56,7 +56,8 @@ export type IconName =
   | "arrow-up"
   | "arrow-down"
   | "x"
-  | "triangle-alert";
+  | "triangle-alert"
+  | "plus";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -234,5 +235,12 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     },
     { shape: "path", d: "M12 9v4" },
     { shape: "path", d: "M12 17h.01" },
+  ],
+  // 作成の入口 (doc-10 §1, TASK-117). Sits inside a 控え that carries its own visible wording
+  // (「新規文書」/「新規マイルストーン」), so it is doc-11 §2.4's 可視の文言を持つ控えの中のアイコン
+  // and takes no `aria-label` of its own. Two paths, so the shape enumeration does not grow.
+  plus: [
+    { shape: "path", d: "M5 12h14" },
+    { shape: "path", d: "M12 5v14" },
   ],
 };

@@ -18,13 +18,14 @@
   // is typing — the same IME rule the other screens follow.
   import { tick, untrack } from "svelte";
   import Editor from "./Editor.svelte";
+  import Modal from "./Modal.svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import {
     fileInconsistencyReasons,
     inconsistencyLabel,
     unmappedFileReason,
   } from "../lib/mark";
-  import { PRIORITIES } from "../lib/edit";
+  import { PRIORITIES, type DiscardAnswers } from "../lib/edit";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import {
@@ -134,6 +135,16 @@
     onissue: (slug: string, action: UpdateOperation[]) => Promise<IssueOutcome>;
     /** True while this screen holds 未保存入力 — what makes leaving it ask first. */
     ondirty: (dirty: boolean) => void;
+    /**
+     * True while this screen has a 被せ層 up — its 作成モーダル (doc-10 §1).
+     *
+     * The shell has to know, for two reasons that are both doc-7 §2.1's 被せ層 は 1 枚だけ: it answers
+     * the screen-wide chords on `window`, and a chord that opened the 設定モーダル over this one would
+     * put two layers up; and its own メニュー is in the header above this screen, so it has to come
+     * down. Reported rather than raised by the shell because the layer belongs to this screen — the
+     * control it must hand focus back to on close is the 作成の入口, which only exists here.
+     */
+    onoverlay: (open: boolean) => void;
     /** 出口 (doc-10 §2). */
     onback: () => void;
     ontoLane: () => void;
@@ -150,6 +161,7 @@
     onremove,
     onissue,
     ondirty,
+    onoverlay,
     onback,
     ontoLane,
   }: Props = $props();
@@ -624,7 +636,7 @@
     if (milestonePane !== undefined) milestonePane.scrollTop = 0;
   }
 
-  /** Drop the selection and go back to the 作成フォーム, asking first when input would be lost. */
+  /** Drop the selection and go back to the 非選択時の操作ペイン, asking first when input would be lost. */
   function clearMilestoneSelection(): void {
     if (milestoneDirty) {
       pendingMilestone = { milestone: null };
@@ -841,6 +853,110 @@
     milestoneDescriptionDraft = null;
   });
 
+  // --- 作成モーダル (doc-10 §1, TASK-117) ---------------------------------------------------------
+  //
+  // The 作成フォーム of both 一覧列-holding 区画 used to be a state of the column on the right — the one
+  // shown while nothing was selected. That made adding a document something the user could only reach
+  // by first giving up whatever they were reading, and it put a form beside an open editor's own
+  // actions. Both now open from the 一覧見出し行's 作成の入口 into this layer instead.
+  //
+  // The layer is doc-7 §2.1's 被せ層, which that section stopped defining by enumeration in the same
+  // task: what makes something one is the form (focus held inside, Escape closes, focus goes back),
+  // not which header opened it. `Modal.svelte` is that form, and it draws the × and the 破棄前確認 —
+  // this file supplies only what goes inside and when the layer may go.
+
+  /**
+   * Which 作成モーダル is up, or `null` while none is.
+   *
+   * One value rather than a flag per 区画, for the reason doc-7 §2.1 gives: 被せ層 は 1 枚だけ. Two
+   * flags could disagree; this cannot. 区画切替 shows one 区画 at a time in any case, so there is no
+   * state where both would be wanted.
+   */
+  let createOpen = $state<"document" | "milestone" | null>(null);
+  /**
+   * Whether the open layer's close request is standing and waiting for an answer (doc-11 §7).
+   *
+   * Not the same as「閉じられない」: this means the request *was* issued, so the × stays pressable and
+   * pressing it again just asks again. Issuance in flight is the other state, and it is read from
+   * `issuing` below — §7 requires that one to be answered first.
+   */
+  let createCloseAsked = $state(false);
+
+  /** 未保存入力 held by the 作成モーダル that is up right now. */
+  let createDirty = $derived(
+    createOpen === "document"
+      ? hasDocCreateInput(docInput)
+      : createOpen === "milestone"
+        ? hasMilestoneAddInput(milestoneInput)
+        : false,
+  );
+
+  /** The layer's accessible name — what the 作成の入口 that opened it is called (doc-11 §7). */
+  let createLabel = $derived(createOpen === "milestone" ? "新規マイルストーン" : "新規文書");
+
+  let createConfirm = $derived<DiscardAnswers | null>(
+    createCloseAsked
+      ? { onproceed: closeCreate, onkeep: () => (createCloseAsked = false) }
+      : null,
+  );
+
+  // 被せ層 は 1 枚だけ, and the shell answers the screen-wide chords (see `onoverlay`). Reported from
+  // an effect rather than from the two functions below so that one place decides what is reported,
+  // whatever set `createOpen`.
+  $effect(() => {
+    onoverlay(createOpen !== null);
+    // Retracted on the way out — a `$effect` without this does not run at destroy, so unmounting
+    // with a layer up would leave the shell holding `true` for a screen that no longer exists. Its
+    // `screen` guard silences that on the swimlane but not on the *next* プロジェクト詳細画面, which
+    // would then answer no chord at all until some 作成モーダル had been opened and closed again.
+    // The same shape `Modal.svelte` uses to give the opener its focus back.
+    //
+    // It also runs before each re-run, so opening costs one extra `false` first. That changes
+    // nothing: both calls land in the same synchronous flush, and `modalOpen` is only read after it.
+    return () => onoverlay(false);
+  });
+
+  function openCreate(which: "document" | "milestone"): void {
+    // An unanswered 破棄前確認 from a 区画's own route lapses under the layer about to cover it
+    // (doc-11 §7): the question is drawn by whichever layer is frontmost, so leaving one standing
+    // behind would put a question this layer never asked in front of the user, with a 破棄して閉じる
+    // that carries out a route in the 区画 underneath. **Nothing is discarded by the lapse** — the
+    // request is withdrawn and the 未保存入力 it was about stays exactly where it is.
+    pendingDocument = null;
+    pendingMilestone = null;
+    createCloseAsked = false;
+    createOpen = which;
+  }
+
+  /**
+   * The one place every way out of the 作成モーダル meets (doc-11 §7): the × `Modal.svelte` draws and
+   * the Escape it answers.
+   *
+   * 発行中は破棄前確認より前に断る (§7): Escape reaches this without passing the ×'s own withholding,
+   * so the circumstance is read here rather than only on that control — otherwise the key would offer
+   * 破棄して閉じる for input that is at this moment being written to a management file.
+   */
+  function requestCreateClose(): void {
+    if (issuing) return;
+    if (createDirty) {
+      createCloseAsked = true;
+      return;
+    }
+    closeCreate();
+  }
+
+  /**
+   * Close the layer, dropping what its form held. The dropping is the point — it is what the
+   * 破棄前確認 above is a question about, and it is why the 作成の入口 always opens on an empty form
+   * rather than on the leftovers of a session the user walked away from.
+   */
+  function closeCreate(): void {
+    if (createOpen === "document") docInput = { ...EMPTY_DOC_CREATE };
+    else if (createOpen === "milestone") milestoneInput = { ...EMPTY_MILESTONE_ADD };
+    createCloseAsked = false;
+    createOpen = null;
+  }
+
   // --- 未保存入力 (doc-8 §6.3) -------------------------------------------------------------------
 
   /**
@@ -848,14 +964,18 @@
    * 区画's state, and the switch is a display change (doc-10 §1) — but leaving the screen loses all
    * of it, which is why the shell's 破棄前確認 has to see all four. The three add-rows count too:
    * text typed but not yet committed with 追加 is the easiest thing to lose and the least visible.
+   *
+   * **The two 作成フォーム are not counted here since TASK-117**, and their absence is not an
+   * oversight: their input lives in the 作成モーダル (doc-10 §1), which covers every way off this
+   * screen while it is up and drops what it holds through its own 破棄前確認 (doc-11 §7) on the way
+   * out. So `docInput` and `milestoneInput` are empty at every moment this screen can be left, and a
+   * clause for them here would be one that can never be true. `createDirty` is where they are read.
    */
   let dirty = $derived(
     updateRequest !== null ||
       unregisterInput.trim() !== "" ||
       docEditorDirty ||
       hasTaskCreateInput(taskInput) ||
-      hasDocCreateInput(docInput) ||
-      hasMilestoneAddInput(milestoneInput) ||
       // An open 改称・削除, or an edited 説明, carries input of its own — a name or a description
       // typed but not yet issued is exactly the kind of thing leaving the screen loses silently
       // (doc-8 §6.3). The same value drives the 区画内の破棄前確認 (doc-10 §6), so the two cannot
@@ -935,6 +1055,25 @@
       }}
     >
       追加
+    </button>
+  </div>
+{/snippet}
+
+{#snippet listHead(count: string, entry: string, hint: string, onopen: () => void)}
+  <!-- 一覧見出し行 (doc-10 §1, TASK-117). One snippet for both 一覧列 because §1 makes the row a
+       property of the column rather than of either 区画 — written twice, the two would start to
+       differ in exactly the way §1 rules out. What each 区画 supplies is its own wording.
+
+       The 作成の入口 is never withheld: it issues nothing, and the reason a 作成 cannot be issued
+       right now (CLI 縮退, a write in flight) is printed beside the 発行 control inside the layer,
+       which is where it can actually be read. -->
+  <div class="list-head">
+    <h2>{count}</h2>
+    <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4): the wording is the button's name, so the
+         figure takes no `aria-label` of its own and adds nothing to the accessibility tree. -->
+    <button type="button" class="create-entry" title={hint} onclick={onopen}>
+      <Icon name="plus" />
+      {entry}
     </button>
   </div>
 {/snippet}
@@ -1277,10 +1416,16 @@
 
             <div class="columns">
               <div class="list-column">
-                <!-- The list's own heading (目視反映): the count belongs to the column that holds
-                     the cards, and keeping it out of the scroller is what keeps it readable at any
-                     scroll position. -->
-                <h2>文書 {project.documents.length} 件</h2>
+                <!-- 一覧見出し行 (doc-10 §1, TASK-117): the count and the 作成の入口 on one line, at
+                     the head of the column and outside its scroller — so both stay readable however
+                     far the cards are scrolled. The count is the cards' own (目視反映), which is why
+                     the 写せなかったファイル below are not in it (decision-24). -->
+                {@render listHead(
+                  `文書 ${project.documents.length} 件`,
+                  "新規文書",
+                  "文書の作成を開きます",
+                  () => openCreate("document"),
+                )}
                 {#if project.documents.length === 0}
                   <p class="neutral">文書はありません。</p>
                 {:else}
@@ -1553,57 +1698,13 @@
                     {/if}
                   </div>
                 {:else}
-                  <div class="sub-panel">
-                    <h3>文書を作成（doc create）</h3>
-                    <div class="row">
-                      <label class="field">
-                        <span class="label">title（必須）</span>
-                        <input
-                          type="text"
-                          value={docInput.title}
-                          oninput={(event) => (docInput.title = event.currentTarget.value)}
-                        />
-                      </label>
-                      <label class="field">
-                        <span class="label">type</span>
-                        <select
-                          value={docInput.docType}
-                          onchange={(event) => (docInput.docType = event.currentTarget.value)}
-                        >
-                          <option value="">—（CLI の既定）</option>
-                          {#each DOC_TYPES as value (value)}
-                            <option {value}>{value}</option>
-                          {/each}
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span class="label">path</span>
-                        <input
-                          type="text"
-                          placeholder="docs 配下の下位パス（任意）"
-                          value={docInput.path}
-                          oninput={(event) => (docInput.path = event.currentTarget.value)}
-                        />
-                      </label>
-                    </div>
-                    <p class="hint">
-                      本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
-                      作成後、左の一覧でその文書のカードを選び、「編集」から本文を入れます。
-                    </p>
-                    <div class="actions">
-                      <button
-                        type="button"
-                        disabled={docCreateIssue.state !== "ready"}
-                        title={why(docCreateIssue)}
-                        onclick={createDoc}
-                      >
-                        文書を作成
-                      </button>
-                      {#if docCreateIssue.state === "blocked"}
-                        <span class="reason">{docCreateIssue.reason}</span>
-                      {/if}
-                  </div>
-                  </div>
+                  <!-- 非選択時の文書ペイン (doc-10 §5, TASK-117). The 作成フォーム left this column
+                       for the 作成モーダル, so what remains is the 提供しない操作区画 — and a line
+                       saying what the column is for. Without it the column reads as「何かが提供され
+                       ていない」and nothing else, which is the misreading §9 avoids by not drawing an
+                       empty 提供しない操作区画 at all. doc-11 §6's `—` is not this: that mark stands
+                       for a value that is absent, and what is absent here is a selection. -->
+                  <p class="neutral">文書を選ぶと内容を表示します。</p>
 
                   {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
                 {/if}
@@ -1651,7 +1752,15 @@
 
             <div class="columns">
               <div class="list-column">
-                <h2>マイルストーン {project.milestones.length} 件</h2>
+                <!-- 一覧見出し行 (doc-10 §1, TASK-117) — the same row as the 文書一覧's, from the
+                     same snippet. §1 puts it on the 一覧列 rather than on either 区画, so the two
+                     cannot come to differ in how a new object is added. -->
+                {@render listHead(
+                  `マイルストーン ${project.milestones.length} 件`,
+                  "新規マイルストーン",
+                  "マイルストーンの作成を開きます",
+                  () => openCreate("milestone"),
+                )}
                 {#if project.milestones.length === 0}
                   <p class="neutral">マイルストーンはありません。</p>
                 {:else}
@@ -1951,42 +2060,12 @@
                     {/if}
                   </div>
                 {:else}
-                  <div class="sub-panel">
-                    <h3>マイルストーンを作成（milestone add）</h3>
-                    <label class="field">
-                      <span class="label">名称（必須）</span>
-                      <input
-                        type="text"
-                        value={milestoneInput.name}
-                        oninput={(event) => (milestoneInput.name = event.currentTarget.value)}
-                      />
-                    </label>
-                    <label class="field">
-                      <span class="label">説明（作成時のみ設定できます）</span>
-                      <input
-                        type="text"
-                        value={milestoneInput.description}
-                        oninput={(event) =>
-                          (milestoneInput.description = event.currentTarget.value)}
-                      />
-                    </label>
-                    <p class="hint">
-                      作成後、左の一覧でそのマイルストーンのカードを選ぶと改称・削除・アーカイブができます。
-                    </p>
-                    <div class="actions">
-                      <button
-                        type="button"
-                        disabled={milestoneIssue.state !== "ready"}
-                        title={why(milestoneIssue)}
-                        onclick={addMilestone}
-                      >
-                        マイルストーンを作成
-                      </button>
-                      {#if milestoneIssue.state === "blocked"}
-                        <span class="reason">{milestoneIssue.reason}</span>
-                      {/if}
-                    </div>
-                  </div>
+                  <!-- 非選択時の操作ペイン (doc-10 §6, TASK-117). Emptier than the 文書ペイン's: the
+                       作成フォーム went to the 作成モーダル and this 区画's 提供しない操作区画 has been
+                       0 件 since TASK-65, so nothing at all was left to draw. The column is still
+                       drawn — folding it would move the cards' width every time a selection came and
+                       went (§5・§6) — and the line says what the column is for. -->
+                  <p class="neutral">マイルストーンを選ぶと操作を表示します。</p>
 
                   {@render withheld(
                     "現時点で提供しない操作（マイルストーン）",
@@ -2143,6 +2222,122 @@
   </div>
 </div>
 
+<!--
+  作成モーダル (doc-10 §1, TASK-117). Outside the screen's own boxes because it is a 被せ層 and not a
+  part of any 区画: `Modal.svelte` draws a fixed backdrop over the window, and the layer covers the
+  上部帯 the same way the header's three do.
+
+  One `Modal` for both 区画 rather than one each: 被せ層 は 1 枚だけ (doc-7 §2.1), and `createOpen`
+  already makes that structural. It carries the same three obligations here as anywhere — focus held
+  inside, Escape, focus back to the 作成の入口 the layer captured as it mounted.
+
+  `closeBlocked` is `issuingReason`, which stands exactly while `issuing` does: doc-11 §7 wants the
+  circumstance held by the thing that wires *both* exits, and here that is this file. What the reason
+  guards is a 作成 already sent to a management file — offering 破棄して閉じる over that would ask the
+  user about input that is at this moment being written.
+-->
+{#if createOpen !== null}
+  <Modal
+    label={createLabel}
+    closeBlocked={issuingReason}
+    confirmDiscard={createConfirm}
+    onclose={requestCreateClose}
+  >
+    {#if createOpen === "document"}
+      <div class="modal-form">
+        <h2>文書を作成（doc create）</h2>
+        <div class="row">
+          <label class="field">
+            <span class="label">title（必須）</span>
+            <input
+              type="text"
+              value={docInput.title}
+              oninput={(event) => (docInput.title = event.currentTarget.value)}
+            />
+          </label>
+          <label class="field">
+            <span class="label">type</span>
+            <select
+              value={docInput.docType}
+              onchange={(event) => (docInput.docType = event.currentTarget.value)}
+            >
+              <option value="">—（CLI の既定）</option>
+              {#each DOC_TYPES as value (value)}
+                <option {value}>{value}</option>
+              {/each}
+            </select>
+          </label>
+          <label class="field">
+            <span class="label">path</span>
+            <input
+              type="text"
+              placeholder="docs 配下の下位パス（任意）"
+              value={docInput.path}
+              oninput={(event) => (docInput.path = event.currentTarget.value)}
+            />
+          </label>
+        </div>
+        <p class="hint">
+          本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
+          作成後、左の一覧でその文書のカードを選び、「編集」から本文を入れます。
+        </p>
+        <!-- No 下部操作行 (doc-11 §7): 「文書を作成」 writes but does not leave the layer, so there is
+             only one way out and nothing for a second wording to tell apart. What the × does with
+             what is typed here is said by the 破棄前確認 instead. -->
+        <div class="actions">
+          <button
+            type="button"
+            disabled={docCreateIssue.state !== "ready"}
+            title={why(docCreateIssue)}
+            onclick={createDoc}
+          >
+            文書を作成
+          </button>
+          {#if docCreateIssue.state === "blocked"}
+            <span class="reason">{docCreateIssue.reason}</span>
+          {/if}
+        </div>
+      </div>
+    {:else}
+      <div class="modal-form">
+        <h2>マイルストーンを作成（milestone add）</h2>
+        <label class="field">
+          <span class="label">名称（必須）</span>
+          <input
+            type="text"
+            value={milestoneInput.name}
+            oninput={(event) => (milestoneInput.name = event.currentTarget.value)}
+          />
+        </label>
+        <label class="field">
+          <span class="label">説明（作成時のみ設定できます）</span>
+          <input
+            type="text"
+            value={milestoneInput.description}
+            oninput={(event) => (milestoneInput.description = event.currentTarget.value)}
+          />
+        </label>
+        <p class="hint">
+          作成後、左の一覧でそのマイルストーンのカードを選ぶと改称・削除・アーカイブができます。
+        </p>
+        <div class="actions">
+          <button
+            type="button"
+            disabled={milestoneIssue.state !== "ready"}
+            title={why(milestoneIssue)}
+            onclick={addMilestone}
+          >
+            マイルストーンを作成
+          </button>
+          {#if milestoneIssue.state === "blocked"}
+            <span class="reason">{milestoneIssue.reason}</span>
+          {/if}
+        </div>
+      </div>
+    {/if}
+  </Modal>
+{/if}
+
 <style lang="scss">
   .detail {
     display: flex;
@@ -2280,9 +2475,68 @@
     padding: 0 0.35rem 0 0.75rem;
     border-right: 1px solid var(--line);
     overflow: hidden;
+  }
+
+  /*
+   * 一覧見出し行 (doc-10 §1): the count and the 作成の入口 on one line, at the head of the 一覧列 and
+   * outside `.cards`'s scroller — which is what keeps both readable however far the cards are
+   * scrolled. `flex: none` because this row takes its own height and `.cards` below takes the slack;
+   * it is now the row rather than the `h2` that says so, the `h2` having become this row's child
+   * instead of the column's.
+   */
+  .list-head {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
 
     h2 {
-      flex: none;
+      flex: 1;
+      /*
+       * 件数は語の途中で折り返さない。実測 (WebKit, 16rem 列): 「マイルストーン 9 件」 の自然幅は
+       * 124.39px で、入口 (125.22px) と 0.4rem の間隔を引いた残りとちょうど同じ — 桁が 1 つ増えた
+       * だけで溢れ、折り返すと見出しは「マイルストーン」「99 件」に割れる。**割れた見出しより、
+       * 入口が次の行へ下りるほうがよい**ので、`nowrap` で見出しの最小幅をその全長に固定し、
+       * `flex-wrap` の側で行を折り返させる。`min-width: 0` を置かないのはそのためで、置くと
+       * flex はここを潰して行を 1 本に保ち、割れるのは見出しの側になる。
+       */
+      white-space: nowrap;
+    }
+  }
+
+  /*
+   * 作成の入口 (doc-10 §1). A 控え with visible wording *and* a figure, which is doc-11 §2.4's
+   * 可視の文言を持つ控えの中のアイコン — so the figure is `aria-hidden` and adds no name.
+   *
+   * `font-size` is what sizes the ＋ (doc-11 §2.4 の 1em), so the figure follows the wording rather
+   * than carrying a second size knob of its own.
+   */
+  .create-entry {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.1rem 0.4rem;
+    border: 1px solid var(--line-strong);
+    // カード・ボタン 4px (doc-11 §2.2).
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.72rem;
+    white-space: nowrap;
+    cursor: pointer;
+
+    // hover は 枠線 --line → --line-strong (doc-11 §2.3); at rest this one is already the stronger
+    // line, so the change is the background wash the other 控え use.
+    &:hover {
+      background: color-mix(in srgb, var(--fg) 8%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--sel);
+      outline-offset: 1px;
     }
   }
 
@@ -2768,6 +3022,23 @@
     padding: 0.5rem;
     border: 1px solid var(--line);
     border-radius: 5px;
+  }
+
+  /*
+   * The inside of a 作成モーダル (doc-10 §1). No border of its own — the layer `Modal.svelte` draws is
+   * already a box, and a second one inside it would read as a 区画 within the 被せ層.
+   *
+   * The right padding clears the ×, which `Modal.svelte` puts out of the flow above whatever the
+   * caller draws first. The two numbers are that layer's own custom properties, so moving the × moves
+   * the room kept for it here without this file restating either.
+   */
+  .modal-form {
+    padding: 0.75rem;
+    padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
+
+    > :first-child {
+      margin-top: 0;
+    }
   }
 
   .list-edit {
