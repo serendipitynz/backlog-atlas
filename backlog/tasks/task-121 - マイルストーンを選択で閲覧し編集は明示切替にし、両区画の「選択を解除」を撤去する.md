@@ -1,10 +1,10 @@
 ---
 id: TASK-121
 title: マイルストーンを選択で閲覧し編集は明示切替にし、両区画の「選択を解除」を撤去する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-07 05:47'
-updated_date: '2026-08-07 08:46'
+updated_date: '2026-08-07 11:07'
 labels:
   - ui
   - project-detail
