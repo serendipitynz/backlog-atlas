@@ -69,7 +69,7 @@ export const STORAGE_SELECTIONS: StorageSelection[] = [
  */
 export const CARD_DENSITY_NOTE =
   "保存すると、スイムレーンのタスクカードへ反映され、次回起動後も残ります。" +
-  "状態の印（不整合・保存区分・未分類列の原文 status）は、どの段でも落としません（doc-7 §3）。";
+  "状態の印（不整合・保存区分・未分類列の原文 status）は、どの段でも落としません。";
 
 /**
  * 既定の詳細配置 (doc-8 §2.2) の説明。この項目は他の設定と違い、設定画面の外からも書き換わる — タスク
@@ -77,7 +77,7 @@ export const CARD_DENSITY_NOTE =
  */
 export const DETAIL_PLACEMENT_NOTE =
   "起動直後にタスク詳細を開く配置です。タスク詳細の見出しで配置を切り替えると、その配置がここへ保存され" +
-  "ます（doc-8 §2.2）。ここで変えた場合、開いている詳細はそのままで、次回起動時から新しい既定になります。";
+  "ます。ここで変えた場合、開いている詳細はそのままで、次回起動時から新しい既定になります。";
 
 /**
  * decision-13 既定値で動いている旨 (AC #6): why the values in hand are the defaults, or `null` when they
@@ -180,12 +180,7 @@ export function emptyStorageWarning(selection: StorageSelection[]): string | nul
  */
 export const WATCH_OFF_NOTE =
   "切ると、外部エディタや別プロセスの保存が自動では画面へ届きません（行の「再読込」で読み直せます）。" +
-  "更新後の再読込と手動の再読込は切っても働きます（doc-9 §3.1）。";
-
-/** doc-9 §3.2: 起動時の全ルート読み取りが設定項目でない理由を、設定画面で読める形にしたもの。 */
-export const STARTUP_READ_NOTE =
-  "起動時に全ルートを読むことは必須で、設定項目にしていません。読まない状態ではカードを 1 枚も描けず、" +
-  "更新前競合検出の基準も持てないためです（doc-9 §3.2）。";
+  "更新後の再読込と手動の再読込は切っても働きます。";
 
 /**
  * 下部操作行 (TASK-74) の 2 つの押下。「変更せずに閉じる」は下書きを書かずに出る経路で、「保存する」は

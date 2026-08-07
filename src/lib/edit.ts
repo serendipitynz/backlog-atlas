@@ -396,7 +396,7 @@ export const EXTERNAL_EDITOR_ROUTE = "この画面下部の「外部エディタ
 
 export const EMPTY_REFERENCES_REASON =
   "References は最後の 1 件を削除できません（v1.48.0 の CLI に空集合化の手段がないため）。" +
-  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します（doc-5 §3.1・doc-8 §7）`;
+  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
  * Why an emptied assignee box changes nothing. `task edit -a ""` exits 0 without clearing in
@@ -404,9 +404,9 @@ export const EMPTY_REFERENCES_REASON =
  * alone" rather than issued as an unassignment that would be reported as a success and not happen.
  */
 export const ASSIGNEE_NOT_CLEARABLE =
-  "assignee は空欄にしても解除されません（v1.48.0 の CLI に解除の手段がなく、`-a \"\"` は終了コード 0 で" +
-  `何も変えないため、空欄は「変更しない」として扱います）。解除する場合は${EXTERNAL_EDITOR_ROUTE}から` +
-  "管理ファイルを直接編集します（doc-5 §3・doc-8 §7）";
+  "assignee は空欄にしても解除されません（解除の手段が無く、空欄は「変更しない」として扱います）。" +
+  `解除する場合は${EXTERNAL_EDITOR_ROUTE}から` +
+  "管理ファイルを直接編集します";
 
 /**
  * Why the save being planned would leave one assignee. `-a` takes a single value and the write
@@ -425,14 +425,13 @@ export function assigneeCollapseWarning(
   if (current.length < 2) return null;
   return (
     `このタスクの assignee は ${current.length} 件（${current.join(", ")}）ですが、` +
-    "`task edit -a` は 1 件しか受け取らず frontmatter の一覧を丸ごと置き換えます。" +
-    "保存すると入力した 1 件だけになります（doc-5 §3）"
+    "assignee は 1 件しか保てないため、保存すると入力した 1 件だけになります"
   );
 }
 
 export const EMPTY_DEPENDENCIES_REASON =
   "dependencies は最後の 1 件を削除できません（v1.48.0 の CLI に空集合化の手段がないため）。" +
-  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します（doc-5 §3.1・doc-8 §7）`;
+  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
  * Renumber a per-item AC edit for the CLI (doc-5 §3). One `task edit` resolves its AC options in
@@ -471,7 +470,7 @@ export function acDeltaForCli(delta: AcDelta, baseline: TaskView): AcDelta {
 }
 
 export const EMPTY_TITLE_REASON =
-  "title は空にできません（doc-4 §3.1 の必須項目で、空にすると解析不能として不整合表示になります）";
+  "title は空にできません（必須項目で、空にすると解析不能として不整合表示になります）";
 
 /**
  * Whether one more removal is allowed from a 非空全置換 field (doc-5 §3.1). The last element stays:
@@ -761,7 +760,7 @@ export function commandErrorDetail(error: CommandError): string {
     case "uncheckableTarget":
       return (
         `照合不能: ${error.what} は書き換え対象の照合方法が定まっていないため、CLI を起動せずに` +
-        `拒否しました。版がずれていることを検出したわけではありません（doc-9 §4.2）。${error.detail}`
+        `拒否しました。版がずれていることを検出したわけではありません。${error.detail}`
       );
     case "reloadFailed":
       return error.applied === null || error.applied === undefined
@@ -881,11 +880,11 @@ export function readinessReason(readiness: CliReadiness | null): string | null {
 }
 
 const DRAFT_READ_ONLY =
-  "draft の内容編集は提供しません（v1.48.0 に draft 向けの task edit 相当が無いため。doc-5 §3.3）。" +
-  `編集するには draft promote でタスクへ昇格するか、${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
+  "draft の内容編集は提供しません。" +
+  `編集するにはタスクへ昇格するか、${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 const CLOSED_READ_ONLY =
-  "completed・archive のタスクは task edit が not found になるため読み取り専用です（doc-8 §6.5）。" +
+  "completed・archive のタスクは変更できないため読み取り専用です。" +
   `内容を変えるには${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
@@ -908,7 +907,7 @@ export function editAvailability(
   if (view.task.id === null) {
     return {
       state: "unavailable",
-      reason: "TASK-ID を読めないため更新操作の対象を指定できません（doc-4 §5 の解析不能）",
+      reason: "TASK-ID を読めないため更新操作の対象を指定できません（解析不能）",
     };
   }
   switch (view.task.storageState) {
@@ -920,7 +919,7 @@ export function editAvailability(
     case null:
       return {
         state: "unavailable",
-        reason: "保存区分を判別できないため更新操作を提供しません（doc-4 §3.4）",
+        reason: "保存区分を判別できないため更新操作を提供しません",
       };
     case "active":
       break;
@@ -986,7 +985,7 @@ export function transitionOffers(
     return {
       state: "none",
       reason:
-        "completed・archive から戻す操作は v1.48.0 の CLI にないため提供しません（doc-5 §3.1）",
+        "completed・archive から戻す操作は提供していません",
     };
   }
 
@@ -1055,14 +1054,14 @@ function offer(
 
 const DRAFT_PROMOTE_EFFECT =
   "draft → active。id は TASK-M へ採番し直されます。status が Draft の draft だけが既定 status へ変わり、" +
-  "task demote 由来の draft は status を保持します（doc-5 §3.3）";
-const DRAFT_ARCHIVE_EFFECT = "draft → archive/drafts。id・status は保持されます（doc-5 §3.3）";
+  "降格で作られた draft は status を保持します";
+const DRAFT_ARCHIVE_EFFECT = "draft → archive/drafts。id・status は保持されます";
 const TASK_DEMOTE_EFFECT =
-  "active → draft。id は DRAFT-M へ採番し直され、status は保持されます（doc-5 §3.3）";
+  "active → draft。id は DRAFT-M へ採番し直され、status は保持されます";
 const TASK_ARCHIVE_EFFECT =
-  "active → archive/tasks。status を問わず実行できます。戻す操作は CLI にありません（doc-5 §3）";
+  "active → archive/tasks。status を問わず実行できます。元に戻せません";
 const TASK_COMPLETE_EFFECT =
-  "active → completed。status が Done のときのみ成功します。戻す操作は CLI にありません（doc-5 §3）";
+  "active → completed。status が Done のときのみ成功します。元に戻せません";
 
 // --- 選択肢 (doc-5 §3 の値域) --------------------------------------------------------------
 

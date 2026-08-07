@@ -47,7 +47,7 @@ export type LaneCreate =
 export function noCandidateAbsentReason(column: StatusColumn): string {
   return (
     `${CANONICAL_COLUMN_LABEL[column]} 列に対応する status をこのプロジェクトの config.yml が` +
-    "宣言していないため、作成時の初期値を決められません。新規タスク入力は置きません（doc-7 §4.1）。"
+    "宣言していないため、作成時の初期値を決められません。新規タスク入力は置きません。"
   );
 }
 
@@ -92,7 +92,7 @@ export function laneCreateStatus(entry: LaneCreate, held: string): string {
  * other than the one clicked, silently.
  */
 export const NO_STATUS_TO_PASS_REASON =
-  "この列で渡す status が決まっていないため発行しません（doc-7 §4.1）。";
+  "この列で渡す status が決まっていないため発行しません。";
 
 /**
  * Turn one cell's entry into the `task create` doc-7 §4.1 maps it to. The 新規タスク区画's builder does

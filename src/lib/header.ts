@@ -62,13 +62,13 @@ export const HEADER_ENTRIES: readonly HeaderEntry[] = [
     id: "register",
     label: "プロジェクトを登録",
     action: "openRegister",
-    note: "台帳へエントリを 1 件足します（doc-3 §4.1）。グリッドの末尾に行が 1 本増えます。",
+    note: "台帳へエントリを 1 件足します。グリッドの末尾に行が 1 本増えます。",
   },
   {
     id: "settings",
     label: "設定",
     action: "openSettings",
-    note: "アプリ設定を開きます（decision-13）。",
+    note: "アプリ設定を開きます。",
   },
 ] as const;
 

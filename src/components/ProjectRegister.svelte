@@ -93,7 +93,7 @@
   const BLOCKED_ID = "register-blocked";
   const READ_ONLY_ID = "register-read-only";
   const READ_ONLY_PICK_REASON =
-    "台帳が読み取り専用のため、フォルダを選んでも登録できません（doc-3 §2.2）。";
+    "台帳が読み取り専用のため、フォルダを選んでも登録できません。";
 
   /**
    * Why registration is held, and only when it is (doc-11 §5). One string drives both the withheld
@@ -103,7 +103,7 @@
    */
   let blocked = $derived(
     readOnly
-      ? "台帳が読み取り専用のため、プロジェクトを登録できません（doc-3 §2.2）。"
+      ? "台帳が読み取り専用のため、プロジェクトを登録できません。"
       : busy || submitting
         ? "台帳の更新を実行中です。完了するまで登録は始められません。"
         : issues.length > 0
@@ -194,7 +194,7 @@
          rather than repeating the sentence. -->
     <p class="readonly" id={READ_ONLY_ID}>
       台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。
-      登録はできません（doc-3 §2.2）。
+      登録はできません。
     </p>
   {/if}
 
@@ -248,7 +248,7 @@
   {#if input.backlogRoot.trim() === "" && previewBacklogRoot !== ""}
     <p class="hint">
       指定しない場合は <code>{previewBacklogRoot}</code> を Backlog ルートとして
-      <code>config.yml</code> と <code>tasks/</code> を確認します（doc-3 §4.1）。
+      <code>config.yml</code> と <code>tasks/</code> を確認します。
     </p>
   {/if}
   {#each problemsFor(issues, "backlogRoot") as message (message)}
@@ -269,7 +269,7 @@
   {#if input.slug.trim() === ""}
     {#if preview.state === "derived"}
       <p class="hint">
-        未指定なら <code>{preview.slug}</code> をプロジェクトルート名から導出して使います（doc-3 §3.1）。
+        未指定なら <code>{preview.slug}</code> をプロジェクトルート名から導出して使います。
         別の slug を使う場合はここに入力してください。
       </p>
     {:else if preview.state === "underivable"}

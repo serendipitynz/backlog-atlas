@@ -1037,11 +1037,11 @@
         <p class="hint">{NOTHING_TO_SAVE_REASON}。</p>
       {/if}
       {#if dirty}
-        <!-- 破棄前確認を通す 5 経路 (doc-8 §6.3) を、押す前に読める形で置く: どれを押しても同じ確認が
-             上部帯に出る、という予告である。 -->
+        <!-- 破棄前確認 (doc-8 §6.3) を、押す前に読める形で置く: 入力を失う操作の前には同じ確認が
+             上部帯に出る、という予告である。§6.3 の 5 経路をここへ数え上げないのは doc-11 §8 の
+             設計文の写しに当たるためで、予告として要るのは「確認を通る」ことだけである。 -->
         <p class="hint">
-          未保存入力があります。キャンセル・閉じる・別タスク選択・前後移動・配置切替のいずれでも、
-          破棄する前に「{DISCARD_CONFIRM_PROCEED}」の確認を通します（doc-8 §6.3）。
+          未保存入力があります。破棄する前に「{DISCARD_CONFIRM_PROCEED}」の確認を通します。
         </p>
       {/if}
       {#if externalChange}
@@ -1051,7 +1051,7 @@
              on, so it belongs to the live session and ends with it. -->
         <p class="conflict">
           このタスクのファイルが編集中に外部で変わりました（バージョン不整合）。入力はそのまま保持しています。
-          保存時に更新前競合検出を通します（doc-8 §6.4）。
+          保存時に更新前競合検出を通します。
         </p>
       {/if}
     {/if}
@@ -1097,8 +1097,7 @@
           )}）。照合の完了後〜書き込み完了の間に入った外部更新の可能性があります。
         </p>
         <p class="hint">
-          更新前競合検出は best-effort であり、この窓に入った外部更新は防げません。窓内に入った更新が
-          上書きで失われた場合、その内容は表示も復元もできません（doc-9 §4.1）。
+          この間に入った外部更新は防げません。上書きで失われた場合、その内容は表示も復元もできません。
         </p>
       </div>
     {:else if conflict !== null}
@@ -1407,8 +1406,7 @@
           項目を追加
         </button>
         <p class="hint">
-          保存時に既存の全項目を削除してから、ここにある項目を並び順どおり作り直します（1 回の
-          task edit にまとめます。doc-5 §3）。
+          保存時に既存の全項目を削除してから、ここにある項目を並び順どおり作り直します。
         </p>
       {/if}
     {/if}
@@ -1507,7 +1505,7 @@
         "TASK-ID",
         EMPTY_DEPENDENCIES_REASON,
       )}
-      <p class="hint">保存時は既存を含む全集合で置き換えます（doc-5 §3 の非空全置換）。</p>
+      <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
   </DetailSection>
 {/snippet}
@@ -1538,7 +1536,7 @@
     {/if}
     {#if session !== null}
       <p class="hint">
-        Pull Request URL の登録は References の編集です（doc-8 §6）。下の References 欄へ足すと、
+        Pull Request URL の登録は References の編集です。下の References 欄へ足すと、
         既存参照を含む非空全集合で置き換えます。
       </p>
     {/if}
@@ -1579,7 +1577,7 @@
         "URL",
         EMPTY_REFERENCES_REASON,
       )}
-      <p class="hint">保存時は既存を含む全集合で置き換えます（doc-5 §3 の非空全置換）。</p>
+      <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
   </DetailSection>
 {/snippet}
@@ -1759,10 +1757,6 @@
     <div class="flow">{@render column(SINGLE_COLUMN_ORDER)}</div>
   {/if}
 
-  <footer class="note">
-    Atlas 自身は管理ファイルを書き込みません。この画面の編集は Backlog CLI 経由で、外部エディタ経路は
-    利用者のエディタが書き込みます（doc-2・doc-8 §7）。
-  </footer>
 </aside>
 
 <style lang="scss">
@@ -2449,11 +2443,6 @@
     &[open] .disclosure.closed {
       display: none;
     }
-  }
-
-  .note {
-    font-size: 0.68rem;
-    opacity: 0.55;
   }
 
   // --- editing ---------------------------------------------------------------------------

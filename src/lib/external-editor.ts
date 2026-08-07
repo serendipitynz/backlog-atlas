@@ -69,13 +69,13 @@ export interface EditorOffer {
  */
 export const FRONTMATTER_NOTICE =
   "外部エディタでは管理ファイル全体が開きます（frontmatter を含む）。id・status・labels などの" +
-  "構造化フィールドを壊すと、次の読み取りで不整合表示になります（doc-4 §5。壊れても破棄はしません）。" +
-  "この経路の編集は Backlog CLI のスキーマ検査を通りません（doc-8 §7）。";
+  "構造化フィールドを壊すと、次の読み取りで不整合表示になります（壊れても破棄はしません）。" +
+  "この経路の編集は Backlog CLI のスキーマ検査を通りません。";
 
 /** 書き戻し (doc-8 §7): the watch is the return path, so nothing waits for the editor to close. */
 export const WRITE_BACK_NOTE =
   "外部エディタで保存すると、ファイル監視が変更を拾って再読込します（エディタを閉じる必要は" +
-  "ありません。doc-9 §3）。";
+  "ありません）。";
 
 /**
  * 書き戻し when 継続検出 is stopped (doc-8 §7): the save will not arrive on its own. Shown *before* the
@@ -113,7 +113,7 @@ export const CLI_LIMIT_GUIDANCE =
 export const UNSAVED_INPUT_WARNING =
   "GUI 側に未保存入力があります。このまま外部エディタでも編集すると、同じタスクを二重に編集する" +
   "ことになります。入力は破棄しませんが、外部エディタの保存は外部変更として検出し、GUI の保存時は" +
-  "更新前競合検出で止めます（doc-8 §6.4）。先に保存またはキャンセルすることを推奨します。";
+  "更新前競合検出で止めます。先に保存またはキャンセルすることを推奨します。";
 
 /**
  * The caveat on the `$EDITOR` control. A terminal editor started from a GUI process has no terminal

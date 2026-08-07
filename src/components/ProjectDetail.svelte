@@ -339,7 +339,7 @@
         taskInput.milestone = "";
         overviewNotice =
           `${result.slug} を移動しました。開いていた文書・マイルストーンの編集セッションは、` +
-          "旧ルートの読み取りに基づくため閉じました（doc-10 §4.1）。";
+          "旧ルートの読み取りに基づくため閉じました。";
         return;
       }
       overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
@@ -481,9 +481,8 @@
         tone: "warn",
         text:
           `更新は適用されましたが、再読込した内容が送信した内容と一致しません（${diverged.join("・")}）。` +
-          "照合の完了後〜書き込み完了の間に入った外部更新の可能性があります。更新前競合検出は " +
-          "best-effort であり、この窓に入った更新が上書きで失われた場合、その内容は表示も復元も" +
-          "できません（doc-9 §4.1）。",
+          "照合の完了後〜書き込み完了の間に入った外部更新の可能性があります。この間に入った更新が" +
+          "上書きで失われた場合、その内容は表示も復元もできません。",
       };
     }
   }
@@ -1076,7 +1075,7 @@
     unreadable === null
       ? null
       : "ルートが読めないため、この区画の一覧と発行は出せません。概要区画でルートを直してください" +
-        "（台帳エントリ自体は読めています。doc-10 §8）。",
+        "（台帳エントリ自体は読めています）。",
   );
 </script>
 
@@ -1297,7 +1296,7 @@
           </label>
 
           <fieldset class="aliases">
-            <legend>status 別名表（doc-3 §3.3）</legend>
+            <legend>status 別名表</legend>
             <p class="hint">
               プロジェクト固有の status を正準ステータス列へ対応づけます。既定は空で、Backlog.md 既定の
               4 status は名称一致するため設定は要りません。
@@ -1610,8 +1609,7 @@
                         onsave={updateDoc}
                       />
                       <p class="hint">
-                        `doc update --content` は本文を全置換します（v1.48.0 に部分更新はありません。doc-5
-                        §3.1）。この欄は読み取った本文全文で、発行時はここにある全文をそのまま渡します。
+                        この欄は読み取った本文全文です。保存すると、ここにある全文で本文を置き換えます。
                       </p>
                     </div>
 
@@ -2029,7 +2027,7 @@
                           <h3>削除（milestone remove）</h3>
                           <p class="hint">{MILESTONE_REMOVE_MOVES_THE_FILE}</p>
                           <fieldset class="handling">
-                            <legend>参照するタスクの扱い（必須。--task-handling）</legend>
+                            <legend>参照するタスクの扱い（必須）</legend>
                             {#each [{ mode: "clear", label: "milestone 値を除去する（clear）" }, { mode: "keep", label: "そのまま保持する（keep）" }, { mode: "reassign", label: "別マイルストーンへ付け替える（reassign）" }] as choice (choice.mode)}
                               <label class="check">
                                 <input
@@ -2051,7 +2049,7 @@
                           {/if}
                           {#if removeInput.handling === "reassign"}
                             <label class="field">
-                              <span class="label">付け替え先（必須。--reassign-to）</span>
+                              <span class="label">付け替え先（必須）</span>
                               <select
                                 value={removeInput.reassignTo}
                                 onchange={(event) =>
@@ -2078,7 +2076,7 @@
                         <!-- 実行前に書き換え対象集合を示す (doc-10 §6, doc-9 §4.2.2/§4.2.3): what the
                              user decides from has to be what the check protects. -->
                         <div class="targets">
-                          <h4>書き換え対象（doc-9 §4.2.2）</h4>
+                          <h4>書き換え対象</h4>
                           <ul class="paths">
                             <li>{milestone.sourcePath}</li>
                           </ul>
@@ -2290,8 +2288,8 @@
                 "追加するラベル",
               )}
               <p class="hint">
-                Type（kind ラベル）はここでは扱いません。`task create --labels` は 1 個のカンマ区切り値
-                を取るため、「,」を含むラベルは発行しません。
+                Type（kind ラベル）はここでは扱いません。ラベルは 1 個のカンマ区切り値として扱われる
+                ため、「,」を含むラベルは発行しません。
               </p>
             </div>
 
@@ -2406,8 +2404,7 @@
           </label>
         </div>
         <p class="hint">
-          本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
-          作成後、左の一覧でその文書のカードを選び、「編集」から本文を入れます。
+          本文は作成時には渡せません。作成後、左の一覧でその文書のカードを選び、「編集」から入れます。
         </p>
         <!-- No 下部操作行 (doc-11 §7): 「文書を作成」 writes but does not leave the layer, so there is
              only one way out and nothing for a second wording to tell apart. What the × does with
