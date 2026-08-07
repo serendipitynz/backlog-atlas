@@ -32,7 +32,16 @@ import {
   order,
   reset,
 } from "./lib/fake-boundary";
-import { documentView, entry, history, loaded, snapshot, taskView, unreadable } from "./lib/fixtures";
+import {
+  documentView,
+  entry,
+  history,
+  loaded,
+  milestoneView,
+  snapshot,
+  taskView,
+  unreadable,
+} from "./lib/fixtures";
 import { SHORTCUT_HELP_LABEL } from "./lib/header";
 import { CLOSE_WITHOUT_SAVING_LABEL } from "./lib/settings";
 import { MAC_KEYBOARD } from "./lib/platform";
@@ -81,6 +90,9 @@ const TASK = taskView({
 
 /** One document in the 文書区画, so a card is there to select (doc-10 §5). */
 const DOCUMENT = documentView({ id: "doc-1", title: "設計の題" });
+
+/** One milestone in the マイルストーン区画, so a card is there to select (doc-10 §6). */
+const MILESTONE = milestoneView({ id: "m-1", title: "節目の題" });
 
 /** A second task in the same cell as [`TASK`], so 別タスクを開く and 前後移動 have a destination. */
 const NEIGHBOUR = taskView({
@@ -965,8 +977,44 @@ describe("プロジェクト詳細の離脱", () => {
 
     // 閲覧 is what opened: the body is on screen, and the 編集セッション is not — its 出口
     //「編集を閉じる」 exists only while one is open.
-    expect(only(host, "pre.doc-body").textContent).toBe(DOCUMENT.body);
+    expect(only(host, "pre.read-body").textContent).toBe(DOCUMENT.body);
     expect(byText(host, ".view-head button", "編集")).not.toBeNull();
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent === "編集を閉じる")).toBe(
+      false,
+    );
+
+    click(byText(host, "button", "← スイムレーン"));
+    expect(confirmBand(host)).toBeNull();
+    expect(host.querySelector("button.card")).not.toBeNull();
+  });
+
+  /**
+   * マイルストーンを読むだけでは、離脱の確認は立たない (doc-10 §6, TASK-121).
+   *
+   * The 文書区画's half of this is above; this is the same contract on the 区画 that gained 閲覧
+   * later. It is worth holding separately rather than trusting the symmetry, because the two 区画
+   * reached it from opposite directions: the 文書区画's selection always opened a `DocSession`,
+   * while this one opened 説明's input box with no session object at all — the 未保存入力 that used
+   * to be one press away from a selection lived in `milestoneDescriptionDraft`, which no
+   * `docSession !== null` test would have caught.
+   *
+   * Both halves assert through the shell's exit, which is the part no pure function reaches: 閲覧
+   * is component state, and whether it holds input is only observable in what leaving asks.
+   */
+  it("マイルストーンを選んで読むだけでは、スイムレーンへ戻る確認は立たない", async () => {
+    const host = await startWith([loaded("atlas", [TASK], undefined, [], [MILESTONE])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+    click(byText(host, "nav.sections button", "マイルストーン"));
+
+    click(only(host, "button.card"));
+    await settled();
+
+    // 閲覧 is what opened: the description is stated as text, and the 編集セッション is not open —
+    // its input box and its 出口「編集を閉じる」 exist only while one is.
+    expect(only(host, "pre.read-body").textContent).toBe(MILESTONE.description);
+    expect(byText(host, ".view-head button", "編集")).not.toBeNull();
+    expect(host.querySelector("textarea")).toBeNull();
     expect([...host.querySelectorAll("button")].some((b) => b.textContent === "編集を閉じる")).toBe(
       false,
     );

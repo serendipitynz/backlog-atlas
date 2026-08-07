@@ -314,22 +314,32 @@
       // later save would carry it too, so it is dropped once one has gone through.
       edit.redetectGitRemote = false;
       if (movesRoot(request)) {
-        // A completed move closes the open 編集セッション (doc-10 §4.1). This screen is keyed by
-        // slug alone and a move keeps the slug, so nothing else would close it. A surviving session
-        // would let this root's body be sent to the other one by document id — and with the same id
-        // present there, the 更新前競合検出 passes against the new root's own read, so `--content`
-        // replaces it whole.
+        // A completed move closes **every** open 編集セッション (doc-10 §4.1, which says so without
+        // qualification). This screen is keyed by slug alone and a move keeps the slug, so nothing
+        // else would close them. A surviving session would let this root's input be sent to the
+        // other one by id — and with the same id present there, the 更新前競合検出 passes against
+        // the new root's own read, so the write lands whole.
         docSession = null;
         docSelection = null;
         newTag = "";
         pendingDocument = null;
+        // The マイルストーン編集セッション goes with it (PR #74 1R [P1]). Until TASK-121 this 区画
+        // had no session for §4.1 to rule on, which is why only the 文書 one was closed here; the
+        // ids collide even more readily than document ids do (m-1, m-2, …), and 説明を保存 issues
+        // by id alone. The selection goes too: with the session closed, a selection resolved against
+        // the old root's read has nothing left to be about.
+        milestoneEditing = false;
+        milestoneSelection = null;
+        closeMilestoneOp();
+        milestoneDescriptionDraft = null;
+        pendingMilestone = null;
         // status and milestone name the old root's ID space (doc-3 §5.3), so they do not travel
         // either. Both are selections rather than typed text, so dropping them costs no input.
         taskInput.status = "";
         taskInput.milestone = "";
         overviewNotice =
-          `${result.slug} を移動しました。開いていた文書の編集セッションは、旧ルートの読み取りに` +
-          "基づくため閉じました（doc-10 §4.1）。";
+          `${result.slug} を移動しました。開いていた文書・マイルストーンの編集セッションは、` +
+          "旧ルートの読み取りに基づくため閉じました（doc-10 §4.1）。";
         return;
       }
       overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
@@ -503,15 +513,6 @@
     await resetDocPane();
   }
 
-  /**
-   * 選択の解除 (doc-10 §5): back to the 作成フォーム and the 提供しない操作区画. Only reachable from
-   * 閲覧, which holds no input, so it asks nothing — the 破棄前確認's two paths are unchanged.
-   */
-  async function clearDocSelection(): Promise<void> {
-    docSelection = null;
-    await resetDocPane();
-  }
-
   /** 編集への切替 (doc-10 §5): the one place a 文書の編集セッション opens. */
   async function startDocEdit(): Promise<void> {
     const document = selectedDocument;
@@ -577,11 +578,20 @@
 
   /**
    * 選択中のマイルストーン (doc-10 §6): which card the マイルストーン一覧 holds selected. One at a
-   * time, and it is only a selection — unlike the 文書区画's card it opens no 編集セッション
-   * (doc-8 §1), which is why the pane it drives is the 操作ペイン and not an 編集ペイン.
+   * time. Since TASK-121 a selection opens 閲覧 and no 編集セッション, exactly as the 文書区画's
+   * does — which is why the pane it drives is now the マイルストーンペイン rather than the 操作ペイン.
    */
   let milestoneSelection = $state<string | null>(null);
-  /** The 操作ペイン's scroll container, for the reset on selection (doc-10 §6). */
+  /**
+   * Whether the 編集セッション (doc-8 §1) is open on the selected milestone (doc-10 §6, TASK-121).
+   *
+   * A flag rather than a session object holding a baseline, which is what the 文書区画 keeps. The
+   * difference is deliberate: the 説明 box is an *override* of the current read (see the draft
+   * below), so there is no pre-edit snapshot to compare against and nothing for a baseline to hold.
+   * 改称・削除・アーカイブ read their operand from the current read for the same reason.
+   */
+  let milestoneEditing = $state(false);
+  /** The マイルストーンペイン's scroll container, for the resets doc-10 §6 counts. */
   let milestonePane = $state<HTMLDivElement | undefined>(undefined);
   /**
    * Which operation is open on the selected milestone (doc-10 §6). Two open at once would leave the
@@ -610,41 +620,71 @@
   /** Where the user asked to go while 未保存入力 was held — **not applied** until they answer. */
   let pendingMilestone = $state<{ milestone: Milestone | null } | null>(null);
 
-  /** Select one milestone's card, asking first when the open operation's input would be lost. */
+  /**
+   * Select one milestone's card (doc-10 §6), asking first when the open 編集セッション's input would
+   * be lost. The selection opens 閲覧, never the session — that is what TASK-121 changed here, and
+   * it is why a user who is only reading is never asked about unsaved input.
+   */
   function selectMilestone(milestone: Milestone): void {
-    // Already selected: re-pressing the card would restart the pane and drop the input silently.
+    // Already the selected one: re-pressing must not restart anything. While its editor is open this
+    // would otherwise drop the input without asking; while only 閲覧 is open there is nothing to do.
     if (milestoneSelection === milestone.id) return;
     if (milestoneDirty) {
       pendingMilestone = { milestone };
       return;
     }
-    openMilestone(milestone);
+    void openMilestone(milestone);
   }
 
+  /** 選択が成立する: the pane swaps to 閲覧 of this milestone. Any open editor goes with it. */
   async function openMilestone(milestone: Milestone): Promise<void> {
     milestoneSelection = milestone.id;
-    // Each selection starts from no operation and empty input, so a name or a 付け替え先 typed for
-    // one milestone cannot be issued against the next. Dropping the 説明 draft is the same rule:
-    // left standing it would be a description written for one milestone, shown over another's.
+    // Each selection starts from 閲覧 with no operation and empty input, so a name or a 付け替え先
+    // typed for one milestone cannot be issued against the next. Dropping the 説明 draft is the same
+    // rule: left standing it would be a description written for one milestone, shown over another's.
+    milestoneEditing = false;
     closeMilestoneOp();
     milestoneDescriptionDraft = null;
     message = null;
-    // Same reset as the 編集ペイン's (doc-10 §6): the pane is one persistent scroller whose content
-    // swaps, so a kept scrollTop would hide the newly selected milestone's operations above the
-    // viewport. Never the 一覧, whose kept position is the point of the split scrollers.
-    await tick();
-    if (milestonePane !== undefined) milestonePane.scrollTop = 0;
+    await resetMilestonePane();
   }
 
-  /** Drop the selection and go back to the 非選択時の操作ペイン, asking first when input would be lost. */
-  function clearMilestoneSelection(): void {
+  /** 編集への切替 (doc-10 §6): the one place a マイルストーンの編集セッション opens. */
+  async function startMilestoneEdit(): Promise<void> {
+    if (selectedMilestone === null || issuing) return;
+    milestoneEditing = true;
+    await resetMilestonePane();
+  }
+
+  /** 編集を閉じる: back to 閲覧 of the same milestone (doc-10 §6). One of the 破棄前確認's two paths. */
+  function closeMilestoneEdit(): void {
     if (milestoneDirty) {
       pendingMilestone = { milestone: null };
       return;
     }
-    milestoneSelection = null;
+    void discardMilestoneEdit();
+  }
+
+  /**
+   * End the 編集セッション and land on 閲覧. Clearing the input is the point: `milestoneDirty` counts
+   * these values, so a close that left them behind would keep asking before leaving the screen — to
+   * protect input the user can no longer see (PR #65 1R [P2], reached from the session's side).
+   */
+  async function discardMilestoneEdit(): Promise<void> {
+    milestoneEditing = false;
     closeMilestoneOp();
     milestoneDescriptionDraft = null;
+    await resetMilestonePane();
+  }
+
+  /**
+   * The マイルストーンペイン is a persistent scroller and only its content swaps (doc-10 §6, the same
+   * rule and the same four occasions as the 文書ペイン's). Never the 一覧, whose kept position is the
+   * point of the split scrollers.
+   */
+  async function resetMilestonePane(): Promise<void> {
+    await tick();
+    if (milestonePane !== undefined) milestonePane.scrollTop = 0;
   }
 
   function milestoneLeaveConfirmed(): void {
@@ -652,12 +692,10 @@
     pendingMilestone = null;
     if (target === null) return;
     if (target.milestone === null) {
-      milestoneSelection = null;
-      closeMilestoneOp();
-      milestoneDescriptionDraft = null;
+      void discardMilestoneEdit();
       return;
     }
-    openMilestone(target.milestone);
+    void openMilestone(target.milestone);
   }
 
   function openMilestoneOp(kind: "rename" | "remove" | "archive"): void {
@@ -720,10 +758,12 @@
     // Closed on success only: the milestone the input names is gone (removed/archived) or renamed,
     // so keeping the form open would offer a second issue against a stale operand. A failure or a
     // 更新前競合 keeps it, which is what lets the user reload and retry the same input.
-    // Closed whatever the operation was: 改称 keeps the id (v1.48.0 does not change it, doc-9
-    // §4.2.1) so the selection stands, and 削除・アーカイブ take the milestone out of the re-read —
-    // which the effect below turns into a dropped selection, on every read rather than only here.
-    if (outcome?.state === "applied") closeMilestoneOp();
+    // The whole 編集セッション closes, not just this operation (doc-10 §6, TASK-121) — for the reason
+    // §5 gives about 文書更新: after a success the state the input was formed against no longer
+    // exists. 改称 keeps the id (v1.48.0 does not change it, doc-9 §4.2.1) so the selection stands
+    // and the pane lands on 閲覧; 削除・アーカイブ take the milestone out of the re-read, which the
+    // effect below turns into a dropped selection, on every read rather than only here.
+    if (outcome?.state === "applied") await discardMilestoneEdit();
   }
 
   /**
@@ -731,16 +771,16 @@
    * a CLI call. The plan is built from the box's current text, so what is issued is what is on
    * screen.
    *
-   * The draft is dropped on success and kept otherwise, which is the same rule `runMilestoneOp`
-   * follows: after a success the re-read holds the new description and the box should follow it
-   * again, while after a failure or a 更新前競合 the user still has what they typed.
+   * The 編集セッション is closed on success and kept otherwise, which is the same rule
+   * `runMilestoneOp` follows: after a success the re-read holds the new description and 閲覧 states
+   * it, while after a failure or a 更新前競合 the user still has what they typed.
    */
   async function saveMilestoneDescription(milestone: Milestone): Promise<void> {
     const plan = buildMilestoneDescribe(milestone, milestoneDescriptionText);
     if (plan.state !== "ready") return;
     if (availability(plan).state !== "ready") return;
     const outcome = await issue(plan.action, `${milestone.id} の説明を更新しました`);
-    if (outcome?.state === "applied") milestoneDescriptionDraft = null;
+    if (outcome?.state === "applied") await discardMilestoneEdit();
   }
 
   /**
@@ -794,17 +834,23 @@
    *
    * Guarded on `project !== null` so a read in flight, which resolves nothing, does not clear a
    * selection the user still has.
+   *
+   * The pane is reset here too, because this is now one of the four occasions doc-10 §5 counts —
+   * since TASK-121 removed 選択を解除 it is the *only* way back to the 非選択時 pane, and the swap
+   * it makes is the same one that press used to make.
    */
   $effect(() => {
     if (project === null || docSelection === null || selectedDocument !== null) return;
     if (docSession !== null) return;
     docSelection = null;
+    void resetDocPane();
   });
 
   /**
    * The selected milestone as the current read holds it (doc-10 §6). Derived rather than stored, so
-   * an external change that removes it drops the 操作ペイン back to the 作成フォーム instead of
-   * leaving operations pointed at a milestone that is no longer there.
+   * 閲覧 follows a reload instead of showing a milestone that has since changed — and so an external
+   * change that removes it drops the selection rather than leaving operations pointed at a milestone
+   * that is no longer there.
    */
   let selectedMilestone = $derived(
     milestoneSelection === null
@@ -824,8 +870,8 @@
   );
   /**
    * 説明 typed but not yet issued. Part of the 未保存入力 doc-10 §6 protects, and unlike 改称・削除 it
-   * stands without any operation being open — the box is on screen for as long as a milestone is
-   * selected, which is why the 破棄前確認 below cannot key off `milestoneOp`.
+   * stands without any operation being open — the box is on screen for as long as the 編集セッション
+   * is, which is why the 破棄前確認 below cannot key off `milestoneOp`.
    */
   let milestoneDescriptionDirty = $derived(
     milestoneDescriptionDraft !== null &&
@@ -835,13 +881,22 @@
   let milestoneDirty = $derived(milestoneOpDirty || milestoneDescriptionDirty);
 
   /**
-   * A selection that no longer resolves takes its input with it (PR #65 round 1 [P2]). Falling back
-   * to the 作成フォーム is not enough on its own: `milestoneOp` and its input would stay standing,
-   * and `milestoneDirty` would then hold both 破棄前確認 — this 区画's and the shell's — over input
-   * that is nowhere on screen, which is the failure `closeMilestoneOp` records. Leaving it would
-   * also let a reappearing id restore the old form with the old input aimed at the new read. The
-   * 説明 draft goes with them for the same reason, and it is the one that could otherwise be
-   * re-issued against a *different* milestone if the id came back.
+   * A selection that no longer resolves takes its 編集セッション with it (PR #65 round 1 [P2]).
+   * Dropping the selection alone is not enough: `milestoneOp` and its input would stay standing, and
+   * `milestoneDirty` would then hold both 破棄前確認 — this 区画's and the shell's — over input that
+   * is nowhere on screen, which is the failure `closeMilestoneOp` records. Leaving it would also let
+   * a reappearing id restore the old form with the old input aimed at the new read. The 説明 draft
+   * goes with them for the same reason, and it is the one that could otherwise be re-issued against
+   * a *different* milestone if the id came back.
+   *
+   * Unlike the 文書区画's, an open 編集セッション is **not** exempt here. That exemption exists
+   * because a `DocSession` carries the baseline its 未保存入力 was made against and so survives a
+   * reload on purpose (doc-8 §6.4); this session carries no baseline — the 説明 box overrides the
+   * current read and the operations read their operand from it — so once the milestone is gone,
+   * there is nothing left for the input to be about.
+   *
+   * The pane is reset for the reason the 文書区画's effect gives: since TASK-121 removed
+   * 選択を解除, this is one of the ways the pane comes to show something else (doc-10 §6).
    *
    * Guarded on `project !== null` so a read in flight, which resolves nothing, does not clear input
    * the user is still typing.
@@ -849,8 +904,15 @@
   $effect(() => {
     if (project === null || milestoneSelection === null || selectedMilestone !== null) return;
     milestoneSelection = null;
+    milestoneEditing = false;
     closeMilestoneOp();
     milestoneDescriptionDraft = null;
+    // The 破棄前確認 goes with the input it protects (PR #74 1R [P3]). Raised while the session was
+    // open and left standing, the band would ask about 未保存入力 that this very block just dropped,
+    // over a pane now showing 非選択時 — and 入力に戻る would have nothing to return to. The 文書区画
+    // cannot reach this because its effect exempts an open session; this one deliberately does not.
+    pendingMilestone = null;
+    void resetMilestonePane();
   });
 
   // --- 作成モーダル (doc-10 §1, TASK-117) ---------------------------------------------------------
@@ -997,6 +1059,8 @@
   /** The same for the 閲覧ヘッダ's 編集: a different sentence, since that one is about editing. */
   const DOC_EDIT_HELD_ID = "detail-doc-edit-held";
   const MILESTONE_SELECT_BLOCKED_ID = "detail-milestone-select-blocked";
+  /** The same for the マイルストーン閲覧ヘッダ's 編集 (doc-10 §6, TASK-121). */
+  const MILESTONE_EDIT_HELD_ID = "detail-milestone-edit-held";
 
   function why(availability: { state: string; reason?: string }): string {
     return availability.state === "blocked" ? (availability.reason ?? "") : "";
@@ -1383,7 +1447,7 @@
           </div>
         </section>
       {:else if section === "documents"}
-        <!-- 文書区画 (doc-10 §5): 文書一覧 (16rem) beside the 編集ペイン, the screen's own second and
+        <!-- 文書区画 (doc-10 §5): 文書一覧 (16rem) beside the 文書ペイン, the screen's own second and
              third column after the 区画ナビ. Each column scrolls on its own — a deliberate departure
              from design 07's single scroller, recorded in doc-10 §5 — so choosing a document swaps
              the pane while the list keeps its scroll position. The 破棄前確認 stays above the
@@ -1518,10 +1582,9 @@
               </div>
 
               <!-- 文書ペイン (doc-10 §5): three states in one column — the update form alone while a
-                   session is open (the create form beside a live editor buried the editor's own
-                   actions, 目視反映), 閲覧 while a document is merely selected, and the create form
-                   with the withheld operations while nothing is. Renamed from 編集ペイン by
-                   TASK-116: selection opens 閲覧, so editing is one state of three. -->
+                   session is open, 閲覧 while a document is merely selected, and the 提供しない操作
+                   区画 under a line saying what the column is for while nothing is. Renamed from
+                   編集ペイン by TASK-116: selection opens 閲覧, so editing is one state of three. -->
               <div class="pane" bind:this={docPane}>
                 {#if docSession !== null}
                   {@const session = docSession}
@@ -1632,8 +1695,9 @@
                   <!-- 閲覧 (doc-10 §5, TASK-116): what the selection opens. No input of any kind, so
                        nothing here can hold 未保存入力 and no 破棄前確認 can arise from reading. -->
                   <div class="sub-panel">
-                    <!-- 閲覧ヘッダ: title, 編集 and 選択を解除 on one line, then ID・type・tags・
-                         表示パス, then the 理由行. The heading is the document's own title rather
+                    <!-- 閲覧ヘッダ: title and 編集 on one line, then ID・type・tags・表示パス, then
+                         the 理由行 (選択を解除 left this row with TASK-121). The heading is the
+                         document's own title rather
                          than a sentence about it — the pane is showing that document, and a title is
                          what names it. -->
                     <div class="view-head">
@@ -1651,11 +1715,12 @@
                       >
                         編集
                       </button>
-                      <!-- 選択の解除 (doc-10 §5): the way back to the 作成フォーム and the 提供しない
-                           操作区画. 閲覧 holds no input, so this asks nothing — but without it the
-                           create form's 未保存入力 would be off screen while still counting toward
-                           the screen's 破棄前確認, which is the failure §6 names (PR #72 1R [P2]). -->
-                      <button type="button" onclick={clearDocSelection}>選択を解除</button>
+                      <!-- No 選択を解除 here since TASK-121 (doc-10 §5). The reason it was placed —
+                           the create form's 未保存入力 sitting off screen while still counting
+                           toward the screen's 破棄前確認 — died with TASK-117's 作成モーダル, and
+                           the reason written in its place (always being able to return to「何も
+                           選んでいない」) was judged insufficient at 目視. Nothing is lost by not
+                           returning: 閲覧 shows every value the card carries and holds no input. -->
                     </div>
                     {#if issuingReason !== null}
                       <p class="reason" id={DOC_EDIT_HELD_ID}>
@@ -1694,7 +1759,7 @@
                     {#if (document.body ?? "") === ""}
                       <p class="neutral">本文はありません。</p>
                     {:else}
-                      <pre class="doc-body">{document.body}</pre>
+                      <pre class="read-body">{document.body}</pre>
                     {/if}
                   </div>
                 {:else}
@@ -1714,10 +1779,9 @@
         </section>
       {:else if section === "milestones"}
         <!-- マイルストーン区画 (doc-10 §6): マイルストーン一覧 — this 区画's 一覧列 (§1) — beside the
-             操作ペイン, the same three columns the 文書区画 has. The pane is not called an 編集ペイン
-             because selecting a card opens no 編集セッション (doc-8 §1): what opens here is 改称・
-             削除・アーカイブ. Each column scrolls on its own and the 破棄前確認 stays above both,
-             for the reasons doc-10 §5 records and §6 repeats. -->
+             マイルストーンペイン, the same three columns the 文書区画 has. Each column scrolls on its
+             own and the 破棄前確認 stays above both, for the reasons doc-10 §5 records and §6
+             repeats. -->
         <section class="split-section">
           {#if unreadableNote !== null}
             <h2>マイルストーン</h2>
@@ -1735,14 +1799,16 @@
             )}
           {:else}
             {#if pendingMilestone !== null}
-              <!-- 破棄前確認 (doc-10 §6): the open operation holds 未保存入力 and the requested move
-                   would drop it. The move itself has not been applied. -->
+              <!-- 破棄前確認 (doc-10 §6): the open 編集セッション holds 未保存入力 and the requested
+                   move would drop it. The move itself has not been applied. The two paths are 別の
+                   マイルストーンを選ぶ and 編集を閉じる since TASK-121 — the second used to be
+                   選択を解除する, and the count of two is unchanged by the swap. -->
               <div class="confirm">
                 <span>
                   {#if pendingMilestone.milestone === null}
-                    マイルストーンに未保存入力があります。選択を解除すると破棄されます。
+                    マイルストーンの編集に未保存入力があります。編集を閉じると破棄されます。
                   {:else}
-                    マイルストーンに未保存入力があります。{pendingMilestone.milestone.id} を開くと破棄されます。
+                    マイルストーンの編集に未保存入力があります。{pendingMilestone.milestone.id} を開くと破棄されます。
                   {/if}
                 </span>
                 <button type="button" onclick={milestoneLeaveConfirmed}>破棄して続行</button>
@@ -1778,12 +1844,14 @@
                         (view) => view.task.milestone === milestone.id,
                       ).length}
                       {@const current = milestoneSelection === milestone.id}
+                      {@const editing = current && milestoneEditing}
                       {@const reasons = fileInconsistencyReasons(milestone.health, "マイルストーン")}
                       <li>
                         <!-- カード (doc-10 §6): id・title・所属タスク件数. No 説明 — the 一覧列 is
                              16rem and the description is stated in the pane instead (§6's recorded
-                             departure). No「編集中」chip either: a selection opens no session, so
-                             the emphasis alone says which one is open. -->
+                             departure). Since TASK-121 the emphasis says「読んでいる」and the chip
+                             below says「編集している」, the same split the 文書カード makes: a
+                             selection opens 閲覧 and no 編集セッション. -->
                         <button
                           type="button"
                           class="card"
@@ -1797,10 +1865,14 @@
                           <span class="card-head">
                             <span class="id">{milestone.id}</span>
                             <span class="meta">所属タスク {held} 件</span>
-                            {#if current && milestoneDirty}
-                              <!-- 未保存入力の印 (doc-10 §6): only the selected card can carry it,
-                                   and it is shown here so「まだ発行していない」stays readable when
-                                   the 操作ペイン has scrolled out of view. -->
+                            {#if editing}
+                              <span class="editing">編集中</span>
+                            {/if}
+                            {#if editing && milestoneDirty}
+                              <!-- 未保存入力の印 (doc-10 §6): only the card with the open 編集
+                                   セッション can carry it, and it is shown here so「まだ発行して
+                                   いない」stays readable when the マイルストーンペイン has scrolled
+                                   out of view. -->
                               <span class="unsaved">未保存</span>
                             {/if}
                             {#if reasons.length > 0}
@@ -1838,14 +1910,14 @@
                 {/if}
               </div>
 
-              <!-- 操作ペイン (doc-10 §6): the selected milestone's operations alone while one is
-                   selected, and the create form with the withheld operations otherwise. -->
+              <!-- マイルストーンペイン (doc-10 §6, renamed from 操作ペイン by TASK-121): 非選択時 の
+                   1 行, then 閲覧 while a milestone is merely selected, then the 編集セッション
+                   alone once 編集 is pressed. The same three states — and the same order of
+                   branches — as the 文書ペイン's, since selection now opens the same thing in both.
+                   The name follows §5's rule that a column is named for what it opens. -->
               <div class="pane" bind:this={milestonePane}>
-                {#if selectedMilestone !== null}
+                {#if selectedMilestone !== null && milestoneEditing}
                   {@const milestone = selectedMilestone}
-                  {@const held = project.tasks.filter(
-                    (view) => view.task.milestone === milestone.id,
-                  ).length}
                   {@const plan = milestoneOpPlan(milestone)}
                   {@const open = milestoneOp}
                   {@const opIssue = plan === null ? null : availability(plan)}
@@ -1853,28 +1925,22 @@
                   {@const describeIssue = availability(
                     buildMilestoneDescribe(milestone, milestoneDescriptionText),
                   )}
+                  <!-- 編集セッション (doc-8 §1, doc-10 §6): everything that takes input or issues a
+                       write is behind 編集への切替, so that 閲覧 keeps the property §5 gave it —
+                       holding no input, and therefore never raising a 破棄前確認 from reading. -->
                   <div class="sub-panel">
-                    <div class="record-head">
-                      <span class="id">{milestone.id}</span>
-                      <span class="title">{milestone.title}</span>
-                      <span class="meta">所属タスク {held} 件</span>
-                    </div>
-                    {#if openMilestoneReasons.length > 0}
-                      <!-- 理由行 (decision-22, doc-10 §6): where the ⚠️'s full reason is readable
-                           without hovering, as doc-11 §2.4 requires of every 印グリフ. -->
-                      <!-- Keyed by index for the reason the 文書区画's copy gives. -->
-                      <ul class="reason-lines">
-                        {#each openMilestoneReasons as reason, at (at)}
-                          <li>{reason}</li>
-                        {/each}
-                      </ul>
-                    {/if}
-                    <!-- 説明 (doc-10 §6): stated here rather than on the card, which is the second
-                         of this 区画's departures from design 07 — and editable, which is the third
-                         (decision-21). The box is not one of the 改称・削除・アーカイブ operations:
-                         it is always open while a milestone is selected, because the description is
-                         what this pane states about the milestone and editing it is that statement
-                         being corrected. -->
+                    <!-- Which milestone this session is about, in the place the 文書区画's update
+                         form states the same thing. The 一覧 says it too (emphasis and 編集中 chip),
+                         but the two columns scroll apart — the selected card can be above the
+                         viewport while this pane is being typed into, which is the direction §6
+                         already argues in for the 未保存 chip. -->
+                    <h3>{milestone.id} を編集</h3>
+                    <!-- 説明 (doc-10 §6): stated on this column rather than on the card, which is the
+                         second of this 区画's departures from design 07 — and editable, which is the
+                         third (decision-21). The box is not one of the 改称・削除・アーカイブ
+                         operations: it is open for as long as the session is, because the
+                         description is what this column states about the milestone and editing it is
+                         that statement being corrected. -->
                     <label class="field">
                       <span class="label">説明</span>
                       <textarea
@@ -1894,13 +1960,16 @@
                       >
                         説明を保存
                       </button>
+                      <button type="button" onclick={closeMilestoneEdit}>編集を閉じる</button>
                       {#if describeIssue.state === "blocked"}
                         <span class="reason">{describeIssue.reason}</span>
                       {/if}
                     </div>
 
                     <!-- 改称・削除・アーカイブ (doc-10 §6). doc-9 §4.2 defines the 照合 for all
-                         three, so they are operations here rather than 提供しない操作区画 entries. -->
+                         three, so they are operations here rather than 提供しない操作区画 entries.
+                         アーカイブ takes no input, but it issues a write, and §6 keeps every issuing
+                         operation on this side of 編集への切替 rather than splitting the three. -->
                     <div class="actions">
                       <button
                         type="button"
@@ -1929,7 +1998,6 @@
                       >
                         アーカイブ
                       </button>
-                      <button type="button" onclick={clearMilestoneSelection}>選択を解除</button>
                     </div>
 
                     {#if open !== null}
@@ -2059,12 +2127,72 @@
                       </div>
                     {/if}
                   </div>
+                {:else if selectedMilestone !== null}
+                  {@const milestone = selectedMilestone}
+                  {@const held = project.tasks.filter(
+                    (view) => view.task.milestone === milestone.id,
+                  ).length}
+                  <!-- 閲覧 (doc-10 §6, TASK-121): what the selection opens. No input of any kind, so
+                       nothing here can hold 未保存入力 and no 破棄前確認 can arise from reading —
+                       the property §5 attached to this word, kept by using the same word. -->
+                  <div class="sub-panel">
+                    <!-- 閲覧ヘッダ: title and 編集 on one line, then id・所属タスク件数, then the
+                         理由行. The heading is the milestone's own title rather than a sentence
+                         about it, for the reason the 文書区画's copy gives. -->
+                    <div class="view-head">
+                      <h3>{milestone.title}</h3>
+                      <!-- Held while a 発行 is in flight, and the reason is reachable without a
+                           pointer — route (b) of doc-11 §5, the same treatment the 文書区画's
+                           編集 gets. -->
+                      <button
+                        type="button"
+                        aria-disabled={issuing}
+                        aria-describedby={issuing ? MILESTONE_EDIT_HELD_ID : undefined}
+                        title={issuingReason ?? "このマイルストーンの編集を開きます"}
+                        onclick={() => !issuing && startMilestoneEdit()}
+                      >
+                        編集
+                      </button>
+                    </div>
+                    {#if issuingReason !== null}
+                      <p class="reason" id={MILESTONE_EDIT_HELD_ID}>
+                        {issuingReason}。完了するまでこのマイルストーンの編集は開けません。
+                      </p>
+                    {/if}
+                    <p class="meta-line">
+                      <span class="id">{milestone.id}</span>
+                      <span>所属タスク {held} 件</span>
+                    </p>
+                    {#if openMilestoneReasons.length > 0}
+                      <!-- 理由行 (decision-22, doc-10 §6 as TASK-121 revised it): the place doc-11
+                           §2.4 requires the ⚠️'s full reason to be readable without hovering. It
+                           moved here from the pane's heading when the selection started opening
+                           閲覧 — decision-24's rule (under the heading of whatever the selection
+                           opens) did not change, only the place it points at. -->
+                      <!-- Keyed by index for the reason the 文書区画's copy gives. -->
+                      <ul class="reason-lines">
+                        {#each openMilestoneReasons as reason, at (at)}
+                          <li>{reason}</li>
+                        {/each}
+                      </ul>
+                    {/if}
+                    <!-- 説明 (doc-10 §6): the current value, read-only. Same treatment as the
+                         文書区画's 本文 — the string as read, with doc-8 §2.1's 48rem line length on
+                         it, since this column takes whatever width is left. -->
+                    {#if (milestone.description ?? "") === ""}
+                      <p class="neutral">説明はありません。</p>
+                    {:else}
+                      <pre class="read-body">{milestone.description}</pre>
+                    {/if}
+                  </div>
                 {:else}
-                  <!-- 非選択時の操作ペイン (doc-10 §6, TASK-117). Emptier than the 文書ペイン's: the
-                       作成フォーム went to the 作成モーダル and this 区画's 提供しない操作区画 has been
-                       0 件 since TASK-65, so nothing at all was left to draw. The column is still
-                       drawn — folding it would move the cards' width every time a selection came and
-                       went (§5・§6) — and the line says what the column is for. -->
+                  <!-- 非選択時のマイルストーンペイン (doc-10 §6, TASK-117). Emptier than the 文書
+                       ペイン's: the 作成フォーム went to the 作成モーダル and this 区画's 提供しない
+                       操作区画 has been 0 件 since TASK-65, so nothing at all was left to draw. The
+                       column is still drawn — folding it would move the cards' width every time a
+                       selection came and went (§5・§6) — and the line says what the column is for.
+                       Since TASK-121 this state is reached only by the three occasions §6 lists, not
+                       by a press: 選択を解除 is gone. -->
                   <p class="neutral">マイルストーンを選ぶと操作を表示します。</p>
 
                   {@render withheld(
@@ -2608,11 +2736,11 @@
     font-size: 0.66rem;
   }
 
-  // 編集ペイン (doc-10 §5) / 操作ペイン (§6): the selected thing's form alone while something is
-  // selected; the create form and the withheld operations otherwise. Two names in the doc because
-  // only one of them opens a 編集セッション, one rule here because the column is the same shape.
-  // Its first block starts at the columns' top — the pane has no heading of its own, so an
-  // inherited margin here reads as a hole (目視反映).
+  // 文書ペイン (doc-10 §5) / マイルストーンペイン (§6): 非選択時 の 1 行, 閲覧 while something is
+  // selected, and the 編集セッション once 編集 is pressed. Two names in the doc because they open
+  // different objects, one rule here because the column is the same shape — and since TASK-121 the
+  // same three states as well. Its first block starts at the columns' top: the pane has no heading
+  // of its own, so an inherited margin here reads as a hole (目視反映).
   .pane {
     flex: 1;
     min-width: 0;
@@ -2853,31 +2981,6 @@
     }
   }
 
-  // 操作ペインの見出し行 (doc-10 §6): which milestone is selected, on one line. Replaces the flat
-  // list row this 区画 had before the 3 カラム, which is why it keeps that row's typography.
-  .record-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.4rem;
-
-    .id {
-      font-family: ui-monospace, monospace;
-      font-size: 0.72rem;
-    }
-
-    .meta {
-      color: var(--muted);
-      font-size: 0.7rem;
-    }
-  }
-
-  .description {
-    margin: 0.2rem 0 0;
-    font-size: 0.74rem;
-    white-space: pre-wrap;
-  }
-
   // 表示パス (doc-10 §5). `display: block` because this class is worn by a `<p>` in the 閲覧ヘッダ and
   // by a `<span>` inside the update form's path `<label>` — a `<p>` is not phrasing content and
   // cannot go in a label, but the line has to read the same in both places.
@@ -2889,9 +2992,10 @@
     word-break: break-all;
   }
 
-  // 閲覧ヘッダ (doc-10 §5): title and 編集 on one line. The heading takes the space so the button
+  // 閲覧ヘッダ (doc-10 §5・§6): title and 編集 on one line. The heading takes the space so the button
   // keeps its place at the right edge whatever the title's length, and both stay on the first line —
-  // which is the line the selection is meant to land on.
+  // which is the line the selection is meant to land on. Worn by both 区画 since TASK-121: the two
+  // 閲覧ヘッダ differ in what they list underneath, not in this row.
   .view-head {
     display: flex;
     align-items: baseline;
@@ -2908,8 +3012,9 @@
     }
   }
 
-  // type・tags under the 閲覧ヘッダ's first line. One line of muted metadata, the same values the
-  // card carries — repeated here because the card is 16rem and truncates, and this column is not.
+  // Under the 閲覧ヘッダ's first line: ID・type・tags in the 文書区画, id・所属タスク件数 in the
+  // マイルストーン区画. One line of muted metadata, the same values the card carries — repeated here
+  // because the card is 16rem and truncates, and this column is not.
   .meta-line {
     display: flex;
     flex-wrap: wrap;
@@ -2924,11 +3029,14 @@
     }
   }
 
-  // 本文 in 閲覧 (doc-10 §5): the string as read. `pre-wrap` keeps the newlines the file has and
-  // wraps the long lines instead of scrolling the pane sideways — the treatment `TaskDetail.svelte`
-  // gives Description, for the same reason (nothing here formats Markdown). Named `doc-body` and
-  // not `body`: this component already wears `.body` on the frame that holds the 区画ナビ and panel.
-  .doc-body {
+  // What 閲覧 shows as prose: the 文書's 本文 (doc-10 §5) and the マイルストーン's 説明 (§6), each as
+  // the string was read. `pre-wrap` keeps the newlines the file has and wraps the long lines instead
+  // of scrolling the pane sideways — the treatment `TaskDetail.svelte` gives Description, for the
+  // same reason (nothing here formats Markdown). The 48rem is doc-8 §2.1's, borrowed rather than
+  // decided again: it was measured for a prose block in a column that takes the remaining width,
+  // which is what both of these are (doc-10 §5, TASK-113). Named `read-body` and not `body`: this
+  // component already wears `.body` on the frame that holds the 区画ナビ and panel.
+  .read-body {
     margin: 0.5rem 0 0;
     max-width: var(--prose-max-width);
     padding: 0.4rem 0.5rem;
@@ -2955,9 +3063,10 @@
     cursor: help;
   }
 
-  // 理由行 (decision-22) in the 閲覧ヘッダ / 操作ペイン — the place doc-11 §2.4 requires the ⚠️'s
-  // reason to be readable without hovering. Plain lines, not a 区画: they carry no heading of their
-  // own because the ⚠️ above already said there is something to read.
+  // 理由行 (decision-22) in either 区画's 閲覧ヘッダ — the place doc-11 §2.4 requires the ⚠️'s reason
+  // to be readable without hovering, which decision-24 fixes as「選択が開く場所の見出し下」and which
+  // TASK-121 made the same領域 in both. Plain lines, not a 区画: they carry no heading of their own
+  // because the ⚠️ above already said there is something to read.
   .reason-lines {
     margin: 0.35rem 0 0;
     padding-left: 1.1rem;
@@ -3006,7 +3115,7 @@
     font-size: 0.66rem;
   }
 
-  // The 未保存入力 mark (doc-10 §5). Not one of decision-6's 印の族 — nothing is degraded and nothing
+  // The 未保存入力 mark (doc-10 §5・§6). Not one of decision-6's 印の族 — nothing is degraded and nothing
   // diverged; the user simply has not sent it yet — so it takes the neutral info hue.
   .unsaved {
     padding: 0 0.3rem;
