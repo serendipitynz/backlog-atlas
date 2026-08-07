@@ -102,6 +102,9 @@
     unregisterBlocked,
     type DetailSection,
   } from "../lib/project-detail";
+  // 行長上限 (doc-8 §2.1, TASK-113). Borrowed rather than restated: the number is one measurement,
+  // and a second `48` here would let the two drift while both docs still call it 行長上限.
+  import { PROSE_MAX_WIDTH_REM } from "../lib/placement";
   import type {
     CliReadiness,
     Document,
@@ -305,6 +308,7 @@
         // present there, the 更新前競合検出 passes against the new root's own read, so `--content`
         // replaces it whole.
         docSession = null;
+        docSelection = null;
         newTag = "";
         pendingDocument = null;
         // status and milestone name the old root's ID space (doc-3 §5.3), so they do not travel
@@ -387,6 +391,23 @@
   let docCreatePlan = $derived(buildDocCreate(docInput));
   let docCreateIssue = $derived(availability(docCreatePlan));
 
+  /**
+   * 選択 (doc-10 §5): which document the 文書ペイン holds, as an id. Held apart from `docSession`
+   * since TASK-116 — a selection opens 閲覧 and no 編集セッション, so the two states now stand
+   * independently and the card's emphasis and its 編集中 chip say different things.
+   */
+  let docSelection = $state<string | null>(null);
+  /**
+   * The selected document as the **current read** holds it (doc-10 §5). Derived rather than stored,
+   * so 閲覧 and the 表示パス follow a reload instead of showing a document that has since changed —
+   * and so an external change that removes it drops the selection (the `$effect` below).
+   */
+  let selectedDocument = $derived(
+    docSelection === null
+      ? null
+      : (project?.documents.find((candidate) => candidate.id === docSelection) ?? null),
+  );
+
   /** The document being edited, with its session. One at a time: two would both claim 発行. */
   let docSession = $state<DocSession | null>(null);
   let newTag = $state("");
@@ -405,7 +426,7 @@
   let docEditorDirty = $derived(docDirty || newTag.trim() !== "");
   /** Where the user asked to go while 未保存入力 was held — **not applied** until they answer. */
   let pendingDocument = $state<{ document: Document | null } | null>(null);
-  /** The 編集ペイン's scroll container, for the reset below. */
+  /** The 文書ペイン's scroll container, for the reset below. */
   let docPane = $state<HTMLDivElement | undefined>(undefined);
 
   async function createDoc(): Promise<void> {
@@ -430,9 +451,9 @@
       project?.documents.find((candidate) => candidate.id === session.baseline.id) ?? null,
     );
     // Closed on success: this session's baseline is the pre-update read, and keeping it open would
-    // compare the next edit against a version that no longer exists.
-    docSession = null;
-    newTag = "";
+    // compare the next edit against a version that no longer exists. The selection stays, so the
+    // pane lands on 閲覧 of what was just written (doc-10 §5).
+    await discardEditor();
     if (diverged.length > 0) {
       message = {
         tone: "warn",
@@ -445,36 +466,73 @@
     }
   }
 
-  /** Open one document's 編集セッション, asking first when another one's input would be lost. */
-  function editDocument(document: Document): void {
-    // Already open: pressing 編集 again would restart the session and drop the input without asking.
-    if (docSession?.baseline.id === document.id) return;
+  /**
+   * Select one document (doc-10 §5), asking first when an open editor's input would be lost. The
+   * selection opens 閲覧, never a 編集セッション — that is what TASK-116 changed, and it is why a
+   * user who is only reading is never asked about unsaved input.
+   */
+  function selectDocument(document: Document): void {
+    // Already the selected one: re-pressing must not restart anything. While its editor is open this
+    // would otherwise drop the input without asking; while only 閲覧 is open there is nothing to do.
+    if (docSelection === document.id) return;
     if (docEditorDirty) {
       pendingDocument = { document };
       return;
     }
-    openDocument(document);
+    void openDocument(document);
   }
 
+  /** 選択が成立する: the pane swaps to 閲覧 of this document. Any open editor goes with it. */
   async function openDocument(document: Document): Promise<void> {
-    docSession = startDocSession(document);
+    docSelection = document.id;
+    docSession = null;
     newTag = "";
     message = null;
-    // The 編集ペイン is a persistent scroller and only its content swaps: left at its old
-    // scrollTop, the newly opened 更新フォーム can sit above the viewport and the selection
-    // looks like it did nothing (review [P2]). Reset the pane once the swap has rendered —
-    // never the 文書一覧, whose kept position is the point of the split scrollers.
-    await tick();
-    if (docPane !== undefined) docPane.scrollTop = 0;
+    await resetDocPane();
   }
 
+  /**
+   * 選択の解除 (doc-10 §5): back to the 作成フォーム and the 提供しない操作区画. Only reachable from
+   * 閲覧, which holds no input, so it asks nothing — the 破棄前確認's two paths are unchanged.
+   */
+  async function clearDocSelection(): Promise<void> {
+    docSelection = null;
+    await resetDocPane();
+  }
+
+  /** 編集への切替 (doc-10 §5): the one place a 文書の編集セッション opens. */
+  async function startDocEdit(): Promise<void> {
+    const document = selectedDocument;
+    if (document === null || issuing) return;
+    docSession = startDocSession(document);
+    newTag = "";
+    await resetDocPane();
+  }
+
+  /** 編集を閉じる: back to 閲覧 of the same document, not to the 作成フォーム (doc-10 §5). */
   function closeEditor(): void {
     if (docEditorDirty) {
       pendingDocument = { document: null };
       return;
     }
+    void discardEditor();
+  }
+
+  async function discardEditor(): Promise<void> {
     docSession = null;
     newTag = "";
+    await resetDocPane();
+  }
+
+  /**
+   * The 文書ペイン is a persistent scroller and only its content swaps: left at its old scrollTop,
+   * whatever just opened can sit above the viewport and the press looks like it did nothing
+   * (review [P2]). Reset once the swap has rendered — never the 文書一覧, whose kept position is the
+   * point of the split scrollers (doc-10 §5).
+   */
+  async function resetDocPane(): Promise<void> {
+    await tick();
+    if (docPane !== undefined) docPane.scrollTop = 0;
   }
 
   function leaveConfirmed(): void {
@@ -482,11 +540,10 @@
     pendingDocument = null;
     if (target === null) return;
     if (target.document === null) {
-      docSession = null;
-      newTag = "";
+      void discardEditor();
       return;
     }
-    openDocument(target.document);
+    void openDocument(target.document);
   }
 
   function setDoc<K extends keyof DocDraft>(key: K, value: DocDraft[K]): void {
@@ -701,16 +758,36 @@
    * `selectedMilestone` already resolves against the current read for the same reason (PR #71 [P2]).
    */
   let openDocReasons = $derived(
-    docSession === null
-      ? []
-      : fileInconsistencyReasons(
-          (
-            project?.documents.find((candidate) => candidate.id === docSession?.baseline.id) ??
-            docSession.baseline
-          ).health,
-          "文書",
-        ),
+    selectedDocument === null ? [] : fileInconsistencyReasons(selectedDocument.health, "文書"),
   );
+
+  /**
+   * 表示パス (doc-10 §5) for the selected document, derived once here and read by both places that
+   * state it — the 閲覧ヘッダ and the line above the update form's path field. Taken from the current
+   * read for the same reason the 理由行 are.
+   */
+  let selectedDocPath = $derived(
+    selectedDocument === null ? null : displayPath(selectedDocument.sourcePath, entry.project_root),
+  );
+
+  /**
+   * A selection that no longer resolves is dropped, the same rule the マイルストーン一覧 follows
+   * (PR #65 round 1 [P2]): 閲覧 has nothing left to show, and a reappearing id would otherwise
+   * restore it against a different read.
+   *
+   * An open 編集セッション is exempt. Its `baseline` is the read the 未保存入力 was made against and
+   * deliberately survives a reload (`DocSession`, doc-8 §6.4's rule), so the editor and its input
+   * are still on screen — the failure that rule guards against is input standing *nowhere visible*,
+   * which is not this. Closing the editor lands here with the selection unresolved and drops it.
+   *
+   * Guarded on `project !== null` so a read in flight, which resolves nothing, does not clear a
+   * selection the user still has.
+   */
+  $effect(() => {
+    if (project === null || docSelection === null || selectedDocument !== null) return;
+    if (docSession !== null) return;
+    docSelection = null;
+  });
 
   /**
    * The selected milestone as the current read holds it (doc-10 §6). Derived rather than stored, so
@@ -797,6 +874,8 @@
   /** Where a 一覧列's cards send `aria-describedby` while issuance is held (doc-11 §5). One id per
    * 区画, because the two lists are never on screen together but their sentences differ. */
   const DOC_EDIT_BLOCKED_ID = "detail-doc-edit-blocked";
+  /** The same for the 閲覧ヘッダ's 編集: a different sentence, since that one is about editing. */
+  const DOC_EDIT_HELD_ID = "detail-doc-edit-held";
   const MILESTONE_SELECT_BLOCKED_ID = "detail-milestone-select-blocked";
 
   function why(availability: { state: string; reason?: string }): string {
@@ -884,10 +963,13 @@
 {/snippet}
 
 <!-- The column widths come from `project-detail.ts` so the number a doc cites and the number laid
-     out are the same one (TASK-113's pattern). Both size content boxes (TASK-115). -->
+     out are the same one (TASK-113's pattern). Both size content boxes (TASK-115). 行長上限 comes
+     from `placement.ts` for the same reason, and is the very same 48rem doc-8 §2.1 puts on タスク詳細's
+     body blocks — 閲覧's 本文 is prose in a column that takes whatever width is left, which is the
+     situation that number was measured for (TASK-113). -->
 <div
   class="detail"
-  style="--section-nav-width: {SECTION_NAV_WIDTH_REM}rem; --list-column-width: {LIST_COLUMN_WIDTH_REM}rem"
+  style="--section-nav-width: {SECTION_NAV_WIDTH_REM}rem; --list-column-width: {LIST_COLUMN_WIDTH_REM}rem; --prose-max-width: {PROSE_MAX_WIDTH_REM}rem"
 >
   <!-- ヘッダ (doc-10 §3): identity and the round trip only. Nothing here writes. The パンくず
        (doc-12 §8) puts 「← スイムレーン」 at the top left — where a way back is looked for — with
@@ -1208,18 +1290,21 @@
                          so they keep taking focus, which is what makes the binding reachable
                          without a pointer. -->
                     <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
-                      {issuingReason}。完了するまで文書の編集は開けません。
+                      {issuingReason}。完了するまで別の文書は開けません。
                     </p>
                   {/if}
                   <ul class="cards">
                     {#each project.documents as document (document.id)}
-                      {@const current = docSession?.baseline.id === document.id}
+                      {@const current = docSelection === document.id}
+                      {@const editing = docSession?.baseline.id === document.id}
                       {@const reasons = fileInconsistencyReasons(document.health, "文書")}
                       <li>
                         <!-- カード (doc-10 §5): the whole area is the selection — no separate 編集
                              button, and the current card is marked (目視反映: which document is
-                             being edited must be readable from the list). No path here: the 表示パス
-                             moved to the 編集ペイン's heading (doc-10 §5's recorded departure). -->
+                             being read must be readable from the list). No path here: the 表示パス
+                             moved to the 文書ペイン (doc-10 §5's recorded departure). Since TASK-116
+                             the emphasis says「読んでいる」and the chip below says「編集している」:
+                             a selection opens 閲覧 and no 編集セッション. -->
                         <button
                           type="button"
                           class="card"
@@ -1227,16 +1312,16 @@
                           aria-current={current ? "true" : undefined}
                           aria-disabled={issuing}
                           aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
-                          title={issuingReason ?? "この文書を開いて編集します"}
-                          onclick={() => !issuing && editDocument(document)}
+                          title={issuingReason ?? "この文書を開きます"}
+                          onclick={() => !issuing && selectDocument(document)}
                         >
                           <span class="card-head">
                             <span class="id">{document.id}</span>
                             <span class="meta">{document.type ?? "type 未設定"}</span>
-                            {#if current}
+                            {#if editing}
                               <span class="editing">編集中</span>
                             {/if}
-                            {#if current && docEditorDirty}
+                            {#if editing && docEditorDirty}
                               <!-- 未保存入力のある文書には印を付ける (doc-10 §5). Only one 編集セッション
                                    exists at a time, so only one card can carry it; it is shown on the
                                    list side so that「まだ送っていない」stays readable even when the
@@ -1247,8 +1332,9 @@
                               <!-- 不整合印 (decision-22, widened to 管理ファイル 1 件 by decision-24):
                                    one ⚠️, no family name and no 由来名. `role="img"` on the wrapper
                                    because `Icon.svelte` is always `aria-hidden` (doc-11 §2.4). The
-                                   lines themselves are read in the 編集ペイン — the ⚠️ is allowed
-                                   only where そこが用意されている (doc-11 §2.4). -->
+                                   lines themselves are read in the 閲覧ヘッダ, which is what the
+                                   selection opens — the ⚠️ is allowed only where そこが用意されて
+                                   いる (doc-11 §2.4, decision-24 as TASK-116 revised it). -->
                               <span
                                 class="inconsistent"
                                 role="img"
@@ -1286,33 +1372,16 @@
                 {/if}
               </div>
 
-              <!-- 編集ペイン (doc-10 §5): the update form alone while a session is open — the
-                   create form beside a live editor buried the editor's own actions (目視反映) —
-                   and the create form with the withheld operations otherwise. -->
+              <!-- 文書ペイン (doc-10 §5): three states in one column — the update form alone while a
+                   session is open (the create form beside a live editor buried the editor's own
+                   actions, 目視反映), 閲覧 while a document is merely selected, and the create form
+                   with the withheld operations while nothing is. Renamed from 編集ペイン by
+                   TASK-116: selection opens 閲覧, so editing is one state of three. -->
               <div class="pane" bind:this={docPane}>
                 {#if docSession !== null}
                   {@const session = docSession}
                   <div class="sub-panel">
                     <h3>{session.baseline.id} を更新（doc update）</h3>
-                    <!-- 表示パス (doc-10 §5): which file the chosen document is, project-relative.
-                         Display only — the path *input* below stays a move request and holds no
-                         current value. -->
-                    <p class="path">
-                      <code>{displayPath(session.baseline.sourcePath, entry.project_root)}</code>
-                    </p>
-                    {#if openDocReasons.length > 0}
-                      <!-- 理由行 (decision-22, doc-10 §5): the place doc-11 §2.4 requires the ⚠️'s
-                           full reason to be readable without hovering. No 区画 of its own — one
-                           line per reason is the whole of it. -->
-                      <!-- Keyed by index, not by the string: two reasons can read identically
-                           (two same-named unclosed SECTION pairs, two stray `:END`s), and a
-                           duplicate key throws in production Svelte (PR #71 [P2]). -->
-                      <ul class="reason-lines">
-                        {#each openDocReasons as reason, at (at)}
-                          <li>{reason}</li>
-                        {/each}
-                      </ul>
-                    {/if}
 
                     <label class="field">
                       <span class="label">title</span>
@@ -1354,6 +1423,23 @@
 
                       <label class="field">
                         <span class="label">path（移動する場合のみ）</span>
+                        <!-- 表示パス (doc-10 §5), repeated here from the 閲覧ヘッダ: this field is a
+                             move request holding no current value, and「空欄なら変更しません」only
+                             reads against where the file is now. One derivation for both places
+                             (`selectedDocPath`, from the current read) — the baseline would put a
+                             second reading of the same file on screen beside the card's ⚠️. -->
+                        <!-- `null` is a state the design reaches: the `$effect` above exempts an
+                             open session from the drop rule, so a document broken or removed
+                             externally leaves the editor standing with nothing to resolve. Printing
+                             the null would put「現在の所在:」over an empty path, which asserts a
+                             location rather than admitting there is none (PR #72 1R [P2]). -->
+                        {#if selectedDocPath === null}
+                          <span class="path">
+                            現在の所在は読み取れません（この文書は最新の読み取りに見当たりません）。
+                          </span>
+                        {:else}
+                          <span class="path">現在の所在: <code>{selectedDocPath}</code></span>
+                        {/if}
                         <input
                           type="text"
                           placeholder="空欄なら変更しません"
@@ -1396,6 +1482,76 @@
                       本文欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも更新を発行できます。
                     </p>
                   </div>
+                {:else if selectedDocument !== null}
+                  {@const document = selectedDocument}
+                  <!-- 閲覧 (doc-10 §5, TASK-116): what the selection opens. No input of any kind, so
+                       nothing here can hold 未保存入力 and no 破棄前確認 can arise from reading. -->
+                  <div class="sub-panel">
+                    <!-- 閲覧ヘッダ: title, 編集 and 選択を解除 on one line, then ID・type・tags・
+                         表示パス, then the 理由行. The heading is the document's own title rather
+                         than a sentence about it — the pane is showing that document, and a title is
+                         what names it. -->
+                    <div class="view-head">
+                      <h3>{document.title}</h3>
+                      <!-- Held while a 発行 is in flight, and the reason is reachable without a
+                           pointer: `aria-disabled` keeps the button focusable and points at the
+                           sentence below, which is route (b) of doc-11 §5. `disabled` would need an
+                           always-visible 補助文 instead, and a `title` alone is neither. -->
+                      <button
+                        type="button"
+                        aria-disabled={issuing}
+                        aria-describedby={issuing ? DOC_EDIT_HELD_ID : undefined}
+                        title={issuingReason ?? "この文書の編集を開きます"}
+                        onclick={() => !issuing && startDocEdit()}
+                      >
+                        編集
+                      </button>
+                      <!-- 選択の解除 (doc-10 §5): the way back to the 作成フォーム and the 提供しない
+                           操作区画. 閲覧 holds no input, so this asks nothing — but without it the
+                           create form's 未保存入力 would be off screen while still counting toward
+                           the screen's 破棄前確認, which is the failure §6 names (PR #72 1R [P2]). -->
+                      <button type="button" onclick={clearDocSelection}>選択を解除</button>
+                    </div>
+                    {#if issuingReason !== null}
+                      <p class="reason" id={DOC_EDIT_HELD_ID}>
+                        {issuingReason}。完了するまでこの文書の編集は開けません。
+                      </p>
+                    {/if}
+                    <p class="meta-line">
+                      <span class="id">{document.id}</span>
+                      <span>{document.type ?? "type 未設定"}</span>
+                      <span>
+                        {document.tags.length > 0
+                          ? `tags: ${document.tags.join(", ")}`
+                          : "tags なし"}
+                      </span>
+                    </p>
+                    <!-- 表示パス (doc-10 §5): which file this is, project-relative. -->
+                    <p class="path"><code>{selectedDocPath}</code></p>
+                    {#if openDocReasons.length > 0}
+                      <!-- 理由行 (decision-22, doc-10 §5 as TASK-116 revised it): the place doc-11
+                           §2.4 requires the ⚠️'s full reason to be readable without hovering. It
+                           sits here, not in the update form, because 選択 is what opens this and the
+                           guarantee is about the place the selection reaches. No 区画 of its own —
+                           one line per reason is the whole of it. -->
+                      <!-- Keyed by index, not by the string: two reasons can read identically
+                           (two same-named unclosed SECTION pairs, two stray `:END`s), and a
+                           duplicate key throws in production Svelte (PR #71 [P2]). -->
+                      <ul class="reason-lines">
+                        {#each openDocReasons as reason, at (at)}
+                          <li>{reason}</li>
+                        {/each}
+                      </ul>
+                    {/if}
+                    <!-- 本文: the string as read. Nothing formats Markdown in this build, so a
+                         rendered look would be a claim the screen cannot keep — the same treatment
+                         タスク詳細 gives Description. -->
+                    {#if (document.body ?? "") === ""}
+                      <p class="neutral">本文はありません。</p>
+                    {:else}
+                      <pre class="doc-body">{document.body}</pre>
+                    {/if}
+                  </div>
                 {:else}
                   <div class="sub-panel">
                     <h3>文書を作成（doc create）</h3>
@@ -1432,7 +1588,7 @@
                     </div>
                     <p class="hint">
                       本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
-                      作成後、左の一覧でその文書のカードを選んで本文を入れます。
+                      作成後、左の一覧でその文書のカードを選び、「編集」から本文を入れます。
                     </p>
                     <div class="actions">
                       <button
@@ -2468,11 +2624,68 @@
     white-space: pre-wrap;
   }
 
+  // 表示パス (doc-10 §5). `display: block` because this class is worn by a `<p>` in the 閲覧ヘッダ and
+  // by a `<span>` inside the update form's path `<label>` — a `<p>` is not phrasing content and
+  // cannot go in a label, but the line has to read the same in both places.
   .path {
+    display: block;
     margin: 0.1rem 0 0;
     color: var(--muted);
     font-size: 0.68rem;
     word-break: break-all;
+  }
+
+  // 閲覧ヘッダ (doc-10 §5): title and 編集 on one line. The heading takes the space so the button
+  // keeps its place at the right edge whatever the title's length, and both stay on the first line —
+  // which is the line the selection is meant to land on.
+  .view-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+
+    h3 {
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    button {
+      flex: none;
+    }
+  }
+
+  // type・tags under the 閲覧ヘッダ's first line. One line of muted metadata, the same values the
+  // card carries — repeated here because the card is 16rem and truncates, and this column is not.
+  .meta-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.1rem 0 0;
+    color: var(--muted);
+    font-size: 0.7rem;
+
+    .id {
+      color: var(--fg);
+      font-weight: 600;
+    }
+  }
+
+  // 本文 in 閲覧 (doc-10 §5): the string as read. `pre-wrap` keeps the newlines the file has and
+  // wraps the long lines instead of scrolling the pane sideways — the treatment `TaskDetail.svelte`
+  // gives Description, for the same reason (nothing here formats Markdown). Named `doc-body` and
+  // not `body`: this component already wears `.body` on the frame that holds the 区画ナビ and panel.
+  .doc-body {
+    margin: 0.5rem 0 0;
+    max-width: var(--prose-max-width);
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--inset);
+    font-family: inherit;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   // 不整合印 (decision-22, decision-24) on a 文書カード / マイルストーンカード. A 印グリフ: the family
@@ -2488,7 +2701,7 @@
     cursor: help;
   }
 
-  // 理由行 (decision-22) in the 編集ペイン / 操作ペイン — the place doc-11 §2.4 requires the ⚠️'s
+  // 理由行 (decision-22) in the 閲覧ヘッダ / 操作ペイン — the place doc-11 §2.4 requires the ⚠️'s
   // reason to be readable without hovering. Plain lines, not a 区画: they carry no heading of their
   // own because the ⚠️ above already said there is something to read.
   .reason-lines {
