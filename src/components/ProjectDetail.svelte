@@ -314,22 +314,32 @@
       // later save would carry it too, so it is dropped once one has gone through.
       edit.redetectGitRemote = false;
       if (movesRoot(request)) {
-        // A completed move closes the open 編集セッション (doc-10 §4.1). This screen is keyed by
-        // slug alone and a move keeps the slug, so nothing else would close it. A surviving session
-        // would let this root's body be sent to the other one by document id — and with the same id
-        // present there, the 更新前競合検出 passes against the new root's own read, so `--content`
-        // replaces it whole.
+        // A completed move closes **every** open 編集セッション (doc-10 §4.1, which says so without
+        // qualification). This screen is keyed by slug alone and a move keeps the slug, so nothing
+        // else would close them. A surviving session would let this root's input be sent to the
+        // other one by id — and with the same id present there, the 更新前競合検出 passes against
+        // the new root's own read, so the write lands whole.
         docSession = null;
         docSelection = null;
         newTag = "";
         pendingDocument = null;
+        // The マイルストーン編集セッション goes with it (PR #74 1R [P1]). Until TASK-121 this 区画
+        // had no session for §4.1 to rule on, which is why only the 文書 one was closed here; the
+        // ids collide even more readily than document ids do (m-1, m-2, …), and 説明を保存 issues
+        // by id alone. The selection goes too: with the session closed, a selection resolved against
+        // the old root's read has nothing left to be about.
+        milestoneEditing = false;
+        milestoneSelection = null;
+        closeMilestoneOp();
+        milestoneDescriptionDraft = null;
+        pendingMilestone = null;
         // status and milestone name the old root's ID space (doc-3 §5.3), so they do not travel
         // either. Both are selections rather than typed text, so dropping them costs no input.
         taskInput.status = "";
         taskInput.milestone = "";
         overviewNotice =
-          `${result.slug} を移動しました。開いていた文書の編集セッションは、旧ルートの読み取りに` +
-          "基づくため閉じました（doc-10 §4.1）。";
+          `${result.slug} を移動しました。開いていた文書・マイルストーンの編集セッションは、` +
+          "旧ルートの読み取りに基づくため閉じました（doc-10 §4.1）。";
         return;
       }
       overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
@@ -897,6 +907,11 @@
     milestoneEditing = false;
     closeMilestoneOp();
     milestoneDescriptionDraft = null;
+    // The 破棄前確認 goes with the input it protects (PR #74 1R [P3]). Raised while the session was
+    // open and left standing, the band would ask about 未保存入力 that this very block just dropped,
+    // over a pane now showing 非選択時 — and 入力に戻る would have nothing to return to. The 文書区画
+    // cannot reach this because its effect exempts an open session; this one deliberately does not.
+    pendingMilestone = null;
     void resetMilestonePane();
   });
 
@@ -1680,8 +1695,9 @@
                   <!-- 閲覧 (doc-10 §5, TASK-116): what the selection opens. No input of any kind, so
                        nothing here can hold 未保存入力 and no 破棄前確認 can arise from reading. -->
                   <div class="sub-panel">
-                    <!-- 閲覧ヘッダ: title, 編集 and 選択を解除 on one line, then ID・type・tags・
-                         表示パス, then the 理由行. The heading is the document's own title rather
+                    <!-- 閲覧ヘッダ: title and 編集 on one line, then ID・type・tags・表示パス, then
+                         the 理由行 (選択を解除 left this row with TASK-121). The heading is the
+                         document's own title rather
                          than a sentence about it — the pane is showing that document, and a title is
                          what names it. -->
                     <div class="view-head">
