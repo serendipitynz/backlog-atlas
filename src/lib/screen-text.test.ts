@@ -11,7 +11,12 @@
  * purpose, and reducing *those* is TASK-107. That makes the comment stripping below part of the
  * contract rather than an implementation detail — a stripper that swallowed too much would pass this
  * file by testing nothing, so `finds a reference planted in a screen string` plants one and requires
- * the scan to see it.
+ * the scan to see it — including one sitting after a URL, since the `//` in `https://` is the one
+ * sequence that looks like a comment start and is not.
+ *
+ * `DESIGN_REFERENCE` requires the `§`, so a bare `doc-1` stays legal (it is a Backlog 文書 id) and
+ * prose like「doc-5 の非空全置換」would pass. That is the deliberate trade: 文書 id reach real screen
+ * text, section numbers do not.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason `wire-fixture.test.ts`
  * gives: `node:fs` would pull in `@types/node`, and the dependency budget is `jsdom` alone. The glob
@@ -34,7 +39,9 @@ const SKIPPED = /\.test\.|\/fixtures\.ts$|\/fake-boundary\.ts$/;
 /** Blank out everything a user never reads, keeping line numbers so failures can name a line. */
 function screenText(source: string, svelte: boolean): string[] {
   const blank = (match: string) => "\n".repeat((match.match(/\n/g) ?? []).length);
-  let text = source;
+  // Neutralise `https://` before the comment pass: its `//` starts no comment, and stripping from
+  // there would blank any reference later on the line — silently shrinking what this file checks.
+  let text = source.replace(/https?:\/\//g, "https__");
   if (svelte) {
     text = text.replace(/<!--[\s\S]*?-->/g, blank);
     text = text.replace(/<style[\s\S]*?<\/style>/g, blank);
@@ -78,6 +85,8 @@ describe("画面に置く文 (doc-11 §8)", () => {
     // The mutation the check exists to catch, run against the stripper rather than trusted.
     const planted = 'export const NOTE = "台帳は読み取り専用です（doc-3 §2.2）。";\n';
     expect(screenText(planted, false).some((line) => DESIGN_REFERENCE.test(line))).toBe(true);
+    const afterUrl = "<p>詳細は https://example.com を参照（doc-3 §2.2）。</p>\n";
+    expect(screenText(afterUrl, true).some((line) => DESIGN_REFERENCE.test(line))).toBe(true);
   });
 
   it("leaves code comments alone, in both comment forms and in both file types", () => {

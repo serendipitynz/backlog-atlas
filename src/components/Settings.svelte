@@ -25,6 +25,7 @@
     OPEN_LOCATION_TITLE,
     SAVE_LABEL,
     SAVING_REASON,
+    STARTUP_READ_NOTE,
     STORAGE_SELECTIONS,
     STORAGE_SELECTION_LABEL,
     WATCH_OFF_NOTE,
@@ -403,6 +404,7 @@
           継続検出を使う
         </label>
         <p class="hint">{WATCH_OFF_NOTE}</p>
+        <p class="hint">{STARTUP_READ_NOTE}</p>
       </section>
 
       <section>

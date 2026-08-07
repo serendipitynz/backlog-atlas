@@ -880,11 +880,11 @@ export function readinessReason(readiness: CliReadiness | null): string | null {
 }
 
 const DRAFT_READ_ONLY =
-  "draft の内容編集は提供しません。" +
+  "draft の内容編集は提供しません（v1.48.0 の CLI に draft の内容を編集する手段がないため）。" +
   `編集するにはタスクへ昇格するか、${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 const CLOSED_READ_ONLY =
-  "completed・archive のタスクは変更できないため読み取り専用です。" +
+  "completed・archive のタスクは、v1.48.0 の CLI が更新を受け付けないため読み取り専用です。" +
   `内容を変えるには${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
@@ -985,7 +985,7 @@ export function transitionOffers(
     return {
       state: "none",
       reason:
-        "completed・archive から戻す操作は提供していません",
+        "completed・archive から戻す操作は v1.48.0 の CLI にないため提供しません",
     };
   }
 

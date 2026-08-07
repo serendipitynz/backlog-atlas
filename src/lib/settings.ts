@@ -183,6 +183,15 @@ export const WATCH_OFF_NOTE =
   "更新後の再読込と手動の再読込は切っても働きます。";
 
 /**
+ * Why 起動時に全ルートを読み直す is not a setting, kept as a 不可の理由 (doc-11 §8): 画面設計案 01 does
+ * offer that checkbox (doc-12 §2.2), so its absence is one the user can notice from the original —
+ * which is what makes this a reason rather than an explanation nobody asked for. Reworded from
+ * doc-9 §3.2's own sentence, which is what it used to copy.
+ */
+export const STARTUP_READ_NOTE =
+  "起動時の全ルート読み取りは切れません。読まないとカードを 1 枚も描けず、外部変更の検出もできないためです。";
+
+/**
  * 下部操作行 (TASK-74) の 2 つの押下。「変更せずに閉じる」は下書きを書かずに出る経路で、「保存する」は
  * 書けたときだけ出る経路である。語を定数に持つのは、この 2 つが `Settings.svelte` の外（コンポーネント
  * テストの引き当て）からも同じ 1 か所を見て名指しされるようにするためで、寸法の変数と同じ理由による。
