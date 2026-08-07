@@ -1,10 +1,10 @@
 ---
 id: TASK-117
 title: 新規文書の作成を一覧ヘッダからのモーダルへ移す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-05 08:18'
-updated_date: '2026-08-07 03:45'
+updated_date: '2026-08-07 06:14'
 labels:
   - ui
   - project-detail
