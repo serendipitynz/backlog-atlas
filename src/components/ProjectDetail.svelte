@@ -491,6 +491,15 @@
     await resetDocPane();
   }
 
+  /**
+   * 選択の解除 (doc-10 §5): back to the 作成フォーム and the 提供しない操作区画. Only reachable from
+   * 閲覧, which holds no input, so it asks nothing — the 破棄前確認's two paths are unchanged.
+   */
+  async function clearDocSelection(): Promise<void> {
+    docSelection = null;
+    await resetDocPane();
+  }
+
   /** 編集への切替 (doc-10 §5): the one place a 文書の編集セッション opens. */
   async function startDocEdit(): Promise<void> {
     const document = selectedDocument;
@@ -865,6 +874,8 @@
   /** Where a 一覧列's cards send `aria-describedby` while issuance is held (doc-11 §5). One id per
    * 区画, because the two lists are never on screen together but their sentences differ. */
   const DOC_EDIT_BLOCKED_ID = "detail-doc-edit-blocked";
+  /** The same for the 閲覧ヘッダ's 編集: a different sentence, since that one is about editing. */
+  const DOC_EDIT_HELD_ID = "detail-doc-edit-held";
   const MILESTONE_SELECT_BLOCKED_ID = "detail-milestone-select-blocked";
 
   function why(availability: { state: string; reason?: string }): string {
@@ -1417,7 +1428,18 @@
                              reads against where the file is now. One derivation for both places
                              (`selectedDocPath`, from the current read) — the baseline would put a
                              second reading of the same file on screen beside the card's ⚠️. -->
-                        <span class="path">現在の所在: <code>{selectedDocPath}</code></span>
+                        <!-- `null` is a state the design reaches: the `$effect` above exempts an
+                             open session from the drop rule, so a document broken or removed
+                             externally leaves the editor standing with nothing to resolve. Printing
+                             the null would put「現在の所在:」over an empty path, which asserts a
+                             location rather than admitting there is none (PR #72 1R [P2]). -->
+                        {#if selectedDocPath === null}
+                          <span class="path">
+                            現在の所在は読み取れません（この文書は最新の読み取りに見当たりません）。
+                          </span>
+                        {:else}
+                          <span class="path">現在の所在: <code>{selectedDocPath}</code></span>
+                        {/if}
                         <input
                           type="text"
                           placeholder="空欄なら変更しません"
@@ -1465,20 +1487,36 @@
                   <!-- 閲覧 (doc-10 §5, TASK-116): what the selection opens. No input of any kind, so
                        nothing here can hold 未保存入力 and no 破棄前確認 can arise from reading. -->
                   <div class="sub-panel">
-                    <!-- 閲覧ヘッダ: title and 編集 on one line, then type・tags・表示パス, then the
-                         理由行. The heading is the document's own title rather than a sentence about
-                         it — the pane is showing that document, and a title is what names it. -->
+                    <!-- 閲覧ヘッダ: title, 編集 and 選択を解除 on one line, then ID・type・tags・
+                         表示パス, then the 理由行. The heading is the document's own title rather
+                         than a sentence about it — the pane is showing that document, and a title is
+                         what names it. -->
                     <div class="view-head">
                       <h3>{document.title}</h3>
+                      <!-- Held while a 発行 is in flight, and the reason is reachable without a
+                           pointer: `aria-disabled` keeps the button focusable and points at the
+                           sentence below, which is route (b) of doc-11 §5. `disabled` would need an
+                           always-visible 補助文 instead, and a `title` alone is neither. -->
                       <button
                         type="button"
-                        disabled={issuing}
+                        aria-disabled={issuing}
+                        aria-describedby={issuing ? DOC_EDIT_HELD_ID : undefined}
                         title={issuingReason ?? "この文書の編集を開きます"}
-                        onclick={startDocEdit}
+                        onclick={() => !issuing && startDocEdit()}
                       >
                         編集
                       </button>
+                      <!-- 選択の解除 (doc-10 §5): the way back to the 作成フォーム and the 提供しない
+                           操作区画. 閲覧 holds no input, so this asks nothing — but without it the
+                           create form's 未保存入力 would be off screen while still counting toward
+                           the screen's 破棄前確認, which is the failure §6 names (PR #72 1R [P2]). -->
+                      <button type="button" onclick={clearDocSelection}>選択を解除</button>
                     </div>
+                    {#if issuingReason !== null}
+                      <p class="reason" id={DOC_EDIT_HELD_ID}>
+                        {issuingReason}。完了するまでこの文書の編集は開けません。
+                      </p>
+                    {/if}
                     <p class="meta-line">
                       <span class="id">{document.id}</span>
                       <span>{document.type ?? "type 未設定"}</span>

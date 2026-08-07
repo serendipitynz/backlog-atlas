@@ -18,7 +18,7 @@
  * | doc-8 §2.1 主列 / 脇列 | [`SectionColumn`] `"main"` / `"side"` | the two columns of 中央モーダル and 全面 |
  * | doc-8 §3 2 列にまたがる | [`SectionColumn`] `"wide"` | 見出し and 編集卓 only — they sit above the columns |
  * | doc-8 §3.1 区画の並び | [`MAIN_COLUMN_ORDER`] / [`SIDE_COLUMN_ORDER`] / [`SINGLE_COLUMN_ORDER`] | the 正本 transcribed from 画面設計案 02 |
- * | doc-8 §2.1 1 行の長さの上限 | [`PROSE_MAX_WIDTH_REM`] + [`PROSE_SECTIONS`] | 48rem, on four 区画's body blocks |
+ * | doc-8 §2.1 1 行の長さの上限 | [`PROSE_MAX_WIDTH_REM`] + [`PROSE_SECTIONS`] | 48rem; [`PROSE_SECTIONS`] names the four タスク詳細 区画 it binds *here*, while the number itself is the screen-independent one other screens borrow |
  * | doc-8 §5 配置ごとの粒度 | [`HistoryDetail`] | how much of the Git 履歴欄 this placement shows |
  * | doc-8 §2.1 1280×800 でも 2 列 | [`modalMainColumnRem`] | what is left for the 主列 once the 脇列 is taken |
  * | doc-8 §2.1 中央モーダルの幅 | [`modalContentWidthRem`] | the box the two columns divide — content, not footprint (TASK-115) |
@@ -329,6 +329,13 @@ export function modalMainColumnRem(
  * 行長上限 (doc-8 §2.1, TASK-113). The widest a body block may draw, whatever width the column
  * gives it.
  *
+ * **Not private to タスク詳細**, though its measurements were taken there (doc-8 §2.1 as TASK-116
+ * clarified it): any screen whose 本文ブロック sits in a column taking the remaining width borrows
+ * this constant rather than deciding a second number, because 48rem comes from how reading works
+ * and not from which screen is drawing. 閲覧 の本文 in the 文書ペイン (doc-10 §5) is the first
+ * borrower. What stays local to doc-8 §2.1 is everything below — where the value came from, how it
+ * bites in each 配置, and why only four 区画 there take it.
+ *
  * The number is not invented here: it is the 主列 the 中央モーダル already has, once doc-8 §2.1's 脇列
  * 18rem is taken out of [`MODAL_MAX_WIDTH_REM`]. That 主列 is **49.25rem** at 1280×800 — one value
  * since TASK-115, computed by [`modalMainColumnRem`] and drawn by both engines at 788px. 48rem is a
@@ -342,9 +349,12 @@ export function modalMainColumnRem(
 export const PROSE_MAX_WIDTH_REM = 48;
 
 /**
- * The 区画 [`PROSE_MAX_WIDTH_REM`] applies to (doc-8 §2.1). Git 履歴欄 is deliberately absent: 全面 is
- * where the whole commit list is read (doc-8 §2.1), so narrowing it would cost the placement its
- * reason to exist.
+ * The **タスク詳細 区画** [`PROSE_MAX_WIDTH_REM`] applies to (doc-8 §2.1). Git 履歴欄 is deliberately
+ * absent: 全面 is where the whole commit list is read (doc-8 §2.1), so narrowing it would cost the
+ * placement its reason to exist.
+ *
+ * This list is this screen's answer, not the cap's whole reach — a screen with no `DetailSection`
+ * could not appear in it, and doc-10 §5's 閲覧 の本文 takes the cap without being named here.
  */
 export const PROSE_SECTIONS: readonly DetailSection[] = [
   "description",

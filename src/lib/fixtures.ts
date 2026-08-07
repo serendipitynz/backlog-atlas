@@ -130,18 +130,24 @@ export const CREATE_STATUS_CANDIDATES: ColumnCreateStatuses[] = [
   { column: "done", statuses: ["Done"] },
 ];
 
-/** One 文書 as the read layer hands it over. Every field filled in, as everything here is. */
+/**
+ * One 文書 as the read layer hands it over. Every field filled in, as everything here is.
+ *
+ * The nullable fields take `=== undefined` rather than `??`, following `taskView`: `null` is a value
+ * the screen draws differently (「type 未設定」,「本文はありません。」in doc-10 §5's 閲覧), so a `??`
+ * would silently hand back the default and make those branches untestable.
+ */
 export function documentView(options: Partial<Document> = {}): Document {
   const id = options.id ?? "doc-1";
   return {
     sourcePath: options.sourcePath ?? `/repos/atlas/backlog/docs/${id}.md`,
     id,
     title: options.title ?? `Document ${id}`,
-    type: options.type ?? "specification",
+    type: options.type === undefined ? "specification" : options.type,
     tags: options.tags ?? ["design"],
-    createdDate: options.createdDate ?? "2026-08-01 09:00",
-    updatedDate: options.updatedDate ?? "2026-08-01 09:00",
-    body: options.body ?? "本文の 1 行目\n本文の 2 行目",
+    createdDate: options.createdDate === undefined ? "2026-08-01 09:00" : options.createdDate,
+    updatedDate: options.updatedDate === undefined ? "2026-08-01 09:00" : options.updatedDate,
+    body: options.body === undefined ? "本文の 1 行目\n本文の 2 行目" : options.body,
     health: options.health ?? { state: "ok" },
   };
 }
