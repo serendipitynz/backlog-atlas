@@ -8,7 +8,7 @@
   // while a CLI 縮退 gets the control, disabled, with its reason — the first is 提供しない, the
   // second「今は条件が揃っていない」.
   import type { LaneCreate } from "../lib/lane-create";
-  import { statedOnScreen } from "../lib/manage";
+  import { omitsSentence } from "../lib/manage";
   import { ariaKeyShortcuts, matchShortcut, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
 
@@ -164,7 +164,7 @@
       </button>
       <button type="button" onclick={onclose}>キャンセル</button>
     </div>
-    {#if blocked !== null && !statedOnScreen(blocked)}
+    {#if blocked !== null && !omitsSentence(blocked)}
       <p class="reason">{blocked}</p>
     {/if}
   </div>

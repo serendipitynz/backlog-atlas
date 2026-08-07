@@ -77,7 +77,7 @@
     type DocCreateInput,
     type DocDraft,
     type DocSession,
-    statedOnScreen,
+    omitsSentence,
     type IssueAvailability,
     type IssueOutcome,
     type IssuePlan,
@@ -1687,7 +1687,7 @@
                       <span
                         id={DOC_UPDATE_BLOCKED_ID}
                         class={docUpdateIssue.state === "blocked" &&
-                        statedOnScreen(docUpdateIssue.reason)
+                        omitsSentence(docUpdateIssue.reason)
                           ? "unseen"
                           : "reason"}
                       >
@@ -1978,7 +1978,7 @@
                       <span
                         id={DESCRIBE_BLOCKED_ID}
                         class={describeIssue.state === "blocked" &&
-                        statedOnScreen(describeIssue.reason)
+                        omitsSentence(describeIssue.reason)
                           ? "unseen"
                           : "reason"}
                       >
@@ -2140,7 +2140,7 @@
                                 : "アーカイブを発行"}
                           </button>
                           <button type="button" onclick={closeMilestoneOp}>キャンセル</button>
-                          {#if opIssue?.state === "blocked" && !statedOnScreen(opIssue.reason)}
+                          {#if opIssue?.state === "blocked" && !omitsSentence(opIssue.reason)}
                             <span class="reason">{opIssue.reason}</span>
                           {/if}
                         </div>
@@ -2336,7 +2336,7 @@
               >
                 タスクを作成
               </button>
-              {#if taskIssue.state === "blocked" && !statedOnScreen(taskIssue.reason)}
+              {#if taskIssue.state === "blocked" && !omitsSentence(taskIssue.reason)}
                 <span class="reason">{taskIssue.reason}</span>
               {/if}
             </div>
@@ -2440,7 +2440,7 @@
           >
             文書を作成
           </button>
-          {#if docCreateIssue.state === "blocked" && !statedOnScreen(docCreateIssue.reason)}
+          {#if docCreateIssue.state === "blocked" && !omitsSentence(docCreateIssue.reason)}
             <span class="reason">{docCreateIssue.reason}</span>
           {/if}
         </div>
@@ -2473,7 +2473,7 @@
           >
             マイルストーンを作成
           </button>
-          {#if milestoneIssue.state === "blocked" && !statedOnScreen(milestoneIssue.reason)}
+          {#if milestoneIssue.state === "blocked" && !omitsSentence(milestoneIssue.reason)}
             <span class="reason">{milestoneIssue.reason}</span>
           {/if}
         </div>

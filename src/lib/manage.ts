@@ -633,17 +633,24 @@ export const MILESTONE_DESCRIPTION_HEADING_REASON =
 export const MILESTONE_DESCRIPTION_UNCHANGED_REASON = "説明は変更されていません";
 
 /**
- * The 保留理由 the 区画's own display already states (doc-11 §8).
+ * The 保留理由 drawn without a visible sentence (doc-11 §8's two licences).
  *
- * doc-11 §5 wants every withheld control to carry a reason the user can reach without hovering, and
- * these do: a field marked「（必須）」sitting empty *is* the reason, and a form with nothing typed in
- * it is why there is nothing to send. A sentence would repeat what the 区画 shows — 状態の言い換え —
- * so the screen keeps it in `title` and draws no visible copy.
+ * Both licences are here, and they differ in what the *control* must be:
  *
- * **Only reasons the 区画 shows.** CLI 縮退, 台帳読取専用 and 発行中 are not readable from the form
- * and keep their sentence; that is why this is a listed set rather than a rule over all 保留理由.
+ * - **① the 区画 states the reason** — a field marked「（必須）」sitting empty is itself the 常時表示
+ *   補助文 §5's first form asks for, so those controls stay `disabled`
+ *   (`TASK_TITLE_REQUIRED_REASON`, `DOC_TITLE_REQUIRED_REASON`, `DOC_TITLE_EMPTY_REASON`,
+ *   `MILESTONE_NAME_REQUIRED_REASON`, `MILESTONE_RENAME_REQUIRED_REASON`).
+ * - **② nothing typed / nothing changed yet**, where the form itself makes the next move obvious.
+ *   No marker states it, so these two take §5's *second* form — the control is `aria-disabled` and
+ *   focusable, and `aria-describedby` names a span that is always in the DOM
+ *   (`DOC_NOTHING_TO_UPDATE_REASON`, `MILESTONE_DESCRIPTION_UNCHANGED_REASON`).
+ *
+ * **Reasons caused from outside the form are on neither licence and keep their sentence** — CLI 縮退,
+ * 台帳読取専用, 発行中, 競合. That is why this is a listed set and not a rule over all 保留理由: which
+ * licence a reason has is a fact about its 区画, and adding an entry means checking that 区画.
  */
-const REASONS_STATED_ON_SCREEN: readonly string[] = [
+const REASONS_WITHOUT_SENTENCE: readonly string[] = [
   TASK_TITLE_REQUIRED_REASON,
   DOC_TITLE_REQUIRED_REASON,
   DOC_TITLE_EMPTY_REASON,
@@ -653,9 +660,9 @@ const REASONS_STATED_ON_SCREEN: readonly string[] = [
   MILESTONE_DESCRIPTION_UNCHANGED_REASON,
 ];
 
-/** Whether the 区画 already states this reason, so no sentence is drawn for it (doc-11 §8). */
-export function statedOnScreen(reason: string): boolean {
-  return REASONS_STATED_ON_SCREEN.includes(reason);
+/** Whether this reason is drawn without a visible sentence (doc-11 §8). */
+export function omitsSentence(reason: string): boolean {
+  return REASONS_WITHOUT_SENTENCE.includes(reason);
 }
 
 /**
