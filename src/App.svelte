@@ -498,8 +498,12 @@
    *
    * The fourth term is プロジェクト詳細画面's 作成モーダル (doc-10 §1), which that screen raises for
    * itself — a 被せ層 is no longer only what the fixed header opens (doc-11 §7 as TASK-117 revised it),
-   * so the shell has to be told rather than to know. Read together with `screen` so that a report left
-   * behind by an unmounted 詳細画面 cannot mute the swimlane's own chords.
+   * so the shell has to be told rather than to know.
+   *
+   * `screen` is read with it as a second lock, not as the retraction: that screen retracts its own
+   * report from its effect's teardown, so a stale `true` should not outlive it. This clause is what
+   * keeps a bug there from reaching the swimlane, where none of this screen's layers can be up
+   * anyway — a fact worth asserting whether or not the retraction holds.
    */
   let modalOpen = $derived(
     registerOpen || settingsOpen || shortcutHelpOpen || (screen === "project" && detailModalOpen),

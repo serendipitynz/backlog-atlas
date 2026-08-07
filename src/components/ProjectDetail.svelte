@@ -901,10 +901,19 @@
   );
 
   // 被せ層 は 1 枚だけ, and the shell answers the screen-wide chords (see `onoverlay`). Reported from
-  // an effect rather than from the two functions below so that unmounting this screen with the layer
-  // up cannot leave the shell believing one is still there.
+  // an effect rather than from the two functions below so that one place decides what is reported,
+  // whatever set `createOpen`.
   $effect(() => {
     onoverlay(createOpen !== null);
+    // Retracted on the way out — a `$effect` without this does not run at destroy, so unmounting
+    // with a layer up would leave the shell holding `true` for a screen that no longer exists. Its
+    // `screen` guard silences that on the swimlane but not on the *next* プロジェクト詳細画面, which
+    // would then answer no chord at all until some 作成モーダル had been opened and closed again.
+    // The same shape `Modal.svelte` uses to give the opener its focus back.
+    //
+    // It also runs before each re-run, so opening costs one extra `false` first. That changes
+    // nothing: both calls land in the same synchronous flush, and `modalOpen` is only read after it.
+    return () => onoverlay(false);
   });
 
   function openCreate(which: "document" | "milestone"): void {
@@ -2466,19 +2475,14 @@
     padding: 0 0.35rem 0 0.75rem;
     border-right: 1px solid var(--line);
     overflow: hidden;
-
-    h2 {
-      flex: none;
-    }
   }
 
   /*
    * 一覧見出し行 (doc-10 §1): the count and the 作成の入口 on one line, at the head of the 一覧列 and
    * outside `.cards`'s scroller — which is what keeps both readable however far the cards are
-   * scrolled. `flex: none` for the same reason the `h2` has it: the scroller below takes the slack.
-   *
-   * The count keeps its own `h2` margin as the row's bottom gap, so the row's own is 0 — two margins
-   * meeting here would space the list differently in the two 区画 if either heading ever wrapped.
+   * scrolled. `flex: none` because this row takes its own height and `.cards` below takes the slack;
+   * it is now the row rather than the `h2` that says so, the `h2` having become this row's child
+   * instead of the column's.
    */
   .list-head {
     display: flex;
