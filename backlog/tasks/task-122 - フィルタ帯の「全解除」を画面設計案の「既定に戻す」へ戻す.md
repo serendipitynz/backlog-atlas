@@ -4,13 +4,14 @@ title: フィルタ帯の「全解除」を画面設計案の「既定に戻す�
 status: To Do
 assignee: []
 created_date: '2026-08-07 22:25'
+updated_date: '2026-08-07 23:32'
 labels:
   - ui
   - design-system
   - 'kind:refactor'
 milestone: m-2
 dependencies: []
-priority: medium
+priority: high
 ordinal: 119500
 ---
 

@@ -4,13 +4,14 @@ title: 提供しない操作と欄を出さない項目を画面から降ろし�
 status: To Do
 assignee: []
 created_date: '2026-08-07 22:25'
+updated_date: '2026-08-07 23:32'
 labels:
   - ui
   - design-system
   - 'kind:feature'
 milestone: m-2
 dependencies: []
-priority: medium
+priority: high
 ordinal: 120500
 ---
 

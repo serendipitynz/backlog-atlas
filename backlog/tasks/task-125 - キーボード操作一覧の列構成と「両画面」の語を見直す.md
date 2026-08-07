@@ -4,13 +4,14 @@ title: キーボード操作一覧の列構成と「両画面」の語を見直�
 status: To Do
 assignee: []
 created_date: '2026-08-07 22:25'
+updated_date: '2026-08-07 23:32'
 labels:
   - ui
   - design-system
   - 'kind:refactor'
 milestone: m-2
 dependencies: []
-priority: medium
+priority: high
 ordinal: 122500
 ---
 

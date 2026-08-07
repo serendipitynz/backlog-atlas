@@ -4,13 +4,14 @@ title: 表示テーマの明暗の語を利用者向けの語へ改める
 status: To Do
 assignee: []
 created_date: '2026-08-07 22:25'
+updated_date: '2026-08-07 23:32'
 labels:
   - ui
   - design-system
   - 'kind:refactor'
 milestone: m-2
 dependencies: []
-priority: medium
+priority: high
 ordinal: 123500
 ---
 

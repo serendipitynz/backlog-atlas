@@ -4,12 +4,13 @@ title: Git remote を現在値の表示と再判定ボタンに分ける
 status: To Do
 assignee: []
 created_date: '2026-08-07 22:25'
+updated_date: '2026-08-07 23:32'
 labels:
   - ui
   - 'kind:feature'
 milestone: m-2
 dependencies: []
-priority: medium
+priority: high
 ordinal: 121500
 ---
 
