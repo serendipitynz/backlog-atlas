@@ -1,10 +1,10 @@
 ---
 id: TASK-79
 title: 画面から過剰な説明文と設計文書参照を落とし、再発防止の規則を doc-11 へ書く
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:32'
-updated_date: '2026-08-07 23:03'
+updated_date: '2026-08-07 23:39'
 labels:
   - ui
   - design-system
