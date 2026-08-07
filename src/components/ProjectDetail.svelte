@@ -2464,8 +2464,6 @@
             oninput={(event) => (milestoneInput.description = event.currentTarget.value)}
           />
         </label>
-        <p class="hint">
-        </p>
         <div class="actions">
           <button
             type="button"
@@ -3193,9 +3191,9 @@
     margin-top: 0.25rem;
   }
 
-  .hint,
-  // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1). Not an opacity: the
-  // reason has to stay readable on every 表示テーマ, and dimming it is the opposite of its purpose.
+  // 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形): the reason stays in the accessibility tree because
+  // `aria-describedby` points at it. Its own rule — a `//` comment does not end a selector list, so
+  // appending this to the group below would have pulled `.hint` into it.
   .unseen {
     position: absolute;
     width: 1px;
@@ -3207,6 +3205,9 @@
     white-space: nowrap;
   }
 
+  .hint,
+  // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1). Not an opacity: the
+  // reason has to stay readable on every 表示テーマ, and dimming it is the opposite of its purpose.
   .reason,
   .blocked-note {
     margin: 0.2rem 0 0;

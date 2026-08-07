@@ -388,8 +388,8 @@
     font-variant-numeric: tabular-nums;
   }
 
-  // The 理由 doc-11 §5 requires to be readable without hovering. It sits on the bar's own line
-  // rather than on one of its own, so stating it costs the grid no height.
+  // 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形): the reason stays in the accessibility tree, because
+  // `aria-describedby` names it whether or not it is drawn.
   .unseen {
     position: absolute;
     width: 1px;
@@ -401,6 +401,8 @@
     white-space: nowrap;
   }
 
+  // The 理由 doc-11 §5 requires to be readable without hovering. It sits on the bar's own line
+  // rather than on one of its own, so stating it costs the grid no height.
   .blocked-note {
     color: var(--muted);
     font-size: 0.65rem;

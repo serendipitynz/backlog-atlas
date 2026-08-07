@@ -68,7 +68,6 @@
     font-weight: 650;
   }
 
-  // 副次 (doc-11 §2.1): it describes the table rather than being read on its own.
   table {
     width: 100%;
     border-collapse: collapse;

@@ -148,8 +148,9 @@
     {/if}
 
     <div class="actions">
-      <!-- 無効化提示 (doc-11 §5): the control stays, and its reason is the sentence below it rather
-           than a `title` alone — the reason has to be reachable without hovering. -->
+      <!-- 無効化提示 (doc-11 §5): the control stays and keeps a reason. The sentence below is drawn
+           only when the 区画 does not already state it — a title marked「（必須）」sitting empty is
+           itself the 常時表示 reason §5 asks for (doc-11 §8). -->
       <button
         type="button"
         disabled={blocked !== null}
