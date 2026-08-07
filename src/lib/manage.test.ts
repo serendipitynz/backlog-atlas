@@ -572,9 +572,13 @@ describe("文書の提供範囲", () => {
     const remove = WITHHELD_DOCUMENT_OPERATIONS[0];
     // The reason has to be in two steps: that the CLI lacks it, and that Atlas does not fill the
     // gap by unlinking the file itself (decision-2's boundary). With only the first, it reads as
-    // "then Atlas should just delete it".
+    // "then Atlas should just delete it". The second step is checked by its substance, not by the
+    // decision's number: doc-11 §8 keeps 設計文書参照 off the screen.
     expect(remove.reason).toContain("v1.48.0");
-    expect(remove.reason).toContain("decision-2");
+    expect(remove.reason).toContain("直接消すことはしない");
+    expect(remove.reason).not.toMatch(/doc-\d|decision-\d/);
+    // doc-10 §6 requires the 写像先, and doc-11 §8 carves it out of 発行手段の記述: it names an
+    // operation Atlas does *not* issue, so the subcommand is the identity of what is missing.
     expect(remove.mapping).not.toBe("");
   });
 });
@@ -608,7 +612,8 @@ describe("新規タスク作成の範囲", () => {
   it("says that assignee cannot be cleared, since that is the one gap with no route", () => {
     const assignee = TASK_CREATE_OMITTED_FIELDS.find((field) => field.flag === "-a");
     expect(assignee?.after).toContain("解除");
-    expect(assignee?.after).toContain("doc-5 §3.1");
+    expect(assignee?.after).toContain("手段がありません");
+    expect(assignee?.after).not.toMatch(/doc-\d|decision-\d/);
   });
 });
 

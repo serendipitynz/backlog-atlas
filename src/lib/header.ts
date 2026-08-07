@@ -62,13 +62,13 @@ export const HEADER_ENTRIES: readonly HeaderEntry[] = [
     id: "register",
     label: "プロジェクトを登録",
     action: "openRegister",
-    note: "台帳へエントリを 1 件足します（doc-3 §4.1）。グリッドの末尾に行が 1 本増えます。",
+    note: "台帳へエントリを 1 件足します。グリッドの末尾に行が 1 本増えます。",
   },
   {
     id: "settings",
     label: "設定",
     action: "openSettings",
-    note: "アプリ設定を開きます（decision-13）。",
+    note: "アプリ設定を開きます。",
   },
 ] as const;
 
@@ -94,7 +94,7 @@ export const SHOW_ALL_ROWS_LABEL = "行非表示をすべて戻す";
 export function showAllRowsHeld(hiddenRowCount: number): string | null {
   return hiddenRowCount > 0
     ? null
-    : "非表示にしている行がありません。戻す行が無いため、この操作はできません。";
+    : "（対象行なし）";
 }
 
 /**

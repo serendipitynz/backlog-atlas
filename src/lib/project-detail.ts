@@ -164,7 +164,7 @@ export function movesRoot(request: UpdateRequest): boolean {
 
 /** Why slug has no field, and what changing it would take instead (doc-10 §4.1, doc-3 §3.1). */
 export const SLUG_IMMUTABLE_NOTE =
-  "slug は横断タスクID の左辺として全タスクの参照に使われるため、変更手段を提供しません（doc-3 §3.1）。" +
+  "slug は横断タスクID の左辺として全タスクの参照に使われるため、変更手段を提供しません。" +
   "別の slug にするには登録を解除して登録し直すことになり、そのとき Git 履歴表示の同一性は切れます。";
 
 /**
@@ -178,9 +178,9 @@ export function rootMoveNote(entry: ProjectEntry, edit: EntryEdit): string | nul
   const backlogRoot = edit.backlogRoot.trim();
   return (
     `同一プロジェクトの移動として扱い、slug ${entry.slug} を保ったまま project_root と backlog_root の` +
-    `両方を送ります（doc-3 §4.3）。backlog_root は既定の <新ルート>/backlog ではなく、いま欄にある ` +
+    `両方を送ります。backlog_root は既定の <新ルート>/backlog ではなく、いま欄にある ` +
     `${backlogRoot === "" ? "（空）" : backlogRoot} を送ります。` +
-    "移動が成立すると、このプロジェクトについて開いている編集セッションは閉じます（doc-10 §4.1）。"
+    "移動が成立すると、このプロジェクトについて開いている編集セッションは閉じます。"
   );
 }
 
@@ -209,21 +209,21 @@ export const ALIAS_EFFECT_NOTES: Record<AliasEffect, AliasEffectNote> = {
   draft: {
     label: "draft 専用",
     note:
-      "config.yml は宣言していませんが、既知の draft 状態として扱う値です（doc-4 §3.4）。別名が効きます。",
+      "config.yml は宣言していませんが、既知の draft 状態として扱う値です。別名が効きます。",
     ineffective: false,
   },
   noDeclaredSet: {
     label: "宣言集合なし",
     note:
       "config.yml が statuses を 1 つも宣言していないため、宣言済みかを判定できません" +
-      "（decision-4 が実測した未初期化ルート）。宣言が矛盾しないので別名は効きます。",
+      "（statuses を 1 つも宣言していない未初期化のルート）。宣言が矛盾しないので別名は効きます。",
     ineffective: false,
   },
   undeclared: {
     label: "宣言なし → 効果なし",
     note:
-      "どこにも宣言が無い status です。別名を書いてもこの status のタスクは未分類区画に残ります" +
-      "（decision-4）。台帳からは削除しません。",
+      "どこにも宣言が無い status です。別名を書いてもこの status のタスクは未分類区画に残ります。" +
+      "台帳からは削除しません。",
     ineffective: true,
   },
 };
@@ -253,7 +253,7 @@ export const LEDGER_WRITE_IN_FLIGHT_REASON =
  * so they are later asked whether to discard changes that were never saveable.
  */
 export const OVERVIEW_READ_ONLY_NOTE =
-  "台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています（doc-3 §2.2）。" +
+  "台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。" +
   "この区画の入力・保存・登録解除はすべてできません。" +
   "文書・マイルストーン・新規タスクは台帳を書かないので、そちらは操作できます。";
 
@@ -261,7 +261,7 @@ export const OVERVIEW_READ_ONLY_NOTE =
 export const UNREGISTER_SCOPE_NOTE =
   "登録解除は台帳エントリを 1 件消し、スイムレーンからこの行を外します。" +
   "対象プロジェクトの Backlog ルート・管理ファイル・Git リポジトリには触れません。" +
-  "タスクの正本はそのまま残ります（doc-3 §4.2）。";
+  "タスクの正本はそのまま残ります。";
 
 /**
  * Why the 概要区画's update is held, if it is (doc-11 §5). Only 台帳読取専用 counts, never CLI 縮退:
@@ -269,7 +269,7 @@ export const UNREGISTER_SCOPE_NOTE =
  */
 export function overviewBlocked(context: { readOnly: boolean; busy: boolean }): string | null {
   if (context.readOnly) {
-    return "台帳が読み取り専用のため、台帳エントリの更新はできません（doc-3 §2.2）。";
+    return "台帳が読み取り専用のため、台帳エントリの更新はできません。";
   }
   return context.busy ? "台帳の更新を実行中です。完了するまで次の操作は始められません。" : null;
 }
@@ -289,7 +289,7 @@ export function unregisterBlocked(
   const blocked = overviewBlocked(context);
   if (blocked !== null) {
     return context.readOnly
-      ? "台帳が読み取り専用のため、登録解除はできません（doc-3 §2.2）。"
+      ? "台帳が読み取り専用のため、登録解除はできません。"
       : blocked;
   }
   return typed.trim() === slug

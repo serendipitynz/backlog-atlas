@@ -257,7 +257,7 @@
   const REORDER_REASON_ID = "swimlane-reorder-blocked";
   const LAST_COLUMN_REASON_ID = "swimlane-last-column-fold-blocked";
   const REORDER_BLOCKED_REASON =
-    "台帳が読み取り専用のため、行の並べ替えはできません（doc-3 §2.2）。台帳画面で理由を確認できます。";
+    "台帳が読み取り専用のため、行の並べ替えはできません。台帳画面で理由を確認できます。";
 
   // 未分類区画は常設ではない (doc-7 §2.2): the column appears only while some row has a task in
   // it, and disappears again once none does.

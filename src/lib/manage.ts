@@ -118,8 +118,8 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
  */
 export function commaReason(what: string, value: string): string {
   return (
-    `${what}に「,」を含められません（v1.48.0 の CLI は 1 個のカンマ区切り値として受け取るため、` +
-    `「${value}」は 2 件に分かれます。doc-5 §3）`
+    `${what}に「,」を含められません（1 個のカンマ区切り値として扱われるため、` +
+    `「${value}」は 2 件に分かれます）`
   );
 }
 
@@ -164,7 +164,7 @@ export const EMPTY_TASK_CREATE: TaskCreateInput = {
 };
 
 export const TASK_TITLE_REQUIRED_REASON =
-  "title は必須です（`task create` の位置引数であり、doc-4 §3.1 の必須項目でもあります）";
+  "title は必須です";
 
 /**
  * Whether the 新規タスク作成 form holds anything the user typed. Part of the screen's 未保存入力
@@ -224,7 +224,7 @@ export interface DocCreateInput {
 export const EMPTY_DOC_CREATE: DocCreateInput = { title: "", docType: "", path: "" };
 
 export const DOC_TITLE_REQUIRED_REASON =
-  "title は必須です（`doc create` の位置引数であり、doc-4 §3.2 の必須項目でもあります）";
+  "title は必須です";
 
 /** Whether the 文書作成 form holds anything the user typed — see [`hasTaskCreateInput`]. */
 export function hasDocCreateInput(input: DocCreateInput): boolean {
@@ -331,7 +331,7 @@ export function isDocDirty(session: DocSession): boolean {
 export const DOC_NOTHING_TO_UPDATE_REASON = "変更はまだありません";
 
 export const DOC_TITLE_EMPTY_REASON =
-  "title を空にはできません（doc-4 §3.2 の必須項目で、空にすると文書として読めなくなります）";
+  "title を空にはできません（空にすると文書として読めなくなります）";
 
 /** The values a 文書更新 asserts, kept so the re-read can be checked against them ([`docDivergence`]). */
 export interface DocSubmitted {
@@ -442,7 +442,7 @@ export interface MilestoneAddInput {
 export const EMPTY_MILESTONE_ADD: MilestoneAddInput = { name: "", description: "" };
 
 export const MILESTONE_NAME_REQUIRED_REASON =
-  "名称は必須です（`milestone add` の位置引数）";
+  "名称は必須です";
 
 /** Whether the マイルストーン作成 form holds anything the user typed — see [`hasTaskCreateInput`]. */
 export function hasMilestoneAddInput(input: MilestoneAddInput): boolean {
@@ -511,7 +511,7 @@ export interface MilestoneRenameInput {
 export const EMPTY_MILESTONE_RENAME: MilestoneRenameInput = { to: "", updateTasks: true };
 
 export const MILESTONE_RENAME_REQUIRED_REASON =
-  "新しい名称は必須です（`milestone rename <from> <to>` の位置引数）";
+  "新しい名称は必須です";
 
 export const MILESTONE_RENAME_UNCHANGED_REASON =
   "現在の名称と同じです（変更が無いので発行しません）";
@@ -548,10 +548,10 @@ export interface MilestoneRemoveInput {
 export const EMPTY_MILESTONE_REMOVE: MilestoneRemoveInput = { handling: null, reassignTo: "" };
 
 export const MILESTONE_REMOVE_HANDLING_REQUIRED_REASON =
-  "参照するタスクの扱いを選んでください（`--task-handling <clear|keep|reassign>`）";
+  "参照するタスクの扱いを選んでください";
 
 export const MILESTONE_REASSIGN_TARGET_REQUIRED_REASON =
-  "付け替え先のマイルストーンは必須です（`--reassign-to <milestone>`）";
+  "付け替え先のマイルストーンは必須です";
 
 export const MILESTONE_REASSIGN_TARGET_IS_SELF_REASON =
   "付け替え先が削除するマイルストーン自身です";
@@ -633,6 +633,39 @@ export const MILESTONE_DESCRIPTION_HEADING_REASON =
 export const MILESTONE_DESCRIPTION_UNCHANGED_REASON = "説明は変更されていません";
 
 /**
+ * The 保留理由 drawn without a visible sentence (doc-11 §8's two licences).
+ *
+ * Both licences are here, and they differ in what the *control* must be:
+ *
+ * - **① the 区画 states the reason** — a field marked「（必須）」sitting empty is itself the 常時表示
+ *   補助文 §5's first form asks for, so those controls stay `disabled`
+ *   (`TASK_TITLE_REQUIRED_REASON`, `DOC_TITLE_REQUIRED_REASON`, `DOC_TITLE_EMPTY_REASON`,
+ *   `MILESTONE_NAME_REQUIRED_REASON`, `MILESTONE_RENAME_REQUIRED_REASON`).
+ * - **② nothing typed / nothing changed yet**, where the form itself makes the next move obvious.
+ *   No marker states it, so these two take §5's *second* form — the control is `aria-disabled` and
+ *   focusable, and `aria-describedby` names a span that is always in the DOM
+ *   (`DOC_NOTHING_TO_UPDATE_REASON`, `MILESTONE_DESCRIPTION_UNCHANGED_REASON`).
+ *
+ * **Reasons caused from outside the form are on neither licence and keep their sentence** — CLI 縮退,
+ * 台帳読取専用, 発行中, 競合. That is why this is a listed set and not a rule over all 保留理由: which
+ * licence a reason has is a fact about its 区画, and adding an entry means checking that 区画.
+ */
+const REASONS_WITHOUT_SENTENCE: readonly string[] = [
+  TASK_TITLE_REQUIRED_REASON,
+  DOC_TITLE_REQUIRED_REASON,
+  DOC_TITLE_EMPTY_REASON,
+  DOC_NOTHING_TO_UPDATE_REASON,
+  MILESTONE_NAME_REQUIRED_REASON,
+  MILESTONE_RENAME_REQUIRED_REASON,
+  MILESTONE_DESCRIPTION_UNCHANGED_REASON,
+];
+
+/** Whether this reason is drawn without a visible sentence (doc-11 §8). */
+export function omitsSentence(reason: string): boolean {
+  return REASONS_WITHOUT_SENTENCE.includes(reason);
+}
+
+/**
  * マイルストーン説明の更新 (doc-10 §6, decision-21) — the one action this screen issues that is not a
  * CLI call.
  *
@@ -706,8 +739,7 @@ export const WITHHELD_DOCUMENT_OPERATIONS: WithheldOperation[] = [
     label: "文書の削除",
     mapping: "`doc` に delete/remove 相当のサブコマンドなし",
     reason:
-      "v1.48.0 の `doc` に削除サブコマンドが無く、Atlas が管理ファイルを直接消すことは " +
-      "decision-2 の境界（更新は Backlog CLI 経由）の外にあるため提供しません（doc-10 §5）。" +
+      "v1.48.0 の `doc` に削除サブコマンドが無く、Atlas が管理ファイルを直接消すことはしないため提供しません。" +
       "文書を消す必要があるときは、対象プロジェクトで直接ファイルを操作してください。",
   },
 ];
@@ -733,8 +765,8 @@ export interface OmittedCreateField {
  */
 export const TASK_CREATE_SCOPE_NOTE =
   "作成フォームは、タスクを識別し分類するのに要る項目へ絞ってあります。" +
-  "以下は v1.48.0 の `task create` が受け取り、作成された管理ファイルへ保存する項目ですが" +
-  "（doc-5 §3、2026-07-29 実測）、Atlas の製品判断で欄を置いていません（doc-10 §7）。";
+  "以下は v1.48.0 の `task create` が受け取り、作成された管理ファイルへ保存する項目ですが、" +
+  "Atlas の製品判断で欄を置いていません。";
 
 export const TASK_CREATE_OMITTED_FIELDS: OmittedCreateField[] = [
   {
@@ -744,32 +776,31 @@ export const TASK_CREATE_OMITTED_FIELDS: OmittedCreateField[] = [
       "割当は作業の進行につれて変わるため、作成時にだけ設定できて後から変えられない経路を作らない" +
       "（TASK-57 の決定で編集側に閉じた）。",
     after:
-      "タスク詳細の編集（doc-8 §6）で設定・変更します。ただし解除だけは CLI に手段がありません" +
-      "（`-a \"\"` は沈黙無変更。doc-5 §3.1）。",
+      "タスク詳細の編集で設定・変更します。ただし解除だけは CLI に手段がありません。",
   },
   {
     label: "実装計画",
     flag: "--plan",
     reason: "作業を始めてから書くものであり、作成時点で書ける内容ではない。",
-    after: "タスク詳細の編集（doc-8 §6）で足します。",
+    after: "タスク詳細の編集で足します。",
   },
   {
     label: "実装ノート",
     flag: "--notes",
     reason: "作業中に積み上がるものであり、作成時点で書ける内容ではない。",
-    after: "タスク詳細の編集（doc-8 §6）で足します。",
+    after: "タスク詳細の編集で足します。",
   },
   {
     label: "References",
     flag: "--ref",
     reason: "参照は作業の過程で増えるもので、作成フォームに置いても同じ入力を前倒しするだけになる。",
-    after: "タスク詳細の編集（doc-8 §6）で足します。",
+    after: "タスク詳細の編集で足します。",
   },
   {
     label: "依存",
     flag: "--depends-on",
     reason: "依存関係は着手の前後で判明するもので、作成時点に固定すべき分類ではない。",
-    after: "タスク詳細の編集（doc-8 §6）で足します。",
+    after: "タスク詳細の編集で足します。",
   },
 ];
 
@@ -795,7 +826,7 @@ export function outcomeMessage(outcome: IssueOutcome, done: string): string {
     case "conflict":
       return (
         `${conflictSetDetail(outcome)}。CLI を起動せずに中止しました` +
-        "（更新前競合。doc-9 §5）。最新を読み直したので、内容を確かめてからやり直してください"
+        "（更新前競合）。最新を読み直したので、内容を確かめてからやり直してください"
       );
     case "uncheckable":
       return outcome.detail;

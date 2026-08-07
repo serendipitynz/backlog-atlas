@@ -19,13 +19,11 @@
     CARD_DENSITY_NOTE,
     CLOSE_WITHOUT_SAVING_LABEL,
     DETAIL_PLACEMENT_LABEL,
-    DETAIL_PLACEMENT_NOTE,
     NO_CHANGES_REASON,
     OPEN_LOCATION_LABEL,
     OPEN_LOCATION_TITLE,
     SAVE_LABEL,
     SAVING_REASON,
-    STARTUP_READ_NOTE,
     STORAGE_SELECTIONS,
     STORAGE_SELECTION_LABEL,
     WATCH_OFF_NOTE,
@@ -41,7 +39,6 @@
   } from "../lib/settings";
   import {
     RECORDED_THEME_IDS,
-    THEME_LIST_NOTE,
     THEME_UNSET_LABEL,
     themeLabel,
   } from "../lib/theme";
@@ -344,7 +341,6 @@
             {/each}
           </select>
         </label>
-        <p class="hint">{THEME_LIST_NOTE}</p>
       </section>
 
       <section>
@@ -394,7 +390,6 @@
             {label}
           </label>
         {/each}
-        <p class="hint">{DETAIL_PLACEMENT_NOTE}</p>
       </section>
 
       <section>
@@ -404,13 +399,12 @@
           継続検出を使う
         </label>
         <p class="hint">{WATCH_OFF_NOTE}</p>
-        <p class="hint">{STARTUP_READ_NOTE}</p>
       </section>
 
       <section>
         <h3>外部エディタ指定</h3>
         <p class="hint">
-          指定があればこれを使い、無ければ $VISUAL・$EDITOR を使います（doc-8 §7）。
+          指定があればこれを使い、無ければ $VISUAL・$EDITOR を使います。
           引数は 1 行に 1 つ書きます（シェルへ渡さないため、空白では区切りません）。
           空欄にすると指定を解除します。
         </p>
@@ -452,9 +446,6 @@
         {#if locationFailure !== null}
           <p class="warn">{locationFailure}</p>
         {/if}
-        <p class="hint">
-          台帳ファイル（projects.toml）も同じフォルダにあります（decision-13）。
-        </p>
       </section>
     {/if}
   </div>

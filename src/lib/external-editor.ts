@@ -14,9 +14,9 @@
  * | doc-8 §7 `$EDITOR` 起動 / OS の関連付け起動 | [`EditorOffer`] per `LaunchMethod` | one control each, because the two are not interchangeable |
  * | doc-8 §7 開く前の注意表示 | [`FRONTMATTER_NOTICE`] | breaking frontmatter degrades the read (doc-4 §5), stated before the launch |
  * | doc-8 §6.4 二重取り込みの回避 | [`UNSAVED_INPUT_WARNING`] + [`needsConfirmation`] | an open 編集セッション makes the launch ask first |
- * | doc-8 §7 書き戻し（継続検出が動いている場合） | [`WRITE_BACK_NOTE`] | the editor's save arrives through doc-9's watch; no exit detection |
+ * | doc-8 §7 書き戻し（継続検出が動いている場合） | — | the save arrives through doc-9's watch and the screen says nothing: §7 states the behaviour but requires no notice, so TASK-79 dropped the sentence |
  * | doc-8 §7 書き戻し（継続検出が止まっている場合） | [`WATCH_STOPPED_NOTE`] | the save will *not* arrive on its own; the row has to be re-read, and the panel offers it |
- * | doc-5 §3.1 / doc-8 §6.5 の案内先 | [`CLI_LIMIT_GUIDANCE`] | what this route exists for: the operations the CLI cannot do |
+ * | doc-5 §3.1 / doc-8 §6.5 の案内先 | — | each withheld operation names this route in its own 保留理由 (`edit.ts`), so the list that repeated them was dropped by TASK-79 |
  *
  * Two rules the module follows, the same two `edit.ts` follows:
  *
@@ -68,14 +68,9 @@ export interface EditorOffer {
  * exception route rather than another edit control.
  */
 export const FRONTMATTER_NOTICE =
-  "外部エディタでは管理ファイル全体が開きます（frontmatter を含む）。id・status・labels などの" +
-  "構造化フィールドを壊すと、次の読み取りで不整合表示になります（doc-4 §5。壊れても破棄はしません）。" +
-  "この経路の編集は Backlog CLI のスキーマ検査を通りません（doc-8 §7）。";
-
-/** 書き戻し (doc-8 §7): the watch is the return path, so nothing waits for the editor to close. */
-export const WRITE_BACK_NOTE =
-  "外部エディタで保存すると、ファイル監視が変更を拾って再読込します（エディタを閉じる必要は" +
-  "ありません。doc-9 §3）。";
+  "外部エディタでは frontmatter を含むタスクの Markdown ファイルを開きます。" +
+  "編集時に id・status・labels などの構造化フィールドについて Backlog.md による検査は実施されません" +
+  "（壊れると不整合表示になります）。";
 
 /**
  * 書き戻し when 継続検出 is stopped (doc-8 §7): the save will not arrive on its own. Shown *before* the
@@ -104,16 +99,11 @@ export const WATCH_STOPPED_BEFORE_LAUNCH =
   "このルートの継続検出が止まっていることが分かったため、まだ開いていません。上の注意を読んでから、" +
   "もう一度押すと開きます。";
 
-/** 案内先 (doc-5 §3.1・doc-8 §6.5): the operations that exist nowhere else in Atlas. */
-export const CLI_LIMIT_GUIDANCE =
-  "CLI で行えない編集はこの経路で行います: References・dependencies の最後の 1 件の削除、" +
-  "draft・completed・archive のタスクの内容編集、kind ラベル（Type）の変更。";
-
 /** doc-8 §6.4: an open 編集セッション plus an external edit is the double intake to avoid. */
 export const UNSAVED_INPUT_WARNING =
   "GUI 側に未保存入力があります。このまま外部エディタでも編集すると、同じタスクを二重に編集する" +
   "ことになります。入力は破棄しませんが、外部エディタの保存は外部変更として検出し、GUI の保存時は" +
-  "更新前競合検出で止めます（doc-8 §6.4）。先に保存またはキャンセルすることを推奨します。";
+  "更新前競合検出で止めます。先に保存またはキャンセルすることを推奨します。";
 
 /**
  * The caveat on the `$EDITOR` control. A terminal editor started from a GUI process has no terminal

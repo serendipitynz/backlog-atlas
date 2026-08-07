@@ -58,7 +58,7 @@ import type {
  * same refusal would be worded two ways in one line.
  */
 export const CROSS_ID_UNAVAILABLE =
-  "TASK-ID を読めないため横断タスクID を作れません（doc-4 §5 の解析不能）。";
+  "TASK-ID を読めないため横断タスクID を作れません（解析不能）。";
 
 /**
  * The panel's own state for one task's Git・PR 履歴 read (doc-6). `noTaskId` is not a failure of
@@ -354,7 +354,7 @@ export function relationAccounts(history: HistoryState): RelationAccount[] {
 function lookupRemedy(reason: LookupFailure): string {
   switch (reason) {
     case "toolMissing":
-      return "参照手段を起動できていないため、gh を導入すれば解消できます（decision-14）。";
+      return "参照手段を起動できていないため、gh を導入すれば解消できます。";
     case "invalidReference":
       return "この参照からは照会先を決められないため、References の URL を直せば解消できます。";
     case "queryFailed":

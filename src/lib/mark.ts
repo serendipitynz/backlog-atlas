@@ -242,10 +242,10 @@ function unparseableReasons(
  */
 export function versionConflictReason(conflict: VersionConflict): string {
   return conflict.kind === "preUpdate"
-    ? `バージョン不整合: 更新前競合 — ${conflictSetDetail(conflict)}。CLI を起動せずに保存を止めました（doc-9 §5）`
+    ? `バージョン不整合: 更新前競合 — ${conflictSetDetail(conflict)}。CLI を起動せずに保存を止めました`
     : `バージョン不整合: 照合後競合窓の事後通知 — 再読込した内容が送信した内容と一致しません（${conflict.fields.join(
         "・",
-      )}）。窓内の外部更新が上書きで失われた可能性があります（doc-9 §4.1）`;
+      )}）。窓内の外部更新が上書きで失われた可能性があります`;
 }
 
 /**
@@ -275,6 +275,6 @@ export const UNWATCHED_MARK: TaskMark = {
   label: "継続検出停止",
   detail:
     "ファイル監視または変更通知の購読が動いていないため、外部変更が画面へ届きません。" +
-    "表示が実ファイルより古い可能性がありますが、版がずれているとは限りません（doc-9 §3）。" +
+    "表示が実ファイルより古い可能性がありますが、版がずれているとは限りません。" +
     "再読込で現在の内容を読み直せます。",
 };

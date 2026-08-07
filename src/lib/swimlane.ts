@@ -364,7 +364,7 @@ export function rowFoldable(row: SwimlaneRow): boolean {
  * (doc-11 §5).
  */
 export const ROW_FOLD_ABSENT_REASON =
-  "ルートが読めず畳む対象のセルがないため、この行に行折畳みは置きません（doc-7 §6）。行非表示は使えます。";
+  "ルートが読めず畳む対象のセルがないため、この行に行折畳みは置きません。行非表示は使えます。";
 
 /**
  * Why the last open column's 列折畳み is blocked (doc-7 §2.2). This one *is* placed and disabled —
@@ -372,7 +372,7 @@ export const ROW_FOLD_ABSENT_REASON =
  * is refused, so removing it would make the heads differ in what they hold (doc-11 §5).
  */
 export const LAST_COLUMN_FOLD_BLOCKED_REASON =
-  "残り 1 列は畳めません。すべて畳むと、どの列のカードも読めない画面になります（doc-7 §2.2）。";
+  "残り 1 列は畳めません。すべて畳むと、どの列のカードも読めない画面になります。";
 
 // --- 2 層スティッキーへの着地 (doc-7 §2.3, doc-10 §2) -----------------------------------------
 

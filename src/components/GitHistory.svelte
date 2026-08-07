@@ -127,7 +127,7 @@
     {:else if commits.state === "unreadable"}
       <p class="failure">Git 履歴を読めません: {commits.detail}</p>
     {:else if commits.state === "noTaskId"}
-      <p class="setting">TASK-ID が読めないため、コミット検索の鍵がありません（doc-6 §3）。</p>
+      <p class="setting">TASK-ID が読めないため、コミット検索の鍵がありません。</p>
     {:else}
       <p class="neutral">読み込み中…</p>
     {/if}
@@ -144,7 +144,7 @@
                全面 is where doc-8 §5 asks for those causes to be written out one by one, with whether
                each is something the user can clear. -->
           <p class={relationSummary.kind}>
-            {relationSummary.text}（remote ホスト判別済み: {relation.host}）
+            {relationSummary.text}
           </p>
           {#if accounts.length > 0}
             <ul class="accounts">
@@ -180,11 +180,13 @@
   {#if onexpand !== null}
     <!-- 省いた配置には、全面で読める旨の導線を必ず添える (doc-8 §5). Always offered from the two
          narrow placements, including when there is nothing to expand: what the full view adds is the
-         関連解決の状態, which exists even for a task with no commits. -->
+         関連解決の状態, which exists even for a task with no commits.
+         The label names the operation instead of copying doc-8 §5's sentence (doc-11 §8 の設計文の写し).
+         It is deliberately *not* attributed to 画面設計案 02: doc-12 §3 transcribes that 導線 as
+         「残り 1 件と関連 PR は全面表示で →」, a count form this button cannot take — it is offered
+         even when there is nothing left to expand. That difference is TASK-80's. -->
     <p>
-      <button type="button" class="expand" onclick={onexpand}>
-        全面シングルビューで全件と関連解決の状態を読む
-      </button>
+      <button type="button" class="expand" onclick={onexpand}> 全面表示で開く → </button>
     </p>
   {/if}
 </div>

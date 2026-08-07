@@ -77,6 +77,7 @@
     type DocCreateInput,
     type DocDraft,
     type DocSession,
+    omitsSentence,
     type IssueAvailability,
     type IssueOutcome,
     type IssuePlan,
@@ -251,9 +252,9 @@
     // next, and the input and what it amounts to last.
     overviewBlocked({ readOnly: ledgerReadOnly, busy: ledgerBusy || issuing }) ??
       (editIssues.length > 0
-        ? "入力に問題があります（各欄の指摘を参照）。"
+        ? null
         : updateRequest === null
-          ? "変更がありません（送る属性がありません）。"
+          ? null
           : null),
   );
   let unregisterReason = $derived(
@@ -339,7 +340,7 @@
         taskInput.milestone = "";
         overviewNotice =
           `${result.slug} を移動しました。開いていた文書・マイルストーンの編集セッションは、` +
-          "旧ルートの読み取りに基づくため閉じました（doc-10 §4.1）。";
+          "旧ルートの読み取りに基づくため閉じました。";
         return;
       }
       overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
@@ -481,9 +482,8 @@
         tone: "warn",
         text:
           `更新は適用されましたが、再読込した内容が送信した内容と一致しません（${diverged.join("・")}）。` +
-          "照合の完了後〜書き込み完了の間に入った外部更新の可能性があります。更新前競合検出は " +
-          "best-effort であり、この窓に入った更新が上書きで失われた場合、その内容は表示も復元も" +
-          "できません（doc-9 §4.1）。",
+          "照合の完了後〜書き込み完了の間に入った外部更新の可能性があります。この間に入った更新が" +
+          "上書きで失われた場合、その内容は表示も復元もできません。",
       };
     }
   }
@@ -1056,6 +1056,8 @@
   /** Where a 一覧列's cards send `aria-describedby` while issuance is held (doc-11 §5). One id per
    * 区画, because the two lists are never on screen together but their sentences differ. */
   const DOC_EDIT_BLOCKED_ID = "detail-doc-edit-blocked";
+  const DOC_UPDATE_BLOCKED_ID = "detail-doc-update-blocked";
+  const DESCRIBE_BLOCKED_ID = "detail-milestone-describe-blocked";
   /** The same for the 閲覧ヘッダ's 編集: a different sentence, since that one is about editing. */
   const DOC_EDIT_HELD_ID = "detail-doc-edit-held";
   const MILESTONE_SELECT_BLOCKED_ID = "detail-milestone-select-blocked";
@@ -1076,7 +1078,7 @@
     unreadable === null
       ? null
       : "ルートが読めないため、この区画の一覧と発行は出せません。概要区画でルートを直してください" +
-        "（台帳エントリ自体は読めています。doc-10 §8）。",
+        "（台帳エントリ自体は読めています）。",
   );
 </script>
 
@@ -1297,7 +1299,7 @@
           </label>
 
           <fieldset class="aliases">
-            <legend>status 別名表（doc-3 §3.3）</legend>
+            <legend>status 別名表</legend>
             <p class="hint">
               プロジェクト固有の status を正準ステータス列へ対応づけます。既定は空で、Backlog.md 既定の
               4 status は名称一致するため設定は要りません。
@@ -1374,9 +1376,9 @@
                shows up here. -->
           <div class="submit-preview">
             <h3>保存で送る属性</h3>
-            {#if submitted.length === 0}
-              <p class="neutral">変更なし（送る属性はありません）。</p>
-            {:else}
+            <!-- 何も送らないときは行を出さない (doc-11 §8): the empty list is the 状態 itself, and
+                 「変更なし」would be a sentence restating it. -->
+            {#if submitted.length > 0}
               <ul class="submitted">
                 {#each submitted as attribute (attribute.attribute)}
                   <li>
@@ -1589,10 +1591,10 @@
                 {#if docSession !== null}
                   {@const session = docSession}
                   <div class="sub-panel">
-                    <h3>{session.baseline.id} を更新（doc update）</h3>
+                    <h3>{session.baseline.id} を更新</h3>
 
                     <label class="field">
-                      <span class="label">title</span>
+                      <span class="label">title（必須）</span>
                       <input
                         type="text"
                         value={session.draft.title}
@@ -1601,7 +1603,7 @@
                     </label>
 
                     <div class="field">
-                      <span class="label">本文（全置換）</span>
+                      <span class="label">本文</span>
                       <Editor
                         label="本文"
                         value={session.draft.content}
@@ -1610,8 +1612,7 @@
                         onsave={updateDoc}
                       />
                       <p class="hint">
-                        `doc update --content` は本文を全置換します（v1.48.0 に部分更新はありません。doc-5
-                        §3.1）。この欄は読み取った本文全文で、発行時はここにある全文をそのまま渡します。
+                        保存すると、ここにある全文で本文を置き換えます。
                       </p>
                     </div>
 
@@ -1671,17 +1672,27 @@
                     <div class="actions">
                       <button
                         type="button"
-                        disabled={docUpdateIssue.state !== "ready"}
+                        aria-disabled={docUpdateIssue.state !== "ready"}
+                        aria-describedby={docUpdateIssue.state === "blocked" ? DOC_UPDATE_BLOCKED_ID : undefined}
                         aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
                         title={why(docUpdateIssue)}
-                        onclick={updateDoc}
+                        onclick={() => docUpdateIssue.state === "ready" && updateDoc()}
                       >
-                        文書を更新（doc update）
+                        文書を更新
                       </button>
-                      <button type="button" onclick={closeEditor}>編集を閉じる</button>
-                      {#if docUpdateIssue.state === "blocked"}
-                        <span class="reason">{docUpdateIssue.reason}</span>
-                      {/if}
+                      <button type="button" onclick={closeEditor}>編集を止める</button>
+                      <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because
+                           `aria-describedby` points at it: hidden when the 区画 already states it
+                           (doc-11 §8), visible otherwise. -->
+                      <span
+                        id={DOC_UPDATE_BLOCKED_ID}
+                        class={docUpdateIssue.state === "blocked" &&
+                        omitsSentence(docUpdateIssue.reason)
+                          ? "unseen"
+                          : "reason"}
+                      >
+                        {docUpdateIssue.state === "blocked" ? docUpdateIssue.reason : ""}
+                      </span>
                     </div>
                     <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). The chord is answered inside the 本文欄
                          (its 適用範囲 is 編集部品の内側), so it is named here at the 発行 it runs — printed from
@@ -1769,7 +1780,7 @@
                        ていない」and nothing else, which is the misreading §9 avoids by not drawing an
                        empty 提供しない操作区画 at all. doc-11 §6's `—` is not this: that mark stands
                        for a value that is absent, and what is absent here is a selection. -->
-                  <p class="neutral">文書を選ぶと内容を表示します。</p>
+                  <p class="neutral">文書が選択されていません</p>
 
                   {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
                 {/if}
@@ -1954,16 +1965,25 @@
                     <div class="actions">
                       <button
                         type="button"
-                        disabled={describeIssue.state !== "ready"}
+                        aria-disabled={describeIssue.state !== "ready"}
+                        aria-describedby={describeIssue.state === "blocked" ? DESCRIBE_BLOCKED_ID : undefined}
                         title={why(describeIssue)}
-                        onclick={() => saveMilestoneDescription(milestone)}
+                        onclick={() =>
+                          describeIssue.state === "ready" && saveMilestoneDescription(milestone)}
                       >
                         説明を保存
                       </button>
-                      <button type="button" onclick={closeMilestoneEdit}>編集を閉じる</button>
-                      {#if describeIssue.state === "blocked"}
-                        <span class="reason">{describeIssue.reason}</span>
-                      {/if}
+                      <button type="button" onclick={closeMilestoneEdit}>編集を止める</button>
+                      <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). See the 文書ペイン's copy above. -->
+                      <span
+                        id={DESCRIBE_BLOCKED_ID}
+                        class={describeIssue.state === "blocked" &&
+                        omitsSentence(describeIssue.reason)
+                          ? "unseen"
+                          : "reason"}
+                      >
+                        {describeIssue.state === "blocked" ? describeIssue.reason : ""}
+                      </span>
                     </div>
 
                     <!-- 改称・削除・アーカイブ (doc-10 §6). doc-9 §4.2 defines the 照合 for all
@@ -2003,7 +2023,7 @@
                     {#if open !== null}
                       <div class="sub-panel">
                         {#if open === "rename"}
-                          <h3>改称（milestone rename）</h3>
+                          <h3>改称</h3>
                           <label class="field">
                             <span class="label">新しい名称（必須）</span>
                             <input
@@ -2026,10 +2046,10 @@
                             milestone 値が id 以外のタスクだけです。
                           </p>
                         {:else if open === "remove"}
-                          <h3>削除（milestone remove）</h3>
+                          <h3>削除</h3>
                           <p class="hint">{MILESTONE_REMOVE_MOVES_THE_FILE}</p>
                           <fieldset class="handling">
-                            <legend>参照するタスクの扱い（必須。--task-handling）</legend>
+                            <legend>参照するタスクの扱い（必須）</legend>
                             {#each [{ mode: "clear", label: "milestone 値を除去する（clear）" }, { mode: "keep", label: "そのまま保持する（keep）" }, { mode: "reassign", label: "別マイルストーンへ付け替える（reassign）" }] as choice (choice.mode)}
                               <label class="check">
                                 <input
@@ -2051,7 +2071,7 @@
                           {/if}
                           {#if removeInput.handling === "reassign"}
                             <label class="field">
-                              <span class="label">付け替え先（必須。--reassign-to）</span>
+                              <span class="label">付け替え先（必須）</span>
                               <select
                                 value={removeInput.reassignTo}
                                 onchange={(event) =>
@@ -2068,7 +2088,7 @@
                             </label>
                           {/if}
                         {:else}
-                          <h3>アーカイブ（milestone archive）</h3>
+                          <h3>アーカイブ</h3>
                           <p class="hint">
                             マイルストーンのファイルを archive/milestones/ へ移します。参照するタスクは
                             書き換わりません。
@@ -2078,7 +2098,7 @@
                         <!-- 実行前に書き換え対象集合を示す (doc-10 §6, doc-9 §4.2.2/§4.2.3): what the
                              user decides from has to be what the check protects. -->
                         <div class="targets">
-                          <h4>書き換え対象（doc-9 §4.2.2）</h4>
+                          <h4>書き換え対象</h4>
                           <ul class="paths">
                             <li>{milestone.sourcePath}</li>
                           </ul>
@@ -2119,8 +2139,8 @@
                                 ? "削除を発行"
                                 : "アーカイブを発行"}
                           </button>
-                          <button type="button" onclick={closeMilestoneOp}>やめる</button>
-                          {#if opIssue?.state === "blocked"}
+                          <button type="button" onclick={closeMilestoneOp}>キャンセル</button>
+                          {#if opIssue?.state === "blocked" && !omitsSentence(opIssue.reason)}
                             <span class="reason">{opIssue.reason}</span>
                           {/if}
                         </div>
@@ -2193,7 +2213,7 @@
                        selection came and went (§5・§6) — and the line says what the column is for.
                        Since TASK-121 this state is reached only by the three occasions §6 lists, not
                        by a press: 選択を解除 is gone. -->
-                  <p class="neutral">マイルストーンを選ぶと操作を表示します。</p>
+                  <p class="neutral">マイルストーンが選択されていません</p>
 
                   {@render withheld(
                     "現時点で提供しない操作（マイルストーン）",
@@ -2290,8 +2310,8 @@
                 "追加するラベル",
               )}
               <p class="hint">
-                Type（kind ラベル）はここでは扱いません。`task create --labels` は 1 個のカンマ区切り値
-                を取るため、「,」を含むラベルは発行しません。
+                Type（kind ラベル）はここでは扱いません。ラベルは 1 個のカンマ区切り値として扱われる
+                ため、「,」を含むラベルは発行しません。
               </p>
             </div>
 
@@ -2314,9 +2334,9 @@
                 title={why(taskIssue)}
                 onclick={createTask}
               >
-                タスクを作成（task create）
+                タスクを作成
               </button>
-              {#if taskIssue.state === "blocked"}
+              {#if taskIssue.state === "blocked" && !omitsSentence(taskIssue.reason)}
                 <span class="reason">{taskIssue.reason}</span>
               {/if}
             </div>
@@ -2373,7 +2393,7 @@
   >
     {#if createOpen === "document"}
       <div class="modal-form">
-        <h2>文書を作成（doc create）</h2>
+        <h2>文書を作成</h2>
         <div class="row">
           <label class="field">
             <span class="label">title（必須）</span>
@@ -2406,8 +2426,7 @@
           </label>
         </div>
         <p class="hint">
-          本文は `doc create` では渡せません（doc-5 §3 の create 写像は title・type・path のみ）。
-          作成後、左の一覧でその文書のカードを選び、「編集」から本文を入れます。
+          本文は作成時には渡せません。
         </p>
         <!-- No 下部操作行 (doc-11 §7): 「文書を作成」 writes but does not leave the layer, so there is
              only one way out and nothing for a second wording to tell apart. What the × does with
@@ -2421,14 +2440,14 @@
           >
             文書を作成
           </button>
-          {#if docCreateIssue.state === "blocked"}
+          {#if docCreateIssue.state === "blocked" && !omitsSentence(docCreateIssue.reason)}
             <span class="reason">{docCreateIssue.reason}</span>
           {/if}
         </div>
       </div>
     {:else}
       <div class="modal-form">
-        <h2>マイルストーンを作成（milestone add）</h2>
+        <h2>マイルストーンを作成</h2>
         <label class="field">
           <span class="label">名称（必須）</span>
           <input
@@ -2438,16 +2457,13 @@
           />
         </label>
         <label class="field">
-          <span class="label">説明（作成時のみ設定できます）</span>
+          <span class="label">説明</span>
           <input
             type="text"
             value={milestoneInput.description}
             oninput={(event) => (milestoneInput.description = event.currentTarget.value)}
           />
         </label>
-        <p class="hint">
-          作成後、左の一覧でそのマイルストーンのカードを選ぶと改称・削除・アーカイブができます。
-        </p>
         <div class="actions">
           <button
             type="button"
@@ -2457,7 +2473,7 @@
           >
             マイルストーンを作成
           </button>
-          {#if milestoneIssue.state === "blocked"}
+          {#if milestoneIssue.state === "blocked" && !omitsSentence(milestoneIssue.reason)}
             <span class="reason">{milestoneIssue.reason}</span>
           {/if}
         </div>
@@ -3173,6 +3189,20 @@
     display: flex;
     gap: 0.25rem;
     margin-top: 0.25rem;
+  }
+
+  // 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形): the reason stays in the accessibility tree because
+  // `aria-describedby` points at it. Its own rule — a `//` comment does not end a selector list, so
+  // appending this to the group below would have pulled `.hint` into it.
+  .unseen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .hint,

@@ -186,8 +186,8 @@ describe("カード情報量", () => {
   it("says the 状態の印 survive every 段 (doc-7 §3, AC #2)", () => {
     // Otherwise S reads as "fewer items, so probably fewer warnings too", and a user who wants a
     // dense grid would be choosing — as far as they could tell — to stop being told about 不整合.
-    expect(CARD_DENSITY_NOTE).toContain("状態の印");
-    expect(CARD_DENSITY_NOTE).toContain("どの段でも落としません");
+    expect(CARD_DENSITY_NOTE).toContain("タスクの状態");
+    expect(CARD_DENSITY_NOTE).toContain("必ず表示されます");
   });
 
   it("names what each 段 adds, so the choice is readable before it is made", () => {

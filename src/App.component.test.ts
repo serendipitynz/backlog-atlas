@@ -572,7 +572,7 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     chooseFromMenu(host, "プロジェクトを登録");
     const labelled = [
       ...dialogOf(host, "プロジェクトを登録").querySelectorAll<HTMLElement>("label"),
-    ].find((label) => label.querySelector(".caption")?.textContent === "プロジェクトルート");
+    ].find((label) => label.querySelector(".caption")?.textContent === "プロジェクトルート（必須）");
     if (labelled === undefined) throw new Error("no プロジェクトルート field");
     fill(only<HTMLInputElement>(labelled, 'input[type="text"]'), "/tmp/new");
     return host;
