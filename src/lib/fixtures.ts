@@ -152,6 +152,22 @@ export function documentView(options: Partial<Document> = {}): Document {
   };
 }
 
+/**
+ * One マイルストーン as the read layer hands it over. `description` takes `=== undefined` for the
+ * reason `documentView` gives: `null` is a value doc-10 §6's 閲覧 draws differently (「説明は
+ * ありません。」), so a `??` would make that branch untestable.
+ */
+export function milestoneView(options: Partial<Milestone> = {}): Milestone {
+  const id = options.id ?? "m-1";
+  return {
+    sourcePath: options.sourcePath ?? `/repos/atlas/backlog/milestones/${id}.md`,
+    id,
+    title: options.title ?? `Milestone ${id}`,
+    description: options.description === undefined ? "この節目で出すもの" : options.description,
+    health: options.health ?? { state: "ok" },
+  };
+}
+
 export function snapshot(
   slug: string,
   tasks: TaskView[],
@@ -176,10 +192,11 @@ export function loaded(
   tasks: TaskView[],
   createStatusCandidates: ColumnCreateStatuses[] = CREATE_STATUS_CANDIDATES,
   documents: Document[] = [],
+  milestones: Milestone[] = [],
 ): ProjectLoad {
   return {
     state: "loaded",
-    project: snapshot(slug, tasks, [], createStatusCandidates, documents),
+    project: snapshot(slug, tasks, milestones, createStatusCandidates, documents),
   };
 }
 
