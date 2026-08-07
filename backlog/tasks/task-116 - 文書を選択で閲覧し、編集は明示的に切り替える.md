@@ -1,10 +1,10 @@
 ---
 id: TASK-116
 title: 文書を選択で閲覧し、編集は明示的に切り替える
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-05 08:18'
-updated_date: '2026-08-06 23:45'
+updated_date: '2026-08-07 01:22'
 labels:
   - ui
   - project-detail
