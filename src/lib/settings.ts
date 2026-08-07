@@ -186,10 +186,13 @@ export const WATCH_OFF_NOTE =
  * Why 起動時に全ルートを読み直す is not a setting, kept as a 不可の理由 (doc-11 §8): 画面設計案 01 does
  * offer that checkbox (doc-12 §2.2), so its absence is one the user can notice from the original —
  * which is what makes this a reason rather than an explanation nobody asked for. Reworded from
- * doc-9 §3.2's own sentence, which is what it used to copy.
+ * doc-9 §3.2's own sentence, which is what it used to copy. What a missing startup read costs is the
+ * baseline (読取版指標) the 更新前競合検出 compares against — not detection itself: a watch event fires
+ * whether or not the root was read first. Saying「外部変更の検出もできない」would both overstate that
+ * and collide with 継続検出, whose own note sits directly above this one.
  */
 export const STARTUP_READ_NOTE =
-  "起動時の全ルート読み取りは切れません。読まないとカードを 1 枚も描けず、外部変更の検出もできないためです。";
+  "起動時の全ルート読み取りは切れません。読まないとカードを 1 枚も描けず、更新前競合検出の基準も持てないためです。";
 
 /**
  * 下部操作行 (TASK-74) の 2 つの押下。「変更せずに閉じる」は下書きを書かずに出る経路で、「保存する」は
