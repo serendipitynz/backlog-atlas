@@ -6,14 +6,12 @@ import {
   editAvailability,
 } from "./edit";
 import {
-  CLI_LIMIT_GUIDANCE,
   CONFIGURED_TERMINAL_CAVEAT,
   EDITOR_PROBE_PENDING_REASON,
   FILE_MISSING_EDITOR_REASON,
   FRONTMATTER_NOTICE,
   NO_CONFIGURED_EDITOR_REASON,
   UNSAVED_INPUT_WARNING,
-  WRITE_BACK_NOTE,
   editorOffers,
   launchFailureDetail,
   launchSummary,
@@ -116,13 +114,9 @@ describe("開く前の表示 (AC #3)", () => {
     expect(FRONTMATTER_NOTICE).toContain("frontmatter");
     expect(FRONTMATTER_NOTICE).toContain("不整合表示");
     // The exception doc-8 §7 names: these bytes do not pass the CLI's option checking.
-    expect(FRONTMATTER_NOTICE).toContain("スキーマ検査");
+    expect(FRONTMATTER_NOTICE).toContain("検査は実施されません");
   });
 
-  it("says the save comes back through the watch, not through an exit (AC #2)", () => {
-    expect(WRITE_BACK_NOTE).toContain("ファイル監視");
-    expect(WRITE_BACK_NOTE).toContain("閉じる必要はありません");
-  });
 });
 
 describe("二重取り込みの回避 (AC #4)", () => {
@@ -141,12 +135,6 @@ describe("二重取り込みの回避 (AC #4)", () => {
 });
 
 describe("CLI で不能な操作の案内先 (AC #5)", () => {
-  it("names the operations this route exists for", () => {
-    expect(CLI_LIMIT_GUIDANCE).toContain("References");
-    expect(CLI_LIMIT_GUIDANCE).toContain("dependencies");
-    expect(CLI_LIMIT_GUIDANCE).toContain("archive");
-  });
-
   it("is the destination every withheld operation points at", () => {
     // The reasons and the control have to name the same place: a reason pointing at "外部エディタ経路"
     // in the abstract is what made this route unfindable before it existed as a control.

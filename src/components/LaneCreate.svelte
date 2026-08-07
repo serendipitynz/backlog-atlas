@@ -8,6 +8,7 @@
   // while a CLI 縮退 gets the control, disabled, with its reason — the first is 提供しない, the
   // second「今は条件が揃っていない」.
   import type { LaneCreate } from "../lib/lane-create";
+  import { statedOnScreen } from "../lib/manage";
   import { ariaKeyShortcuts, matchShortcut, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
 
@@ -160,9 +161,9 @@
         <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4); the chord is on `aria-keyshortcuts` as data. -->
         <span class="hint" aria-hidden="true">{shortcutHint("submitLaneCreate", MAC_KEYBOARD)}</span>
       </button>
-      <button type="button" onclick={onclose}>やめる</button>
+      <button type="button" onclick={onclose}>キャンセル</button>
     </div>
-    {#if blocked !== null}
+    {#if blocked !== null && !statedOnScreen(blocked)}
       <p class="reason">{blocked}</p>
     {/if}
   </div>

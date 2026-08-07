@@ -1005,23 +1005,23 @@ export function transitionOffers(
             op: "draftPromote",
             draftId: id,
           }),
-          offer("draftArchive", "アーカイブ (draft archive)", DRAFT_ARCHIVE_EFFECT, {
+          offer("draftArchive", "アーカイブ", DRAFT_ARCHIVE_EFFECT, {
             op: "draftArchive",
             draftId: id,
           }),
         ]
       : [
-          offer("taskDemote", "draft へ差し戻す (task demote)", TASK_DEMOTE_EFFECT, {
+          offer("taskDemote", "draft へ差し戻す", TASK_DEMOTE_EFFECT, {
             op: "taskDemote",
             taskId: id,
           }),
-          offer("taskArchive", "アーカイブ (task archive)", TASK_ARCHIVE_EFFECT, {
+          offer("taskArchive", "アーカイブ", TASK_ARCHIVE_EFFECT, {
             op: "taskArchive",
             taskId: id,
           }),
           offer(
             "taskComplete",
-            "完了整理 (task complete)",
+            "完了整理",
             TASK_COMPLETE_EFFECT,
             { op: "taskComplete", taskId: id },
             view.task.status === COMPLETABLE_STATUS
@@ -1052,16 +1052,14 @@ function offer(
   return { kind, label, effect, operation, enabled: reason === null, reason };
 }
 
-const DRAFT_PROMOTE_EFFECT =
-  "draft → active。id は TASK-M へ採番し直されます。status が Draft の draft だけが既定 status へ変わり、" +
-  "降格で作られた draft は status を保持します";
-const DRAFT_ARCHIVE_EFFECT = "draft → archive/drafts。id・status は保持されます";
-const TASK_DEMOTE_EFFECT =
-  "active → draft。id は DRAFT-M へ採番し直され、status は保持されます";
-const TASK_ARCHIVE_EFFECT =
-  "active → archive/tasks。status を問わず実行できます。元に戻せません";
-const TASK_COMPLETE_EFFECT =
-  "active → completed。status が Done のときのみ成功します。元に戻せません";
+// 遷移が何を変えるかだけを述べる (doc-11 §8 の結果の予告). The 写像 itself (active → archive/tasks) is
+// on the button, and the storage state is on screen beside it, so what is left to say is the part a
+// user cannot read off either: whether the id survives, and whether the move can be undone.
+const DRAFT_PROMOTE_EFFECT = "id は採番し直されます";
+const DRAFT_ARCHIVE_EFFECT = "id・status は保持されます";
+const TASK_DEMOTE_EFFECT = "id は採番し直されます";
+const TASK_ARCHIVE_EFFECT = "元に戻せません";
+const TASK_COMPLETE_EFFECT = "status が Done のときのみ実行可能です。元に戻せません";
 
 // --- 選択肢 (doc-5 §3 の値域) --------------------------------------------------------------
 

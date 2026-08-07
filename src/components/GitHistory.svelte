@@ -144,7 +144,7 @@
                全面 is where doc-8 §5 asks for those causes to be written out one by one, with whether
                each is something the user can clear. -->
           <p class={relationSummary.kind}>
-            {relationSummary.text}（remote ホスト判別済み: {relation.host}）
+            {relationSummary.text}
           </p>
           {#if accounts.length > 0}
             <ul class="accounts">

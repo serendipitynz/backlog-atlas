@@ -68,14 +68,9 @@ export interface EditorOffer {
  * exception route rather than another edit control.
  */
 export const FRONTMATTER_NOTICE =
-  "外部エディタでは管理ファイル全体が開きます（frontmatter を含む）。id・status・labels などの" +
-  "構造化フィールドを壊すと、次の読み取りで不整合表示になります（壊れても破棄はしません）。" +
-  "この経路の編集は Backlog CLI のスキーマ検査を通りません。";
-
-/** 書き戻し (doc-8 §7): the watch is the return path, so nothing waits for the editor to close. */
-export const WRITE_BACK_NOTE =
-  "外部エディタで保存すると、ファイル監視が変更を拾って再読込します（エディタを閉じる必要は" +
-  "ありません）。";
+  "外部エディタでは frontmatter を含むタスクの Markdown ファイルを開きます。" +
+  "編集時に id・status・labels などの構造化フィールドについて Backlog.md による検査は実施されません" +
+  "（壊れると不整合表示になります）。";
 
 /**
  * 書き戻し when 継続検出 is stopped (doc-8 §7): the save will not arrive on its own. Shown *before* the
@@ -103,11 +98,6 @@ export const REREAD_ROOT_LABEL = "このルートを再読込";
 export const WATCH_STOPPED_BEFORE_LAUNCH =
   "このルートの継続検出が止まっていることが分かったため、まだ開いていません。上の注意を読んでから、" +
   "もう一度押すと開きます。";
-
-/** 案内先 (doc-5 §3.1・doc-8 §6.5): the operations that exist nowhere else in Atlas. */
-export const CLI_LIMIT_GUIDANCE =
-  "CLI で行えない編集はこの経路で行います: References・dependencies の最後の 1 件の削除、" +
-  "draft・completed・archive のタスクの内容編集、kind ラベル（Type）の変更。";
 
 /** doc-8 §6.4: an open 編集セッション plus an external edit is the double intake to avoid. */
 export const UNSAVED_INPUT_WARNING =

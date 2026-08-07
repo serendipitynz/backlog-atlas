@@ -46,8 +46,7 @@ export type LaneCreate =
  */
 export function noCandidateAbsentReason(column: StatusColumn): string {
   return (
-    `${CANONICAL_COLUMN_LABEL[column]} 列に対応する status をこのプロジェクトの config.yml が` +
-    "宣言していないため、作成時の初期値を決められません。新規タスク入力は置きません。"
+    `${CANONICAL_COLUMN_LABEL[column]} 未設定`
   );
 }
 

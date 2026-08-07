@@ -69,12 +69,10 @@
     type TransitionOffer,
   } from "../lib/edit";
   import {
-    CLI_LIMIT_GUIDANCE,
     FRONTMATTER_NOTICE,
     REREAD_ROOT_LABEL,
     UNSAVED_INPUT_WARNING,
     WATCH_STOPPED_NOTE,
-    WRITE_BACK_NOTE,
     editorOffers,
     launchSummary,
     needsConfirmation,
@@ -1629,7 +1627,6 @@
          何を開こうとしているのかは押す前に読めていなければならない。画面でこのパスを出しているのは
          ここだけなので、不整合や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
     <p class="path">{task.sourcePath}</p>
-    <p class="hint">{CLI_LIMIT_GUIDANCE}</p>
     <!-- 開く前に示す (doc-8 §7 難点と受け方): the frontmatter is exposed and the CLI's schema checking
          is bypassed, so this is stated before a launch rather than after a degraded read. -->
     <p class="warn">{FRONTMATTER_NOTICE}</p>
@@ -1638,8 +1635,6 @@
            that is the only thing which will bring the edit back. -->
       <p class="warn">{WATCH_STOPPED_NOTE}</p>
       <p><button type="button" class="mini" onclick={onreread}>{REREAD_ROOT_LABEL}</button></p>
-    {:else}
-      <p class="hint">{WRITE_BACK_NOTE}</p>
     {/if}
     {#if dirty}
       <!-- 二重取り込みの回避 (doc-8 §6.4): stated, and the launch asks for a second press. The input

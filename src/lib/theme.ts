@@ -55,10 +55,6 @@ export const RECORDED_THEME_IDS: string[] = RECORDED_THEMES.map((theme) => theme
 /** 未選択. Named as what it does rather than as an absence: it is a working state, not a gap. */
 export const THEME_UNSET_LABEL = "OS の明暗に従う（既定: Atlas Light / Atlas Dark）";
 
-/** Why the 明暗 of the borrowed sets is stated in every label, said once where the list is shown. */
-export const THEME_LIST_NOTE =
-  "明暗は表示テーマごとに決まっています。OS の明暗に従うのは「未選択」のときだけです。";
-
 /** True when this build has the colour values for `name`. `null` (未選択) is always honourable. */
 export function isRecorded(name: string | null): boolean {
   return name === null || RECORDED_THEME_IDS.includes(name);

@@ -94,7 +94,7 @@ export const SHOW_ALL_ROWS_LABEL = "行非表示をすべて戻す";
 export function showAllRowsHeld(hiddenRowCount: number): string | null {
   return hiddenRowCount > 0
     ? null
-    : "非表示にしている行がありません。戻す行が無いため、この操作はできません。";
+    : "（対象行なし）";
 }
 
 /**

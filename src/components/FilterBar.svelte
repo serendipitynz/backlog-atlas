@@ -79,12 +79,12 @@
   // up stating that there is nothing to undo beside an enabled 直前の 1 つを戻す.
   let undoBlocked = $derived(lastCondition(filter) === null);
   let clearBlocked = $derived(nothingToClear(filter, defaultStorage));
+  // 絞り込みが既定のままのときは文を置かない (doc-11 §8): the 帯 is showing its own conditions, so the
+  // state that makes 全解除 inert is already on screen — a sentence would be a 状態の言い換え.
   let blockedReason = $derived(
-    clearBlocked
-      ? "絞り込みは既定のままです。戻す条件も解除する条件もありません。"
-      : undoBlocked
-        ? "自分で足した条件がないため、直前の 1 つは戻せません（保存区分の既定は各トークンの × で外します）。"
-        : null,
+    !clearBlocked && undoBlocked
+      ? "自分で足した条件がないため、直前の 1 つは戻せません（保存区分の既定は各トークンの × で外します）。"
+      : null,
   );
 
   let anchor = $state<HTMLDivElement | null>(null);

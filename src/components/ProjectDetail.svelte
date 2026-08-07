@@ -77,6 +77,7 @@
     type DocCreateInput,
     type DocDraft,
     type DocSession,
+    statedOnScreen,
     type IssueAvailability,
     type IssueOutcome,
     type IssuePlan,
@@ -251,9 +252,9 @@
     // next, and the input and what it amounts to last.
     overviewBlocked({ readOnly: ledgerReadOnly, busy: ledgerBusy || issuing }) ??
       (editIssues.length > 0
-        ? "入力に問題があります（各欄の指摘を参照）。"
+        ? null
         : updateRequest === null
-          ? "変更がありません（送る属性がありません）。"
+          ? null
           : null),
   );
   let unregisterReason = $derived(
@@ -1373,9 +1374,9 @@
                shows up here. -->
           <div class="submit-preview">
             <h3>保存で送る属性</h3>
-            {#if submitted.length === 0}
-              <p class="neutral">変更なし（送る属性はありません）。</p>
-            {:else}
+            <!-- 何も送らないときは行を出さない (doc-11 §8): the empty list is the 状態 itself, and
+                 「変更なし」would be a sentence restating it. -->
+            {#if submitted.length > 0}
               <ul class="submitted">
                 {#each submitted as attribute (attribute.attribute)}
                   <li>
@@ -1588,7 +1589,7 @@
                 {#if docSession !== null}
                   {@const session = docSession}
                   <div class="sub-panel">
-                    <h3>{session.baseline.id} を更新（doc update）</h3>
+                    <h3>{session.baseline.id} を更新</h3>
 
                     <label class="field">
                       <span class="label">title</span>
@@ -1600,7 +1601,7 @@
                     </label>
 
                     <div class="field">
-                      <span class="label">本文（全置換）</span>
+                      <span class="label">本文</span>
                       <Editor
                         label="本文"
                         value={session.draft.content}
@@ -1609,7 +1610,7 @@
                         onsave={updateDoc}
                       />
                       <p class="hint">
-                        この欄は読み取った本文全文です。保存すると、ここにある全文で本文を置き換えます。
+                        保存すると、ここにある全文で本文を置き換えます。
                       </p>
                     </div>
 
@@ -1674,10 +1675,10 @@
                         title={why(docUpdateIssue)}
                         onclick={updateDoc}
                       >
-                        文書を更新（doc update）
+                        文書を更新
                       </button>
-                      <button type="button" onclick={closeEditor}>編集を閉じる</button>
-                      {#if docUpdateIssue.state === "blocked"}
+                      <button type="button" onclick={closeEditor}>編集を止める</button>
+                      {#if docUpdateIssue.state === "blocked" && !statedOnScreen(docUpdateIssue.reason)}
                         <span class="reason">{docUpdateIssue.reason}</span>
                       {/if}
                     </div>
@@ -1767,7 +1768,7 @@
                        ていない」and nothing else, which is the misreading §9 avoids by not drawing an
                        empty 提供しない操作区画 at all. doc-11 §6's `—` is not this: that mark stands
                        for a value that is absent, and what is absent here is a selection. -->
-                  <p class="neutral">文書を選ぶと内容を表示します。</p>
+                  <p class="neutral">文書が選択されていません</p>
 
                   {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
                 {/if}
@@ -1958,8 +1959,8 @@
                       >
                         説明を保存
                       </button>
-                      <button type="button" onclick={closeMilestoneEdit}>編集を閉じる</button>
-                      {#if describeIssue.state === "blocked"}
+                      <button type="button" onclick={closeMilestoneEdit}>編集を止める</button>
+                      {#if describeIssue.state === "blocked" && !statedOnScreen(describeIssue.reason)}
                         <span class="reason">{describeIssue.reason}</span>
                       {/if}
                     </div>
@@ -2117,8 +2118,8 @@
                                 ? "削除を発行"
                                 : "アーカイブを発行"}
                           </button>
-                          <button type="button" onclick={closeMilestoneOp}>やめる</button>
-                          {#if opIssue?.state === "blocked"}
+                          <button type="button" onclick={closeMilestoneOp}>キャンセル</button>
+                          {#if opIssue?.state === "blocked" && !statedOnScreen(opIssue.reason)}
                             <span class="reason">{opIssue.reason}</span>
                           {/if}
                         </div>
@@ -2191,7 +2192,7 @@
                        selection came and went (§5・§6) — and the line says what the column is for.
                        Since TASK-121 this state is reached only by the three occasions §6 lists, not
                        by a press: 選択を解除 is gone. -->
-                  <p class="neutral">マイルストーンを選ぶと操作を表示します。</p>
+                  <p class="neutral">マイルストーンが選択されていません</p>
 
                   {@render withheld(
                     "現時点で提供しない操作（マイルストーン）",
@@ -2312,9 +2313,9 @@
                 title={why(taskIssue)}
                 onclick={createTask}
               >
-                タスクを作成（task create）
+                タスクを作成
               </button>
-              {#if taskIssue.state === "blocked"}
+              {#if taskIssue.state === "blocked" && !statedOnScreen(taskIssue.reason)}
                 <span class="reason">{taskIssue.reason}</span>
               {/if}
             </div>
@@ -2371,7 +2372,7 @@
   >
     {#if createOpen === "document"}
       <div class="modal-form">
-        <h2>文書を作成（doc create）</h2>
+        <h2>文書を作成</h2>
         <div class="row">
           <label class="field">
             <span class="label">title（必須）</span>
@@ -2404,7 +2405,7 @@
           </label>
         </div>
         <p class="hint">
-          本文は作成時には渡せません。作成後、左の一覧でその文書のカードを選び、「編集」から入れます。
+          本文は作成時には渡せません。
         </p>
         <!-- No 下部操作行 (doc-11 §7): 「文書を作成」 writes but does not leave the layer, so there is
              only one way out and nothing for a second wording to tell apart. What the × does with
@@ -2418,14 +2419,14 @@
           >
             文書を作成
           </button>
-          {#if docCreateIssue.state === "blocked"}
+          {#if docCreateIssue.state === "blocked" && !statedOnScreen(docCreateIssue.reason)}
             <span class="reason">{docCreateIssue.reason}</span>
           {/if}
         </div>
       </div>
     {:else}
       <div class="modal-form">
-        <h2>マイルストーンを作成（milestone add）</h2>
+        <h2>マイルストーンを作成</h2>
         <label class="field">
           <span class="label">名称（必須）</span>
           <input
@@ -2435,7 +2436,7 @@
           />
         </label>
         <label class="field">
-          <span class="label">説明（作成時のみ設定できます）</span>
+          <span class="label">説明</span>
           <input
             type="text"
             value={milestoneInput.description}
@@ -2443,7 +2444,6 @@
           />
         </label>
         <p class="hint">
-          作成後、左の一覧でそのマイルストーンのカードを選ぶと改称・削除・アーカイブができます。
         </p>
         <div class="actions">
           <button
@@ -2454,7 +2454,7 @@
           >
             マイルストーンを作成
           </button>
-          {#if milestoneIssue.state === "blocked"}
+          {#if milestoneIssue.state === "blocked" && !statedOnScreen(milestoneIssue.reason)}
             <span class="reason">{milestoneIssue.reason}</span>
           {/if}
         </div>

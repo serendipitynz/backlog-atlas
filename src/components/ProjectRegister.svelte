@@ -203,7 +203,7 @@
   {/if}
 
   <label>
-    <span class="caption">プロジェクトルート</span>
+    <span class="caption">プロジェクトルート（必須）</span>
     <span class="field">
       <input
         type="text"
