@@ -1056,6 +1056,8 @@
   /** Where a 一覧列's cards send `aria-describedby` while issuance is held (doc-11 §5). One id per
    * 区画, because the two lists are never on screen together but their sentences differ. */
   const DOC_EDIT_BLOCKED_ID = "detail-doc-edit-blocked";
+  const DOC_UPDATE_BLOCKED_ID = "detail-doc-update-blocked";
+  const DESCRIBE_BLOCKED_ID = "detail-milestone-describe-blocked";
   /** The same for the 閲覧ヘッダ's 編集: a different sentence, since that one is about editing. */
   const DOC_EDIT_HELD_ID = "detail-doc-edit-held";
   const MILESTONE_SELECT_BLOCKED_ID = "detail-milestone-select-blocked";
@@ -1592,7 +1594,7 @@
                     <h3>{session.baseline.id} を更新</h3>
 
                     <label class="field">
-                      <span class="label">title</span>
+                      <span class="label">title（必須）</span>
                       <input
                         type="text"
                         value={session.draft.title}
@@ -1670,17 +1672,27 @@
                     <div class="actions">
                       <button
                         type="button"
-                        disabled={docUpdateIssue.state !== "ready"}
+                        aria-disabled={docUpdateIssue.state !== "ready"}
+                        aria-describedby={docUpdateIssue.state === "blocked" ? DOC_UPDATE_BLOCKED_ID : undefined}
                         aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
                         title={why(docUpdateIssue)}
-                        onclick={updateDoc}
+                        onclick={() => docUpdateIssue.state === "ready" && updateDoc()}
                       >
                         文書を更新
                       </button>
                       <button type="button" onclick={closeEditor}>編集を止める</button>
-                      {#if docUpdateIssue.state === "blocked" && !statedOnScreen(docUpdateIssue.reason)}
-                        <span class="reason">{docUpdateIssue.reason}</span>
-                      {/if}
+                      <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because
+                           `aria-describedby` points at it: hidden when the 区画 already states it
+                           (doc-11 §8), visible otherwise. -->
+                      <span
+                        id={DOC_UPDATE_BLOCKED_ID}
+                        class={docUpdateIssue.state === "blocked" &&
+                        statedOnScreen(docUpdateIssue.reason)
+                          ? "unseen"
+                          : "reason"}
+                      >
+                        {docUpdateIssue.state === "blocked" ? docUpdateIssue.reason : ""}
+                      </span>
                     </div>
                     <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). The chord is answered inside the 本文欄
                          (its 適用範囲 is 編集部品の内側), so it is named here at the 発行 it runs — printed from
@@ -1953,16 +1965,25 @@
                     <div class="actions">
                       <button
                         type="button"
-                        disabled={describeIssue.state !== "ready"}
+                        aria-disabled={describeIssue.state !== "ready"}
+                        aria-describedby={describeIssue.state === "blocked" ? DESCRIBE_BLOCKED_ID : undefined}
                         title={why(describeIssue)}
-                        onclick={() => saveMilestoneDescription(milestone)}
+                        onclick={() =>
+                          describeIssue.state === "ready" && saveMilestoneDescription(milestone)}
                       >
                         説明を保存
                       </button>
                       <button type="button" onclick={closeMilestoneEdit}>編集を止める</button>
-                      {#if describeIssue.state === "blocked" && !statedOnScreen(describeIssue.reason)}
-                        <span class="reason">{describeIssue.reason}</span>
-                      {/if}
+                      <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). See the 文書ペイン's copy above. -->
+                      <span
+                        id={DESCRIBE_BLOCKED_ID}
+                        class={describeIssue.state === "blocked" &&
+                        statedOnScreen(describeIssue.reason)
+                          ? "unseen"
+                          : "reason"}
+                      >
+                        {describeIssue.state === "blocked" ? describeIssue.reason : ""}
+                      </span>
                     </div>
 
                     <!-- 改称・削除・アーカイブ (doc-10 §6). doc-9 §4.2 defines the 照合 for all
@@ -2002,7 +2023,7 @@
                     {#if open !== null}
                       <div class="sub-panel">
                         {#if open === "rename"}
-                          <h3>改称（milestone rename）</h3>
+                          <h3>改称</h3>
                           <label class="field">
                             <span class="label">新しい名称（必須）</span>
                             <input
@@ -2025,7 +2046,7 @@
                             milestone 値が id 以外のタスクだけです。
                           </p>
                         {:else if open === "remove"}
-                          <h3>削除（milestone remove）</h3>
+                          <h3>削除</h3>
                           <p class="hint">{MILESTONE_REMOVE_MOVES_THE_FILE}</p>
                           <fieldset class="handling">
                             <legend>参照するタスクの扱い（必須）</legend>
@@ -2067,7 +2088,7 @@
                             </label>
                           {/if}
                         {:else}
-                          <h3>アーカイブ（milestone archive）</h3>
+                          <h3>アーカイブ</h3>
                           <p class="hint">
                             マイルストーンのファイルを archive/milestones/ へ移します。参照するタスクは
                             書き換わりません。
@@ -3175,6 +3196,17 @@
   .hint,
   // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1). Not an opacity: the
   // reason has to stay readable on every 表示テーマ, and dimming it is the opposite of its purpose.
+  .unseen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   .reason,
   .blocked-note {
     margin: 0.2rem 0 0;

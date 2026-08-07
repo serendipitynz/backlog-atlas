@@ -25,8 +25,6 @@
   <header>
     <h2>キーボード操作の一覧</h2>
   </header>
-  <p class="lead">
-  </p>
 
   <!-- doc-7 §2.1 の 4 列: キー・操作・発火する画面・入力欄内で発火するか。打ち消す既定動作も同じ行に
        出す — §2.1 requires preventDefault を割り当て一覧に明記する, and this is that list. -->
@@ -71,13 +69,6 @@
   }
 
   // 副次 (doc-11 §2.1): it describes the table rather than being read on its own.
-  .lead {
-    margin: 0 0 0.6rem;
-    color: var(--muted);
-    font-size: 0.68rem;
-    line-height: 1.4;
-  }
-
   table {
     width: 100%;
     border-collapse: collapse;

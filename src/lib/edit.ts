@@ -1001,7 +1001,7 @@ export function transitionOffers(
   const offers: TransitionOffer[] =
     storage === "draft"
       ? [
-          offer("draftPromote", "タスクへ昇格 (draft promote)", DRAFT_PROMOTE_EFFECT, {
+          offer("draftPromote", "タスクへ昇格", DRAFT_PROMOTE_EFFECT, {
             op: "draftPromote",
             draftId: id,
           }),
@@ -1055,6 +1055,12 @@ function offer(
 // 遷移が何を変えるかだけを述べる (doc-11 §8 の結果の予告). The 写像 itself (active → archive/tasks) is
 // on the button, and the storage state is on screen beside it, so what is left to say is the part a
 // user cannot read off either: whether the id survives, and whether the move can be undone.
+//
+// **The five lines are deliberately not parallel.** Each says only what is not already answered for
+// *that* transition: 昇格・差し戻し renumber, so the id is the news; draft archive keeps both, so the
+// news is that nothing changes; the two one-way moves have no id question at all and the news is
+// that they cannot be taken back. Making them symmetric would put a clause on each button that its
+// own transition never raises.
 const DRAFT_PROMOTE_EFFECT = "id は採番し直されます";
 const DRAFT_ARCHIVE_EFFECT = "id・status は保持されます";
 const TASK_DEMOTE_EFFECT = "id は採番し直されます";

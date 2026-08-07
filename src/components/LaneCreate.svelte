@@ -154,7 +154,7 @@
         type="button"
         disabled={blocked !== null}
         aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate", MAC_KEYBOARD)}
-        title={blocked ?? "task create を発行します"}
+        title={blocked ?? "このセルにタスクを作成します"}
         onclick={onsubmit}
       >
         作成

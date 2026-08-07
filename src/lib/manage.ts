@@ -658,7 +658,6 @@ export function statedOnScreen(reason: string): boolean {
   return REASONS_STATED_ON_SCREEN.includes(reason);
 }
 
-
 /**
  * マイルストーン説明の更新 (doc-10 §6, decision-21) — the one action this screen issues that is not a
  * CLI call.

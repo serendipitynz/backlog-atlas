@@ -79,13 +79,19 @@
   // up stating that there is nothing to undo beside an enabled 直前の 1 つを戻す.
   let undoBlocked = $derived(lastCondition(filter) === null);
   let clearBlocked = $derived(nothingToClear(filter, defaultStorage));
-  // 絞り込みが既定のままのときは文を置かない (doc-11 §8): the 帯 is showing its own conditions, so the
-  // state that makes 全解除 inert is already on screen — a sentence would be a 状態の言い換え.
+  // 絞り込みが既定のままのときは文を見せない (doc-11 §8): the 帯 is showing its own conditions, so the
+  // state that makes 全解除 inert is already on screen. It is still *said* — these controls take
+  // doc-11 §5's second form (`aria-disabled` + `aria-describedby`), where the target has to exist
+  // whenever it is pointed at, so the reason is hidden rather than dropped.
   let blockedReason = $derived(
-    !clearBlocked && undoBlocked
-      ? "自分で足した条件がないため、直前の 1 つは戻せません（保存区分の既定は各トークンの × で外します）。"
-      : null,
+    clearBlocked
+      ? "絞り込みは既定のままです。"
+      : undoBlocked
+        ? "自分で足した条件がないため、直前の 1 つは戻せません（保存区分の既定は各トークンの × で外します）。"
+        : null,
   );
+  /** Whether the 帯 itself already shows the reason, so it is not printed a second time (doc-11 §8). */
+  let reasonOnScreen = $derived(clearBlocked);
 
   let anchor = $state<HTMLDivElement | null>(null);
   let opener = $state<HTMLButtonElement | null>(null);
@@ -193,9 +199,9 @@
     >
       全解除
     </button>
-    {#if blockedReason !== null}
-      <span class="blocked-note" id={BLOCKED_ID}>{blockedReason}</span>
-    {/if}
+    <span class={reasonOnScreen ? "unseen" : "blocked-note"} id={BLOCKED_ID}>
+      {blockedReason ?? ""}
+    </span>
   </div>
   <!-- 総計 is not here (doc-7 §5.2, TASK-66): it is beside the 画面名 in the 固定ヘッダ, which is the one
        place that prints it. The per-row 内訳 on each レーンヘッダ行 stays where it is. -->
@@ -384,6 +390,17 @@
 
   // The 理由 doc-11 §5 requires to be readable without hovering. It sits on the bar's own line
   // rather than on one of its own, so stating it costs the grid no height.
+  .unseen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   .blocked-note {
     color: var(--muted);
     font-size: 0.65rem;
