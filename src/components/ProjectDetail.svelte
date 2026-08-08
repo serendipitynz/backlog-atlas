@@ -1815,8 +1815,7 @@
                        doc-11 §6's `—` is not this: that mark stands for a value that is absent, and
                        what is absent here is a selection. -->
                   <p class="neutral">文書が選択されていません</p>
-
-                      {/if}
+                {/if}
               </div>
             </div>
           {/if}
@@ -2255,15 +2254,22 @@
                885px 区画 and the reason the form did not fit its scroller (measured). -->
           <div class="section-head">
             <h2>新規タスク</h2>
-            <button
-              type="button"
-              class="note-entry"
-              aria-label={TASK_NOTE_LABEL}
-              title={TASK_NOTE_LABEL}
-              onclick={openTaskNote}
-            >
-              <Icon name="circle-question-mark" />
-            </button>
+            <!-- Only where the form is. What the note answers is「この欄はどこにあるのか」, a
+                 question a reader has while filling the form in — beside a 読み込み中 or a
+                 ルート読取不能 message there is no form to have it about, and an entry offering
+                 advice about one is the noise this task exists to remove. Same placement rule the
+                 作成の入口 follows one 区画 over. -->
+            {#if unreadableNote === null && project !== null}
+              <button
+                type="button"
+                class="note-entry"
+                aria-label={TASK_NOTE_LABEL}
+                title={TASK_NOTE_LABEL}
+                onclick={openTaskNote}
+              >
+                <Icon name="circle-question-mark" />
+              </button>
+            {/if}
           </div>
 
           {#if unreadableNote !== null}
@@ -3309,14 +3315,14 @@
 
   // 区画見出しと、その横に置く入口 (doc-10 §7). `baseline` so the figure sits on the heading's own
   // line rather than on the middle of its box, which is where an icon beside text is looked for.
+  //
+  // The h2 keeps its own `margin: 0 0 0.5rem` — zeroing it here would close the gap below the
+  // heading that every other 区画 has, and `.list-head` (the same shape one column over) does not
+  // zero it either.
   .section-head {
     display: flex;
     align-items: baseline;
     gap: 0.35rem;
-
-    > h2 {
-      margin: 0;
-    }
   }
 
   // 注記の入口: アイコンのみのボタン (doc-11 §2.4). The figure is 1em of whatever box it sits in, so
@@ -3332,6 +3338,14 @@
 
     &:hover {
       color: var(--fg);
+    }
+
+    // 選択の描き方 (doc-11 §2.3), the same ring 作成の入口 carries: the entry is reachable by
+    // keyboard (doc-10 §7 の AC), and a control that takes focus without showing it is reachable
+    // only in the accessibility tree.
+    &:focus-visible {
+      outline: 2px solid var(--sel);
+      outline-offset: 1px;
     }
   }
 
