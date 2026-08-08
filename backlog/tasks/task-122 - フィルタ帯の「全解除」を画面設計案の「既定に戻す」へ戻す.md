@@ -1,10 +1,10 @@
 ---
 id: TASK-122
 title: フィルタ帯の「全解除」を画面設計案の「既定に戻す」へ戻す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-07 22:25'
-updated_date: '2026-08-08 00:25'
+updated_date: '2026-08-08 00:51'
 labels:
   - ui
   - design-system
