@@ -99,10 +99,10 @@ export const DEFAULT_FILTER: CardFilter = {
 };
 
 /**
- * The filter 全解除 returns to (doc-7 §5.2): everything unrestricted, and 保存区分 back to the 既定
+ * The filter 既定に戻す returns to (doc-7 §5.2): everything unrestricted, and 保存区分 back to the 既定
  * — which is アプリ設定's 既定の保存区分 (decision-13), not necessarily `active` alone. 保存区分 is a
- * positive selection, so "clear it" would mean showing nothing; what the user means by 全解除 is the
- * state the screen opens in.
+ * positive selection, so clearing it outright would leave the grid empty; the control returns the
+ * filter to the state the screen opens in, which is what its name says.
  */
 export function defaultFilter(storage: readonly StorageSelection[]): CardFilter {
   return { ...DEFAULT_FILTER, storage: [...storage] };

@@ -85,7 +85,7 @@ describe("絞り込みトークン (doc-7 §5.2)", () => {
   });
 });
 
-describe("直前の 1 つを戻す・全解除 (doc-7 §5.2)", () => {
+describe("直前の 1 つを戻す・既定に戻す (doc-7 §5.2)", () => {
   it("takes conditions back from the tail, one at a time", () => {
     let filter = built(
       { facet: "label", value: "ui" },
@@ -106,7 +106,7 @@ describe("直前の 1 つを戻す・全解除 (doc-7 §5.2)", () => {
     expect(removeLastCondition(DEFAULT_FILTER)).toEqual(DEFAULT_FILTER);
   });
 
-  it("keeps 全解除 offered while 追加順 still holds something to undo", () => {
+  it("keeps 既定に戻す offered while 追加順 still holds something to undo", () => {
     // The selections come back to the 既定 by a route that records history: 保存区分's 既定 taken
     // off its token, then the same division picked again in the popover.
     const retaken = addCondition(removeCondition(DEFAULT_FILTER, { facet: "storage", value: "active" }), {
@@ -115,7 +115,7 @@ describe("直前の 1 つを戻す・全解除 (doc-7 §5.2)", () => {
     });
     expect(retaken.storage).toEqual(DEFAULT_FILTER.storage);
     expect(lastCondition(retaken)).toEqual({ facet: "storage", value: "active" });
-    // Blocking 全解除 here would leave that history with no way to clear it, beside an enabled
+    // Blocking 既定に戻す here would leave that history with no way to clear it, beside an enabled
     // 直前の 1 つを戻す whose press empties the grid.
     expect(nothingToClear(retaken, ["active"])).toBe(false);
 
@@ -124,7 +124,7 @@ describe("直前の 1 つを戻す・全解除 (doc-7 §5.2)", () => {
     expect(lastCondition(cleared)).toBeNull();
   });
 
-  it("returns to the 既定の保存区分 on 全解除, not to an empty selection", () => {
+  it("returns to the 既定の保存区分 on 既定に戻す, not to an empty selection", () => {
     const filter = built({ facet: "label", value: "ui" }, { facet: "inconsistent" });
     const cleared = defaultFilter(["active", "draft"]);
     expect(cleared.storage).toEqual(["active", "draft"]);
