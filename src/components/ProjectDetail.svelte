@@ -53,8 +53,6 @@
     MILESTONE_REMOVE_MOVES_THE_FILE,
     TASK_CREATE_OMITTED_FIELDS,
     TASK_CREATE_SCOPE_NOTE,
-    WITHHELD_DOCUMENT_OPERATIONS,
-    WITHHELD_MILESTONE_OPERATIONS,
     buildDocCreate,
     buildDocUpdate,
     buildMilestoneAdd,
@@ -85,7 +83,6 @@
     type MilestoneRemoveInput,
     type MilestoneRenameInput,
     type TaskCreateInput,
-    type WithheldOperation,
   } from "../lib/manage";
   import {
     ALIAS_EFFECT_NOTES,
@@ -1144,29 +1141,6 @@
   </div>
 {/snippet}
 
-{#snippet withheld(title: string, operations: WithheldOperation[])}
-  <!-- 提供しない操作区画 (doc-10 §1/§6, doc-11 §5): instead of unpressable buttons, the three points
-       — 名称, the CLI it maps to, and the reason. 無効化 means「今は条件が揃っていない」, while what
-       is listed here is what Atlas decided not to offer in this version: a different statement.
-       An empty list renders nothing at all (doc-10 §9): a heading with nothing under it says
-       something is withheld and sends the reader looking for what. The マイルストーン区画's list
-       became empty with TASK-65, and the guard lives here so every caller gets it. -->
-  {#if operations.length > 0}
-  <div class="withheld">
-    <h3>{title}</h3>
-    <ul>
-      {#each operations as operation (operation.kind)}
-        <li>
-          <span class="label">{operation.label}</span>
-          <code>{operation.mapping}</code>
-          <p>{operation.reason}</p>
-        </li>
-      {/each}
-    </ul>
-  </div>
-  {/if}
-{/snippet}
-
 <!-- The column widths come from `project-detail.ts` so the number a doc cites and the number laid
      out are the same one (TASK-113's pattern). Both size content boxes (TASK-115). 行長上限 comes
      from `placement.ts` for the same reason, and is the very same 48rem doc-8 §2.1 puts on タスク詳細's
@@ -1458,11 +1432,9 @@
           {#if unreadableNote !== null}
             <h2>文書</h2>
             <p class="unreadable">{unreadableNote}</p>
-            {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
           {:else if project === null}
             <h2>文書</h2>
             <p class="neutral">読み込み中…</p>
-            {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
           {:else}
             {#if pendingDocument !== null}
               <!-- 破棄前確認: 未保存入力 is held and the requested action would drop it. The action
@@ -1584,9 +1556,9 @@
               </div>
 
               <!-- 文書ペイン (doc-10 §5): three states in one column — the update form alone while a
-                   session is open, 閲覧 while a document is merely selected, and the 提供しない操作
-                   区画 under a line saying what the column is for while nothing is. Renamed from
-                   編集ペイン by TASK-116: selection opens 閲覧, so editing is one state of three. -->
+                   session is open, 閲覧 while a document is merely selected, and a line saying what
+                   the column is for while nothing is. Renamed from 編集ペイン by TASK-116: selection
+                   opens 閲覧, so editing is one state of three. -->
               <div class="pane" bind:this={docPane}>
                 {#if docSession !== null}
                   {@const session = docSession}
@@ -1774,16 +1746,15 @@
                     {/if}
                   </div>
                 {:else}
-                  <!-- 非選択時の文書ペイン (doc-10 §5, TASK-117). The 作成フォーム left this column
-                       for the 作成モーダル, so what remains is the 提供しない操作区画 — and a line
-                       saying what the column is for. Without it the column reads as「何かが提供され
-                       ていない」and nothing else, which is the misreading §9 avoids by not drawing an
-                       empty 提供しない操作区画 at all. doc-11 §6's `—` is not this: that mark stands
-                       for a value that is absent, and what is absent here is a selection. -->
+                  <!-- 非選択時の文書ペイン (doc-10 §5). The 作成フォーム left this column for the
+                       作成モーダル (TASK-117) and the 提供しない操作区画 was dropped altogether
+                       (TASK-123), so what remains is the line saying what the column is for. It is
+                       what keeps the column from reading as an empty box the user has broken.
+                       doc-11 §6's `—` is not this: that mark stands for a value that is absent, and
+                       what is absent here is a selection. -->
                   <p class="neutral">文書が選択されていません</p>
 
-                  {@render withheld("現時点で提供しない操作（文書）", WITHHELD_DOCUMENT_OPERATIONS)}
-                {/if}
+                      {/if}
               </div>
             </div>
           {/if}
@@ -1797,17 +1768,9 @@
           {#if unreadableNote !== null}
             <h2>マイルストーン</h2>
             <p class="unreadable">{unreadableNote}</p>
-            {@render withheld(
-              "現時点で提供しない操作（マイルストーン）",
-              WITHHELD_MILESTONE_OPERATIONS,
-            )}
           {:else if project === null}
             <h2>マイルストーン</h2>
             <p class="neutral">読み込み中…</p>
-            {@render withheld(
-              "現時点で提供しない操作（マイルストーン）",
-              WITHHELD_MILESTONE_OPERATIONS,
-            )}
           {:else}
             {#if pendingMilestone !== null}
               <!-- 破棄前確認 (doc-10 §6): the open 編集セッション holds 未保存入力 and the requested
@@ -1987,7 +1950,7 @@
                     </div>
 
                     <!-- 改称・削除・アーカイブ (doc-10 §6). doc-9 §4.2 defines the 照合 for all
-                         three, so they are operations here rather than 提供しない操作区画 entries.
+                         three, which is why Atlas offers them at all (TASK-45).
                          アーカイブ takes no input, but it issues a write, and §6 keeps every issuing
                          operation on this side of 編集への切替 rather than splitting the three. -->
                     <div class="actions">
@@ -2206,19 +2169,15 @@
                     {/if}
                   </div>
                 {:else}
-                  <!-- 非選択時のマイルストーンペイン (doc-10 §6, TASK-117). Emptier than the 文書
-                       ペイン's: the 作成フォーム went to the 作成モーダル and this 区画's 提供しない
-                       操作区画 has been 0 件 since TASK-65, so nothing at all was left to draw. The
+                  <!-- 非選択時のマイルストーンペイン (doc-10 §6, TASK-117). The same single line the
+                       文書ペイン draws in this state: the 作成フォーム went to the 作成モーダル, and
+                       what used to differ — this 区画 had no 提供しない操作 to list where the 文書区画
+                       had one — stopped differing when TASK-123 dropped that 区画 from both. The
                        column is still drawn — folding it would move the cards' width every time a
                        selection came and went (§5・§6) — and the line says what the column is for.
                        Since TASK-121 this state is reached only by the three occasions §6 lists, not
                        by a press: 選択を解除 is gone. -->
                   <p class="neutral">マイルストーンが選択されていません</p>
-
-                  {@render withheld(
-                    "現時点で提供しない操作（マイルストーン）",
-                    WITHHELD_MILESTONE_OPERATIONS,
-                  )}
                 {/if}
               </div>
             </div>
@@ -2594,8 +2553,7 @@
     > h2,
     > .confirm,
     > .unreadable,
-    > .neutral,
-    > .withheld {
+    > .neutral {
       margin-right: 0.75rem;
       margin-left: 0.75rem;
     }
@@ -3256,7 +3214,6 @@
   // cannot be read as 不整合 (decision-6・decision-22 の「族を同じ印へ混ぜない」).
   .warn,
   .undetectable,
-  .withheld,
   .scope {
     margin: 0.4rem 0;
     padding: 0.35rem 0.45rem;
@@ -3269,22 +3226,17 @@
     background: color-mix(in srgb, var(--info) 12%, transparent);
   }
 
-  .undetectable,
-  .withheld {
+  .undetectable {
     border-left-color: var(--mark-undetectable);
     background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);
   }
 
-  // 提供しない操作区画 and 出さない項目 are laid out alike: "there is no unpressable button here" and
-  // "this was decided against" are only told apart when the presentation matches. The colours differ,
-  // though — the first belongs to the 照合不能 / CLI-constraint family, the second is Atlas's own
-  // product judgment and stays neutral.
+  // 出さない項目 stays neutral: it is Atlas's own product judgment rather than a CLI constraint.
   .scope {
     border-left-color: var(--line-strong);
     background: var(--inset);
   }
 
-  .withheld,
   .scope {
     margin-top: 0.9rem;
 

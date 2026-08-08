@@ -20,7 +20,6 @@
  * | doc-9 §4.2.2 参照追随書き換えを伴うか | [`followsReferences`] | which of the six operations carries the fan-out |
  * | doc-5 §1/§3 マイルストーン説明の更新（直接書き込み操作） | [`buildMilestoneDescribe`] | the 説明 edit and the one operation on this screen that is not a CLI call (decision-21) |
  * | doc-10 §6 行頭 `##` を拒む入力検査 | [`MILESTONE_DESCRIPTION_HEADING_REASON`] | why a heading in the 説明 is refused: it would fall outside the range read back |
- * | doc-10 §1 提供しない操作区画 | [`WithheldOperation`] + [`WITHHELD_DOCUMENT_OPERATIONS`] / [`WITHHELD_MILESTONE_OPERATIONS`] | the material for laying an operation decided against out as 名称・写像先・理由 |
  * | doc-10 §7 作成フォームを絞るのは製品判断 | [`TASK_CREATE_OMITTED_FIELDS`] | the fields with no input, each with its reason and its post-creation route |
  * | doc-5 §5 縮退 | [`issueAvailability`] via `readinessReason` | no supported CLI, so no operation is offered at all |
  * | doc-9 §5 提示の区別 | [`IssueOutcome`] + [`outcomeMessage`] | 更新前競合 / 照合不能 / CLI 失敗 stated apart |
@@ -33,9 +32,11 @@
  *   perform, and one the boundary refuses before launch (doc-9 §4.2), is withheld here rather than
  *   issued and rejected. The one exception is the 直接書き込み操作, which v1.48.0 cannot perform and
  *   Atlas offers anyway — under decision-21's three conditions, not because the gap was awkward.
- * - **A withheld operation says why**. Nothing is silently missing: either it is offered, or it
- *   carries the reason it is not — and for 照合不能 that reason states it is *not* a version
- *   divergence (doc-9 §5).
+ * - **A control that is on screen but cannot be pressed says why** (doc-11 §5). What is *not* on
+ *   screen says nothing: TASK-123 dropped the 提供しない操作区画 that listed the operations Atlas
+ *   does not offer, because Atlas draws on backlog.md's CLI and the absence of what that CLI has no
+ *   subcommand for is what the product is. 照合不能 still states it is *not* a version divergence
+ *   (doc-9 §5) — that one is a reason a *pressable* control was turned away.
  */
 
 import { readinessReason } from "./edit";
@@ -690,59 +691,6 @@ export function buildMilestoneDescribe(milestone: Milestone, description: string
     action: [{ op: "milestoneDescribe", name: milestone.id, description }],
   };
 }
-
-/**
- * One item of a 提供しない操作区画 (doc-10 §1/§6). It holds the three points the 区画 lays out —
- * 名称, the CLI it maps to, and the reason — because that is the shape doc-11 §5 asks for: a
- * disabled button means「今は条件が揃っていない」, while what is listed here is what Atlas decided
- * not to offer in this version.
- *
- * `kind` need only be unique within its own list (it is the `{#each}` key, and how a test names an
- * entry). Documents and milestones keep separate lists because each 区画 carries its own
- * (doc-10 §5/§6).
- */
-export interface WithheldOperation {
-  kind: string;
-  label: string;
-  /** 操作写像 (doc-5 §3): what the entry *would* issue, so the withheld operation is still legible. */
-  mapping: string;
-  reason: string;
-}
-
-/**
- * What the マイルストーン区画 still withholds (doc-10 §6) — **nothing**, since TASK-65. 改称・削除・
- * アーカイブ left this list once doc-9 §4.2 defined their 照合 (TASK-45), and the description edit
- * left it when decision-21 made it a 直接書き込み操作.
- *
- * The empty list is kept, rather than the constant deleted along with its last entry, because it is
- * what `ProjectDetail` renders the 区画 from: doc-10 §9 says a 区画 with no entries is not shown at
- * all, and "render nothing when the list is empty" states that where the list is. A milestone
- * operation withheld in future has a place to go and a rule already written.
- */
-export const WITHHELD_MILESTONE_OPERATIONS: WithheldOperation[] = [];
-
-// --- 文書の提供しない操作 (doc-10 §5) ---------------------------------------------------------
-
-/**
- * The 文書区画's 提供しない操作区画 (doc-10 §5). One entry, but laid out in the same three points as
- * the milestone list: "there is no unpressable button here" and "this was decided against" are only
- * told apart when the presentation matches.
- *
- * The delete is absent for two reasons in sequence. v1.48.0's `doc` has no delete/remove, and
- * filling that gap by having Atlas unlink the file itself is outside decision-2's boundary (reads
- * parse directly, writes go through the CLI). Same standing as the milestone description edit:
- * Atlas offers it when the CLI does.
- */
-export const WITHHELD_DOCUMENT_OPERATIONS: WithheldOperation[] = [
-  {
-    kind: "remove",
-    label: "文書の削除",
-    mapping: "`doc` に delete/remove 相当のサブコマンドなし",
-    reason:
-      "v1.48.0 の `doc` に削除サブコマンドが無く、Atlas が管理ファイルを直接消すことはしないため提供しません。" +
-      "文書を消す必要があるときは、対象プロジェクトで直接ファイルを操作してください。",
-  },
-];
 
 // --- 新規タスク区画で欄を置かない項目 (doc-10 §7) ----------------------------------------------
 
