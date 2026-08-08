@@ -7,8 +7,11 @@ import {
   UNREGISTER_SCOPE_NOTE,
   aliasSummary,
   displayPath,
+  gitRemoteDisagreement,
+  gitRemoteLine,
   movesRoot,
   overviewBlocked,
+  redetectBlocked,
   rootMoveNote,
   submittedAttributes,
   unregisterBlocked,
@@ -93,16 +96,16 @@ describe("送信属性一覧", () => {
     });
   });
 
-  it("writes the remote re-detection as the request it is, not as a value", () => {
+  it("never lists git_remote_present — the re-detection does not travel on a save (doc-10 §4.1)", () => {
+    // The list is built from the request, so a request carrying the flag is the case to check: even
+    // then the attribute is absent, because 再検出 issues on its own and is not what 保存 sends.
     const base = registered({ git_remote_present: false });
-    const attributes = submittedFor(base, edited(base, { redetectGitRemote: true }));
-    expect(attributes).toEqual([
-      {
-        attribute: "git_remote_present",
-        from: "なし",
-        to: "プロジェクトルートに対して再判定する",
-      },
-    ]);
+    const attributes = submittedAttributes(base, {
+      slug: base.slug,
+      redetect_git_remote: true,
+      backlog_root: "/moved/bl",
+    });
+    expect(attributes.map((attribute) => attribute.attribute)).toEqual(["backlog_root"]);
   });
 
   it("shows the 別名表 on both sides, with an empty table spelled out", () => {
@@ -120,6 +123,87 @@ describe("送信属性一覧", () => {
     expect(aliasSummary({ Review: "In Review", Doing: "In Progress" })).toBe(
       "Doing → In Progress / Review → In Review",
     );
+  });
+});
+
+// --- remote 現在値と再検出 (doc-10 §4.1, decision-6) --------------------------------------------
+
+describe("remote 現在値", () => {
+  it("shows the address, and names which remote it came from", () => {
+    const line = gitRemoteLine({
+      state: "configured",
+      name: "origin",
+      url: "git@github.com:serendipitynz/backlog-atlas.git",
+    });
+    expect(line).toEqual({
+      text: "git@github.com:serendipitynz/backlog-atlas.git",
+      kind: "neutral",
+      name: "origin",
+      address: true,
+    });
+  });
+
+  it("keeps 未取得, remote 不在, 対象不在 and a failed read as four different lines (decision-6)", () => {
+    // The whole point of the four states: the user's next action differs, so one empty line for all
+    // of them would be the collapse decision-6 was written against.
+    const texts = [
+      gitRemoteLine(null),
+      gitRemoteLine({ state: "remoteAbsent" }),
+      gitRemoteLine({ state: "noRepository" }),
+      gitRemoteLine({ state: "unreadable", detail: "git is unavailable" }),
+    ];
+    expect(new Set(texts.map((line) => line.text)).size).toBe(4);
+    expect(texts.map((line) => line.kind)).toEqual(["neutral", "setting", "setting", "failure"]);
+    // Only the address is set in code type — a sentence about an absence is not an address.
+    expect(texts.every((line) => !line.address)).toBe(true);
+    expect(texts[3].text).toContain("git is unavailable");
+  });
+});
+
+describe("記録と検出の食い違い", () => {
+  const configured = {
+    state: "configured",
+    name: "origin",
+    url: "git@github.com:o/r.git",
+  } as const;
+
+  it("says nothing while the ledger and the current read agree", () => {
+    expect(gitRemoteDisagreement(registered({ git_remote_present: true }), configured)).toBeNull();
+    expect(
+      gitRemoteDisagreement(registered({ git_remote_present: false }), { state: "remoteAbsent" }),
+    ).toBeNull();
+  });
+
+  it("names the recorded value in both directions of disagreement", () => {
+    expect(gitRemoteDisagreement(registered({ git_remote_present: false }), configured)).toContain(
+      "「なし」",
+    );
+    expect(
+      gitRemoteDisagreement(registered({ git_remote_present: true }), { state: "noRepository" }),
+    ).toContain("「あり」");
+  });
+
+  it("claims no disagreement from a read that failed or has not landed", () => {
+    // An unreadable read says nothing about whether a remote exists, so reporting a disagreement
+    // from it would state a fact nobody observed.
+    const recorded = registered({ git_remote_present: true });
+    expect(gitRemoteDisagreement(recorded, { state: "unreadable", detail: "x" })).toBeNull();
+    expect(gitRemoteDisagreement(recorded, null)).toBeNull();
+  });
+});
+
+describe("再検出の可否", () => {
+  it("is held by a read-only ledger, and says so about this operation", () => {
+    const reason = redetectBlocked({ readOnly: true, busy: false });
+    expect(reason).toContain("読み取り専用");
+    expect(reason).toContain("再検出");
+  });
+
+  it("is held while a ledger write is in flight, and free otherwise", () => {
+    expect(redetectBlocked({ readOnly: false, busy: true })).toBe(
+      overviewBlocked({ readOnly: false, busy: true }),
+    );
+    expect(redetectBlocked({ readOnly: false, busy: false })).toBeNull();
   });
 });
 
