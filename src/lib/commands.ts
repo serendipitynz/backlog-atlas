@@ -19,6 +19,7 @@ import type {
   CommandError,
   EditorLaunch,
   EditorReadiness,
+  GitRemoteRead,
   LaunchMethod,
   LedgerResponse,
   LoadedSettings,
@@ -114,6 +115,15 @@ export function ledgerRemove(slug: string): Promise<LedgerResponse> {
  */
 export function ledgerUpdate(request: UpdateRequest): Promise<LedgerResponse> {
   return invoke<LedgerResponse>("ledger_update", { request });
+}
+
+/**
+ * The entry's remote 現在値 (doc-10 §4.1): what Git reports for its project root right now. Reads
+ * nothing of the ledger but the root, and writes nothing — the recorded Git remote 有無属性 moves
+ * only through {@link ledgerUpdate} with `redetect_git_remote`.
+ */
+export function gitRemoteRead(slug: string): Promise<GitRemoteRead> {
+  return invoke<GitRemoteRead>("git_remote_read", { slug });
 }
 
 /** Move a row in the ledger's display order (doc-3 §4.3). Refused on a read-only ledger. */

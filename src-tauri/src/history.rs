@@ -89,6 +89,31 @@ pub struct RemoteHost {
     pub repo: String,
 }
 
+/// The project root's Git remote as it reads *right now* — the 概要区画's remote 現在値
+/// (doc-10 §4.1). Distinct from the ledger's Git remote 有無属性 (doc-3 §3.2), which is a boolean
+/// recorded at registration and refreshed only when the user asks: this is read on demand and never
+/// stored, so the two can disagree, and that disagreement is what the 再検出する control clears.
+///
+/// The four states are decision-6's split rather than a convenience. 「remote が無い」 covers two
+/// events whose next action differs — configure a remote, or point the entry at a Git repository —
+/// and [`crate::ledger::detect_git_remote`]'s boolean cannot hold them apart.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum GitRemoteRead {
+    /// A remote is configured. `name` travels with `url` because [`choose_remote_name`] *picks* one
+    /// of possibly several, and a URL shown alone would read as "the remote" when it is one of them.
+    Configured { name: String, url: String },
+    /// Git remote 不在 (decision-6): the root is a Git repository with no remote configured.
+    RemoteAbsent,
+    /// Git 対象不在 (decision-6): the root is not a Git repository. A root that is not there at all
+    /// lands here too — git refuses both the same way, and telling them apart would mean reading its
+    /// locale-dependent message, while the next action (point the entry somewhere else) is one.
+    NoRepository,
+    /// Git could not be run, or the chosen remote's URL could not be read. Neither says anything
+    /// about whether a remote exists, so it is not folded into [`GitRemoteRead::RemoteAbsent`].
+    Unreadable { detail: String },
+}
+
 /// The per-Pull-Request result of relation resolution (doc-6 §6). One entry per extracted PR so
 /// the display layer sees every PR's state, not just the ones with a hit — [`RelationOutcome`]
 /// keeps "resolved with no shared commit", "host we cannot reference", and "lookup failed" apart,
@@ -435,13 +460,77 @@ fn pick_remote_name(project_root: &Path) -> Option<String> {
     if !out.status.success() {
         return None;
     }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let names = || text.lines().map(str::trim).filter(|l| !l.is_empty());
+    choose_remote_name(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// The choice itself, over `git remote`'s output. Split from [`pick_remote_name`] so
+/// [`read_git_remote`] applies the same rule without a second spelling of it — the screen names the
+/// remote it shows, so「origin、無ければ先頭」has to be one rule or the name and the URL could come
+/// from different remotes.
+fn choose_remote_name(listing: &str) -> Option<String> {
+    let names = || listing.lines().map(str::trim).filter(|l| !l.is_empty());
     if names().any(|l| l == "origin") {
         Some("origin".to_string())
     } else {
         names().next().map(str::to_string)
     }
+}
+
+/// Read the project root's remote as it stands (doc-10 §4.1 remote 現在値). Fixed subcommands and
+/// argument arrays, never a shell string (AGENTS).
+///
+/// 対象不在 is judged by [`is_git_repo`] rather than by `git remote`'s exit code, so this screen and
+/// コミット検索 answer「ここは Git リポジトリか」the same way. Nothing here is written back: the
+/// ledger's boolean moves only through [`crate::ledger::Ledger::update`].
+pub fn read_git_remote(project_root: &Path) -> GitRemoteRead {
+    match is_git_repo(project_root) {
+        Ok(false) => return GitRemoteRead::NoRepository,
+        Err(err) => {
+            return GitRemoteRead::Unreadable {
+                detail: err.to_string(),
+            }
+        }
+        Ok(true) => {}
+    }
+    let listed = match run_git(project_root, &["remote".to_string()]) {
+        Ok(out) => out,
+        Err(err) => {
+            return GitRemoteRead::Unreadable {
+                detail: err.to_string(),
+            }
+        }
+    };
+    if !listed.status.success() {
+        return GitRemoteRead::Unreadable {
+            detail: first_line(&String::from_utf8_lossy(&listed.stderr), GIT_FAILED),
+        };
+    }
+    let Some(name) = choose_remote_name(&String::from_utf8_lossy(&listed.stdout)) else {
+        return GitRemoteRead::RemoteAbsent;
+    };
+    let args = vec!["remote".to_string(), "get-url".to_string(), name.clone()];
+    let out = match run_git(project_root, &args) {
+        Ok(out) => out,
+        Err(err) => {
+            return GitRemoteRead::Unreadable {
+                detail: err.to_string(),
+            }
+        }
+    };
+    if !out.status.success() {
+        return GitRemoteRead::Unreadable {
+            detail: first_line(&String::from_utf8_lossy(&out.stderr), GIT_FAILED),
+        };
+    }
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if url.is_empty() {
+        // A remote that is listed but yields no URL is neither 不在 nor a value to show; saying so is
+        // what keeps the 現在値 line from printing an empty string as if it were an address.
+        return GitRemoteRead::Unreadable {
+            detail: format!("remote 「{name}」の URL を読み取れませんでした"),
+        };
+    }
+    GitRemoteRead::Configured { name, url }
 }
 
 /// Parse a remote URL into a [`RemoteHost`] when its host is a recognized kind (doc-6 §5).
@@ -843,7 +932,10 @@ fn github_pull_request_commits(
         Err(Stopped::Ended { detail }) => return Err(RelationError::timed_out(detail)),
     };
     if !out.status.success() {
-        return Err(RelationError::query_failed(first_line(&out.stderr)));
+        return Err(RelationError::query_failed(first_line(
+            &out.stderr,
+            "gh の実行に失敗しました",
+        )));
     }
     Ok(out
         .stdout
@@ -881,14 +973,20 @@ fn is_sha(line: &str) -> bool {
 
 /// The first non-empty line of a program's stderr, for reporting a failure without pasting a whole
 /// help text into the screen. Kept short — the panel shows this inline.
-fn first_line(text: &str) -> String {
+///
+/// `fallback` is a parameter because a silent failure still has to say *which* program failed, and
+/// the two callers here run different ones (`gh` and `git`).
+fn first_line(text: &str, fallback: &str) -> String {
     let line = text
         .lines()
         .map(str::trim)
         .find(|l| !l.is_empty())
-        .unwrap_or("gh の実行に失敗しました");
+        .unwrap_or(fallback);
     line.chars().take(200).collect()
 }
+
+/// What [`read_git_remote`] reports when git failed without writing anything to stderr.
+const GIT_FAILED: &str = "git の実行に失敗しました";
 
 // --- shared Git invocation + URL parsing --------------------------------------------------------
 
@@ -1630,11 +1728,17 @@ mod tests {
     #[test]
     fn a_failure_reason_is_one_short_line() {
         assert_eq!(
-            first_line("\n  gh: To use GitHub CLI, run: gh auth login\nmore\n"),
+            first_line(
+                "\n  gh: To use GitHub CLI, run: gh auth login\nmore\n",
+                "gh の実行に失敗しました"
+            ),
             "gh: To use GitHub CLI, run: gh auth login"
         );
-        assert_eq!(first_line("   \n"), "gh の実行に失敗しました");
-        assert!(first_line(&"x".repeat(500)).chars().count() <= 200);
+        assert_eq!(
+            first_line("   \n", "gh の実行に失敗しました"),
+            "gh の実行に失敗しました"
+        );
+        assert!(first_line(&"x".repeat(500), GIT_FAILED).chars().count() <= 200);
     }
 
     #[test]
@@ -1787,6 +1891,94 @@ mod tests {
         // Full sha and author populated (doc-6 §3 結果).
         assert_eq!(found[0].id.len(), 40);
         assert_eq!(found[0].author, "Tester");
+    }
+
+    // --- remote 現在値 (doc-10 §4.1, decision-6) -----------------------------------------------
+
+    #[test]
+    fn choose_remote_prefers_origin_over_listing_order() {
+        assert_eq!(
+            choose_remote_name("upstream\norigin\nfork\n").as_deref(),
+            Some("origin")
+        );
+        assert_eq!(
+            choose_remote_name("upstream\nfork\n").as_deref(),
+            Some("upstream")
+        );
+        assert_eq!(choose_remote_name("  \n\n"), None);
+    }
+
+    #[test]
+    fn remote_read_tells_the_four_states_apart() {
+        let tmp = TempDir::new();
+        // Git 対象不在: a plain directory. Also the answer for a root that is not there at all.
+        let plain = tmp.path.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        match read_git_remote(&plain) {
+            GitRemoteRead::NoRepository => {}
+            GitRemoteRead::Unreadable { .. } => return, // git unavailable → skip the rest
+            other => panic!("expected NoRepository, got {other:?}"),
+        }
+        assert_eq!(
+            read_git_remote(&tmp.path.join("gone")),
+            GitRemoteRead::NoRepository
+        );
+
+        let repo = tmp.path.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        if !init_repo(&repo) {
+            return;
+        }
+        // Git remote 不在: a repository that has none. This is the case `detect_git_remote`'s
+        // boolean cannot tell from the one above, which is why both are checked here.
+        assert_eq!(read_git_remote(&repo), GitRemoteRead::RemoteAbsent);
+
+        assert!(git(
+            &repo,
+            &["remote", "add", "upstream", "https://example.invalid/u.git"]
+        ));
+        assert!(git(
+            &repo,
+            &["remote", "add", "origin", "git@github.com:owner/repo.git"]
+        ));
+        assert_eq!(
+            read_git_remote(&repo),
+            GitRemoteRead::Configured {
+                name: "origin".to_string(),
+                url: "git@github.com:owner/repo.git".to_string(),
+            },
+        );
+    }
+
+    #[test]
+    fn remote_read_and_the_ledger_boolean_can_disagree() {
+        // The 概要区画 shows both because this state exists: the entry was registered before the
+        // remote was added, so 有無属性 is false while a URL reads fine. Nothing here writes the
+        // ledger — clearing the disagreement is the 再検出する control's job (doc-10 §4.1).
+        let tmp = TempDir::new();
+        let repo = tmp.path.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        if !init_repo(&repo) {
+            return;
+        }
+        let entry = ProjectEntry {
+            slug: "atlas".to_string(),
+            project_root: repo.clone(),
+            backlog_root: repo.join("backlog"),
+            git_remote_present: false,
+            status_aliases: Default::default(),
+        };
+        assert!(git(
+            &repo,
+            &["remote", "add", "origin", "git@github.com:owner/repo.git"]
+        ));
+
+        assert!(matches!(
+            read_git_remote(&repo),
+            GitRemoteRead::Configured { .. }
+        ));
+        // The recorded boolean still gates relation resolution (doc-6 §5, AC #3 of TASK-10).
+        assert!(detect_remote_host(&entry).is_none());
     }
 
     #[test]

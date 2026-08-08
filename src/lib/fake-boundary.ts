@@ -20,6 +20,7 @@ import type {
   CliReadiness,
   EditorLaunch,
   EditorReadiness,
+  GitRemoteRead,
   LaunchMethod,
   LedgerResponse,
   LoadedSettings,
@@ -96,6 +97,8 @@ export const answers = {
   settings: { settings: DEFAULT_SETTINGS, status: { state: "stored" } } as LoadedSettings,
   settingsPath: "/config/settings.toml",
   loads: [] as ProjectLoad[],
+  /** Answers `git_remote_read` — the 概要区画's remote 現在値 (doc-10 §4.1). */
+  gitRemote: { state: "remoteAbsent" } as GitRemoteRead,
   history: new Map<string, TaskHistory>(),
   /**
    * Holds `task_history_read` open, for a test about a read that has *not* answered yet — 取消 is
@@ -164,6 +167,7 @@ export function reset(): void {
   answers.settings = { settings: { ...DEFAULT_SETTINGS }, status: { state: "stored" } };
   answers.settingsPath = "/config/settings.toml";
   answers.loads = [];
+  answers.gitRemote = { state: "remoteAbsent" };
   answers.history = new Map();
   answers.historyNeverAnswers = false;
   answers.update = () => Promise.reject(new Error("update_apply was not expected in this test"));
@@ -229,6 +233,9 @@ export const commandFakes = {
 
   ledgerUpdate: (request: UpdateRequest): Promise<LedgerResponse> =>
     record("ledger_update", [request], () => Promise.resolve(answers.ledger)),
+
+  gitRemoteRead: (slug: string): Promise<GitRemoteRead> =>
+    record("git_remote_read", [slug], () => Promise.resolve(answers.gitRemote)),
 
   ledgerReorder: (slug: string, newIndex: number): Promise<LedgerResponse> =>
     record("ledger_reorder", [slug, newIndex], () => Promise.resolve(answers.ledger)),

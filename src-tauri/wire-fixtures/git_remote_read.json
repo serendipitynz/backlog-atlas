@@ -1,0 +1,5 @@
+{
+  "state": "configured",
+  "name": "origin",
+  "url": "git@github.com:serendipitynz/backlog-atlas.git"
+}
