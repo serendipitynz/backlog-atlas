@@ -361,6 +361,8 @@ export interface ShortcutKeyEvent {
    * `isComposing === false` and this code (`Editor.svelte` has checked both since doc-8 §6.2).
    */
   keyCode: number;
+  /** True when the OS is repeating a key the user has not released ([`continuesHeldPress`]). */
+  repeat: boolean;
 }
 
 /** Where the press happened, and whether the caret is in text. */
@@ -424,4 +426,25 @@ export function matchShortcut(
     if (chordMatches(binding.chord, event, context.mac)) return binding;
   }
   return null;
+}
+
+/**
+ * 押下の継続: whether this keydown is the OS repeating a key the caller has already answered and
+ * stopped, rather than a new press. `held` is that key (as [`Chord.key`] spells it, lower-cased), and
+ * `null` while the caller is holding none — only the caller knows which press it answered, so the key
+ * lives there and this decides what it means.
+ *
+ * A repeat has to be told apart because the operation an assignment runs can move focus into a field.
+ * [`matchShortcut`] then withholds the row — doc-7 §2.1's 単独キーの抑止 reads where the caret is, not
+ * which press is under way — and the key's own character lands in the box the press itself opened
+ * (TASK-129: holding `F` filled the 値一覧's 検索欄 with `f`s). **A repeat is not 文字入力**: the user
+ * has not let go of a key they pressed against a screen that had no field in it, so the whole press
+ * stays the caller's and its default stays stopped.
+ *
+ * The operation is *not* re-issued for a repeat — only the default is stopped. A held key that kept
+ * matching goes on answering as before (holding Backspace undoes one 絞り込み per repeat), because
+ * that press never stopped matching and never reaches here.
+ */
+export function continuesHeldPress(event: ShortcutKeyEvent, held: string | null): boolean {
+  return event.repeat && held !== null && event.key.toLowerCase() === held;
 }

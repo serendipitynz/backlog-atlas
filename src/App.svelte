@@ -51,6 +51,7 @@
   import { headerMenu, type HeaderEntryId, type MenuItem } from "./lib/header";
   import {
     ariaKeyShortcuts,
+    continuesHeldPress,
     matchShortcut,
     shortcutHint,
     textEntryFocused,
@@ -1661,8 +1662,18 @@
    * menu, the menu has its ☰, and the 絞り込み pair are buttons on the フィルタ帯 (doc-7 §2.1
    * ショートカットだけが入口の操作を作らない / AC #9).
    */
+  /**
+   * The key whose default this handler is stopping for as long as it is held (`null` while none is).
+   * Held here rather than inside the listener because the listener is re-made per press.
+   */
+  let heldKey: string | null = null;
+
   $effect(() => {
     function pressed(event: KeyboardEvent): void {
+      // Only a repeat continues the press that set `heldKey`, so any other keydown ends it. Done here
+      // rather than on `keyup`, because a keyup can be missed — the window can lose focus mid-press —
+      // and a stale key would stop a default the user does want.
+      if (!event.repeat) heldKey = null;
       // 被せ層 answer their own keys where they are and consume the press (`Modal.svelte`,
       // `HeaderMenu.svelte`, `FilterPopover.svelte`). A モーダル additionally keeps focus inside itself,
       // so while one is up the shell offers no 適用範囲 and leaves the keyboard to it.
@@ -1674,10 +1685,19 @@
         textEntry: textEntryFocused(document.activeElement),
         mac: MAC_KEYBOARD,
       });
-      if (binding === null) return;
+      if (binding === null) {
+        // The press this handler answered has stopped matching, and a repeat is why: `addFilter` moves
+        // focus into the 値一覧's 検索欄, so §2.1 withholds the row from the caret's new position and
+        // the key's own character reaches the box the press opened. The press is still Atlas's.
+        if (continuesHeldPress(event, heldKey)) event.preventDefault();
+        return;
+      }
       // Stopped for a matched press whatever happens next: the key is Atlas's from here on, and letting
       // the WebView act on it as well is how ⌘N would open a modal *and* a window.
-      if (binding.preventsDefault !== null) event.preventDefault();
+      if (binding.preventsDefault !== null) {
+        event.preventDefault();
+        heldKey = binding.chord.key.toLowerCase();
+      }
       switch (binding.action) {
         case "openRegister":
           openEntry("register");

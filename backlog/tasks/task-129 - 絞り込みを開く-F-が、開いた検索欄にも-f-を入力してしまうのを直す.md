@@ -4,7 +4,7 @@ title: 絞り込みを開く F が、開いた検索欄にも f を入力して�
 status: In Review
 assignee: []
 created_date: '2026-08-08 23:08'
-updated_date: '2026-08-08 23:39'
+updated_date: '2026-08-08 23:55'
 labels:
   - ui
   - 'kind:bug'
@@ -69,5 +69,37 @@ TASK-125 とは無関係の既存挙動で、同タスクの目視で見つか�
 
 **欄へ文字が入らないこと自体は unit でも component でも押さえられない。**`shortcuts.ts` は DOM を読まない純関数であり、**`jsdom` は keydown の既定動作（文字挿入）を実装していない**（実測: `input` にフォーカスを当てて `keydown` を dispatch しても `value` は `""` のまま）。押さえられるのは記録の側で、欠陥そのものの証拠は上の実エンジン実測である。
 
-**フロントエンドのフォーマッタは無い**ので当てていない。静的解析は `pnpm run check`（svelte-check、292 ファイル・0 errors / 0 warnings。`_sandbox/app-check/vite.config.ts` を拾う既知の 1 行は出る）、試験は `pnpm test`（701 件・28 ファイル）、`pnpm run build` も通した。**Rust 側は 1 行も触っていない**ので `cargo test` / `cargo fmt` / `cargo clippy` は実行していない。
+**フロントエンドのフォーマッタは無い**ので当てていない。静的解析は `pnpm run check`（svelte-check、292 ファイル・0 errors / 0 warnings。`_sandbox/app-check/vite.config.ts` を拾う既知の 1 行は出る）、試験は `pnpm test`（704 件・28 ファイル。1R の 3 件を含む）、`pnpm run build` も通した。**Rust 側は 1 行も触っていない**ので `cargo test` / `cargo fmt` / `cargo clippy` は実行していない。
+
+---
+
+**1R の [P2] 1 件で、AC #1 の穴がもう 1 つ出た（押しっぱなし）。**指摘は「`F` を長押しすると、フォーカス移動後の repeat keydown が検索欄へ `f` を入力する」。**反証を試みたが実測で再現した**ので受け入れた（WebKit、`keyboard.down` を同じキーで繰り返すと `repeat: true` の trusted な keydown になる）。
+
+```
+f repeat=false target=body    ← 初回は止まっている
+f repeat=true  target=input   ← 2 打目以降が検索欄へ入る
+f repeat=true  target=input
+f repeat=true  target=input
+→ search="fff"  values=0  「「fff」に一致する値はありません」
+```
+
+**同じ 1 つの言い落としの、1 段あと。**`preventsDefault` を足しても止まるのは最初の 1 打だけで、2 打目からは `matchShortcut` が「caret が欄の中にある」を見て行を差し控える（doc-7 §2.1 の単独キーの抑止）。**§2.1 が読むのはカーソルの位置であって、いま進行中の押下ではない。**利用者は「欄が無い画面に対して押した」キーをまだ離していないので、repeat は 文字入力 ではない。
+
+**直し方: 押下の継続を呼び出し側が持つ。**`shortcuts.ts` に `continuesHeldPress(event, held)` を足し（`ShortcutKeyEvent` に `repeat` が増えた）、`App.svelte` は「打ち消しを持つ行に一致した押下のキー」を `heldKey` に覚える。以降の repeat は、一致しなくなっても既定動作だけを止める。**操作は再発行しない** — 一致し続ける押下（Backspace の長押し）はこの枝に来ないので、そちらの繰り返しは今までどおり効く。試験は `押下の継続 (TASK-129)` の 3 件（同じキーの repeat・新しい押下・別のキーの repeat）で、これは DOM 無しの純関数なので `unit` に置ける。
+
+**この穴を持つのはシェルだけであることを見た**（他の 4 つの押鍵面）。`Modal.svelte` の Tab と `Editor.svelte`・`LaneCreate.svelte` の ⌘Enter は `firesInTextEntry: true` なので repeat も一致し続け、差し控えが起きない。`HeaderMenu.svelte` と `FilterPopover.svelte` は Escape しか答えず、Escape は文字を生まない。**操作がフォーカスを文字欄へ移すのはシェルの `addFilter` だけ**なので、`heldKey` もそこにしか要らない。
+
+**`heldKey` は keyup ではなく「repeat でない keydown」で捨てる。**keyup は取りこぼせる（押下中に窓がフォーカスを失う）ので、古い値が残ると利用者が入れたい文字を止めてしまう。repeat 以外の keydown は必ず新しい押下なので、そこで捨てれば取りこぼしが自己回復する。
+
+**修正後の実測（同じ押鍵）。**
+
+| | 1R 修正前 | 1R 修正後 |
+|---|---|---|
+| `F` 長押し（初回＋repeat 3） | `search="fff"` / 0 件 | `search=""` / **19 件** |
+| ポインタで開いた値一覧で `f` 長押し | `"ffff"` | `"ffff"`（変わらず） |
+| 条件 2 件で `Backspace` 長押し | 1 打ごとに 1 件戻る | 1 打ごとに 1 件戻る（変わらず） |
+
+2 行目と 3 行目が、**止めたのが「この handler が答えた押下の継続」だけ**であることを示す。ポインタで開いた欄への長押しは新しい押下なので止まらず、Backspace は一致し続けるので繰り返し効く。
+
+**範囲外で 1 件測って、直さずに報告した**（同型の数え上げの続き）: **`M` の長押しはメニューを 1 打ごとに開閉する**（実測: 1 打→開、2 打→閉、3 打→開、4 打→閉）。本タスクの修正で変わっておらず、`toggleMenu` は打ち消しを持たないので新しい枝にも入らない。**文字はどこにも入らない**ので AC #1・#3 の型には当たらない。直すには「この操作は繰り返してよいか」を行ごとに持つことになり、それは割り当て一覧に 6 欄目を足すこと＝doc-7 §2.1 の改訂なので、**本タスクの「契約の変更ではない」という前提の外にある**。別タスクにするかはユーザーの判断。
 <!-- SECTION:NOTES:END -->
