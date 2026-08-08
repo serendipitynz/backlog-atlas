@@ -107,6 +107,7 @@
   // 行長上限 (doc-8 §2.1, TASK-113). Borrowed rather than restated: the number is one measurement,
   // and a second `48` here would let the two drift while both docs still call it 行長上限.
   import { PROSE_MAX_WIDTH_REM } from "../lib/placement";
+  import { createGitRemoteReader } from "../lib/git-remote-read";
   import type {
     CliReadiness,
     Document,
@@ -372,16 +373,22 @@
    */
   let gitRemote = $state<GitRemoteRead | null>(null);
 
+  /**
+   * Every read goes through this, so only the newest one reaches the line — including the one
+   * 再検出する starts, which is about the same entry as the effect's and would otherwise be
+   * indistinguishable from it (`git-remote-read.ts` carries the reasoning and the ordering test).
+   */
+  const remoteReader = createGitRemoteReader({
+    read: (slug) => onreadGitRemote(slug),
+    show: (read) => (gitRemote = read),
+  });
+
   $effect(() => {
-    const slug = entry.slug;
-    // A dependency, not context: `ledger_update` can move the root under the same slug (doc-3 §4.3),
-    // and this value describes the root. Reading it re-runs the read after a move, and comparing it
-    // when the answer lands is what stops a read from describing a directory the entry has left.
-    const root = entry.project_root;
-    gitRemote = null;
-    onreadGitRemote(slug).then((read) => {
-      if (slug === entry.slug && root === entry.project_root) gitRemote = read;
-    });
+    // The root is a dependency, not context: `ledger_update` can move it under the same slug
+    // (doc-3 §4.3), and this value describes the root — so a move has to re-read. Which answer wins
+    // is the reader's business, not this effect's.
+    void entry.project_root;
+    void remoteReader.load(entry.slug);
   });
 
   let remoteLine = $derived(gitRemoteLine(gitRemote));
@@ -410,8 +417,9 @@
         return;
       }
       // Read again rather than reasoning from the new entry: the recorded boolean is what the write
-      // returned, and the line shows the address — only a second read can produce it.
-      gitRemote = await onreadGitRemote(entry.slug);
+      // returned, and the line shows the address — only a second read can produce it. Through the
+      // reader, so this answer supersedes any read still in flight instead of racing it.
+      await remoteReader.load(entry.slug);
       overviewNotice = `${result.slug} の Git remote を再検出しました。`;
     } finally {
       ledgerSaving = false;
