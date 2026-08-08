@@ -173,9 +173,10 @@
    */
   let detailModalOpen = $state(false);
   /**
-   * Whether the 一覧モーダル is open — the 割り当て一覧 (doc-7 §2.1) as something read. It is a モーダル and
-   * not part of the menu since TASK-67: the table is the longest thing the menu held, and a reference
-   * folded under the entries pushed the entries themselves out of the menu's own height.
+   * Whether the 一覧モーダル is open — where the 割り当て一覧's 画面に出す列 are read (doc-7 §2.1 holds the
+   * record and this table apart). It is a モーダル and not part of the menu since TASK-67: the table is the
+   * longest thing the menu held, and a reference folded under the entries pushed the entries themselves
+   * out of the menu's own height.
    */
   let shortcutHelpOpen = $state(false);
   /**
@@ -489,7 +490,7 @@
     }),
   );
   /**
-   * The メニュー's lines (doc-7 §2.1): the 共通入口, then the line that opens the 割り当て一覧, then
+   * The メニュー's lines (doc-7 §2.1): the 共通入口, then the line that opens the 一覧モーダル, then
    * 行非表示 — すべて戻す and one line per hidden row, which is where doc-11 §4 puts the per-row list the
    * 帯 ⑥ used to carry. Given the unfiltered `hiddenRows`, so a slug that left the ledger is not offered.
    */
@@ -1715,9 +1716,9 @@
            counting a screen that is not up. -->
       <span class="totals">{totalsLabel(gridTotals)}</span>
     {/if}
-    <!-- メニュー (doc-7 §2.1): the 共通入口, the 割り当て一覧, and 行非表示 を戻す. It is the header's only
-         control — 登録 and 設定 no longer have a button of their own beside it, since the menu already
-         held both and a header that offers each entry twice spends its width saying the same thing.
+    <!-- メニュー (doc-7 §2.1): the 共通入口, the line to the 一覧モーダル, and 行非表示 を戻す. It is the
+         header's only control — 登録 and 設定 no longer have a button of their own beside it, since the
+         menu already held both and a header that offers each entry twice spends its width saying the same thing.
          Their chords still reach them directly, and the menu is the 併置 §2.1 requires of a shortcut.
 
          アイコンのみのボタン (doc-11 §2.4): the figure carries no words, so the button names itself with
@@ -1806,9 +1807,9 @@
   {/if}
 
   {#if shortcutHelpOpen}
-    <!-- 割り当て一覧 (doc-7 §2.1) as something read: a モーダル like the two 共通入口, because it is a
-         reference rather than a place to work — nothing behind it is unmounted, so a グリッド mid-filter
-         and an open 編集セッション are both still there when it closes. -->
+    <!-- The 割り当て一覧's 画面に出す列 as something read (doc-7 §2.1): a モーダル like the two 共通入口,
+         because it is a reference rather than a place to work — nothing behind it is unmounted, so a
+         グリッド mid-filter and an open 編集セッション are both still there when it closes. -->
     <Modal label="キーボード操作の一覧" onclose={() => (shortcutHelpOpen = false)}>
       <ShortcutHelp />
     </Modal>

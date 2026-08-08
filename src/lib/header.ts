@@ -18,7 +18,7 @@
  * |---|---|---|
  * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the fixed header offers through its メニュー — 登録 and 設定 |
  * | doc-7 §2.1 メニュー | [`MenuItem`] + [`headerMenu`] | メニュー項目: one line of the menu, and the whole list in order |
- * | doc-7 §2.1 割り当て一覧 | [`SHORTCUT_HELP_LABEL`] + the `shortcutHelp` item | the line that opens the 一覧モーダル. The list itself is `shortcuts.ts`; this is the way to it |
+ * | doc-7 §2.1 割り当て一覧 | [`SHORTCUT_HELP_LABEL`] + the `shortcutHelp` item | the line that opens the 一覧モーダル, where the 一覧's 画面に出す列 are drawn. The 一覧 itself is `shortcuts.ts`; this is the way to its table |
  * | doc-7 §5.1 行非表示 / doc-11 §4 ⑥ | [`SHOW_ALL_ROWS_LABEL`] + the `showRow` items | すべて戻す, and the per-row list doc-11 §4 puts in the menu rather than in the 帯 |
  * | doc-11 §5 無効化提示 | [`showAllRowsHeld`] | 保留理由: why すべて戻す cannot be pressed, or `null` when it can |
  *
@@ -113,8 +113,8 @@ export type MenuItem =
   | { kind: "showRow"; key: string; slug: string; label: string; held: null };
 
 /**
- * The menu in order: the 共通入口 first (they are what the header itself offers), then the 割り当て一覧,
- * then 行非表示 — すべて戻す, then one line per hidden row.
+ * The menu in order: the 共通入口 first (they are what the header itself offers), then the line to the
+ * 一覧モーダル, then 行非表示 — すべて戻す, then one line per hidden row.
  *
  * The 割り当て一覧 line sits above the 行非表示 group rather than at the end, because the group below it is
  * as long as the number of hidden rows: a fixed line placed after a variable list moves every time a row

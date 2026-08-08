@@ -481,8 +481,9 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
   });
 
   /**
-   * The 割り当て一覧 (doc-7 §2.1) moved out of the menu and into a モーダル of its own (TASK-67), so the
-   * check names where it went: it is the modal that holds the table now, and the menu that does not.
+   * The table that draws the 割り当て一覧 (doc-7 §2.1) moved out of the menu and into a モーダル of its own
+   * (TASK-67) — the 一覧 itself stays in `shortcuts.ts` — so the check names where the table went: it is
+   * the modal that holds it now, and the menu that does not.
    * A test that only pressed the line and looked for a dialog would pass with the table still folded
    * into the menu underneath — which is the shape this change was made to end.
    */
