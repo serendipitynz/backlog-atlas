@@ -51,8 +51,8 @@
     ISSUE_BUSY_REASON,
     MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
     MILESTONE_REMOVE_MOVES_THE_FILE,
-    TASK_CREATE_OMITTED_FIELDS,
-    TASK_CREATE_SCOPE_NOTE,
+    TASK_CREATE_LATER_FIELDS,
+    TASK_CREATE_NOTE,
     buildDocCreate,
     buildDocUpdate,
     buildMilestoneAdd,
@@ -243,6 +243,15 @@
 
   const OVERVIEW_BLOCKED_ID = "overview-blocked";
   const UNREGISTER_BLOCKED_ID = "overview-unregister-blocked";
+
+  /**
+   * What the 注記の入口 is called, and what the 注記モーダル it raises is announced as (doc-10 §7).
+   *
+   * One string for both. The figure on the button has no word of its own (doc-11 §2.4), so its
+   * `aria-label` has to name what pressing it gets you — and that is the layer, whose `role="dialog"`
+   * is then announced by the same name. Two strings here would let the promise and the thing drift.
+   */
+  const TASK_NOTE_LABEL = "作成後に追加できる項目";
 
   let saveBlocked = $derived(
     // Ordered as the obstacles are: a ledger that cannot be written first, an action in flight
@@ -925,13 +934,26 @@
   // this file supplies only what goes inside and when the layer may go.
 
   /**
-   * Which 作成モーダル is up, or `null` while none is.
+   * Which 被せ層 this screen has up, or `null` while none is.
    *
-   * One value rather than a flag per 区画, for the reason doc-7 §2.1 gives: 被せ層 は 1 枚だけ. Two
-   * flags could disagree; this cannot. 区画切替 shows one 区画 at a time in any case, so there is no
-   * state where both would be wanted.
+   * One value rather than a flag per layer, for the reason doc-7 §2.1 gives: 被せ層 は 1 枚だけ. Flags
+   * could disagree; this cannot. 区画切替 shows one 区画 at a time in any case, so there is no state
+   * where two would be wanted.
+   *
+   * **TASK-123 added the third member**: doc-10 §7's 注記モーダル, which the 新規タスク区画 raises from
+   * its 注記の入口. It joins this value rather than getting a flag of its own precisely because the
+   * rule is about layers and not about 作成.
    */
-  let createOpen = $state<"document" | "milestone" | null>(null);
+  let layerOpen = $state<"document" | "milestone" | "task-note" | null>(null);
+
+  /**
+   * The 作成モーダル among them, or `null`. Everything below that is about a 作成 — the 下書き, the
+   * 破棄前確認, what the ✕ has to ask — reads this rather than [`layerOpen`], so the 注記モーダル
+   * (which holds no input) cannot fall into any of it.
+   */
+  let createOpen = $derived<"document" | "milestone" | null>(
+    layerOpen === "document" || layerOpen === "milestone" ? layerOpen : null,
+  );
   /**
    * Whether the open layer's close request is standing and waiting for an answer (doc-11 §7).
    *
@@ -950,8 +972,14 @@
         : false,
   );
 
-  /** The layer's accessible name — what the 作成の入口 that opened it is called (doc-11 §7). */
-  let createLabel = $derived(createOpen === "milestone" ? "新規マイルストーン" : "新規文書");
+  /** The layer's accessible name — what the 入口 that opened it is called (doc-11 §7). */
+  let layerLabel = $derived(
+    layerOpen === "milestone"
+      ? "新規マイルストーン"
+      : layerOpen === "task-note"
+        ? TASK_NOTE_LABEL
+        : "新規文書",
+  );
 
   let createConfirm = $derived<DiscardAnswers | null>(
     createCloseAsked
@@ -963,7 +991,7 @@
   // an effect rather than from the two functions below so that one place decides what is reported,
   // whatever set `createOpen`.
   $effect(() => {
-    onoverlay(createOpen !== null);
+    onoverlay(layerOpen !== null);
     // Retracted on the way out — a `$effect` without this does not run at destroy, so unmounting
     // with a layer up would leave the shell holding `true` for a screen that no longer exists. Its
     // `screen` guard silences that on the swimlane but not on the *next* プロジェクト詳細画面, which
@@ -984,7 +1012,24 @@
     pendingDocument = null;
     pendingMilestone = null;
     createCloseAsked = false;
-    createOpen = which;
+    layerOpen = which;
+  }
+
+  /**
+   * Raise the 注記モーダル (doc-10 §7) from the 注記の入口 beside the 新規タスク heading.
+   *
+   * The same lapse the 作成モーダル causes (doc-11 §7): an unanswered 破棄前確認 standing in a 区画
+   * underneath is withdrawn, because the question is drawn by whichever layer is frontmost. Nothing is
+   * discarded — the 未保存入力 it was about stays where it is.
+   *
+   * There is no close *request* to wire: the layer holds no 下書き, so `Modal`'s own close acts, and
+   * the way out is this function's inverse rather than [`requestCreateClose`].
+   */
+  function openTaskNote(): void {
+    pendingDocument = null;
+    pendingMilestone = null;
+    createCloseAsked = false;
+    layerOpen = "task-note";
   }
 
   /**
@@ -1005,6 +1050,23 @@
   }
 
   /**
+   * What `Modal`'s single exit reaches, whichever layer is up (doc-11 §7: 出口はすべて 1 つの閉じる
+   * 要求へ集まる).
+   *
+   * The 注記モーダル leaves immediately. Both things that could stand in the way of a 作成モーダル —
+   * a 発行 in flight and a 下書き to ask about — are about input this layer does not have, so routing
+   * it through [`requestCreateClose`] would turn a reader away from an exit for a reason that cannot
+   * apply to what they are reading.
+   */
+  function requestLayerClose(): void {
+    if (layerOpen === "task-note") {
+      layerOpen = null;
+      return;
+    }
+    requestCreateClose();
+  }
+
+  /**
    * Close the layer, dropping what its form held. The dropping is the point — it is what the
    * 破棄前確認 above is a question about, and it is why the 作成の入口 always opens on an empty form
    * rather than on the leftovers of a session the user walked away from.
@@ -1013,7 +1075,7 @@
     if (createOpen === "document") docInput = { ...EMPTY_DOC_CREATE };
     else if (createOpen === "milestone") milestoneInput = { ...EMPTY_MILESTONE_ADD };
     createCloseAsked = false;
-    createOpen = null;
+    layerOpen = null;
   }
 
   // --- 未保存入力 (doc-8 §6.3) -------------------------------------------------------------------
@@ -2186,7 +2248,23 @@
       {:else}
         <!-- 新規タスク区画 (doc-10 §7) -->
         <section>
-          <h2>新規タスク</h2>
+          <!-- 区画見出しの横に 注記の入口 (doc-10 §7, TASK-123). アイコンのみのボタン (doc-11 §2.4):
+               the figure carries no word, so the `aria-label` carries the name — the same name the
+               layer it raises is announced by, since that is what the reader is being offered.
+               Until TASK-123 the five fields sat at the foot of this 区画 at all times, 361px of an
+               885px 区画 and the reason the form did not fit its scroller (measured). -->
+          <div class="section-head">
+            <h2>新規タスク</h2>
+            <button
+              type="button"
+              class="note-entry"
+              aria-label={TASK_NOTE_LABEL}
+              title={TASK_NOTE_LABEL}
+              onclick={openTaskNote}
+            >
+              <Icon name="circle-question-mark" />
+            </button>
+          </div>
 
           {#if unreadableNote !== null}
             <p class="unreadable">{unreadableNote}</p>
@@ -2307,22 +2385,6 @@
             </p>
           {/if}
 
-          <!-- The omissions are stated as a product judgment (doc-10 §7), never as「CLI に無い」—
-               v1.48.0's `task create` does accept these (measured), so that would be false. -->
-          <div class="scope">
-            <h3>この区画が欄を出さない項目</h3>
-            <p>{TASK_CREATE_SCOPE_NOTE}</p>
-            <ul>
-              {#each TASK_CREATE_OMITTED_FIELDS as field (field.label)}
-                <li>
-                  <span class="label">{field.label}</span>
-                  <code>{field.flag}</code>
-                  <p>{field.reason}</p>
-                  <p class="after">作成後: {field.after}</p>
-                </li>
-              {/each}
-            </ul>
-          </div>
         </section>
       {/if}
     </div>
@@ -2330,25 +2392,26 @@
 </div>
 
 <!--
-  作成モーダル (doc-10 §1, TASK-117). Outside the screen's own boxes because it is a 被せ層 and not a
-  part of any 区画: `Modal.svelte` draws a fixed backdrop over the window, and the layer covers the
-  上部帯 the same way the header's three do.
+  この画面が上げる被せ層 — 作成モーダル (doc-10 §1, TASK-117) と 注記モーダル (doc-10 §7, TASK-123).
+  Outside the screen's own boxes because a 被せ層 is not a part of any 区画: `Modal.svelte` draws a
+  fixed backdrop over the window, and the layer covers the 上部帯 the same way the header's three do.
 
-  One `Modal` for both 区画 rather than one each: 被せ層 は 1 枚だけ (doc-7 §2.1), and `createOpen`
-  already makes that structural. It carries the same three obligations here as anywhere — focus held
-  inside, Escape, focus back to the 作成の入口 the layer captured as it mounted.
+  One `Modal` for all three contents rather than one each: 被せ層 は 1 枚だけ (doc-7 §2.1), and
+  `layerOpen` already makes that structural. It carries the same three obligations here as anywhere —
+  focus held inside, Escape, focus back to the 入口 the layer captured as it mounted.
 
-  `closeBlocked` is `issuingReason`, which stands exactly while `issuing` does: doc-11 §7 wants the
-  circumstance held by the thing that wires *both* exits, and here that is this file. What the reason
-  guards is a 作成 already sent to a management file — offering 破棄して閉じる over that would ask the
-  user about input that is at this moment being written.
+  `closeBlocked` and `confirmDiscard` are about a 下書き, so both are `null` for the 注記モーダル,
+  which has none. On a 作成モーダル `closeBlocked` is `issuingReason`, which stands exactly while
+  `issuing` does: doc-11 §7 wants the circumstance held by the thing that wires *both* exits, and here
+  that is this file. What the reason guards is a 作成 already sent to a management file — offering
+  破棄して閉じる over that would ask the user about input that is at this moment being written.
 -->
-{#if createOpen !== null}
+{#if layerOpen !== null}
   <Modal
-    label={createLabel}
-    closeBlocked={issuingReason}
+    label={layerLabel}
+    closeBlocked={createOpen === null ? null : issuingReason}
     confirmDiscard={createConfirm}
-    onclose={requestCreateClose}
+    onclose={requestLayerClose}
   >
     {#if createOpen === "document"}
       <div class="modal-form">
@@ -2403,6 +2466,20 @@
             <span class="reason">{docCreateIssue.reason}</span>
           {/if}
         </div>
+      </div>
+    {:else if layerOpen === "task-note"}
+      <!-- 注記モーダル (doc-10 §7). 代替経路の案内 (doc-11 §8) and nothing else: where these are
+           added, never why the form has no input for them. No 下部操作行 — the layer holds no
+           下書き, so it has no exit that writes and leaves for the ✕ to be told apart from
+           (doc-11 §7 の条件). -->
+      <div class="modal-form note">
+        <h2>{TASK_NOTE_LABEL}</h2>
+        <p>{TASK_CREATE_NOTE}</p>
+        <ul>
+          {#each TASK_CREATE_LATER_FIELDS as field (field)}
+            <li>{field}</li>
+          {/each}
+        </ul>
       </div>
     {:else}
       <div class="modal-form">
@@ -3213,8 +3290,7 @@
   // 照合不能 is neither a conflict nor a failure (doc-9 §4.2/§5): its own family's colour, so it
   // cannot be read as 不整合 (decision-6・decision-22 の「族を同じ印へ混ぜない」).
   .warn,
-  .undetectable,
-  .scope {
+  .undetectable {
     margin: 0.4rem 0;
     padding: 0.35rem 0.45rem;
     border-left: 3px solid;
@@ -3231,38 +3307,44 @@
     background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);
   }
 
-  // 出さない項目 stays neutral: it is Atlas's own product judgment rather than a CLI constraint.
-  .scope {
-    border-left-color: var(--line-strong);
-    background: var(--inset);
+  // 区画見出しと、その横に置く入口 (doc-10 §7). `baseline` so the figure sits on the heading's own
+  // line rather than on the middle of its box, which is where an icon beside text is looked for.
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+
+    > h2 {
+      margin: 0;
+    }
   }
 
-  .scope {
-    margin-top: 0.9rem;
+  // 注記の入口: アイコンのみのボタン (doc-11 §2.4). The figure is 1em of whatever box it sits in, so
+  // the size comes from this button's font-size and nothing here names a second one.
+  .note-entry {
+    padding: 0.15rem;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 0.82rem;
+    line-height: 1;
+    cursor: pointer;
 
+    &:hover {
+      color: var(--fg);
+    }
+  }
+
+  // 注記モーダル (doc-10 §7): one sentence and the names under it. No `code`, no per-item reason —
+  // what the layer is for is 代替経路の案内 alone (doc-11 §8).
+  .note {
     ul {
-      margin: 0;
-      padding-left: 1rem;
+      margin: 0.35rem 0 0;
+      padding-left: 1.1rem;
     }
 
     li {
-      margin-bottom: 0.45rem;
-    }
-
-    code {
-      font-size: 0.7rem;
-    }
-
-    p {
-      margin: 0.15rem 0 0;
-      color: var(--muted);
-      font-size: 0.7rem;
-    }
-
-    .label {
-      margin-right: 0.3rem;
-      font-weight: 600;
-      opacity: 1;
+      margin-bottom: 0.2rem;
     }
   }
 

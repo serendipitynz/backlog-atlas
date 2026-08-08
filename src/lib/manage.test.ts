@@ -17,8 +17,8 @@ import {
   MILESTONE_REMOVE_MOVES_THE_FILE,
   MILESTONE_RENAME_REQUIRED_REASON,
   MILESTONE_RENAME_UNCHANGED_REASON,
-  TASK_CREATE_OMITTED_FIELDS,
-  TASK_CREATE_SCOPE_NOTE,
+  TASK_CREATE_LATER_FIELDS,
+  TASK_CREATE_NOTE,
   TASK_TITLE_REQUIRED_REASON,
   MILESTONE_DESCRIPTION_HEADING_REASON,
   MILESTONE_DESCRIPTION_UNCHANGED_REASON,
@@ -542,37 +542,37 @@ describe("発行の可否", () => {
   });
 });
 
-// --- 新規タスク区画で欄を出さない項目 (doc-10 §7) ----------------------------------------------
-
-describe("新規タスク作成の範囲", () => {
-  it("states the narrowing as a product judgment, never as a missing CLI feature", () => {
-    // doc-10 §7 forbids writing「CLI に無い」: v1.48.0's `task create` does accept these (measured),
-    // so it would be false — and it would leave the CLI as a pretext for widening the form later.
-    expect(TASK_CREATE_SCOPE_NOTE).toContain("製品判断");
-    for (const field of TASK_CREATE_OMITTED_FIELDS) {
-      expect(field.reason).not.toContain("CLI に無い");
-      expect(field.flag).not.toBe("");
-      // Whether an omitted field has a post-creation route differs per field (doc-10 §7), so each
-      // one carries its own.
-      expect(field.after).not.toBe("");
-    }
+describe("新規タスクの注記", () => {
+  it("says where the fields go instead, and never why the form omits them", () => {
+    // 代替経路の案内 (doc-11 §8): the note carries a route and nothing else. TASK-123 dropped the
+    // per-field reasons, so the assertion is that they did not come back — a reason here would be
+    // the thing the 目視 called ノイズ, and「CLI に無い」would be false besides (v1.48.0's
+    // `task create` does accept all five, measured 2026-07-29).
+    expect(TASK_CREATE_NOTE).toContain("作成後");
+    expect(TASK_CREATE_NOTE).toContain("タスクの編集");
+    expect(TASK_CREATE_NOTE).not.toContain("CLI");
+    expect(TASK_CREATE_NOTE).not.toContain("製品判断");
+    expect(TASK_CREATE_NOTE).not.toMatch(/doc-\d|decision-\d/);
   });
 
-  it("covers exactly the fields v1.48.0 accepts and this form does not offer", () => {
-    expect(TASK_CREATE_OMITTED_FIELDS.map((field) => field.flag)).toEqual([
-      "-a",
-      "--plan",
-      "--notes",
-      "--ref",
-      "--depends-on",
+  it("names the five fields v1.48.0 accepts and this form has no input for", () => {
+    expect(TASK_CREATE_LATER_FIELDS).toEqual([
+      "assignee",
+      "実装計画",
+      "実装ノート",
+      "References",
+      "依存",
     ]);
   });
 
-  it("says that assignee cannot be cleared, since that is the one gap with no route", () => {
-    const assignee = TASK_CREATE_OMITTED_FIELDS.find((field) => field.flag === "-a");
-    expect(assignee?.after).toContain("解除");
-    expect(assignee?.after).toContain("手段がありません");
-    expect(assignee?.after).not.toMatch(/doc-\d|decision-\d/);
+  it("carries no flag names", () => {
+    // doc-11 §8 の 発行手段の記述 lost its carve-out with TASK-123: the flags were shown so that the
+    // absence could not read as「CLI に無い」, and with the reasons gone there is no false
+    // explanation left for them to guard against.
+    for (const field of TASK_CREATE_LATER_FIELDS) {
+      expect(field).not.toMatch(/^-|--/);
+    }
+    expect(TASK_CREATE_LATER_FIELDS.join("")).not.toContain("-a");
   });
 });
 

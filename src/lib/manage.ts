@@ -20,7 +20,7 @@
  * | doc-9 §4.2.2 参照追随書き換えを伴うか | [`followsReferences`] | which of the six operations carries the fan-out |
  * | doc-5 §1/§3 マイルストーン説明の更新（直接書き込み操作） | [`buildMilestoneDescribe`] | the 説明 edit and the one operation on this screen that is not a CLI call (decision-21) |
  * | doc-10 §6 行頭 `##` を拒む入力検査 | [`MILESTONE_DESCRIPTION_HEADING_REASON`] | why a heading in the 説明 is refused: it would fall outside the range read back |
- * | doc-10 §7 作成フォームを絞るのは製品判断 | [`TASK_CREATE_OMITTED_FIELDS`] | the fields with no input, each with its reason and its post-creation route |
+ * | doc-10 §7 注記モーダル | [`TASK_CREATE_NOTE`] + [`TASK_CREATE_LATER_FIELDS`] | 代替経路の案内 (doc-11 §8): where the fields this form has no input for are added instead |
  * | doc-5 §5 縮退 | [`issueAvailability`] via `readinessReason` | no supported CLI, so no operation is offered at all |
  * | doc-9 §5 提示の区別 | [`IssueOutcome`] + [`outcomeMessage`] | 更新前競合 / 照合不能 / CLI 失敗 stated apart |
  *
@@ -692,64 +692,37 @@ export function buildMilestoneDescribe(milestone: Milestone, description: string
   };
 }
 
-// --- 新規タスク区画で欄を置かない項目 (doc-10 §7) ----------------------------------------------
-
-/** One field the create form does not offer, with its reason and its post-creation route. */
-export interface OmittedCreateField {
-  label: string;
-  /** The flag v1.48.0's `task create` takes it on — shown so the absence cannot read as「CLI に無い」. */
-  flag: string;
-  /** Why there is no field. Written as a product judgment — doc-10 §7 forbids「CLI に無い」. */
-  reason: string;
-  /** Where it can be added after creation. Differs per field (doc-10 §7). */
-  after: string;
-}
+/**
+ * The one sentence the 注記モーダル opens with (doc-10 §7), and the fields it then names.
+ *
+ * **代替経路の案内** (doc-11 §8): it says where these are added, and nothing about why the form has no
+ * input for them. TASK-123 dropped what stood here before — the same five fields laid out as 名称・
+ * フラグ・理由・作成後の経路, on screen at all times, 361px of a 885px 区画 and the reason the form did
+ * not fit its scroller. What a user filling in a create form needs is where to put what does not fit,
+ * not an account of the product judgment that shaped the form.
+ *
+ * The five share one sentence because their one difference — `-a ""` cannot *clear* an assignee
+ * (doc-5 §3.1) — bites where assignees are set, which is タスク詳細の編集, and doc-8 §6 carries the
+ * external-editor route there. Stating it here would hand the reader a limit they can do nothing about
+ * from this form.
+ */
+export const TASK_CREATE_NOTE = "以下の内容は作成後、タスクの編集で追加・編集してください。";
 
 /**
- * The fields `task create` accepts and this 区画 does not offer (doc-10 §7). Held so the screen can
- * state the reason: explaining the absence as「CLI に無いから」would be false — the CLI does accept
- * them (doc-5 §3, measured 2026-07-29) — and would leave the CLI as a pretext for widening the form
- * later.
+ * The fields `task create` accepts that this 区画 has no input for (doc-10 §7), as the 注記モーダル
+ * names them.
+ *
+ * Names only. The flags they map to (`-a`・`--plan`・`--notes`・`--ref`・`--depends-on`) were shown
+ * until TASK-123 so that the absence could not read as「CLI に無い」— the CLI does accept them
+ * (doc-5 §3, measured 2026-07-29). With the reasons gone there is no false explanation left to guard
+ * against, and a flag name is doc-11 §8's 発行手段の記述 with nothing exempting it any more.
  */
-export const TASK_CREATE_SCOPE_NOTE =
-  "作成フォームは、タスクを識別し分類するのに要る項目へ絞ってあります。" +
-  "以下は v1.48.0 の `task create` が受け取り、作成された管理ファイルへ保存する項目ですが、" +
-  "Atlas の製品判断で欄を置いていません。";
-
-export const TASK_CREATE_OMITTED_FIELDS: OmittedCreateField[] = [
-  {
-    label: "assignee",
-    flag: "-a",
-    reason:
-      "割当は作業の進行につれて変わるため、作成時にだけ設定できて後から変えられない経路を作らない" +
-      "（TASK-57 の決定で編集側に閉じた）。",
-    after:
-      "タスク詳細の編集で設定・変更します。ただし解除だけは CLI に手段がありません。",
-  },
-  {
-    label: "実装計画",
-    flag: "--plan",
-    reason: "作業を始めてから書くものであり、作成時点で書ける内容ではない。",
-    after: "タスク詳細の編集で足します。",
-  },
-  {
-    label: "実装ノート",
-    flag: "--notes",
-    reason: "作業中に積み上がるものであり、作成時点で書ける内容ではない。",
-    after: "タスク詳細の編集で足します。",
-  },
-  {
-    label: "References",
-    flag: "--ref",
-    reason: "参照は作業の過程で増えるもので、作成フォームに置いても同じ入力を前倒しするだけになる。",
-    after: "タスク詳細の編集で足します。",
-  },
-  {
-    label: "依存",
-    flag: "--depends-on",
-    reason: "依存関係は着手の前後で判明するもので、作成時点に固定すべき分類ではない。",
-    after: "タスク詳細の編集で足します。",
-  },
+export const TASK_CREATE_LATER_FIELDS: readonly string[] = [
+  "assignee",
+  "実装計画",
+  "実装ノート",
+  "References",
+  "依存",
 ];
 
 // --- 発行結果の提示 (doc-9 §5) -----------------------------------------------------------------
