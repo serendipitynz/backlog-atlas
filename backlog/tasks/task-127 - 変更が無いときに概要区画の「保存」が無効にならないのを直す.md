@@ -1,10 +1,10 @@
 ---
 id: TASK-127
 title: 変更が無いときに概要区画の「保存」が無効にならないのを直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-08 07:11'
-updated_date: '2026-08-08 09:41'
+updated_date: '2026-08-08 10:45'
 labels:
   - ui
   - 'kind:bug'
