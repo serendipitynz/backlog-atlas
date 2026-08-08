@@ -16,6 +16,7 @@
  * | §3 台帳読取専用帯 | `band.ts`'s [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and what still works |
  * | §3 CLI 縮退帯 | `band.ts`'s [`cliDegradedBand`] | that no supported CLI was found, and what still works |
  * | §4.1 送る属性を保存の直前に列挙する | [`SubmittedAttribute`] + [`submittedAttributes`] | 送信属性一覧: the attributes a save puts on `ledger_update`, as name, current value and value to send |
+ * | §4.1 変更が無いときは保存を無効化する | [`OverviewSave`] + [`overviewSave`] | 保存 in its two states — 保留判定 is the tag, and the 保留理由 rides beside it rather than being it |
  * | §4.1 slug は編集手段を提供しない | [`SLUG_IMMUTABLE_NOTE`] | what changing it would take, and what that would break |
  * | §4.1 remote 現在値 | [`gitRemoteLine`] | the project root's Git remote as it reads now — one line, in decision-6's families. Never the ledger's recorded 有無属性 |
  * | §4.1 記録と検出の食い違い | [`gitRemoteDisagreement`] | 状態文: the recorded 有無属性 and the current read disagree — `null` while they agree |
@@ -401,4 +402,53 @@ export function unregisterBlocked(
   return typed.trim() === slug
     ? null
     : `確認のため、この欄に slug「${slug}」をそのまま入力してください。一致するまで実行できません。`;
+}
+
+// --- 概要区画: 保存の保留判定 (doc-10 §4.1, doc-11 §5) -----------------------------------------
+
+/** 変更が無いとき (doc-10 §4.1). The 送信属性一覧 above the control states the same thing. */
+export const OVERVIEW_NO_CHANGES_REASON = "変更がありません（送る属性がありません）。";
+
+/** 入力に問題があるとき (doc-10 §4.1). Each problem is already printed under the field it is about. */
+export const OVERVIEW_INPUT_PROBLEMS_REASON = "入力に問題があります（各欄の指摘を参照）。";
+
+/**
+ * 保存 in its two states (doc-10 §4.1「変更が無いときは『変更なし』として保存を無効化する」).
+ *
+ * **保留判定** (whether the control is withheld) is the `state` field, and the 保留理由 rides in
+ * `withheld` beside it — the two are not one value. They were one until TASK-127: `saveBlocked` was a
+ * `string | null` whose non-null half *was* the 保留判定, so when the 目視 pass over screen prose
+ * (`8aa4be9`) replaced two 理由文 with `null`, both obstacles stopped withholding 保存 and the control
+ * became pressable with nothing to send. `RedetectControl` above and `manage.ts`'s `IssuePlan` are
+ * tagged for the same reason; the shape here is theirs.
+ *
+ * Holding the reason as one value with the state is what doc-11 §5 asks for in the other direction —
+ * a 保留判定 computed apart from its reason is how a 理由の無い無効化 gets in. A tagged value keeps
+ * both guarantees: neither half can be dropped without the other going with it.
+ */
+export type OverviewSave = { state: "ready" } | { state: "withheld"; reason: string };
+
+/**
+ * Why 保存 is withheld, if it is. Ordered as the obstacles are: a ledger that cannot be written first,
+ * an action in flight next, and the input and what it amounts to last.
+ *
+ * `hasChanges` is asked for rather than the request itself, because what makes this a save worth
+ * pressing is that `toUpdateRequest` returned something — the caller has already built it.
+ */
+export function overviewSave(context: {
+  readOnly: boolean;
+  busy: boolean;
+  hasProblems: boolean;
+  hasChanges: boolean;
+}): OverviewSave {
+  const outside = overviewBlocked(context);
+  if (outside !== null) {
+    return { state: "withheld", reason: outside };
+  }
+  if (context.hasProblems) {
+    return { state: "withheld", reason: OVERVIEW_INPUT_PROBLEMS_REASON };
+  }
+  return context.hasChanges
+    ? { state: "ready" }
+    : { state: "withheld", reason: OVERVIEW_NO_CHANGES_REASON };
 }

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   ALIAS_EFFECT_NOTES,
   DETAIL_SECTIONS,
+  OVERVIEW_INPUT_PROBLEMS_REASON,
+  OVERVIEW_NO_CHANGES_REASON,
   OVERVIEW_READ_ONLY_NOTE,
   SLUG_IMMUTABLE_NOTE,
   UNREGISTER_SCOPE_NOTE,
@@ -11,12 +13,15 @@ import {
   gitRemoteLine,
   movesRoot,
   overviewBlocked,
+  overviewSave,
   redetectControl,
   rootMoveNote,
   submittedAttributes,
   unregisterBlocked,
+  type OverviewSave,
 } from "./project-detail";
-import { aliasKeyEffect, editOf, toUpdateRequest, type EntryEdit } from "./ledger";
+import { omitsSentence } from "./manage";
+import { aliasKeyEffect, editOf, editProblems, toUpdateRequest, type EntryEdit } from "./ledger";
 import { entry } from "./fixtures";
 import type { ProjectEntry } from "./wire";
 
@@ -225,6 +230,84 @@ describe("再検出の控え", () => {
     for (const shown of [control({ running: true }), control({ readOnly: true }), control({ busy: true })]) {
       expect(shown.state).not.toBe("ready");
     }
+  });
+});
+
+// --- 保存の保留判定 (doc-10 §4.1, TASK-127) -----------------------------------------------------
+//
+// 保留判定 (whether 保存 is withheld) is the `state` field and 保留理由 is a field beside it, so the
+// two cannot be removed as one. They were one value until TASK-127 — a `string | null` whose non-null
+// half *was* the 保留判定 — and the 目視 pass over screen prose (`8aa4be9`) replaced two 理由文 with
+// `null`, taking both obstacles with them: 保存 became pressable with nothing to send, against
+// doc-10 §4.1. These tests are what that pass would have had to break to land.
+
+describe("保存の保留判定", () => {
+  const base = registered();
+  const control = (
+    edit: EntryEdit,
+    context: { readOnly?: boolean; busy?: boolean } = {},
+  ): OverviewSave =>
+    overviewSave({
+      readOnly: false,
+      busy: false,
+      hasProblems: editProblems(edit).length > 0,
+      hasChanges: toUpdateRequest(base, edit) !== null,
+      ...context,
+    });
+
+  it("withholds 保存 while there is nothing to send (doc-10 §4.1)", () => {
+    const shown = control(edited(base));
+    expect(shown.state).toBe("withheld");
+    expect(shown.state === "withheld" && shown.reason).toBe(OVERVIEW_NO_CHANGES_REASON);
+  });
+
+  it("withholds 保存 while the input has a problem, before it looks at what changed", () => {
+    // Both obstacles stand at once here — an empty root is a problem *and* a change — and the
+    // problem is what the reason names: sending is not the next move, fixing the field is.
+    const shown = control(edited(base, { projectRoot: "" }));
+    expect(shown.state).toBe("withheld");
+    expect(shown.state === "withheld" && shown.reason).toBe(OVERVIEW_INPUT_PROBLEMS_REASON);
+  });
+
+  it("is ready only when a sound form has something to send", () => {
+    expect(control(edited(base, { backlogRoot: "/repos/atlas/bl" })).state).toBe("ready");
+  });
+
+  it("puts the obstacles outside the form first, and states them as the 区画 does", () => {
+    const changed = edited(base, { backlogRoot: "/repos/atlas/bl" });
+    for (const context of [{ readOnly: true }, { busy: true }]) {
+      const shown = control(changed, context);
+      expect(shown.state).toBe("withheld");
+      expect(shown.state === "withheld" && shown.reason).toBe(
+        overviewBlocked({ readOnly: false, busy: false, ...context }),
+      );
+    }
+  });
+
+  it("never withholds 保存 without a reason to go with it (doc-11 §5)", () => {
+    // The guarantee in the other direction, which is why the two are one *value* even though they
+    // are two fields: a 保留判定 computed apart from its reason is how a 理由の無い無効化 gets in.
+    const withheld = [
+      control(edited(base)),
+      control(edited(base, { projectRoot: "" })),
+      control(edited(base), { readOnly: true }),
+      control(edited(base), { busy: true }),
+    ];
+    for (const shown of withheld) {
+      expect(shown.state).toBe("withheld");
+      expect(shown.state === "withheld" && shown.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("leaves the two reasons the 区画 itself states off the screen (doc-11 §8 の licence ①)", () => {
+    // 入力に問題があるとき is printed under each field it is about, and 変更が無いとき is what the
+    // 送信属性一覧 directly above the control says. Printing either again under 保存 would state one
+    // situation twice within the same 区画.
+    expect(omitsSentence(OVERVIEW_NO_CHANGES_REASON)).toBe(true);
+    expect(omitsSentence(OVERVIEW_INPUT_PROBLEMS_REASON)).toBe(true);
+    // The obstacles from outside the form are on neither licence and keep their printed line.
+    expect(omitsSentence(overviewBlocked({ readOnly: true, busy: false }) ?? "")).toBe(false);
+    expect(omitsSentence(overviewBlocked({ readOnly: false, busy: true }) ?? "")).toBe(false);
   });
 });
 

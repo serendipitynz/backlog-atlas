@@ -97,7 +97,7 @@
     gitRemoteDisagreement,
     gitRemoteLine,
     movesRoot,
-    overviewBlocked,
+    overviewSave,
     redetectControl,
     rootMoveNote,
     submittedAttributes,
@@ -254,6 +254,7 @@
   let moveNote = $derived(rootMoveNote(entry, edit));
 
   const OVERVIEW_BLOCKED_ID = "overview-blocked";
+  const SAVE_BLOCKED_ID = "overview-save-blocked";
   const UNREGISTER_BLOCKED_ID = "overview-unregister-blocked";
   const REDETECT_BLOCKED_ID = "overview-redetect-blocked";
 
@@ -266,15 +267,13 @@
    */
   const TASK_NOTE_LABEL = "作成後に追加できる項目";
 
-  let saveBlocked = $derived(
-    // Ordered as the obstacles are: a ledger that cannot be written first, an action in flight
-    // next, and the input and what it amounts to last.
-    overviewBlocked({ readOnly: ledgerReadOnly, busy: ledgerBusy || issuing }) ??
-      (editIssues.length > 0
-        ? null
-        : updateRequest === null
-          ? null
-          : null),
+  let saveControl = $derived(
+    overviewSave({
+      readOnly: ledgerReadOnly,
+      busy: ledgerBusy || issuing,
+      hasProblems: editIssues.length > 0,
+      hasChanges: updateRequest !== null,
+    }),
   );
   let unregisterReason = $derived(
     unregisterBlocked(unregisterInput, entry.slug, {
@@ -313,7 +312,7 @@
 
   async function save(): Promise<void> {
     const request = updateRequest;
-    if (saveBlocked !== null || request === null) return;
+    if (saveControl.state !== "ready" || request === null) return;
     entryReport = null;
     overviewNotice = null;
     // Raised *before* the await, not after it (review [P1] round 2). The cleanup below cannot be the
@@ -1516,9 +1515,14 @@
                shows up here. -->
           <div class="submit-preview">
             <h3>保存で送る属性</h3>
-            <!-- 何も送らないときは行を出さない (doc-11 §8): the empty list is the 状態 itself, and
-                 「変更なし」would be a sentence restating it. -->
-            {#if submitted.length > 0}
+            <!-- 状態文 (doc-11 §8): what this 区画 has to show when the list is empty. §8 puts 状態文
+                 outside its own scope, so the 一掃 that dropped this line as a 状態の言い換え
+                 (`8aa4be9`) was applying the wrong rule — and doc-10 §4.1 names「変更なし」as the
+                 word to use. It is also the 保存's 保留理由 stated by the 区画 itself (§8 の licence ①),
+                 which is why no second sentence is printed under the control. -->
+            {#if submitted.length === 0}
+              <p class="neutral">変更なし（送る属性はありません）。</p>
+            {:else}
               <ul class="submitted">
                 {#each submitted as attribute (attribute.attribute)}
                   <li>
@@ -1540,20 +1544,31 @@
             <button
               type="button"
               class="primary"
-              aria-disabled={saveBlocked !== null}
-              aria-describedby={saveBlocked === null
+              aria-disabled={saveControl.state !== "ready"}
+              aria-describedby={saveControl.state === "ready"
                 ? undefined
                 : ledgerReadOnly
                   ? OVERVIEW_BLOCKED_ID
-                  : "overview-save-blocked"}
-              title={saveBlocked ?? "上に並べた属性を台帳へ書きます"}
+                  : SAVE_BLOCKED_ID}
+              title={saveControl.state === "withheld"
+                ? saveControl.reason
+                : "上に並べた属性を台帳へ書きます"}
               onclick={save}>保存</button
             >
           </div>
-          {#if saveBlocked !== null && !ledgerReadOnly}
-            <!-- On a read-only ledger the note above is already the reason, so it is not repeated
-                 a second time here (doc-11 §5). -->
-            <p class="blocked-note" id="overview-save-blocked">{saveBlocked}</p>
+          {#if !ledgerReadOnly}
+            <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because `aria-describedby`
+                 points at it: hidden when the 区画 already states it (doc-11 §8), visible otherwise.
+                 On a read-only ledger the note above is the reason instead, so nothing is placed
+                 here at all. -->
+            <p
+              id={SAVE_BLOCKED_ID}
+              class={saveControl.state === "withheld" && !omitsSentence(saveControl.reason)
+                ? "blocked-note"
+                : "unseen"}
+            >
+              {saveControl.state === "withheld" ? saveControl.reason : ""}
+            </p>
           {/if}
 
           <!-- 登録解除 (doc-10 §4.3): a 危険区画, kept apart from the other operations. -->

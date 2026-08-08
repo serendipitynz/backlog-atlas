@@ -41,6 +41,7 @@
 
 import { readinessReason } from "./edit";
 import { conflictSetDetail } from "./mark";
+import { OVERVIEW_INPUT_PROBLEMS_REASON, OVERVIEW_NO_CHANGES_REASON } from "./project-detail";
 import type {
   CliReadiness,
   ConflictSet,
@@ -641,7 +642,13 @@ export const MILESTONE_DESCRIPTION_UNCHANGED_REASON = "説明は変更されて�
  * - **① the 区画 states the reason** — a field marked「（必須）」sitting empty is itself the 常時表示
  *   補助文 §5's first form asks for, so those controls stay `disabled`
  *   (`TASK_TITLE_REQUIRED_REASON`, `DOC_TITLE_REQUIRED_REASON`, `DOC_TITLE_EMPTY_REASON`,
- *   `MILESTONE_NAME_REQUIRED_REASON`, `MILESTONE_RENAME_REQUIRED_REASON`).
+ *   `MILESTONE_NAME_REQUIRED_REASON`, `MILESTONE_RENAME_REQUIRED_REASON`), and so do the 概要区画's
+ *   two (`OVERVIEW_INPUT_PROBLEMS_REASON` — every problem is printed under the field it is about;
+ *   `OVERVIEW_NO_CHANGES_REASON` — the 送信属性一覧 directly above the control says 変更なし).
+ *   **概要区画の保存 keeps §5's second form even so**, because two of its four 保留理由 are 台帳読取専用
+ *   and 発行中, which are on neither licence and keep a printed line: one control cannot take focus or
+ *   not depending on *why* it is withheld. ① licences omitting the sentence, and that is what is
+ *   omitted — the element stays in the DOM for `aria-describedby` to point at.
  * - **② nothing typed / nothing changed yet**, where the form itself makes the next move obvious.
  *   No marker states it, so these two take §5's *second* form — the control is `aria-disabled` and
  *   focusable, and `aria-describedby` names a span that is always in the DOM
@@ -659,6 +666,8 @@ const REASONS_WITHOUT_SENTENCE: readonly string[] = [
   MILESTONE_NAME_REQUIRED_REASON,
   MILESTONE_RENAME_REQUIRED_REASON,
   MILESTONE_DESCRIPTION_UNCHANGED_REASON,
+  OVERVIEW_INPUT_PROBLEMS_REASON,
+  OVERVIEW_NO_CHANGES_REASON,
 ];
 
 /** Whether this reason is drawn without a visible sentence (doc-11 §8). */
