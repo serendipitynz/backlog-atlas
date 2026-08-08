@@ -374,7 +374,7 @@
    * side: the ledger is what 全件 counts, so a hidden row leaves 表示数 and stays in it.
    */
   let gridTotals = $derived(swimlaneTotals(rows, order.length));
-  /** 既定の保存区分 (decision-13) — the state 全解除 returns the filter to. */
+  /** 既定の保存区分 (decision-13) — the state 既定に戻す returns the filter to. */
   let defaultStorage = $derived(
     settings?.settings.default_storage_filter ?? DEFAULT_FILTER.storage,
   );

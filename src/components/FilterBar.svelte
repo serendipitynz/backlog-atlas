@@ -29,7 +29,7 @@
   interface Props {
     filter: CardFilter;
     facets: Facets;
-    /** 既定の保存区分 (decision-13): the state 全解除 puts the filter back to. */
+    /** 既定の保存区分 (decision-13): the state 既定に戻す puts the filter back to. */
     defaultStorage: readonly StorageSelection[];
     /**
      * Whether the 値一覧 is open. Held by the shell, not here, because a key opens it as well
@@ -54,7 +54,7 @@
   // keystroke: writing the value back mid-composition is what breaks IME input, and the filter
   // is not worth re-running on each intermediate 変換 candidate either. `isComposing` holds the
   // dispatch until the composition ends, and the effect only re-syncs when the filter is
-  // changed from outside (全解除).
+  // changed from outside (既定に戻す).
   let text = $state("");
   $effect(() => {
     text = filter.text;
@@ -80,7 +80,7 @@
   let undoBlocked = $derived(lastCondition(filter) === null);
   let clearBlocked = $derived(nothingToClear(filter, defaultStorage));
   // 絞り込みが既定のままのときは文を見せない (doc-11 §8): the 帯 is showing its own conditions, so the
-  // state that makes 全解除 inert is already on screen. It is still *said* — these controls take
+  // state that makes 既定に戻す inert is already on screen. It is still *said* — these controls take
   // doc-11 §5's second form (`aria-disabled` + `aria-describedby`), where the target has to exist
   // whenever it is pointed at, so the reason is hidden rather than dropped.
   let blockedReason = $derived(
@@ -109,7 +109,7 @@
   <!-- 帯全体の目印 (doc-7 §5.2): 操作に属さないアイコン, so it takes no `aria-label`, no `title` and
        no focus — it is not a control, and one that announced itself would be a thing a keyboard can
        reach and pressing does nothing. What it says in a figure, the bar also says in words (＋ 絞り込み,
-       全解除, and the box's own `aria-label`), which is what doc-11 §2.4 requires of an `aria-hidden`
+       既定に戻す, and the box's own `aria-label`), which is what doc-11 §2.4 requires of an `aria-hidden`
        figure: the icon repeats the meaning rather than being the only place it exists. -->
   <span class="marker"><Icon name="funnel" /></span>
 
@@ -197,7 +197,7 @@
       title={clearBlocked ? (blockedReason ?? undefined) : "すべての条件を外し、保存区分を既定へ戻します"}
       onclick={() => !clearBlocked && onchange(defaultFilter(defaultStorage))}
     >
-      全解除
+      既定に戻す
     </button>
     <span class={reasonOnScreen ? "unseen" : "blocked-note"} id={BLOCKED_ID}>
       {blockedReason ?? ""}

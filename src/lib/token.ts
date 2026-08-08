@@ -14,7 +14,7 @@
  * | §5.2 条件 | `FilterCondition` | one selection inside one facet — what a token stands for |
  * | §5.2 条件を足した順 | `CardFilter.order` / `orderedConditions` | the order conditions were added in |
  * | §5.2 末尾から 1 件ずつ解除 | `removeLastCondition` | drop the last *added* condition |
- * | §5.2 全解除 | `defaultFilter` (`filter.ts`) | back to the state the screen opens in |
+ * | §5.2 既定に戻す | `defaultFilter` (`filter.ts`) | back to the state the screen opens in |
  * | §5.2 値の一覧 | `Facets` (`filter.ts`) + `FilterPopover.svelte` | the values a condition can be built from |
  *
  * Two things are deliberately *not* tokens:
@@ -300,13 +300,13 @@ export function conditionCount(filter: CardFilter): number {
 }
 
 /**
- * Whether 全解除 has anything left to do — false while any condition beyond the 既定 is held, *or*
+ * Whether 既定に戻す has anything left to do — false while any condition beyond the 既定 is held, *or*
  * while 追加順 still holds one 直前の 1 つを戻す would act on.
  *
  * The second half is what keeps the two controls from contradicting each other. The selections can
  * come back to the 既定 by a route that leaves history behind — take 保存区分's 既定 off its token
  * and pick the same division again in the popover, and the values are the 既定 again while
- * `storage:active` is now something the user *added*. Judged on the values alone, 全解除 would go
+ * `storage:active` is now something the user *added*. Judged on the values alone, 既定に戻す would go
  * blocked ("既定のままです") next to an enabled 直前の 1 つを戻す whose press then empties the grid,
  * with no way to clear the history it acts on.
  */
