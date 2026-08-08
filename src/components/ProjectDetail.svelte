@@ -94,8 +94,11 @@
     SECTION_NAV_WIDTH_REM,
     SLUG_IMMUTABLE_NOTE,
     UNREGISTER_SCOPE_NOTE,
+    gitRemoteDisagreement,
+    gitRemoteLine,
     movesRoot,
     overviewBlocked,
+    redetectBlocked,
     rootMoveNote,
     submittedAttributes,
     unregisterBlocked,
@@ -104,9 +107,11 @@
   // 行長上限 (doc-8 §2.1, TASK-113). Borrowed rather than restated: the number is one measurement,
   // and a second `48` here would let the two drift while both docs still call it 行長上限.
   import { PROSE_MAX_WIDTH_REM } from "../lib/placement";
+  import { createGitRemoteReader } from "../lib/git-remote-read";
   import type {
     CliReadiness,
     Document,
+    GitRemoteRead,
     Milestone,
     ProjectEntry,
     ProjectLoad,
@@ -128,6 +133,12 @@
     readiness: CliReadiness | null;
     onpickDirectory: (title: string) => Promise<string | null>;
     onupdate: (request: UpdateRequest) => Promise<LedgerActionResult>;
+    /**
+     * Read the entry's remote 現在値 (doc-10 §4.1). Never rejects — a failed read is a
+     * `GitRemoteRead` state of its own, because what the line has to say differs between「remote が
+     * 無い」and「読めなかった」(decision-6).
+     */
+    onreadGitRemote: (slug: string) => Promise<GitRemoteRead>;
     onremove: (slug: string) => Promise<LedgerActionResult>;
     /** Issue one 更新操作 (doc-5 §3, doc-9 §4). The re-read belongs to the shell. */
     onissue: (slug: string, action: UpdateOperation[]) => Promise<IssueOutcome>;
@@ -156,6 +167,7 @@
     readiness,
     onpickDirectory,
     onupdate,
+    onreadGitRemote,
     onremove,
     onissue,
     ondirty,
@@ -243,6 +255,7 @@
 
   const OVERVIEW_BLOCKED_ID = "overview-blocked";
   const UNREGISTER_BLOCKED_ID = "overview-unregister-blocked";
+  const REDETECT_BLOCKED_ID = "overview-redetect-blocked";
 
   /**
    * What the 注記の入口 is called, and what the 注記モーダル it raises is announced as (doc-10 §7).
@@ -317,9 +330,6 @@
         entryReport = result.report;
         return;
       }
-      // The re-detection is one request, not a stored setting (doc-3 §4.3). Left checked, every
-      // later save would carry it too, so it is dropped once one has gone through.
-      edit.redetectGitRemote = false;
       if (movesRoot(request)) {
         // A completed move closes **every** open 編集セッション (doc-10 §4.1, which says so without
         // qualification). This screen is keyed by slug alone and a move keeps the slug, so nothing
@@ -350,6 +360,67 @@
         return;
       }
       overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
+    } finally {
+      ledgerSaving = false;
+    }
+  }
+
+  // --- 概要区画: remote 現在値と再検出 (doc-10 §4.1) ---------------------------------------------
+
+  /**
+   * remote 現在値 (doc-10 §4.1). `null` until the read lands: 未取得 is not 不在 (decision-6), and
+   * `gitRemoteLine` is what keeps the two apart on screen.
+   */
+  let gitRemote = $state<GitRemoteRead | null>(null);
+
+  /**
+   * Every read goes through this, so only the newest one reaches the line — including the one
+   * 再検出する starts, which is about the same entry as the effect's and would otherwise be
+   * indistinguishable from it (`git-remote-read.ts` carries the reasoning and the ordering test).
+   */
+  const remoteReader = createGitRemoteReader({
+    read: (slug) => onreadGitRemote(slug),
+    show: (read) => (gitRemote = read),
+  });
+
+  $effect(() => {
+    // The root is a dependency, not context: `ledger_update` can move it under the same slug
+    // (doc-3 §4.3), and this value describes the root — so a move has to re-read. Which answer wins
+    // is the reader's business, not this effect's.
+    void entry.project_root;
+    void remoteReader.load(entry.slug);
+  });
+
+  let remoteLine = $derived(gitRemoteLine(gitRemote));
+  let remoteDisagreement = $derived(gitRemoteDisagreement(entry, gitRemote));
+  let redetectReason = $derived(
+    redetectBlocked({ readOnly: ledgerReadOnly, busy: ledgerBusy || issuing }),
+  );
+
+  /**
+   * Re-detect the Git remote and record the result (doc-10 §4.1). Issues on press rather than riding
+   * on the save: what it writes is the ledger's own judgement of the root, not a value the user typed,
+   * so there is nothing for a form to hold between the press and the write.
+   *
+   * `ledgerSaving` is raised for the same reason `save` raises it — this is a ledger write, and every
+   * 区画's 発行 waits for one — but the roots cannot move here, so no session is closed afterwards.
+   */
+  async function redetectGitRemote(): Promise<void> {
+    if (redetectReason !== null) return;
+    entryReport = null;
+    overviewNotice = null;
+    ledgerSaving = true;
+    try {
+      const result = await onupdate({ slug: entry.slug, redetect_git_remote: true });
+      if (result.state === "refused") {
+        entryReport = result.report;
+        return;
+      }
+      // Read again rather than reasoning from the new entry: the recorded boolean is what the write
+      // returned, and the line shows the address — only a second read can produce it. Through the
+      // reader, so this answer supersedes any read still in flight instead of racing it.
+      await remoteReader.load(entry.slug);
+      overviewNotice = `${result.slug} の Git remote を再検出しました。`;
     } finally {
       ledgerSaving = false;
     }
@@ -1327,12 +1398,34 @@
             <p class="problem">{text}</p>
           {/each}
 
-          <label class="check">
-            <input type="checkbox" bind:checked={edit.redetectGitRemote} disabled={ledgerReadOnly} />
-            <span>
-              Git remote を再判定する（現在: {entry.git_remote_present ? "あり" : "なし"}）
+          <div class="field">
+            <span class="label">Git remote</span>
+            <p class="value-line remote" class:setting={remoteLine.kind === "setting"} class:failure={remoteLine.kind === "failure"}>
+              {#if remoteLine.address}
+                <code>{remoteLine.text}</code>
+                <span class="remote-name">（{remoteLine.name}）</span>
+              {:else}
+                {remoteLine.text}
+              {/if}
+            </p>
+            {#if remoteDisagreement !== null}
+              <p class="hint">{remoteDisagreement}</p>
+            {/if}
+            <span class="row-inline">
+              <button
+                type="button"
+                disabled={redetectReason !== null}
+                aria-describedby={redetectReason === null ? undefined : REDETECT_BLOCKED_ID}
+                onclick={redetectGitRemote}
+              >
+                再検出する
+              </button>
             </span>
-          </label>
+            {#if redetectReason !== null}
+              <!-- doc-11 §5: a withheld control carries its reason in view, not on hover. -->
+              <p class="problem" id={REDETECT_BLOCKED_ID}>{redetectReason}</p>
+            {/if}
+          </div>
 
           <fieldset class="aliases">
             <legend>status 別名表</legend>
@@ -2860,6 +2953,30 @@
 
   .value-line {
     margin: 0;
+  }
+
+  // remote 現在値 (doc-10 §4.1). The three families are decision-6's, drawn as GitHistory.svelte
+  // draws the same three — 正常な不在 は中立、設定で解消できるものは中間、失敗だけが族の色.
+  .remote {
+    margin-bottom: 0.35rem;
+    // No font-size of its own: it is a `.value-line` like the slug's two fields above, and 実測 put
+    // a size here 0.48px off that one (TASK-124). Two value lines in the same list differing for no
+    // reason is what TASK-74 measured on two controls in one row.
+    overflow-wrap: anywhere;
+
+    &.setting {
+      padding: 0.2rem 0.35rem;
+      border-left: 2px solid var(--line-strong);
+      background: var(--inset);
+    }
+
+    &.failure {
+      color: var(--mark-unreadable);
+    }
+  }
+
+  .remote-name {
+    color: var(--muted);
   }
 
   input[type="text"],

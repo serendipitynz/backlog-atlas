@@ -17,6 +17,9 @@
  * | §3 CLI 縮退帯 | `band.ts`'s [`cliDegradedBand`] | that no supported CLI was found, and what still works |
  * | §4.1 送る属性を保存の直前に列挙する | [`SubmittedAttribute`] + [`submittedAttributes`] | 送信属性一覧: the attributes a save puts on `ledger_update`, as name, current value and value to send |
  * | §4.1 slug は編集手段を提供しない | [`SLUG_IMMUTABLE_NOTE`] | what changing it would take, and what that would break |
+ * | §4.1 remote 現在値 | [`gitRemoteLine`] | the project root's Git remote as it reads now — one line, in decision-6's families. Never the ledger's recorded 有無属性 |
+ * | §4.1 記録と検出の食い違い | [`gitRemoteDisagreement`] | 状態文: the recorded 有無属性 and the current read disagree — `null` while they agree |
+ * | §4.1 再検出 | [`redetectBlocked`] | why the re-detection cannot be pressed, if it cannot |
  * | §4.1 ルートを変えたときは Backlog ルートも併せて送る | [`rootMoveNote`] | the note under the field saying which value will travel |
  * | §4.1 移動が成立すると編集セッションは閉じる | [`movesRoot`] | whether this update is a move — the trigger for closing |
  * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`OVERVIEW_READ_ONLY_NOTE`] | the sentence, near the controls, saying the inputs are stopped too |
@@ -38,7 +41,7 @@
  */
 
 import type { EntryEdit } from "./ledger";
-import type { ProjectEntry, UpdateRequest } from "./wire";
+import type { GitRemoteRead, ProjectEntry, UpdateRequest } from "./wire";
 
 // --- 区画切替 (doc-10 §1/§3) -------------------------------------------------------------------
 
@@ -129,15 +132,8 @@ export function submittedAttributes(
       to: request.backlog_root,
     });
   }
-  if (request.redetect_git_remote === true) {
-    // What travels is the request to re-detect, not a value (doc-3 §4.3): the result is the ledger
-    // side's to decide, so the "to send" column states the request instead of a boolean.
-    attributes.push({
-      attribute: "git_remote_present",
-      from: entry.git_remote_present ? "あり" : "なし",
-      to: "プロジェクトルートに対して再判定する",
-    });
-  }
+  // `redetect_git_remote` is deliberately absent: since TASK-124 the re-detection is its own control
+  // that issues on press (doc-10 §4.1), so it never rides on a save and has nothing to list here.
   if (request.status_aliases !== undefined) {
     attributes.push({
       attribute: "status_aliases",
@@ -182,6 +178,88 @@ export function rootMoveNote(entry: ProjectEntry, edit: EntryEdit): string | nul
     `${backlogRoot === "" ? "（空）" : backlogRoot} を送ります。` +
     "移動が成立すると、このプロジェクトについて開いている編集セッションは閉じます。"
   );
+}
+
+// --- 概要区画: remote 現在値と再検出 (doc-10 §4.1, decision-6) ---------------------------------
+
+/**
+ * The value line under the 概要区画's Git remote label — its remote 現在値 (doc-10 §4.1).
+ *
+ * `kind` is decision-6's three families, the same ones `detail.ts`'s `HistoryLine` uses: 正常な不在
+ * は中立、設定で解消できるものは中間、失敗だけが族の色. The type is not shared with that module because
+ * this line is about a project root rather than about one task's Git 履歴欄 — what is shared is the
+ * decision, and restating the union here is what keeps the 概要区画 from importing タスク詳細's model.
+ */
+export interface GitRemoteLine {
+  text: string;
+  kind: "neutral" | "setting" | "failure";
+  /**
+   * Which remote the address came from, when there is one. Shown because Atlas picks `origin`, or
+   * the first configured remote when there is no `origin` — a URL alone would read as *the* remote's
+   * address in a repository that has several.
+   */
+  name: string | null;
+  /** True when `text` is an address rather than a sentence, so the screen can set it in code type. */
+  address: boolean;
+}
+
+/** `null` for a read that has not landed yet — 未取得 is not 不在 (decision-6). */
+export function gitRemoteLine(read: GitRemoteRead | null): GitRemoteLine {
+  if (read === null) {
+    return { text: "読み込み中…", kind: "neutral", name: null, address: false };
+  }
+  switch (read.state) {
+    case "configured":
+      return { text: read.url, kind: "neutral", name: read.name, address: true };
+    case "remoteAbsent":
+      return {
+        text: "Git remote 不在（このリポジトリに remote が構成されていません）",
+        kind: "setting",
+        name: null,
+        address: false,
+      };
+    case "noRepository":
+      return {
+        text: "Git 対象不在（プロジェクトルートが Git リポジトリではありません）",
+        kind: "setting",
+        name: null,
+        address: false,
+      };
+    case "unreadable":
+      return { text: `remote を読めません: ${read.detail}`, kind: "failure", name: null, address: false };
+  }
+}
+
+/**
+ * 状態文 (doc-11 §8): what the ledger recorded and what Git says now disagree. `null` while they
+ * agree, and while the read is `unreadable` — a failed read says nothing about whether a remote
+ * exists, so treating it as 不在 would report a disagreement that has not been observed.
+ *
+ * The sentence states the two values and stops there. Which one to move is the 再検出する control's
+ * business, and it sits beside this line already; doc-11 §8 keeps a 状態文 to what is there.
+ */
+export function gitRemoteDisagreement(
+  entry: ProjectEntry,
+  read: GitRemoteRead | null,
+): string | null {
+  if (read === null || read.state === "unreadable") return null;
+  const found = read.state === "configured";
+  if (found === entry.git_remote_present) return null;
+  return found
+    ? "台帳が記録している Git remote 有無属性は「なし」で、いまの検出と食い違っています。"
+    : "台帳が記録している Git remote 有無属性は「あり」で、いまの検出と食い違っています。";
+}
+
+/**
+ * Why 再検出 is held, if it is (doc-10 §4.1, doc-11 §5). The re-detection writes the entry's Git
+ * remote 有無属性, so a read-only ledger stops it for the same reason it stops the save — which is
+ * why this is `overviewBlocked` with the operation named, not a rule of its own.
+ */
+export function redetectBlocked(context: { readOnly: boolean; busy: boolean }): string | null {
+  if (context.readOnly) {
+    return "台帳が読み取り専用のため、Git remote の再検出はできません。";
+  }
+  return overviewBlocked(context);
 }
 
 // --- 概要区画: status 別名表の効き方 (doc-10 §4.2) ---------------------------------------------

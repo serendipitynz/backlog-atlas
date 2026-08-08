@@ -309,6 +309,21 @@ export interface TaskHistory {
   relations: PrRelation[];
 }
 
+/**
+ * The project root's Git remote as it reads right now — the 概要区画's remote 現在値 (doc-10 §4.1).
+ * Not the ledger's Git remote 有無属性 (doc-3 §3.2): that one is a recorded boolean, this one is read
+ * on demand and never stored, so the two can disagree.
+ *
+ * Four states rather than a nullable URL, following decision-6: `remoteAbsent` (a repository with no
+ * remote) and `noRepository` (the root is not one) differ in what the user would do next, and
+ * `unreadable` says nothing about whether a remote exists.
+ */
+export type GitRemoteRead =
+  | { state: "configured"; name: string; url: string }
+  | { state: "remoteAbsent" }
+  | { state: "noRepository" }
+  | { state: "unreadable"; detail: string };
+
 // --- ledger (doc-3) ------------------------------------------------------------------------
 
 /**

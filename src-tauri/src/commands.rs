@@ -68,7 +68,7 @@ use crate::editor::{
     Launcher, SystemEnv, SystemLauncher,
 };
 use crate::history::{
-    self, Cancelled, Commit, HistoryError, PrCommitSource, PrRelation, RemoteHost,
+    self, Cancelled, Commit, GitRemoteRead, HistoryError, PrCommitSource, PrRelation, RemoteHost,
 };
 use crate::interpret::status::{create_status_candidates, ColumnCreateStatuses};
 use crate::interpret::{interpret_task, TaskInterpretation};
@@ -1227,6 +1227,27 @@ pub fn ledger_update(
     })?;
     join_watch(detached);
     Ok(response)
+}
+
+/// One project's remote 現在値 (doc-10 §4.1): what `git` reports for the entry's project root right
+/// now, as opposed to the Git remote 有無属性 the ledger recorded (doc-3 §3.2).
+///
+/// Read on demand rather than carried by [`ledger_list`]. The value is shown by one 概要区画 at a
+/// time, while `ledger_list` runs at startup for every entry — putting two `git` invocations per
+/// project there would make the startup cost scale with the ledger to fill a line nobody has opened.
+///
+/// Takes no プロジェクト単位ロック: it writes nothing and reads no session or Backlog root, only the
+/// project root's Git config. The ledger read is the same one [`ledger_list`] does.
+#[tauri::command(async)]
+pub fn git_remote_read(app: AppHandle, slug: String) -> Result<GitRemoteRead, CommandError> {
+    let files = ConfigFiles::resolve(&app)?;
+    let entry = load_ledger(&files)?
+        .ledger
+        .projects
+        .into_iter()
+        .find(|entry| entry.slug == slug)
+        .ok_or(CommandError::UnknownProject { slug })?;
+    Ok(crate::history::read_git_remote(&entry.project_root))
 }
 
 /// Build a cross-task-id `<slug>:<TASK-ID>` for display (doc-3 §5.1). Validates the slug against the

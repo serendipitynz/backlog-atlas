@@ -72,6 +72,7 @@ pub fn run() {
             commands::ledger_register,
             commands::ledger_remove,
             commands::ledger_update,
+            commands::git_remote_read,
             commands::cross_task_id_generate,
             commands::cross_task_id_parse,
             // Read path: file analysis only, no CLI (decision-2).

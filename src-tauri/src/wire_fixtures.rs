@@ -32,7 +32,7 @@ use crate::editor::{
     ConfiguredEditor, EditorCommand, EditorLaunch, EditorReadiness, EditorSource, LaunchMethod,
 };
 use crate::history::{
-    Commit, LookupFailure, PrRelation, RelationOutcome, RemoteHost, RemoteHostKind,
+    Commit, GitRemoteRead, LookupFailure, PrRelation, RelationOutcome, RemoteHost, RemoteHostKind,
 };
 use crate::interpret::status::{StatusColumn, StatusDeclaration, StatusMapping};
 use crate::interpret::type_value::derive_types;
@@ -462,6 +462,19 @@ fn ledger_response_is_recorded() {
 }
 
 #[test]
+fn git_remote_read_is_recorded() {
+    // The 現在値 the 概要区画 shows (doc-10 §4.1). `Configured` is the sample because it is the only
+    // variant carrying fields; the other three reach the frontend through `wire_tokens.json`.
+    recorded(
+        "git_remote_read.json",
+        &GitRemoteRead::Configured {
+            name: "origin".to_string(),
+            url: "git@github.com:serendipitynz/backlog-atlas.git".to_string(),
+        },
+    );
+}
+
+#[test]
 fn loaded_settings_is_recorded() {
     recorded(
         "loaded_settings.json",
@@ -866,6 +879,29 @@ fn every_commit_search() -> Vec<CommitSearch> {
     all
 }
 
+fn every_git_remote_read() -> Vec<GitRemoteRead> {
+    let all = vec![
+        GitRemoteRead::Configured {
+            name: String::new(),
+            url: String::new(),
+        },
+        GitRemoteRead::RemoteAbsent,
+        GitRemoteRead::NoRepository,
+        GitRemoteRead::Unreadable {
+            detail: String::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            GitRemoteRead::Configured { .. }
+            | GitRemoteRead::RemoteAbsent
+            | GitRemoteRead::NoRepository
+            | GitRemoteRead::Unreadable { .. } => {}
+        }
+    }
+    all
+}
+
 fn every_relation_outcome() -> Vec<RelationOutcome> {
     let all = vec![
         RelationOutcome::Resolved {
@@ -1129,6 +1165,10 @@ fn every_union_token_is_recorded() {
     tokens.insert("DegradeEvent", tag_tokens(&every_degrade_event(), "event"));
     tokens.insert("ProjectLoad", tag_tokens(&every_project_load(), "state"));
     tokens.insert("CommitSearch", tag_tokens(&every_commit_search(), "state"));
+    tokens.insert(
+        "GitRemoteRead",
+        tag_tokens(&every_git_remote_read(), "state"),
+    );
     tokens.insert(
         "RelationOutcome",
         tag_tokens(&every_relation_outcome(), "state"),

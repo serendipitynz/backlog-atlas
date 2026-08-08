@@ -27,6 +27,7 @@ import { historyKeyOf } from "./history-read";
 import { statusNotice, saveAvailability, editorArgsText } from "./settings";
 import { buildSwimlane } from "./swimlane";
 import { inconsistencyReasons, isInconsistent } from "./mark";
+import { gitRemoteLine } from "./project-detail";
 import type {
   AcceptanceCriterion,
   AppSettings,
@@ -55,6 +56,7 @@ import type {
   CardDensity,
   DetailPlacement,
   EditorSource,
+  GitRemoteRead,
   FailureKind,
   LaunchMethod,
   LedgerRefusal,
@@ -290,6 +292,12 @@ const DEGRADE_EVENTS = unionValues<DegradeEvent["event"]>()(
   "danglingReference",
 );
 const LOAD_STATES = unionValues<ProjectLoad["state"]>()("loaded", "unreadable");
+const GIT_REMOTE_STATES = unionValues<GitRemoteRead["state"]>()(
+  "configured",
+  "remoteAbsent",
+  "noRepository",
+  "unreadable",
+);
 const COMMIT_SEARCH_STATES = unionValues<CommitSearch["state"]>()(
   "searched",
   "noRepository",
@@ -529,6 +537,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       "commit_search_unreadable.json",
       "editor_launch.json",
       "editor_readiness.json",
+      "git_remote_read.json",
       "ledger_response.json",
       "loaded_settings.json",
       "project_load_loaded.json",
@@ -778,6 +787,26 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
     );
   });
 
+  it("GitRemoteRead", () => {
+    // remote 現在値 (doc-10 §4.1). The recorded sample is the one variant carrying fields; the other
+    // three reach here through `wire_tokens.json`, which is why both legs are needed.
+    const read = fixture<GitRemoteRead>("git_remote_read.json");
+    sameValueTypes("git_remote_read", read, {
+      state: "configured",
+      name: "origin",
+      url: "git@github.com:serendipitynz/backlog-atlas.git",
+    } satisfies GitRemoteRead);
+    admits(GIT_REMOTE_STATES, read.state, "git_remote_read.state");
+    // The frontend's own function runs over the payload, so the recording reaches the screen's line
+    // and not only the type — the leg a shape comparison cannot supply.
+    expect(gitRemoteLine(read)).toEqual({
+      text: "git@github.com:serendipitynz/backlog-atlas.git",
+      kind: "neutral",
+      name: "origin",
+      address: true,
+    });
+  });
+
   it("UpdateResult", () => {
     sameValueTypes(
       "update_result_conflict",
@@ -891,6 +920,7 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     DegradeEvent: DEGRADE_EVENTS,
     ProjectLoad: LOAD_STATES,
     CommitSearch: COMMIT_SEARCH_STATES,
+    GitRemoteRead: GIT_REMOTE_STATES,
     RelationOutcome: RELATION_STATES,
     UpdateResult: UPDATE_STATES,
     UpdateOutcome: OUTCOME_STATES,

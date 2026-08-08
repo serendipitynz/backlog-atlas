@@ -203,14 +203,16 @@ describe("toUpdateRequest", () => {
     });
   });
 
-  it("carries the git remote re-detection on its own (doc-3 §3.2)", () => {
+  it("has no way to put the git remote re-detection on a save (doc-10 §4.1)", () => {
+    // Since TASK-124 the re-detection is its own control that issues on press, so the form holds
+    // nothing for it. Asserted rather than left to the type: what makes 再検出 an independent
+    // operation is precisely that no edit of this form can produce `redetect_git_remote`.
     const target = entry("geomyth", false);
     const edit = editOf(target);
-    edit.redetectGitRemote = true;
-    expect(toUpdateRequest(target, edit)).toEqual({
-      slug: "geomyth",
-      redetect_git_remote: true,
-    });
+    edit.backlogRoot = "/moved/bl";
+    const request = toUpdateRequest(target, edit);
+    expect(request).not.toHaveProperty("redetect_git_remote");
+    expect(toUpdateRequest(target, editOf(target))).toBeNull();
   });
 
   it("never carries the slug as a change — it selects the entry and stays immutable", () => {

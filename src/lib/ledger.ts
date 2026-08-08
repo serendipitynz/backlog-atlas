@@ -110,13 +110,14 @@ export interface AliasRow {
  * One entry's editable attributes (doc-3 §4.3). `slug` is absent on purpose: it is immutable, and
  * leaving it out of the form's own type is how that is kept true here as well as in the request.
  * Display order is not here either — it is moved by its own action, not by submitting this form.
+ *
+ * The Git remote re-detection is absent for that second reason (doc-10 §4.1, TASK-124): it is its own
+ * control that issues on press, so it holds nothing between renders and is not part of 未保存入力.
  */
 export interface EntryEdit {
   /** A same-project move when it differs from the entry's current value (doc-3 §4.3). */
   projectRoot: string;
   backlogRoot: string;
-  /** Re-run the Git remote detection against the (possibly moved) project root (doc-3 §3.2). */
-  redetectGitRemote: boolean;
   aliases: AliasRow[];
 }
 
@@ -125,7 +126,6 @@ export function editOf(entry: ProjectEntry): EntryEdit {
   return {
     projectRoot: entry.project_root,
     backlogRoot: entry.backlog_root,
-    redetectGitRemote: false,
     aliases: aliasRowsOf(entry),
   };
 }
@@ -357,10 +357,6 @@ export function toUpdateRequest(
     changed = true;
   } else if (backlogRoot !== entry.backlog_root) {
     request.backlog_root = backlogRoot;
-    changed = true;
-  }
-  if (edit.redetectGitRemote) {
-    request.redetect_git_remote = true;
     changed = true;
   }
   const table = aliasTable(edit.aliases);
