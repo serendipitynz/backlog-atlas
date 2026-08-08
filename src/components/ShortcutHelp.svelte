@@ -1,13 +1,14 @@
 <script lang="ts">
-  // 割り当て一覧 (doc-7 §2.1) as the screen shows it — the contents of the 一覧モーダル that TASK-67 moved
-  // this table into. On screen it is called キーボード操作の一覧 and the doc's term is 割り当て一覧: one
-  // thing with two words for it, so the two are tied together here. `shortcuts.ts` is its 正本.
+  // The 一覧モーダル's contents (doc-7 §2.1), which TASK-67 moved this table into. On screen it is called
+  // キーボード操作の一覧, and what it draws is the 画面に出す列 — three of the five 欄 the 割り当て一覧
+  // holds, and not the 一覧 itself, which §2.1 has held apart from this table since TASK-125.
+  // `shortcuts.ts` is the 正本 of both.
   //
   // **Why it left the menu.** It used to sit inside the header menu as a closed `details`, which made the
   // menu two things at once: the entries a user picks from, and a reference table folded up underneath
   // them. The table is the longer of the two by far, so opening it pushed the menu past its own
   // `max-height` and left the entries scrolled away above. A modal is the layer this app already has for
-  // something read rather than picked (doc-7 §2.1), and it can hold the whole list at once.
+  // something read rather than picked (doc-7 §2.1), and it can hold all nine rows at once.
   //
   // Printed from `SHORTCUTS`, never from a copy: doc-7 §2.1 asks for the list in 1 箇所, and a table
   // typed out here would be a second place — one that keeps saying `⌘N` after the assignment moves.
