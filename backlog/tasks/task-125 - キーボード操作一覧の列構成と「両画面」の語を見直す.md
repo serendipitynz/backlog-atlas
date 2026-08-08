@@ -1,10 +1,10 @@
 ---
 id: TASK-125
 title: キーボード操作一覧の列構成と「両画面」の語を見直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-07 22:25'
-updated_date: '2026-08-08 21:44'
+updated_date: '2026-08-08 23:22'
 labels:
   - ui
   - design-system
