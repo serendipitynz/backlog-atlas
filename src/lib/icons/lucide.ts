@@ -21,6 +21,7 @@
  * member; [`drawnShape`] is then non-exhaustive and the build stops until the new kind is drawn.
  * TASK-71 is where that happened for real rather than as a mutation: `panel-right` and
  * `panel-top-dashed` open with a `rect`, and `pnpm run check` named [`drawnShape`] until it was drawn.
+ * TASK-123 is the second, for `circle-question-mark`'s outer ring.
  *
  * ## Referent table (doc term → identifier here)
  *
@@ -57,7 +58,8 @@ export type IconName =
   | "arrow-down"
   | "x"
   | "triangle-alert"
-  | "plus";
+  | "plus"
+  | "circle-question-mark";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -88,7 +90,8 @@ export type IconShape =
       y: string;
       rx: string;
       ry?: string;
-    };
+    }
+  | { shape: "circle"; cx: string; cy: string; r: string };
 
 /** The frame the coordinates below are in (`defaultAttributes.mjs`). */
 export const ICON_VIEWBOX = "0 0 24 24";
@@ -139,6 +142,8 @@ export function drawnShape(shape: IconShape): DrawnShape {
           ...(shape.ry === undefined ? {} : { ry: shape.ry }),
         },
       };
+    case "circle":
+      return { tag: "circle", attrs: { cx: shape.cx, cy: shape.cy, r: shape.r } };
   }
 }
 
@@ -242,5 +247,20 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
   plus: [
     { shape: "path", d: "M5 12h14" },
     { shape: "path", d: "M12 5v14" },
+  ],
+  // lucide `circle-question-mark`. The 注記の入口 beside the 新規タスク heading (doc-10 §7) — an
+  // アイコンのみのボタン, so its `aria-label` carries the name and this figure carries nothing.
+  //
+  // Named `circle-question-mark` because that is what v1.17.0 calls it; the same package still exports
+  // `circle-help.mjs`, but that file only re-exports this one, so the alias would have to be resolved
+  // before the coordinates below could be diffed against anything.
+  //
+  // **This is where the shape enumeration grew a third kind** — the outer ring is a `circle`, and
+  // flattening it into a path would be redrawing the figure, which the module header refuses. As the
+  // header promises, `drawnShape` stopped compiling until the case was written.
+  "circle-question-mark": [
+    { shape: "circle", cx: "12", cy: "12", r: "10" },
+    { shape: "path", d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" },
+    { shape: "path", d: "M12 17h.01" },
   ],
 };
