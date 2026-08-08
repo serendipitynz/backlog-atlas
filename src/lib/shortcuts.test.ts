@@ -48,7 +48,7 @@ describe("割り当て一覧 (doc-7 §2.1)", () => {
     expect(SHORTCUTS.map((binding) => binding.action)).toEqual([...SHORTCUT_ORDER]);
   });
 
-  it("gives every row an operation and a 発火する画面 the 一覧 can print", () => {
+  it("gives every row an operation and a 使える場所 the 一覧 can print", () => {
     for (const binding of SHORTCUTS) {
       expect(binding.operation).not.toBe("");
       expect(SCOPE_LABEL[binding.scope]).not.toBe("");

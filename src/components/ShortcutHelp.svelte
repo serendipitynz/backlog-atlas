@@ -26,16 +26,16 @@
     <h2>キーボード操作の一覧</h2>
   </header>
 
-  <!-- doc-7 §2.1 の 4 列: キー・操作・発火する画面・入力欄内で発火するか。打ち消す既定動作も同じ行に
-       出す — §2.1 requires preventDefault を割り当て一覧に明記する, and this is that list. -->
+  <!-- doc-7 §2.1 の 3 列: キー・操作・使える場所。**この表は割り当て一覧そのものではない** — the 一覧 is
+       the five-欄 record in `shortcuts.ts`, and §2.1 asks this modal for three of those 欄 (TASK-125).
+       入力欄内で発火するか and 打ち消す既定動作 stay in the record, which is where §2.1's 明記 clause and
+       every caller read them; what a user needs before pressing is which key does what, where. -->
   <table>
     <thead>
       <tr>
         <th scope="col">キー</th>
         <th scope="col">操作</th>
-        <th scope="col">発火する画面</th>
-        <th scope="col" class="fires">入力欄内</th>
-        <th scope="col">打ち消す既定動作</th>
+        <th scope="col">使える場所</th>
       </tr>
     </thead>
     <tbody>
@@ -44,8 +44,6 @@
           <td class="chord">{chordLabel(binding.chord, MAC_KEYBOARD)}</td>
           <td>{binding.operation}</td>
           <td>{SCOPE_LABEL[binding.scope]}</td>
-          <td class="fires">{binding.firesInTextEntry ? "発火する" : "発火しない"}</td>
-          <td>{binding.preventsDefault ?? "—"}</td>
         </tr>
       {/each}
     </tbody>
@@ -93,12 +91,4 @@
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
-
-  // 発火する / 発火しない is a two-value answer, so it is never worth two lines. Measured in WebKit and
-  // Chromium: without this the column wraps on *every* row and doubles the height of the whole table,
-  // which is what pushes the long sentences in the two columns beside it out of one screen.
-  .fires {
-    white-space: nowrap;
-  }
-
 </style>
