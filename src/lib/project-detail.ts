@@ -242,9 +242,13 @@ export function gitRemoteDisagreement(
   entry: ProjectEntry,
   read: GitRemoteRead | null,
 ): string | null {
-  if (read === null || read.state === "unreadable") return null;
+  if (read === null || read.state === "unreadable") {
+    return null;
+  }
   const found = read.state === "configured";
-  if (found === entry.git_remote_present) return null;
+  if (found === entry.git_remote_present) {
+    return null;
+  }
   return found
     ? "台帳が記録している Git remote 有無属性は「なし」で、いまの検出と食い違っています。"
     : "台帳が記録している Git remote 有無属性は「あり」で、いまの検出と食い違っています。";
@@ -258,8 +262,8 @@ export function gitRemoteDisagreement(
  * are read differently and shown differently. A withheld control has an obstacle outside itself, so
  * doc-11 §5 wants that obstacle stated near it; a running one is doing what it was just pressed for,
  * and its own label can say so. Folding them let this control state the generic「台帳の更新を実行中
- * です」and grow a line under itself on every press — 実測ではその行の出入りと値の 未取得 への往復が
- * まとめて「一瞬ぐちゃぐちゃと表示が変わる」形になっていた（2026-08-08 の目視）。
+ * です」and grow a line under itself on every press; that line arriving and leaving, together with the
+ * value going to 未取得 and back, is what made the field flash (2026-08-08 の目視).
  *
  * `running` is checked first for the same reason: the ledger write it holds is this control's own,
  * so reporting it as an obstacle would be the control blaming itself.
@@ -275,7 +279,9 @@ export function redetectControl(context: {
   busy: boolean;
   running: boolean;
 }): RedetectControl {
-  if (context.running) return { state: "running", label: "再検出中…" };
+  if (context.running) {
+    return { state: "running", label: "再検出中…" };
+  }
   const reason = context.readOnly
     ? "台帳が読み取り専用のため、Git remote の再検出はできません。"
     : overviewBlocked(context);

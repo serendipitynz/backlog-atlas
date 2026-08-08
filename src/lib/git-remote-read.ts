@@ -56,7 +56,9 @@ export function createGitRemoteReader(ports: GitRemoteReadPorts): GitRemoteReade
 
   /** The token is taken whether or not the line is blanked, so the two entry points interleave. */
   async function ask(slug: string, blank: boolean): Promise<void> {
-    if (blank) ports.show(null);
+    if (blank) {
+      ports.show(null);
+    }
     const token = ++calls;
     let read: GitRemoteRead;
     try {
@@ -64,7 +66,9 @@ export function createGitRemoteReader(ports: GitRemoteReadPorts): GitRemoteReade
     } catch {
       return;
     }
-    if (token !== calls) return;
+    if (token !== calls) {
+      return;
+    }
     ports.show(read);
   }
 
