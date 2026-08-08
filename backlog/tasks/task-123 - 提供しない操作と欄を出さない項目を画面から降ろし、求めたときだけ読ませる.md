@@ -1,10 +1,10 @@
 ---
 id: TASK-123
 title: 提供しない操作と欄を出さない項目を画面から降ろし、求めたときだけ読ませる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-07 22:25'
-updated_date: '2026-08-08 01:51'
+updated_date: '2026-08-08 03:37'
 labels:
   - ui
   - design-system
