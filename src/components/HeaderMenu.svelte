@@ -8,9 +8,10 @@
   // - **The per-row 行非表示 list.** doc-11 §4 names this case as its example of 縮約: the 帯 keeps the
   //   count and its own すべて戻す, and 個々のレーンはメニューの一覧から戻す — which is this list.
   //
-  // The 割り当て一覧 (doc-7 §2.1) is *reached* from here and no longer drawn here: TASK-67 moved the table
-  // into the 一覧モーダル (`ShortcutHelp.svelte`), leaving this menu one line that opens it. §2.1 asks for
-  // the list in 1 箇所 — that is `shortcuts.ts`, which every hint below is printed from as well.
+  // The 割り当て一覧 (doc-7 §2.1) is *reached* from here and its table is no longer drawn here: TASK-67
+  // moved that table into the 一覧モーダル (`ShortcutHelp.svelte`), leaving this menu one line that opens
+  // it. §2.1 asks for the 一覧 in 1 箇所 — that is `shortcuts.ts`, which every hint below is printed from
+  // as well, and which the table draws three of the five 欄 of.
   import {
     ariaKeyShortcuts,
     matchShortcut,
@@ -121,8 +122,9 @@
     z-index: 3;
     top: calc(100% + 0.25rem);
     right: 0;
-    // Narrower since TASK-67 took the 割り当て一覧 out: the 5-column table was what needed 30rem, and the
-    // widest thing left is a 保留理由 sentence, which reads better wrapped than spread across a panel.
+    // Narrower since TASK-67 took the table out: it was what needed 30rem — five columns then, three
+    // since TASK-125 — and the widest thing left is a 保留理由 sentence, which reads better wrapped than
+    // spread across a panel.
     width: min(24rem, 90vw);
     max-height: 70vh;
     padding: 0.35rem;

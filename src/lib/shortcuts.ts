@@ -12,8 +12,8 @@
  *
  * | term | here | is |
  * |---|---|---|
- * | doc-7 §2.1 割り当て一覧 | [`SHORTCUTS`] + [`ShortcutBinding`] | one row per key assignment: chord, operation, 適用範囲, whether it fires in a text field, and what default it stops |
- * | doc-7 §2.1 発火する画面 | [`ShortcutScope`] + [`SCOPE_LABEL`] | 適用範囲: the closed set of 6 places an assignment is answered in |
+ * | doc-7 §2.1 割り当て一覧 | [`SHORTCUTS`] + [`ShortcutBinding`] | the 記録, all five 欄: chord, operation, 適用範囲, whether it fires in a text field, and what default it stops. §2.1 names this side and not the three columns the モーダル prints (TASK-125) |
+ * | doc-7 §2.1 使える場所 | [`ShortcutScope`] + [`SCOPE_LABEL`] | 適用範囲: the closed set of 6 places an assignment is answered in |
  * | doc-7 §2.1 入力欄・編集部品の内側では単独キーを発火させない | [`textEntryFocused`] + [`ShortcutBinding.firesInTextEntry`] | 文字入力中: focus is inside an element that takes characters, so a bare key belongs to the text |
  * | doc-7 §2.1 修飾キーは macOS で Command、Windows・Linux で Control | [`Chord.mod`] + [`modifierLabel`] | 共通修飾キー: one modifier on the assignment's side, mapped to this OS's real key for matching, ARIA and spelling alike |
  * | doc-7 §2.1 preventDefault は要るキーだけに限り一覧に明記する | [`ShortcutBinding.preventsDefault`] | the default this key would otherwise take, or `null` when nothing is stopped |
@@ -41,7 +41,7 @@
  * browser — and the two facts stay one call each rather than being sniffed at every key press.
  */
 
-// --- 適用範囲 (doc-7 §2.1 発火する画面) ---------------------------------------------------------
+// --- 適用範囲 (doc-7 §2.1 使える場所) -----------------------------------------------------------
 
 /**
  * Where an assignment is answered. A closed set: a seventh place would need a row in the doc's list
@@ -62,9 +62,14 @@ export type ShortcutScope =
   | "editPart"
   | "laneCreate";
 
-/** The 発火する画面 column, as the on-screen 一覧 words it. */
+/**
+ * The 使える場所 column, as the on-screen 一覧 words it. `bothScreens` names both screens rather than
+ * counting them (TASK-125): 両画面 left *which* two off the screen entirely — the pair was only in the
+ * TSDoc above. It is spelled with the same 短縮形 the `swimlane` row below uses, and that the way back
+ * from プロジェクト詳細 prints (「← スイムレーン」), so the two rows can be read against each other.
+ */
 export const SCOPE_LABEL: Record<ShortcutScope, string> = {
-  bothScreens: "両画面",
+  bothScreens: "スイムレーン・プロジェクト詳細",
   swimlane: "スイムレーン",
   overlay: "モーダル・メニュー・ポップオーバーの内側",
   modal: "モーダルの内側",
