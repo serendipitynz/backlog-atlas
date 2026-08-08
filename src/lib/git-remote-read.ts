@@ -29,8 +29,18 @@ export interface GitRemoteReadPorts {
 }
 
 export interface GitRemoteReader {
-  /** Ask about one entry. Supersedes whatever is in flight, and shows 未取得 while it runs. */
+  /**
+   * Ask about an entry the line is not yet showing. Blanks to 未取得 first: leaving the previous
+   * entry's address up would attribute one project's remote to another.
+   */
   load: (slug: string) => Promise<void>;
+  /**
+   * Ask again about the entry already on the line — what 再検出する does after its write. The value
+   * stays up until the new one lands, because it is still true of this entry until then, and
+   * blanking it made the field flash through 未取得 on a read that usually answers at once
+   * (2026-08-08 の目視). Which answer wins is decided exactly as in `load`.
+   */
+  refresh: (slug: string) => Promise<void>;
 }
 
 /**
@@ -44,18 +54,22 @@ export interface GitRemoteReader {
 export function createGitRemoteReader(ports: GitRemoteReadPorts): GitRemoteReader {
   let calls = 0;
 
+  /** The token is taken whether or not the line is blanked, so the two entry points interleave. */
+  async function ask(slug: string, blank: boolean): Promise<void> {
+    if (blank) ports.show(null);
+    const token = ++calls;
+    let read: GitRemoteRead;
+    try {
+      read = await ports.read(slug);
+    } catch {
+      return;
+    }
+    if (token !== calls) return;
+    ports.show(read);
+  }
+
   return {
-    async load(slug: string): Promise<void> {
-      ports.show(null);
-      const token = ++calls;
-      let read: GitRemoteRead;
-      try {
-        read = await ports.read(slug);
-      } catch {
-        return;
-      }
-      if (token !== calls) return;
-      ports.show(read);
-    },
+    load: (slug: string) => ask(slug, true),
+    refresh: (slug: string) => ask(slug, false),
   };
 }

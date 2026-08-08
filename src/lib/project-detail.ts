@@ -19,7 +19,7 @@
  * | §4.1 slug は編集手段を提供しない | [`SLUG_IMMUTABLE_NOTE`] | what changing it would take, and what that would break |
  * | §4.1 remote 現在値 | [`gitRemoteLine`] | the project root's Git remote as it reads now — one line, in decision-6's families. Never the ledger's recorded 有無属性 |
  * | §4.1 記録と検出の食い違い | [`gitRemoteDisagreement`] | 状態文: the recorded 有無属性 and the current read disagree — `null` while they agree |
- * | §4.1 再検出 | [`redetectBlocked`] | why the re-detection cannot be pressed, if it cannot |
+ * | §4.1 再検出 | [`RedetectControl`] + [`redetectControl`] | 再検出する in its three states — ready, its own operation running, or withheld with the obstacle stated |
  * | §4.1 ルートを変えたときは Backlog ルートも併せて送る | [`rootMoveNote`] | the note under the field saying which value will travel |
  * | §4.1 移動が成立すると編集セッションは閉じる | [`movesRoot`] | whether this update is a move — the trigger for closing |
  * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`OVERVIEW_READ_ONLY_NOTE`] | the sentence, near the controls, saying the inputs are stopped too |
@@ -251,15 +251,37 @@ export function gitRemoteDisagreement(
 }
 
 /**
- * Why 再検出 is held, if it is (doc-10 §4.1, doc-11 §5). The re-detection writes the entry's Git
- * remote 有無属性, so a read-only ledger stops it for the same reason it stops the save — which is
- * why this is `overviewBlocked` with the operation named, not a rule of its own.
+ * What the 再検出する control is doing, and why it cannot be pressed when it cannot (doc-10 §4.1,
+ * doc-11 §5).
+ *
+ * `running` is separate from `withheld` although both leave the control unpressable, because the two
+ * are read differently and shown differently. A withheld control has an obstacle outside itself, so
+ * doc-11 §5 wants that obstacle stated near it; a running one is doing what it was just pressed for,
+ * and its own label can say so. Folding them let this control state the generic「台帳の更新を実行中
+ * です」and grow a line under itself on every press — 実測ではその行の出入りと値の 未取得 への往復が
+ * まとめて「一瞬ぐちゃぐちゃと表示が変わる」形になっていた（2026-08-08 の目視）。
+ *
+ * `running` is checked first for the same reason: the ledger write it holds is this control's own,
+ * so reporting it as an obstacle would be the control blaming itself.
  */
-export function redetectBlocked(context: { readOnly: boolean; busy: boolean }): string | null {
-  if (context.readOnly) {
-    return "台帳が読み取り専用のため、Git remote の再検出はできません。";
-  }
-  return overviewBlocked(context);
+export type RedetectControl =
+  | { state: "ready"; label: string }
+  | { state: "running"; label: string }
+  | { state: "withheld"; label: string; reason: string };
+
+/** 再検出する in its three states. The label is here so the running state's wording has one home. */
+export function redetectControl(context: {
+  readOnly: boolean;
+  busy: boolean;
+  running: boolean;
+}): RedetectControl {
+  if (context.running) return { state: "running", label: "再検出中…" };
+  const reason = context.readOnly
+    ? "台帳が読み取り専用のため、Git remote の再検出はできません。"
+    : overviewBlocked(context);
+  return reason === null
+    ? { state: "ready", label: "再検出する" }
+    : { state: "withheld", label: "再検出する", reason };
 }
 
 // --- 概要区画: status 別名表の効き方 (doc-10 §4.2) ---------------------------------------------

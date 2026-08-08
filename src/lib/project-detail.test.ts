@@ -11,7 +11,7 @@ import {
   gitRemoteLine,
   movesRoot,
   overviewBlocked,
-  redetectBlocked,
+  redetectControl,
   rootMoveNote,
   submittedAttributes,
   unregisterBlocked,
@@ -192,18 +192,39 @@ describe("記録と検出の食い違い", () => {
   });
 });
 
-describe("再検出の可否", () => {
+describe("再検出の控え", () => {
+  const control = (overrides: { readOnly?: boolean; busy?: boolean; running?: boolean } = {}) =>
+    redetectControl({ readOnly: false, busy: false, running: false, ...overrides });
+
   it("is held by a read-only ledger, and says so about this operation", () => {
-    const reason = redetectBlocked({ readOnly: true, busy: false });
-    expect(reason).toContain("読み取り専用");
-    expect(reason).toContain("再検出");
+    const shown = control({ readOnly: true });
+    expect(shown.state).toBe("withheld");
+    expect(shown.state === "withheld" && shown.reason).toContain("読み取り専用");
+    expect(shown.state === "withheld" && shown.reason).toContain("再検出");
   });
 
-  it("is held while a ledger write is in flight, and free otherwise", () => {
-    expect(redetectBlocked({ readOnly: false, busy: true })).toBe(
+  it("is held while another ledger write is in flight, and free otherwise", () => {
+    const busy = control({ busy: true });
+    expect(busy.state === "withheld" && busy.reason).toBe(
       overviewBlocked({ readOnly: false, busy: true }),
     );
-    expect(redetectBlocked({ readOnly: false, busy: false })).toBeNull();
+    expect(control().state).toBe("ready");
+  });
+
+  it("says it is running rather than blaming the write it started itself", () => {
+    // 2026-08-08 の目視: pressing it raised the generic「台帳の更新を実行中です」line under the
+    // control, so every press grew and dropped a paragraph. The running state carries no reason to
+    // put there — its own label is what says what is happening.
+    const running = control({ busy: true, running: true });
+    expect(running.state).toBe("running");
+    expect(running.label).not.toBe(control().label);
+    expect(running).not.toHaveProperty("reason");
+  });
+
+  it("still refuses to be pressed while running, read-only or busy", () => {
+    for (const shown of [control({ running: true }), control({ readOnly: true }), control({ busy: true })]) {
+      expect(shown.state).not.toBe("ready");
+    }
   });
 });
 

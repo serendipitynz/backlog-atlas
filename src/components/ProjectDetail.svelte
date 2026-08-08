@@ -98,7 +98,7 @@
     gitRemoteLine,
     movesRoot,
     overviewBlocked,
-    redetectBlocked,
+    redetectControl,
     rootMoveNote,
     submittedAttributes,
     unregisterBlocked,
@@ -393,8 +393,14 @@
 
   let remoteLine = $derived(gitRemoteLine(gitRemote));
   let remoteDisagreement = $derived(gitRemoteDisagreement(entry, gitRemote));
-  let redetectReason = $derived(
-    redetectBlocked({ readOnly: ledgerReadOnly, busy: ledgerBusy || issuing }),
+  /** True only while *this* control's own write-then-read is in flight (doc-10 §4.1). */
+  let redetecting = $state(false);
+  let redetect = $derived(
+    redetectControl({
+      readOnly: ledgerReadOnly,
+      busy: ledgerBusy || issuing,
+      running: redetecting,
+    }),
   );
 
   /**
@@ -406,9 +412,10 @@
    * 区画's 発行 waits for one — but the roots cannot move here, so no session is closed afterwards.
    */
   async function redetectGitRemote(): Promise<void> {
-    if (redetectReason !== null) return;
+    if (redetect.state !== "ready") return;
     entryReport = null;
     overviewNotice = null;
+    redetecting = true;
     ledgerSaving = true;
     try {
       const result = await onupdate({ slug: entry.slug, redetect_git_remote: true });
@@ -418,10 +425,13 @@
       }
       // Read again rather than reasoning from the new entry: the recorded boolean is what the write
       // returned, and the line shows the address — only a second read can produce it. Through the
-      // reader, so this answer supersedes any read still in flight instead of racing it.
-      await remoteReader.load(entry.slug);
+      // reader, so this answer supersedes any read still in flight instead of racing it. `refresh`
+      // rather than `load`: this entry's address is still true until the new answer lands, and
+      // blanking it made the field flash through 未取得 (2026-08-08 の目視).
+      await remoteReader.refresh(entry.slug);
       overviewNotice = `${result.slug} の Git remote を再検出しました。`;
     } finally {
+      redetecting = false;
       ledgerSaving = false;
     }
   }
@@ -1414,16 +1424,17 @@
             <span class="row-inline">
               <button
                 type="button"
-                disabled={redetectReason !== null}
-                aria-describedby={redetectReason === null ? undefined : REDETECT_BLOCKED_ID}
+                disabled={redetect.state !== "ready"}
+                aria-describedby={redetect.state === "withheld" ? REDETECT_BLOCKED_ID : undefined}
                 onclick={redetectGitRemote}
               >
-                再検出する
+                {redetect.label}
               </button>
             </span>
-            {#if redetectReason !== null}
-              <!-- doc-11 §5: a withheld control carries its reason in view, not on hover. -->
-              <p class="problem" id={REDETECT_BLOCKED_ID}>{redetectReason}</p>
+            {#if redetect.state === "withheld"}
+              <!-- doc-11 §5: a withheld control carries its reason in view, not on hover. The
+                   running state has no line of its own — its label is what says so. -->
+              <p class="problem" id={REDETECT_BLOCKED_ID}>{redetect.reason}</p>
             {/if}
           </div>
 

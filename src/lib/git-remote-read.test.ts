@@ -29,7 +29,7 @@ function reader(reads: Promise<GitRemoteRead>[]) {
     },
     show: (read) => (shown = read),
   });
-  return { load: built.load, current: (): GitRemoteRead | null => shown, asked };
+  return { load: built.load, refresh: built.refresh, current: (): GitRemoteRead | null => shown, asked };
 }
 
 /** Let every already-settled promise callback run. */
@@ -94,6 +94,40 @@ describe("remote 現在値は最後に頼んだ読み取りの答えだけを出
     second.resolve({ state: "remoteAbsent" });
     await settle();
     expect(built.current()).toEqual({ state: "remoteAbsent" });
+  });
+
+  it("keeps the value up through a refresh, and blanks only on a load", async () => {
+    // 2026-08-08 の目視: 再検出する answers at once, so blanking first made the field flash through
+    // 未取得. The address stays true of this entry until the new answer lands.
+    const first = deferred();
+    const again = deferred();
+    const built = reader([first.promise, again.promise]);
+
+    void built.load("atlas");
+    first.resolve(CONFIGURED);
+    await settle();
+
+    void built.refresh("atlas");
+    expect(built.current()).toEqual(CONFIGURED);
+    again.resolve({ state: "remoteAbsent" });
+    await settle();
+    expect(built.current()).toEqual({ state: "remoteAbsent" });
+  });
+
+  it("lets a refresh supersede a load that is still in flight", async () => {
+    // The refresh takes a token like any other call, so not blanking does not cost it the ordering.
+    const slow = deferred();
+    const refreshed = deferred();
+    const built = reader([slow.promise, refreshed.promise]);
+
+    void built.load("atlas");
+    void built.refresh("atlas");
+    refreshed.resolve(CONFIGURED);
+    await settle();
+    slow.resolve({ state: "noRepository" });
+    await settle();
+
+    expect(built.current()).toEqual(CONFIGURED);
   });
 
   it("stays at 未取得 when a read rejects, rather than inventing a remote state", async () => {
