@@ -1,10 +1,10 @@
 ---
 id: TASK-124
 title: Git remote を現在値の表示と再判定ボタンに分ける
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-07 22:25'
-updated_date: '2026-08-08 04:55'
+updated_date: '2026-08-08 08:41'
 labels:
   - ui
   - 'kind:feature'
