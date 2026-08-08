@@ -124,6 +124,11 @@ interface Assignment {
    * What default this key would otherwise take, or `null` when nothing is stopped. doc-7 §2.1 limits
    * `preventDefault` to the keys that need it and requires the list to say so — a boolean would record
    * that a default is stopped without recording *which*, which is the part that can turn out wrong.
+   *
+   * A 単独キー needs one whenever its operation moves focus into something that takes characters:
+   * [`firesInTextEntry`] keeps the press out of a field that *already* holds the caret, but it cannot
+   * see a field the operation itself opens, and the key's own character reaches that field after the
+   * handler returns (TASK-129).
    */
   preventsDefault: string | null;
 }
@@ -158,12 +163,20 @@ const ASSIGNMENTS: Record<ShortcutAction, Assignment> = {
     firesInTextEntry: false,
     preventsDefault: null,
   },
+  // A bare key is only answered while the caret is *outside* a field, so its character normally lands
+  // nowhere — but this operation moves the caret into one. The popover focuses its 検索欄 from an
+  // `$effect`, which runs before the browser performs the keydown's default, so the `f` arrives in the
+  // box the press just opened and the list is filtered to the values containing one — none at all,
+  // where the values are Japanese, which reads as 絞り込める値が無い (TASK-129). Stopping the default is
+  // what §2.1 provides for; the alternatives were worse — not focusing the 検索欄 puts the keystrokes
+  // that follow nowhere the user can see (`FilterPopover.svelte`), and deferring the focus past the
+  // default ties the popover to when a particular engine performs it.
   addFilter: {
     chord: { key: "f" },
     operation: "絞り込みを追加（値一覧を開く）",
     scope: "swimlane",
     firesInTextEntry: false,
-    preventsDefault: null,
+    preventsDefault: "開いた検索欄への f の入力",
   },
   undoFilter: {
     chord: { key: "Backspace" },
