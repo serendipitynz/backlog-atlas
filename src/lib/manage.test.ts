@@ -17,13 +17,11 @@ import {
   MILESTONE_REMOVE_MOVES_THE_FILE,
   MILESTONE_RENAME_REQUIRED_REASON,
   MILESTONE_RENAME_UNCHANGED_REASON,
-  TASK_CREATE_OMITTED_FIELDS,
-  TASK_CREATE_SCOPE_NOTE,
+  TASK_CREATE_LATER_FIELDS,
+  TASK_CREATE_NOTE,
   TASK_TITLE_REQUIRED_REASON,
   MILESTONE_DESCRIPTION_HEADING_REASON,
   MILESTONE_DESCRIPTION_UNCHANGED_REASON,
-  WITHHELD_DOCUMENT_OPERATIONS,
-  WITHHELD_MILESTONE_OPERATIONS,
   buildDocCreate,
   buildDocUpdate,
   buildMilestoneAdd,
@@ -320,26 +318,6 @@ describe("buildMilestoneAdd", () => {
   });
 });
 
-describe("マイルストーンの提供範囲", () => {
-  it("withholds no milestone operation at all, since TASK-65 (doc-10 §9)", () => {
-    // 改称・削除・アーカイブ left the list when doc-9 §4.2 defined their 照合 (TASK-45); the
-    // description edit left it when decision-21 made it a 直接書き込み操作. The empty list is the
-    // 区画's own instruction not to render (doc-10 §9), so it is asserted rather than assumed.
-    expect(WITHHELD_MILESTONE_OPERATIONS).toEqual([]);
-  });
-
-  it("still lays a withheld document operation out as 名称・写像先・理由 (doc-10 §1)", () => {
-    // The milestone list going empty must not take the shape with it: the 文書区画 keeps an entry,
-    // and it is the three points that tell 提供しない apart from a disabled button (doc-11 §5).
-    expect(WITHHELD_DOCUMENT_OPERATIONS.length).toBeGreaterThan(0);
-    for (const entry of WITHHELD_DOCUMENT_OPERATIONS) {
-      expect(entry.label).not.toBe("");
-      expect(entry.mapping).not.toBe("");
-      expect(entry.reason).not.toBe("");
-    }
-  });
-});
-
 // --- 改称・削除・アーカイブ (doc-9 §4.2, doc-10 §6) ---------------------------------------------
 
 const MILESTONE: Milestone = {
@@ -534,8 +512,6 @@ describe("buildMilestoneDescribe", () => {
   });
 });
 
-// --- 文書の提供しない操作 (doc-10 §5) ----------------------------------------------------------
-
 describe("発行の可否", () => {
   const ready: CliReadiness = { state: "ready", version: "1.48.0" };
   const plan: IssuePlan = { state: "ready", action: [{ op: "milestoneAdd", name: "m-2" }] };
@@ -566,54 +542,37 @@ describe("発行の可否", () => {
   });
 });
 
-describe("文書の提供範囲", () => {
-  it("withholds the delete with the boundary reason, not with a bare absence", () => {
-    expect(WITHHELD_DOCUMENT_OPERATIONS.map((entry) => entry.kind)).toEqual(["remove"]);
-    const remove = WITHHELD_DOCUMENT_OPERATIONS[0];
-    // The reason has to be in two steps: that the CLI lacks it, and that Atlas does not fill the
-    // gap by unlinking the file itself (decision-2's boundary). With only the first, it reads as
-    // "then Atlas should just delete it". The second step is checked by its substance, not by the
-    // decision's number: doc-11 §8 keeps 設計文書参照 off the screen.
-    expect(remove.reason).toContain("v1.48.0");
-    expect(remove.reason).toContain("直接消すことはしない");
-    expect(remove.reason).not.toMatch(/doc-\d|decision-\d/);
-    // doc-10 §6 requires the 写像先, and doc-11 §8 carves it out of 発行手段の記述: it names an
-    // operation Atlas does *not* issue, so the subcommand is the identity of what is missing.
-    expect(remove.mapping).not.toBe("");
-  });
-});
-
-// --- 新規タスク区画で欄を出さない項目 (doc-10 §7) ----------------------------------------------
-
-describe("新規タスク作成の範囲", () => {
-  it("states the narrowing as a product judgment, never as a missing CLI feature", () => {
-    // doc-10 §7 forbids writing「CLI に無い」: v1.48.0's `task create` does accept these (measured),
-    // so it would be false — and it would leave the CLI as a pretext for widening the form later.
-    expect(TASK_CREATE_SCOPE_NOTE).toContain("製品判断");
-    for (const field of TASK_CREATE_OMITTED_FIELDS) {
-      expect(field.reason).not.toContain("CLI に無い");
-      expect(field.flag).not.toBe("");
-      // Whether an omitted field has a post-creation route differs per field (doc-10 §7), so each
-      // one carries its own.
-      expect(field.after).not.toBe("");
-    }
+describe("新規タスクの注記", () => {
+  it("says where the fields go instead, and never why the form omits them", () => {
+    // 代替経路の案内 (doc-11 §8): the note carries a route and nothing else. TASK-123 dropped the
+    // per-field reasons, so the assertion is that they did not come back — a reason here would be
+    // the thing the 目視 called ノイズ, and「CLI に無い」would be false besides (v1.48.0's
+    // `task create` does accept all five, measured 2026-07-29).
+    expect(TASK_CREATE_NOTE).toContain("作成後");
+    expect(TASK_CREATE_NOTE).toContain("タスクの編集");
+    expect(TASK_CREATE_NOTE).not.toContain("CLI");
+    expect(TASK_CREATE_NOTE).not.toContain("製品判断");
+    expect(TASK_CREATE_NOTE).not.toMatch(/doc-\d|decision-\d/);
   });
 
-  it("covers exactly the fields v1.48.0 accepts and this form does not offer", () => {
-    expect(TASK_CREATE_OMITTED_FIELDS.map((field) => field.flag)).toEqual([
-      "-a",
-      "--plan",
-      "--notes",
-      "--ref",
-      "--depends-on",
+  it("names the five fields v1.48.0 accepts and this form has no input for", () => {
+    expect(TASK_CREATE_LATER_FIELDS).toEqual([
+      "assignee",
+      "実装計画",
+      "実装ノート",
+      "References",
+      "依存",
     ]);
   });
 
-  it("says that assignee cannot be cleared, since that is the one gap with no route", () => {
-    const assignee = TASK_CREATE_OMITTED_FIELDS.find((field) => field.flag === "-a");
-    expect(assignee?.after).toContain("解除");
-    expect(assignee?.after).toContain("手段がありません");
-    expect(assignee?.after).not.toMatch(/doc-\d|decision-\d/);
+  it("carries no flag names", () => {
+    // doc-11 §8 の 発行手段の記述 lost its carve-out with TASK-123: the flags were shown so that the
+    // absence could not read as「CLI に無い」, and with the reasons gone there is no false
+    // explanation left for them to guard against.
+    for (const field of TASK_CREATE_LATER_FIELDS) {
+      expect(field).not.toMatch(/^-|--/);
+    }
+    expect(TASK_CREATE_LATER_FIELDS.join("")).not.toContain("-a");
   });
 });
 
