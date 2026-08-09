@@ -1,10 +1,10 @@
 ---
 id: TASK-129
 title: 絞り込みを開く F が、開いた検索欄にも f を入力してしまうのを直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-08 23:08'
-updated_date: '2026-08-09 00:04'
+updated_date: '2026-08-09 01:28'
 labels:
   - ui
   - 'kind:bug'
