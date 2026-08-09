@@ -273,8 +273,8 @@ const EDITOR_SOURCES = unionValues<EditorSource>()("appSettings", "visual", "edi
 const CARD_DENSITIES = unionValues<CardDensity>()("s", "m", "l");
 const DETAIL_PLACEMENTS = unionValues<DetailPlacement>()("sidebar", "modal", "full");
 const CARD_ORDERS = unionValues<CardOrder>()(
-  "priority_desc",
   "priority_asc",
+  "priority_desc",
   "task_id_asc",
   "task_id_desc",
   "updated_asc",

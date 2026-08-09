@@ -806,8 +806,8 @@ fn every_detail_placement() -> Vec<DetailPlacement> {
 
 fn every_card_order() -> Vec<CardOrder> {
     let all = vec![
-        CardOrder::PriorityDesc,
         CardOrder::PriorityAsc,
+        CardOrder::PriorityDesc,
         CardOrder::TaskIdAsc,
         CardOrder::TaskIdDesc,
         CardOrder::UpdatedAsc,

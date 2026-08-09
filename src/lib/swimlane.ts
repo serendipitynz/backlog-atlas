@@ -259,13 +259,19 @@ export interface CardOrderRule {
 /**
  * 並び順 (doc-7 §5.4) — the ten orders, in the order the 帯's control and the 設定画面 list them.
  *
- * Both the attribute order and the direction order come from the 原文 (2026-08-09 のユーザーの要求).
+ * The attribute order comes from the 原文 (2026-08-09 のユーザーの要求); **the direction order is
+ * 昇順 then 降順 for every one of them**, which is where this departs from the 原文 — that listing put
+ * priority's 降順 first, and one attribute reading backwards among five is the thing a reader notices
+ * before anything else (2026-08-10 のユーザー判断). The 既定 is `priority_desc` whatever position it
+ * ends up in: the list's order is the screen's, and the `<select>` shows the value in force rather
+ * than its first entry.
+ *
  * The 並び順 a card is laid out by is `task.id`, **not** the 横断タスクID: a レーンセル holds one
  * project's cards, so the slug prefix is the same on all of them and would only cost a comparison.
  */
 export const CARD_ORDERS: Record<CardOrder, CardOrderRule> = {
-  priority_desc: { label: "priority 降順", compare: byPriority(DESC) },
   priority_asc: { label: "priority 昇順", compare: byPriority(ASC) },
+  priority_desc: { label: "priority 降順", compare: byPriority(DESC) },
   task_id_asc: {
     label: "task id 昇順",
     compare: byOptional((view) => view.task.id, compareNumberAware, ASC),

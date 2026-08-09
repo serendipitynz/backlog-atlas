@@ -258,8 +258,8 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
     // Against the record the controls read, so an attribute added to one and not the other fails
     // here rather than in the two components separately.
     expect(CARD_ORDER_CHOICES.map(([order]) => order)).toEqual([
-      "priority_desc",
       "priority_asc",
+      "priority_desc",
       "task_id_asc",
       "task_id_desc",
       "updated_asc",
@@ -270,8 +270,8 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
       "milestone_desc",
     ]);
     expect(CARD_ORDER_CHOICES.map(([, rule]) => rule.label)).toEqual([
-      "priority 降順",
       "priority 昇順",
+      "priority 降順",
       "task id 昇順",
       "task id 降順",
       "updated 昇順",

@@ -678,8 +678,8 @@ export type DetailPlacement = "sidebar" | "modal" | "full";
  * each one compares, and what it is called on screen).
  */
 export type CardOrder =
-  | "priority_desc"
   | "priority_asc"
+  | "priority_desc"
   | "task_id_asc"
   | "task_id_desc"
   | "updated_asc"

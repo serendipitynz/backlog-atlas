@@ -93,16 +93,19 @@ pub enum DetailPlacement {
 /// table (decision-13 形式). A nested `{ attribute, direction }` would serialize as a TOML sub-table,
 /// which also has to come after every scalar key in the file.
 ///
-/// Direction order within each attribute follows the 原文 (2026-08-09 のユーザーの要求), which is
-/// also the order the control lists them in.
+/// Attribute order follows the 原文 (2026-08-09 のユーザーの要求); the direction order is 昇順 then
+/// 降順 for **every** attribute, which is where the control's list departs from it — the 原文 wrote
+/// priority the other way round, and one attribute reading backwards is what a reader notices first
+/// (2026-08-10 のユーザー判断). This is also the order the control lists them in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CardOrder {
+    PriorityAsc,
     /// 既定 (doc-7 §5.4). With the shared tie-break behind it, this is the order the grid had before
-    /// the orders became selectable, card for card.
+    /// the orders became selectable, card for card. `#[default]` rather than first: the list's order
+    /// is the screen's, and the default is not tied to a position in it.
     #[default]
     PriorityDesc,
-    PriorityAsc,
     TaskIdAsc,
     TaskIdDesc,
     UpdatedAsc,

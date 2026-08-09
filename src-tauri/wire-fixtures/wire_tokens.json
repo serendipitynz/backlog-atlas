@@ -5,8 +5,8 @@
     "l"
   ],
   "CardOrder": [
-    "priority_desc",
     "priority_asc",
+    "priority_desc",
     "task_id_asc",
     "task_id_desc",
     "updated_asc",
