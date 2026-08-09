@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   HEADER_ENTRIES,
+  NO_PROJECTS_REASON,
   SHORTCUT_HELP_LABEL,
+  SHOW_ALL_PROJECTS_HELD_REASON,
   SHOW_ALL_PROJECTS_LABEL,
   headerMenu,
+  omitsSentence,
   projectMenuLabel,
   showAllProjectsHeld,
   startsGroup,
@@ -126,8 +129,33 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
 
 describe("保留理由 (doc-11 §5)", () => {
   it("holds すべてのプロジェクトを表示 at 0 hidden rows only", () => {
-    expect(showAllProjectsHeld(0)).not.toBeNull();
-    expect(showAllProjectsHeld(1)).toBeNull();
+    expect(showAllProjectsHeld(3, 0)).toBe(SHOW_ALL_PROJECTS_HELD_REASON);
+    expect(showAllProjectsHeld(3, 1)).toBeNull();
+  });
+
+  /**
+   * An empty ledger withholds the line for a different fact, and the difference matters because of
+   * doc-11 §8: the all-shown reason is omitted from the screen on the grounds that the list states
+   * it, and an empty list states nothing. So the two reasons are told apart here, and only one of
+   * them is on the licence — otherwise a fresh install draws a held line with no reason at all.
+   */
+  it("gives an empty ledger its own reason, and prints that one", () => {
+    expect(showAllProjectsHeld(0, 0)).toBe(NO_PROJECTS_REASON);
+    expect(omitsSentence(NO_PROJECTS_REASON)).toBe(false);
+    expect(omitsSentence(SHOW_ALL_PROJECTS_HELD_REASON)).toBe(true);
+    expect(headerMenu([]).find((item) => item.kind === "showAllProjects")?.held).toBe(
+      NO_PROJECTS_REASON,
+    );
+  });
+
+  /**
+   * The reason is spoken rather than printed (doc-11 §8 の licence ①), so nothing on screen would
+   * show it changing — which is the same argument the 画面に出る語 block below makes for words the
+   * user chose. `manage.ts`'s own `omitsSentence` is pinned this way in `project-detail.test.ts`.
+   */
+  it("words the spoken reason as a sentence", () => {
+    expect(SHOW_ALL_PROJECTS_HELD_REASON).toBe("すべてのプロジェクトが表示されています。");
+    expect(NO_PROJECTS_REASON).toBe("登録済みプロジェクトがありません。");
   });
 
   /**

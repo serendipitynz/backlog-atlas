@@ -1254,7 +1254,10 @@
    * pressed seconds ago, and doc-7 §2.1・§5.1 now put that state in one control. So the exit asks for a
    * landing only when there is a row to land on: asking for one on a hidden row would leave `focusRow`
    * set with nothing to clear it (`Swimlane.svelte` returns before `onfocused`), and the landing would
-   * then fire late, on whichever un-hide came next.
+   * then fire late, on whichever un-hide came next. **The exit is not withheld while the row is
+   * hidden** — its main job is leaving this screen, which it still does, and doc-10 §2 records why
+   * (a whole screen changing is not a return that looks like nothing happened, which is the case
+   * doc-7 §2.3's 一時的な強調 is for).
    */
   function leaveProject(lane: boolean): void {
     const slug = detailSlug;

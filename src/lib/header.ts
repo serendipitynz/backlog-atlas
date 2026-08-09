@@ -25,7 +25,8 @@
  * | doc-7 §2.1 すべてのプロジェクトを表示 | [`SHOW_ALL_PROJECTS_LABEL`] + the `showAllProjects` item | 一覧の先頭に置く、全行を表示へ戻す行 |
  * | doc-7 §2.1 群（項目の並びの単位） | [`MenuGroup`] + each item's `group` | which of the two 群 a line is in: `layer` raises a 被せ層, `rows` changes which rows the grid draws |
  * | doc-7 §2.1 区切り線 | [`startsGroup`] | メニューの群と群の境目に置く水平の線を指す。Where one is drawn — read from 群 alone, never from `held` |
- * | doc-11 §5 無効化提示 | [`showAllProjectsHeld`] | 保留理由: why すべてのプロジェクトを表示 cannot be pressed, or `null` when it can |
+ * | doc-11 §5 無効化提示 | [`showAllProjectsHeld`] | 保留理由: why すべてのプロジェクトを表示 cannot be pressed, or `null` when it can — [`SHOW_ALL_PROJECTS_HELD_REASON`] when every row is shown, [`NO_PROJECTS_REASON`] when the ledger is empty |
+ * | doc-11 §8 可視の文を省いてよい理由 | [`omitsSentence`] | which 保留理由 is drawn without a visible sentence, because the 区画 states it (licence ①) |
  *
  * ## Why the whole project list is here
  *
@@ -104,18 +105,29 @@ export const SHORTCUT_HELP_LABEL = "キーボード操作一覧";
 export const SHOW_ALL_PROJECTS_LABEL = "すべてのプロジェクトを表示";
 
 /**
- * 保留理由 for すべてのプロジェクトを表示. Written as a sentence rather than as parenthetical shorthand
- * because nothing prints it any more — it is read aloud or not at all (see [`omitsSentence`]), and
- * brackets that kept a visible note short only become noise in speech.
+ * 保留理由 for すべてのプロジェクトを表示 while every registered row is on screen. Written as a sentence
+ * rather than as parenthetical shorthand because nothing prints it — it is read aloud or not at all
+ * (see [`omitsSentence`]), and brackets that kept a visible note short only become noise in speech.
  */
 export const SHOW_ALL_PROJECTS_HELD_REASON = "すべてのプロジェクトが表示されています。";
+
+/**
+ * 保留理由 for the same line when the ledger holds nothing at all. A second reason rather than the one
+ * above, because the two are withheld by different facts and only one of them is stated by the 区画:
+ * an all-ticked list says 表示されています by itself, while an *empty* list says nothing, and doc-11 §8's
+ * licence turns on the 区画 having said it. So this one is printed (it is not in [`omitsSentence`]) —
+ * otherwise the first thing a new install shows in its menu is a held line with no reason anywhere,
+ * which is exactly what doc-11 §5 refuses (故障と区別できない).
+ */
+export const NO_PROJECTS_REASON = "登録済みプロジェクトがありません。";
 
 /**
  * 保留理由 for すべてのプロジェクトを表示, or `null` while at least one row is hidden. A sentence rather
  * than a boolean for the reason doc-11 §5 gives: 理由の無い無効化を置かない — an unpressable control with
  * no reason cannot be told from a broken one.
  */
-export function showAllProjectsHeld(hiddenCount: number): string | null {
+export function showAllProjectsHeld(projectCount: number, hiddenCount: number): string | null {
+  if (projectCount === 0) return NO_PROJECTS_REASON;
   return hiddenCount > 0
     ? null
     : SHOW_ALL_PROJECTS_HELD_REASON;
@@ -247,7 +259,7 @@ export function headerMenu(projects: readonly MenuProject[]): MenuItem[] {
       key: "showAllProjects",
       group: "rows",
       label: SHOW_ALL_PROJECTS_LABEL,
-      held: showAllProjectsHeld(hiddenCount),
+      held: showAllProjectsHeld(projects.length, hiddenCount),
     },
     ...projects.map((project): MenuItem => ({
       kind: "toggleProject",
