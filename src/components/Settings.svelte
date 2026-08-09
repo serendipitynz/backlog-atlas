@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 設定画面 (decision-13, doc-7 §2.1「設定」). The six items decision-13 lists, and nothing else.
+  // 設定画面 (decision-13, doc-7 §2.1「設定」). The items decision-13's table lists, and nothing else.
   //
   // The component holds a draft and issues one 保存; it never writes as the user types. Same reason the
   // detail panel uses 明示保存 (doc-8 §6.3): a half-typed editor path saved on every keystroke would be
@@ -37,6 +37,7 @@
     statusNotice,
     toggleStorage,
   } from "../lib/settings";
+  import { CARD_ORDER_CHOICES } from "../lib/swimlane";
   import {
     RECORDED_THEME_IDS,
     THEME_UNSET_LABEL,
@@ -390,6 +391,20 @@
             {label}
           </label>
         {/each}
+      </section>
+
+      <!-- 既定の並び順 (doc-7 §5.4, decision-13). The 絞り込み帯 writes the same item, so this is the
+           second place it can be set rather than the only one — which is why it is a `<select>` of the
+           same ten entries, in the same order, taking its 語 from the same `CARD_ORDERS`. -->
+      <section>
+        <h3>既定の並び順</h3>
+        <label>
+          <select bind:value={draft.default_card_order}>
+            {#each CARD_ORDER_CHOICES as [value, rule] (value)}
+              <option {value}>{rule.label}</option>
+            {/each}
+          </select>
+        </label>
       </section>
 
       <section>

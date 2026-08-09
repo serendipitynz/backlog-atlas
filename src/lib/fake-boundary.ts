@@ -78,6 +78,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   card_density: "m",
   default_storage_filter: ["active"],
   default_detail_placement: "sidebar",
+  default_card_order: "priority_desc",
   watch_external_changes: true,
 };
 
@@ -130,6 +131,12 @@ export const answers = {
    */
   settingsSaveHold: null as Deferred<void> | null,
   /**
+   * Make every `settings_save` reject, the way decision-13 refuses to overwrite a file newer than this
+   * build. A flag rather than a replaceable function: `vi.mock` copies the references, so a fake swapped
+   * in afterwards would never be the one the shell calls.
+   */
+  settingsSaveFails: false,
+  /**
    * The same for `ledger_register` (登録の発行中は 2 つの出口とも閉じない). Its own deferred rather than
    * one shared with the save above: the two モーダル are held by two flags in the shell, and a single
    * hold could not tell a test that had wired them to one flag from one that had not.
@@ -175,6 +182,7 @@ export function reset(): void {
   answers.subscribeFails = false;
   answers.settingsReadFails = false;
   answers.settingsSaveHold = null;
+  answers.settingsSaveFails = false;
   answers.ledgerRegisterHold = null;
 }
 
@@ -281,6 +289,7 @@ export const commandFakes = {
   settingsSave: (settings: AppSettings): Promise<LoadedSettings> =>
     record("settings_save", [settings], async () => {
       if (answers.settingsSaveHold !== null) await answers.settingsSaveHold.promise;
+      if (answers.settingsSaveFails) throw new Error("settings are read-only");
       answers.settings = { settings, status: { state: "stored" } };
       return answers.settings;
     }),

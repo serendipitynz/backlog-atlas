@@ -54,6 +54,7 @@ import type {
   RegisterResponse,
   ReloadEvent,
   CardDensity,
+  CardOrder,
   DetailPlacement,
   EditorSource,
   GitRemoteRead,
@@ -271,6 +272,18 @@ const LAUNCH_METHODS = unionValues<LaunchMethod>()("configured", "association");
 const EDITOR_SOURCES = unionValues<EditorSource>()("appSettings", "visual", "editor");
 const CARD_DENSITIES = unionValues<CardDensity>()("s", "m", "l");
 const DETAIL_PLACEMENTS = unionValues<DetailPlacement>()("sidebar", "modal", "full");
+const CARD_ORDERS = unionValues<CardOrder>()(
+  "priority_desc",
+  "priority_asc",
+  "task_id_asc",
+  "task_id_desc",
+  "updated_asc",
+  "updated_desc",
+  "created_asc",
+  "created_desc",
+  "milestone_asc",
+  "milestone_desc",
+);
 const MANAGED_FILE_KINDS = unionValues<ManagedFileKind>()(
   "milestone",
   "document",
@@ -486,6 +499,7 @@ const SETTINGS_EXEMPLAR: LoadedSettings = {
     card_density: "l",
     default_storage_filter: ["active", "indeterminate"],
     default_detail_placement: "modal",
+    default_card_order: "updated_desc",
     watch_external_changes: false,
     backlog_cli: "/opt/backlog/backlog",
     external_editor: { program: "code", args: ["-w"] },
@@ -695,6 +709,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
         "card_density",
         "default_storage_filter",
         "default_detail_placement",
+        "default_card_order",
         "watch_external_changes",
         "backlog_cli",
         "external_editor",
@@ -738,6 +753,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       loads: new Map([[event.slug, event.load]]),
       hidden: new Set(),
       filter: defaultFilter(["active", "indeterminate"]),
+      cardOrder: "priority_desc",
       inconsistent: () => false,
     });
     expect(rows[0].state).toBe("loaded");
@@ -916,6 +932,7 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     EditorSource: EDITOR_SOURCES,
     CardDensity: CARD_DENSITIES,
     DetailPlacement: DETAIL_PLACEMENTS,
+    CardOrder: CARD_ORDERS,
     FileHealth: HEALTH_STATES,
     DegradeEvent: DEGRADE_EVENTS,
     ProjectLoad: LOAD_STATES,
@@ -1003,6 +1020,7 @@ describe("記録した enum・variant tag の値が wire.ts の union に収ま�
       loaded.settings.default_detail_placement,
       "settings.default_detail_placement",
     );
+    admits(CARD_ORDERS, loaded.settings.default_card_order, "settings.default_card_order");
     for (const [at, selection] of loaded.settings.default_storage_filter.entries()) {
       admits(STORAGE_SELECTIONS, selection, `settings.default_storage_filter[${at}]`);
     }
@@ -1094,6 +1112,7 @@ describe("記録した payload を画面の関数がそのまま読める", () =
       // The filter reads `storageState`, so a rename on the Rust side drops both tasks out of the
       // 既定の保存区分 and this row comes back empty.
       filter: defaultFilter(["active", "indeterminate"]),
+      cardOrder: "priority_desc",
       inconsistent: () => false,
     });
 

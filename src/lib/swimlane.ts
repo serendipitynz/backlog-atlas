@@ -21,7 +21,9 @@
  * | §1 行折畳み | `rowFoldable` / `laneCounts` | one row's cells folded away, keeping the per-column counts |
  * | §2.3 2 層スティッキー | `Swimlane.svelte` の `.head` / `.lane-head` と `--lane-top` | the two header rows held at the top, the lower one against the upper one's current height |
  * | §2.3 着地 | [`laneScrollDelta`] と `Swimlane.svelte` の `.lane-mark` | where the grid scrolls to for 「このプロジェクトのレーンへ」, and the marker it measures from |
- * | §5 セル内の安定並び | `compareCards` | priority 降順 → ordinal 昇順 → updated_date 新しい順 |
+ * | §5.4 並び順 | [`CARD_ORDERS`] | the ten orders the 帯 offers: what each compares, and its screen word |
+ * | §5.4 同順のときの比較規則 | [`cardComparator`] | the chosen order, then the 既定の 3 段, then the read order |
+ * | §5.4 既定の並び順 | [`DEFAULT_CARD_ORDER`] | `priority_desc`, which with the tie-break is the order this screen had before the choice existed |
  * | §6 ルート読取不能 | `SwimlaneRow` state `"unreadable"` | the row stays, with the reason instead of cards |
  * | doc-3 §5.3 横断タスクID | `crossTaskId` (`card.ts`) | `<slug>:<TASK-ID>`, always slug-prefixed on this screen |
  *
@@ -32,6 +34,7 @@
  */
 
 import type {
+  CardOrder,
   ColumnCreateStatuses,
   CommandError,
   ProjectLoad,
@@ -112,6 +115,8 @@ export interface SwimlaneInput {
   /** Rows the user hid for now (doc-7 §5). Screen-local, never written to the ledger. */
   hidden: ReadonlySet<string>;
   filter: CardFilter;
+  /** 並び順 (doc-7 §5.4) — the same one for every cell, since it is a property of the screen. */
+  cardOrder: CardOrder;
   /**
    * Whether one task is 不整合 (decision-22) — the 不整合 facet's predicate. Supplied by the shell
    * because バージョン不整合 lives in its record rather than in the read (`lib/mark.ts`).
@@ -119,7 +124,14 @@ export interface SwimlaneInput {
   inconsistent: InconsistentLookup;
 }
 
-/** Rank for priority 降順 (doc-7 §5). Backlog's three values; anything else sorts last. */
+/**
+ * Rank for priority (doc-7 §5.4). Backlog's three values, and 0 for 段なし — priority 未設定 and
+ * priority 未知 alike (`card.ts` の `priorityStep` says why those two are one state).
+ *
+ * **段なし is a rank, not a missing key**, which is why it follows the direction the user chose
+ * instead of staying at the end like the four attributes below: doc-7 §5.4 makes it the lowest of
+ * four steps, so 昇順 starts there. decision-23 declining to colour it is about the card, not the order.
+ */
 const PRIORITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
 export function priorityRank(priority: string | null): number {
@@ -127,33 +139,197 @@ export function priorityRank(priority: string | null): number {
   return PRIORITY_RANK[priority.trim().toLowerCase()] ?? 0;
 }
 
+type Comparator = (a: TaskView, b: TaskView) => number;
+
+/** 昇順 as `1`, 降順 as `-1` — the sign every rule below multiplies its ascending answer by. */
+const ASC = 1;
+const DESC = -1;
+
 /**
- * セル内の並び (doc-7 §5): priority 降順 → ordinal 昇順 → updated_date 新しい順.
- *
- * Ties fall through to the caller's input order, which is the read layer's path-sorted scan
- * (`read::scan` sorts before parsing) — so equal-key cards keep the same relative position
- * across reloads, which is what "更新のたびにカード位置が飛ばない" asks for. A missing key
- * sorts last within its step rather than defaulting to a value: a task with no ordinal has
- * not been placed, and putting it at 0 would jump it above tasks that were.
+ * Compare a key that a task may not carry at all, with the absent one **always last** whichever
+ * direction was chosen (doc-7 §5.4). The direction reaches only the comparison of two present
+ * values: 欠落は値ではない, so reversing must not float it to the top — a task with no ordinal has
+ * not been placed, and a task with no date is not the oldest one.
  */
-export function compareCards(a: TaskView, b: TaskView): number {
-  const priority = priorityRank(b.task.priority) - priorityRank(a.task.priority);
-  if (priority !== 0) return priority;
-
-  const ordinal = compareOptional(a.task.ordinal, b.task.ordinal, (x, y) => x - y);
-  if (ordinal !== 0) return ordinal;
-
-  // Backlog writes dates as `YYYY-MM-DD[ HH:MM]`, which orders correctly as text; comparing
-  // the strings avoids inventing a timezone for a value that carries none.
-  return compareOptional(a.task.updatedDate, b.task.updatedDate, (x, y) => (x < y ? 1 : x > y ? -1 : 0));
+function byOptional<T>(
+  read: (view: TaskView) => T | null,
+  compare: (a: T, b: T) => number,
+  direction: number,
+): Comparator {
+  return (a, b) => {
+    const x = read(a);
+    const y = read(b);
+    if (x === null && y === null) return 0;
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return direction * compare(x, y);
+  };
 }
 
-/** Compare two optional keys, sorting an absent one after a present one. */
-function compareOptional<T>(a: T | null, b: T | null, compare: (a: T, b: T) => number): number {
-  if (a === null && b === null) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  return compare(a, b);
+function byPriority(direction: number): Comparator {
+  return (a, b) => direction * (priorityRank(a.task.priority) - priorityRank(b.task.priority));
+}
+
+// Backlog writes dates as `YYYY-MM-DD[ HH:MM]`, which orders correctly as text; comparing the
+// strings avoids inventing a timezone for a value that carries none.
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * Compare two identifiers with their digit runs read as numbers (doc-7 §5.4): `TASK-2` before
+ * `TASK-10`, `m-2` before `m-10`.
+ *
+ * **No locale is consulted.** `Intl.Collator(…, { numeric: true })` answers this correctly and
+ * agreed across en/ja/de/tr/sv when measured, but its result is a function of the runtime's default
+ * locale, and the same ledger reading differently on two machines is exactly what the ordering
+ * contract promises it will not do — the same reason the dates above are compared as text rather
+ * than parsed into a timezone.
+ *
+ * Outside the digit runs this compares UTF-16 code units, which is an arbitrary order but a total
+ * and stable one; what the contract needs of the non-numeric part is only that it never disagrees
+ * with itself.
+ */
+function compareNumberAware(a: string, b: string): number {
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const endA = digitRunEnd(a, i);
+    const endB = digitRunEnd(b, j);
+    if (endA !== null && endB !== null) {
+      const byNumber = compareDigitRuns(a.slice(i, endA), b.slice(j, endB));
+      if (byNumber !== 0) return byNumber;
+      i = endA;
+      j = endB;
+      continue;
+    }
+    if (a[i] !== b[j]) return a[i] < b[j] ? -1 : 1;
+    i += 1;
+    j += 1;
+  }
+  // One ran out first: the shorter remainder sorts first (`TASK-1` before `TASK-1.1`).
+  return Math.sign(a.length - i - (b.length - j));
+}
+
+/** Where the run of digits starting at `at` ends, or `null` when there is no digit there. */
+function digitRunEnd(text: string, at: number): number | null {
+  let end = at;
+  while (end < text.length && text[end] >= "0" && text[end] <= "9") end += 1;
+  return end === at ? null : end;
+}
+
+/**
+ * Two runs of digits as numbers, without going through `Number` — a Backlog id is not bounded by
+ * `Number.MAX_SAFE_INTEGER` in any way this code could rely on, and parsing would make two distinct
+ * ids compare equal once past it.
+ */
+function compareDigitRuns(a: string, b: string): number {
+  const x = a.replace(/^0+(?=\d)/, "");
+  const y = b.replace(/^0+(?=\d)/, "");
+  if (x.length !== y.length) return x.length < y.length ? -1 : 1;
+  if (x !== y) return x < y ? -1 : 1;
+  // Same value, different spelling (`TASK-01` vs `TASK-1`): decided by the written form, so the
+  // order stays total rather than falling through to the read order for two different ids.
+  return Math.sign(a.length - b.length);
+}
+
+/** What one 並び順 compares first, and what it is called wherever the choice is offered. */
+export interface CardOrderRule {
+  /** The screen's word for it (doc-7 §5.4 の表). Attribute names follow doc-8 §3 の主要属性. */
+  label: string;
+  compare: Comparator;
+}
+
+/**
+ * 並び順 (doc-7 §5.4) — the ten orders, in the order the 帯's control and the 設定画面 list them.
+ *
+ * Both the attribute order and the direction order come from the 原文 (2026-08-09 のユーザーの要求).
+ * The 並び順 a card is laid out by is `task.id`, **not** the 横断タスクID: a レーンセル holds one
+ * project's cards, so the slug prefix is the same on all of them and would only cost a comparison.
+ */
+export const CARD_ORDERS: Record<CardOrder, CardOrderRule> = {
+  priority_desc: { label: "priority 降順", compare: byPriority(DESC) },
+  priority_asc: { label: "priority 昇順", compare: byPriority(ASC) },
+  task_id_asc: {
+    label: "task id 昇順",
+    compare: byOptional((view) => view.task.id, compareNumberAware, ASC),
+  },
+  task_id_desc: {
+    label: "task id 降順",
+    compare: byOptional((view) => view.task.id, compareNumberAware, DESC),
+  },
+  updated_asc: {
+    label: "updated 昇順",
+    compare: byOptional((view) => view.task.updatedDate, compareText, ASC),
+  },
+  updated_desc: {
+    label: "updated 降順",
+    compare: byOptional((view) => view.task.updatedDate, compareText, DESC),
+  },
+  created_asc: {
+    label: "created 昇順",
+    compare: byOptional((view) => view.task.createdDate, compareText, ASC),
+  },
+  created_desc: {
+    label: "created 降順",
+    compare: byOptional((view) => view.task.createdDate, compareText, DESC),
+  },
+  milestone_asc: {
+    label: "milestone 昇順",
+    compare: byOptional((view) => view.task.milestone, compareNumberAware, ASC),
+  },
+  milestone_desc: {
+    label: "milestone 降順",
+    compare: byOptional((view) => view.task.milestone, compareNumberAware, DESC),
+  },
+};
+
+/**
+ * The ten as a list, for the controls that offer them (the 帯 and the 設定画面). Derived from the
+ * record rather than written out a second time, so the two cannot come to hold different sets;
+ * `Object.entries` widens the key to `string`, which is what the annotation puts back.
+ */
+export const CARD_ORDER_CHOICES = Object.entries(CARD_ORDERS) as [CardOrder, CardOrderRule][];
+
+/** 既定の並び順 (doc-7 §5.4) — the order in force before the settings read answers. */
+export const DEFAULT_CARD_ORDER: CardOrder = "priority_desc";
+
+/**
+ * 同順のときの比較規則 (doc-7 §5.4): the 既定の 3 段, run after whichever order the user chose.
+ *
+ * The same three for all ten, including the three that read a key the chosen order has already
+ * compared — a tie on that key means the values are equal, so its step here answers 0 and costs
+ * nothing. Writing it as one list rather than as a per-order remainder is what makes 既定 (
+ * `priority_desc`) come out identical to the single order this screen had before the choice
+ * existed: its first step below is the no-op, and steps 2 and 3 are the other two the old
+ * comparator had.
+ */
+const TIE_BREAK: readonly Comparator[] = [
+  byPriority(DESC),
+  byOptional((view) => view.task.ordinal, (x, y) => Math.sign(x - y), ASC),
+  byOptional((view) => view.task.updatedDate, compareText, DESC),
+];
+
+/**
+ * The comparator for one 並び順 (doc-7 §5.4): the chosen order, then the 既定の 3 段.
+ *
+ * What is *not* here is the last step the contract names — 読み取り順. Two cards that survive every
+ * step above compare equal, and `Array.prototype.sort` is stable, so they keep the order they
+ * arrived in: the read layer's path-sorted scan (`read::scan` sorts before parsing). That is what
+ * keeps positions from jumping between reloads, and it is a property of the sort rather than of a
+ * comparison, so a fourth step here would have to invent a key the cards do not carry.
+ */
+export function cardComparator(order: CardOrder): Comparator {
+  const chosen = CARD_ORDERS[order].compare;
+  return (a, b) => {
+    const answer = chosen(a, b);
+    if (answer !== 0) return answer;
+    for (const step of TIE_BREAK) {
+      const broken = step(a, b);
+      if (broken !== 0) return broken;
+    }
+    return 0;
+  };
 }
 
 /**
@@ -162,9 +338,12 @@ function compareOptional<T>(a: T | null, b: T | null, compare: (a: T, b: T) => n
  * look like a different project set (doc-7 §5).
  */
 export function buildSwimlane(input: SwimlaneInput): SwimlaneRow[] {
+  // Built once for the whole grid rather than per cell: the comparator is the same for every cell,
+  // and the chosen rule is looked up by token.
+  const compare = cardComparator(input.cardOrder);
   return input.order
     .filter((slug) => !input.hidden.has(slug))
-    .map((slug) => buildRow(slug, input.loads.get(slug), input.filter, input.inconsistent));
+    .map((slug) => buildRow(slug, input.loads.get(slug), input.filter, input.inconsistent, compare));
 }
 
 function buildRow(
@@ -172,6 +351,7 @@ function buildRow(
   load: ProjectLoad | undefined,
   filter: CardFilter,
   inconsistent: InconsistentLookup,
+  compare: Comparator,
 ): SwimlaneRow {
   if (load === undefined) return { state: "pending", slug };
   if (load.state === "unreadable") {
@@ -192,8 +372,8 @@ function buildRow(
     else byColumn.get(column)?.tasks.push(view);
   }
 
-  for (const cell of cells) cell.tasks.sort(compareCards);
-  unmapped.sort(compareCards);
+  for (const cell of cells) cell.tasks.sort(compare);
+  unmapped.sort(compare);
 
   return {
     state: "loaded",

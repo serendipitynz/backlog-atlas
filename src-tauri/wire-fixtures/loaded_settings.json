@@ -1,6 +1,6 @@
 {
   "settings": {
-    "schema_version": 2,
+    "schema_version": 3,
     "theme": "nord",
     "card_density": "l",
     "default_storage_filter": [
@@ -8,6 +8,7 @@
       "indeterminate"
     ],
     "default_detail_placement": "modal",
+    "default_card_order": "updated_desc",
     "watch_external_changes": false,
     "backlog_cli": "/opt/backlog/backlog",
     "external_editor": {
@@ -19,6 +20,6 @@
   },
   "status": {
     "state": "readOnly",
-    "version": 3
+    "version": 4
   }
 }

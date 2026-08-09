@@ -104,6 +104,7 @@
   import { lastCondition, removeLastCondition } from "./lib/token";
   import {
     CANONICAL_COLUMN_LABEL,
+    DEFAULT_CARD_ORDER,
     buildSwimlane,
     laneNeighbours,
     swimlaneTotals,
@@ -112,6 +113,7 @@
   } from "./lib/swimlane";
   import type {
     AppSettings,
+    CardOrder,
     CliReadiness,
     DetailPlacement,
     EditorReadiness,
@@ -335,6 +337,19 @@
    * the switch, where the 既定 mark is (doc-8 §2.2).
    */
   let placementFailure = $state<string | null>(null);
+  /**
+   * 並び順 (doc-7 §5.4) in force. Held as state rather than read straight off `settings` — the way
+   * カード情報量 is — because the 帯's control has to answer even when the write does not: decision-13
+   * leaves a settings file newer than this build alone, and a grid that simply did not reorder would
+   * be the whole of what the user got back. The screen changes first and the file follows, like the
+   * 詳細配置 switch.
+   */
+  let cardOrder = $state<CardOrder>(DEFAULT_CARD_ORDER);
+  /**
+   * Why the last choice could not be stored as the 既定, or `null`. Stated in the 帯 beside the control:
+   * the order did take effect — only its persistence did not.
+   */
+  let cardOrderFailure = $state<string | null>(null);
 
   let unlisten: UnlistenFn | null = null;
 
@@ -364,6 +379,7 @@
       loads,
       hidden: new Set(hidden),
       filter,
+      cardOrder,
       inconsistent: inconsistentView,
     }),
   );
@@ -770,10 +786,25 @@
   function applySettings(next: LoadedSettings): void {
     const previous = settings?.settings.default_storage_filter ?? DEFAULT_FILTER.storage;
     const untouched = sameStorage(filter.storage, previous);
+    const previousOrder = settings?.settings.default_card_order ?? DEFAULT_CARD_ORDER;
+    const orderUntouched = cardOrder === previousOrder;
     const first = settings === null;
     settings = next;
     if (first) placement = next.settings.default_detail_placement;
     if (untouched) filter = withStorage(filter, next.settings.default_storage_filter);
+    if (orderUntouched) cardOrder = next.settings.default_card_order;
+  }
+
+  /**
+   * Take another 並び順 and make it the 既定 (doc-7 §5.4). Same shape as `applyPlacement`: the grid
+   * reorders first, and a refused write costs the persistence rather than the choice.
+   */
+  async function applyCardOrder(next: CardOrder): Promise<void> {
+    cardOrder = next;
+    cardOrderFailure = await writeSettings((current) => ({
+      ...current,
+      default_card_order: next,
+    }));
   }
 
   /**
@@ -1896,9 +1927,12 @@
       {filter}
       {facets}
       {defaultStorage}
+      {cardOrder}
+      {cardOrderFailure}
       popoverOpen={filterPopoverOpen}
       onpopover={setFilterPopover}
       onchange={(next) => (filter = next)}
+      oncardorder={(next) => void applyCardOrder(next)}
     />
   {/if}
 

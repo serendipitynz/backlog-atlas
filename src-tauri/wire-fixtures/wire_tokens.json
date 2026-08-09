@@ -4,6 +4,18 @@
     "m",
     "l"
   ],
+  "CardOrder": [
+    "priority_desc",
+    "priority_asc",
+    "task_id_asc",
+    "task_id_desc",
+    "updated_asc",
+    "updated_desc",
+    "created_asc",
+    "created_desc",
+    "milestone_asc",
+    "milestone_desc"
+  ],
   "CliReadiness": [
     "ready",
     "unavailable",

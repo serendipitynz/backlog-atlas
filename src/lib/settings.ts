@@ -15,6 +15,7 @@
  * | decision-12 表示テーマ | `theme.ts` の `RECORDED_THEMES` | the colour sets this build has; named there, defined in `app.scss` |
  * | doc-7 §5.2 既定の保存区分 | [`STORAGE_SELECTION_LABEL`] + [`toggleStorage`] | which 保存区分 the filter starts with |
  * | doc-8 §2.2 既定の詳細配置（第 2 の書き手） | [`mergeDraft`] | how a placement stored elsewhere lands in an open form without taking its input |
+ * | doc-7 §5.4 既定の並び順 | `swimlane.ts` の `CARD_ORDERS` | the ten orders and their screen words; this module only carries the value through |
  * | TASK-74 下部操作行 | [`CLOSE_WITHOUT_SAVING_LABEL`] / [`SAVE_LABEL`] | the two ways out of the モーダル, named in one place |
  * | TASK-75 場所を開く | [`OPEN_LOCATION_LABEL`] / [`openLocationBlocked`] | opening the アプリ設定ディレクトリ (decision-13), and when it cannot be opened |
  *
@@ -269,6 +270,11 @@ export function mergeDraft(
       baseline.default_detail_placement,
       next.default_detail_placement,
     ),
+    default_card_order: pick(
+      draft.default_card_order,
+      baseline.default_card_order,
+      next.default_card_order,
+    ),
     watch_external_changes: pick(
       draft.watch_external_changes,
       baseline.watch_external_changes,
@@ -309,6 +315,7 @@ function normalize(settings: AppSettings): unknown {
     settings.card_density,
     settings.default_storage_filter,
     settings.default_detail_placement,
+    settings.default_card_order,
     settings.watch_external_changes,
     settings.backlog_cli ?? null,
     settings.external_editor ?? null,

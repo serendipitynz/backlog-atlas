@@ -9,6 +9,7 @@ const DEFAULTS: AppSettings = {
   card_density: "m",
   default_storage_filter: ["active"],
   default_detail_placement: "sidebar",
+  default_card_order: "priority_desc",
   watch_external_changes: true,
 };
 

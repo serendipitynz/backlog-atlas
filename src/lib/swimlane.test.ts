@@ -8,8 +8,11 @@ import {
   UNMAPPED_LABEL,
   buildSwimlane,
   cellCount,
+  CARD_ORDERS,
+  CARD_ORDER_CHOICES,
+  DEFAULT_CARD_ORDER,
+  cardComparator,
   columnFoldable,
-  compareCards,
   laneCounts,
   laneGroupLabel,
   laneNeighbourLabel,
@@ -22,21 +25,28 @@ import {
   type SwimlaneRow,
 } from "./swimlane";
 import { cardIdentity, crossTaskId } from "./card";
-import type { StatusColumn } from "./wire";
+import type { CardOrder, StatusColumn } from "./wire";
 
 function swimlane(
   order: string[],
   loads: Map<string, ReturnType<typeof loaded>>,
   overrides: Partial<CardFilter> = {},
   hidden: string[] = [],
+  cardOrder: CardOrder = DEFAULT_CARD_ORDER,
 ): SwimlaneRow[] {
   return buildSwimlane({
     order,
     loads,
     hidden: new Set(hidden),
     filter: { ...DEFAULT_FILTER, ...overrides },
+    cardOrder,
     inconsistent: () => false,
   });
+}
+
+/** The ids the given 並び順 puts the views in, compared through the exported comparator. */
+function ordered(views: ReturnType<typeof taskView>[], order: CardOrder): (string | null)[] {
+  return [...views].sort(cardComparator(order)).map((view) => view.task.id);
 }
 
 function row(rows: SwimlaneRow[], slug: string): SwimlaneRow {
@@ -175,7 +185,7 @@ describe("AC #3 card identity", () => {
   });
 });
 
-describe("AC #4 セル内の安定並び", () => {
+describe("TASK-34 AC #4 / TASK-132 AC #5 既定の並び（priority 降順）", () => {
   it("orders by priority 降順, then ordinal 昇順, then updated_date 新しい順", () => {
     const rows = swimlane(
       ["atlas"],
@@ -200,7 +210,7 @@ describe("AC #4 セル内の安定並び", () => {
   it("breaks an ordinal tie with the newer updated_date first", () => {
     const older = taskView({ id: "older", ordinal: 1, updatedDate: "2026-07-01 09:00" });
     const newer = taskView({ id: "newer", ordinal: 1, updatedDate: "2026-07-20 09:00" });
-    expect([older, newer].sort(compareCards).map((v) => v.task.id)).toEqual([
+    expect([older, newer].sort(cardComparator(DEFAULT_CARD_ORDER)).map((v) => v.task.id)).toEqual([
       "newer",
       "older",
     ]);
@@ -209,13 +219,13 @@ describe("AC #4 セル内の安定並び", () => {
   it("sorts a task with no priority, ordinal or date last within its step", () => {
     const placed = taskView({ id: "placed", ordinal: 10 });
     const unplaced = taskView({ id: "unplaced", ordinal: null });
-    expect([unplaced, placed].sort(compareCards).map((v) => v.task.id)).toEqual([
+    expect([unplaced, placed].sort(cardComparator(DEFAULT_CARD_ORDER)).map((v) => v.task.id)).toEqual([
       "placed",
       "unplaced",
     ]);
     const dated = taskView({ id: "dated", updatedDate: "2026-01-01" });
     const undated = taskView({ id: "undated", updatedDate: null });
-    expect([undated, dated].sort(compareCards).map((v) => v.task.id)).toEqual([
+    expect([undated, dated].sort(cardComparator(DEFAULT_CARD_ORDER)).map((v) => v.task.id)).toEqual([
       "dated",
       "undated",
     ]);
@@ -224,15 +234,285 @@ describe("AC #4 セル内の安定並び", () => {
   it("keeps equal-key cards in the read layer's order, so positions do not jump", () => {
     const first = taskView({ id: "TASK-1", priority: "high", ordinal: 1, updatedDate: "2026-07-01" });
     const second = taskView({ id: "TASK-2", priority: "high", ordinal: 1, updatedDate: "2026-07-01" });
-    expect([first, second].sort(compareCards).map((v) => v.task.id)).toEqual([
+    expect([first, second].sort(cardComparator(DEFAULT_CARD_ORDER)).map((v) => v.task.id)).toEqual([
       "TASK-1",
       "TASK-2",
     ]);
     // Same inputs, same result — the comparison introduces no order of its own.
-    expect([second, first].sort(compareCards).map((v) => v.task.id)).toEqual([
+    expect([second, first].sort(cardComparator(DEFAULT_CARD_ORDER)).map((v) => v.task.id)).toEqual([
       "TASK-2",
       "TASK-1",
     ]);
+  });
+});
+
+describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
+  const PRIORITIES = [
+    taskView({ id: "TASK-1", priority: "high" }),
+    taskView({ id: "TASK-2", priority: "medium" }),
+    taskView({ id: "TASK-3", priority: "low" }),
+    taskView({ id: "TASK-4", priority: null }),
+  ];
+
+  it("AC #2 offers all five attributes in both directions, and nothing else", () => {
+    // Against the record the controls read, so an attribute added to one and not the other fails
+    // here rather than in the two components separately.
+    expect(CARD_ORDER_CHOICES.map(([order]) => order)).toEqual([
+      "priority_desc",
+      "priority_asc",
+      "task_id_asc",
+      "task_id_desc",
+      "updated_asc",
+      "updated_desc",
+      "created_asc",
+      "created_desc",
+      "milestone_asc",
+      "milestone_desc",
+    ]);
+    expect(CARD_ORDER_CHOICES.map(([, rule]) => rule.label)).toEqual([
+      "priority 降順",
+      "priority 昇順",
+      "task id 昇順",
+      "task id 降順",
+      "updated 昇順",
+      "updated 降順",
+      "created 昇順",
+      "created 降順",
+      "milestone 昇順",
+      "milestone 降順",
+    ]);
+  });
+
+  it("AC #1 lays the cards of a cell out in the chosen order", () => {
+    const rows = swimlane(
+      ["atlas"],
+      loadMap(
+        loaded("atlas", [
+          taskView({ id: "TASK-3", updatedDate: "2026-07-03" }),
+          taskView({ id: "TASK-1", updatedDate: "2026-07-01" }),
+          taskView({ id: "TASK-2", updatedDate: "2026-07-02" }),
+        ]),
+      ),
+      {},
+      [],
+      "updated_asc",
+    );
+    expect(ids(row(rows, "atlas"), "toDo")).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+  });
+
+  it("AC #1 lays the 未分類区画 out in the same order as the cells", () => {
+    const rows = swimlane(
+      ["atlas"],
+      loadMap(
+        loaded("atlas", [
+          taskView({ id: "TASK-2", status: "Blocked", column: null, updatedDate: "2026-07-02" }),
+          taskView({ id: "TASK-1", status: "Blocked", column: null, updatedDate: "2026-07-01" }),
+        ]),
+      ),
+      {},
+      [],
+      "updated_asc",
+    );
+    const built = row(rows, "atlas");
+    if (built.state !== "loaded") throw new Error("row has no cells");
+    expect(built.unmapped.map((view) => view.task.id)).toEqual(["TASK-1", "TASK-2"]);
+  });
+
+  it("AC #2 reverses the order of the present values when the direction is flipped", () => {
+    const dated = [
+      taskView({ id: "TASK-1", createdDate: "2026-07-01" }),
+      taskView({ id: "TASK-2", createdDate: "2026-07-02" }),
+      taskView({ id: "TASK-3", createdDate: "2026-07-03" }),
+    ];
+    expect(ordered(dated, "created_asc")).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
+    expect(ordered(dated, "created_desc")).toEqual(["TASK-3", "TASK-2", "TASK-1"]);
+  });
+
+  it("AC #2 reads a task id and a milestone as numbers, so 2 comes before 10", () => {
+    const numbered = [
+      taskView({ id: "TASK-10" }),
+      taskView({ id: "TASK-2" }),
+      taskView({ id: "TASK-1" }),
+    ];
+    expect(ordered(numbered, "task_id_asc")).toEqual(["TASK-1", "TASK-2", "TASK-10"]);
+    expect(ordered(numbered, "task_id_desc")).toEqual(["TASK-10", "TASK-2", "TASK-1"]);
+
+    const milestones = [
+      taskView({ id: "m-10", milestone: "m-10" }),
+      taskView({ id: "m-2", milestone: "m-2" }),
+      taskView({ id: "m-1", milestone: "m-1" }),
+    ];
+    expect(ordered(milestones, "milestone_asc")).toEqual(["m-1", "m-2", "m-10"]);
+  });
+
+  it("AC #2 orders sub-numbered ids by segment, not as decimals", () => {
+    // `TASK-1.2` and `TASK-1.10` are two ids whose second segments are 2 and 10 — read as decimals
+    // the second would sort first, which is the reading this comparison does not take.
+    const nested = [
+      taskView({ id: "TASK-1.10" }),
+      taskView({ id: "TASK-1.2" }),
+      taskView({ id: "TASK-1" }),
+    ];
+    expect(ordered(nested, "task_id_asc")).toEqual(["TASK-1", "TASK-1.2", "TASK-1.10"]);
+  });
+
+  it("AC #2 does not consult a locale, so the same ledger reads the same everywhere", () => {
+    // `Intl.Collator` answers this pair differently in de and sv (measured), and it reads the
+    // *runtime's* default locale — which is what doc-7 §5.4 rules out. The assertion is not that
+    // one of those answers is right: it is that this comparison gives neither locale's answer
+    // conditionally, but the same one always.
+    const named = [taskView({ id: "m-ä", milestone: "m-ä" }), taskView({ id: "m-z", milestone: "m-z" })];
+    const collate = (locale: string): (string | null)[] =>
+      [...named]
+        .sort((a, b) =>
+          new Intl.Collator(locale, { numeric: true }).compare(
+            a.task.milestone ?? "",
+            b.task.milestone ?? "",
+          ),
+        )
+        .map((view) => view.task.id);
+    expect(collate("de")).toEqual(["m-ä", "m-z"]);
+    expect(collate("sv")).toEqual(["m-z", "m-ä"]);
+    expect(ordered(named, "milestone_asc")).toEqual(["m-z", "m-ä"]);
+    expect(ordered([...named].reverse(), "milestone_asc")).toEqual(["m-z", "m-ä"]);
+  });
+
+  it("AC #4 moves priority 段なし with the direction, because it is the lowest step", () => {
+    expect(ordered(PRIORITIES, "priority_desc")).toEqual([
+      "TASK-1",
+      "TASK-2",
+      "TASK-3",
+      "TASK-4",
+    ]);
+    expect(ordered(PRIORITIES, "priority_asc")).toEqual([
+      "TASK-4",
+      "TASK-3",
+      "TASK-2",
+      "TASK-1",
+    ]);
+  });
+
+  it("AC #4 keeps a task with no value last whichever direction is chosen", () => {
+    const dates = [
+      taskView({ id: "none", updatedDate: null }),
+      taskView({ id: "older", updatedDate: "2026-07-01" }),
+      taskView({ id: "newer", updatedDate: "2026-07-20" }),
+    ];
+    expect(ordered(dates, "updated_asc")).toEqual(["older", "newer", "none"]);
+    expect(ordered(dates, "updated_desc")).toEqual(["newer", "older", "none"]);
+
+    const milestones = [
+      taskView({ id: "none", milestone: null }),
+      taskView({ id: "m-1", milestone: "m-1" }),
+      taskView({ id: "m-2", milestone: "m-2" }),
+    ];
+    expect(ordered(milestones, "milestone_asc")).toEqual(["m-1", "m-2", "none"]);
+    expect(ordered(milestones, "milestone_desc")).toEqual(["m-2", "m-1", "none"]);
+  });
+
+  it("AC #3 breaks a tie with the 既定の 3 段, in that order", () => {
+    // All three on the same milestone, so the chosen order says nothing and every step of the shared
+    // tie-break is exercised: priority first, then ordinal, then the newer updated_date.
+    const tied = [
+      taskView({ id: "low", milestone: "m-1", priority: "low", ordinal: 1 }),
+      taskView({
+        id: "high-later-ordinal",
+        milestone: "m-1",
+        priority: "high",
+        ordinal: 2,
+      }),
+      taskView({
+        id: "high-older",
+        milestone: "m-1",
+        priority: "high",
+        ordinal: 1,
+        updatedDate: "2026-07-01",
+      }),
+      taskView({
+        id: "high-newer",
+        milestone: "m-1",
+        priority: "high",
+        ordinal: 1,
+        updatedDate: "2026-07-20",
+      }),
+    ];
+    expect(ordered(tied, "milestone_asc")).toEqual([
+      "high-newer",
+      "high-older",
+      "high-later-ordinal",
+      "low",
+    ]);
+  });
+
+  it("AC #3 leaves cards equal on every step in the order they were read", () => {
+    const same = { milestone: "m-1", priority: "high", ordinal: 1, updatedDate: "2026-07-01" };
+    const first = taskView({ id: "TASK-9", ...same });
+    const second = taskView({ id: "TASK-8", ...same });
+    // Read order, not id order: the last step of doc-7 §5.4 is the scan's, and these two differ in
+    // an id the chosen order never looks at.
+    expect(ordered([first, second], "milestone_asc")).toEqual(["TASK-9", "TASK-8"]);
+    expect(ordered([second, first], "milestone_asc")).toEqual(["TASK-8", "TASK-9"]);
+  });
+
+  it("AC #3 gives every order a total answer for the same pair of cards", () => {
+    // The contract is that each of the ten is deterministic, not that they agree: a and b are
+    // compared in both argument positions, and the two answers must be opposite (or both zero).
+    const a = taskView({
+      id: "TASK-1",
+      priority: "high",
+      ordinal: 1,
+      milestone: "m-1",
+      createdDate: "2026-07-01",
+      updatedDate: "2026-07-02",
+    });
+    const b = taskView({
+      id: "TASK-2",
+      priority: "low",
+      ordinal: 2,
+      milestone: "m-2",
+      createdDate: "2026-07-03",
+      updatedDate: "2026-07-04",
+    });
+    for (const [order] of CARD_ORDER_CHOICES) {
+      const compare = cardComparator(order);
+      expect(Math.sign(compare(a, b)), order).toBe(-Math.sign(compare(b, a)));
+      expect(compare(a, a), order).toBe(0);
+    }
+  });
+
+  it("AC #5 leaves the 既定 identical to the order this screen had before the choice existed", () => {
+    // The old comparator, written out here rather than imported — it is what AC #5 fixes the 既定
+    // against, and importing the new one would compare it with itself.
+    const before = (x: ReturnType<typeof taskView>, y: ReturnType<typeof taskView>): number => {
+      const rank = (view: ReturnType<typeof taskView>): number =>
+        ({ high: 3, medium: 2, low: 1 })[view.task.priority ?? ""] ?? 0;
+      const priority = rank(y) - rank(x);
+      if (priority !== 0) return priority;
+      const ordinals = [x.task.ordinal, y.task.ordinal];
+      if (ordinals[0] !== ordinals[1]) {
+        if (ordinals[0] === null) return 1;
+        if (ordinals[1] === null) return -1;
+        return ordinals[0] - ordinals[1];
+      }
+      const dates = [x.task.updatedDate, y.task.updatedDate];
+      if (dates[0] === dates[1]) return 0;
+      if (dates[0] === null) return 1;
+      if (dates[1] === null) return -1;
+      return dates[0] < dates[1] ? 1 : -1;
+    };
+    const views = [
+      taskView({ id: "a", priority: "high", ordinal: 2, updatedDate: "2026-07-02" }),
+      taskView({ id: "b", priority: "high", ordinal: 1, updatedDate: "2026-07-01" }),
+      taskView({ id: "c", priority: null, ordinal: null, updatedDate: null }),
+      taskView({ id: "d", priority: "low", ordinal: 1, updatedDate: "2026-07-09" }),
+      taskView({ id: "e", priority: "high", ordinal: 2, updatedDate: "2026-07-20" }),
+      taskView({ id: "f", priority: "medium", ordinal: null, updatedDate: "2026-07-01" }),
+    ];
+    expect(ordered(views, DEFAULT_CARD_ORDER)).toEqual(
+      [...views].sort(before).map((view) => view.task.id),
+    );
+    expect(DEFAULT_CARD_ORDER).toBe("priority_desc");
+    expect(CARD_ORDERS[DEFAULT_CARD_ORDER].label).toBe("priority 降順");
   });
 });
 
