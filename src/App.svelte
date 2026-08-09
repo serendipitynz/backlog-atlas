@@ -1642,7 +1642,16 @@
     if (open) menuOpen = false;
   }
 
-  /** Take one line of the menu. A line with a 保留理由 is not pressable, so it never arrives here. */
+  /**
+   * Take one line of the menu. A line with a 保留理由 is not pressable, so it never arrives here.
+   *
+   * **Whether the press closes the menu is decided by the line's 群** (doc-7 §2.1): the `layer` lines
+   * close it because 被せ層 は同時に 1 枚だけ and they are raising one — `raiseModal` does that here —
+   * while the `rows` lines leave it open. Setting several rows is one errand, and a menu that closed
+   * on each of them would make that errand as many round trips as there are rows; doc-7 §5.2 settled
+   * the same question the same way for the 値一覧ポップオーバー. Not a `default` and not a check on
+   * `item.group`: the switch is over `kind` so that a new line has to say which it is.
+   */
   function chooseMenuItem(item: MenuItem): void {
     switch (item.kind) {
       case "entry":
@@ -1654,11 +1663,9 @@
         break;
       case "showAllProjects":
         showAllProjects();
-        closeMenu();
         break;
       case "toggleProject":
         toggleProject(item.slug);
-        closeMenu();
         break;
     }
   }
