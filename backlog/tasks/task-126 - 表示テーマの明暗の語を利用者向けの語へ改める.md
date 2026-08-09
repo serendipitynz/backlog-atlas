@@ -1,10 +1,10 @@
 ---
 id: TASK-126
 title: 表示テーマの明暗の語を利用者向けの語へ改める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-07 22:25'
-updated_date: '2026-08-09 01:49'
+updated_date: '2026-08-09 02:07'
 labels:
   - ui
   - design-system
