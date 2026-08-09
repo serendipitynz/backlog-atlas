@@ -89,6 +89,7 @@ describe("候補は行ごとに決まる", () => {
       ),
       hidden: new Set(),
       filter: DEFAULT_FILTER,
+      cardOrder: "priority_desc",
       inconsistent: () => false,
     });
     const candidatesOf = (slug: string) => {
@@ -107,6 +108,7 @@ describe("候補は行ごとに決まる", () => {
       loads: loadMap(loaded("atlas", [taskView({ id: "TASK-1" })])),
       hidden: new Set(),
       filter: { ...DEFAULT_FILTER, text: "該当しない語" },
+      cardOrder: "priority_desc",
       inconsistent: () => false,
     });
     const row = rows[0];
@@ -124,6 +126,7 @@ describe("候補は行ごとに決まる", () => {
       loads: loadMap(unreadable("gone")),
       hidden: new Set(),
       filter: DEFAULT_FILTER,
+      cardOrder: "priority_desc",
       inconsistent: () => false,
     });
     expect(rows[0].state).toBe("unreadable");

@@ -672,6 +672,24 @@ export type CardDensity = "s" | "m" | "l";
 export type DetailPlacement = "sidebar" | "modal" | "full";
 
 /**
+ * 並び順 (doc-7 §5.4): which of the ten orders a レーンセル and the 未分類区画 lay their cards out in.
+ * One flat token per order rather than an attribute paired with a direction, because these ten are
+ * exactly the ten entries the 絞り込み帯's control offers (`swimlane.ts` の `CARD_ORDERS` holds what
+ * each one compares, and what it is called on screen).
+ */
+export type CardOrder =
+  | "priority_asc"
+  | "priority_desc"
+  | "task_id_asc"
+  | "task_id_desc"
+  | "updated_asc"
+  | "updated_desc"
+  | "created_asc"
+  | "created_desc"
+  | "milestone_asc"
+  | "milestone_desc";
+
+/**
  * アプリ設定 (decision-13): the display defaults that belong to no ledger entry. snake_case, like the
  * ledger's types — these names are the `settings.toml` keys too, and doc-3 §2.2's hand-editing rule
  * applies to both app-config files.
@@ -687,6 +705,9 @@ export interface AppSettings {
   /** 既定の保存区分 — the selection the filter starts with (doc-7 §5.2). */
   default_storage_filter: StorageSelection[];
   default_detail_placement: DetailPlacement;
+  /** 既定の並び順 (doc-7 §5.4). The 帯's control writes it as well as the 設定画面 — choosing an order
+   *  is choosing the default, the same second-writer shape 既定の詳細配置 has (doc-8 §2.2). */
+  default_card_order: CardOrder;
   /** 継続検出の可否 (doc-9 §3.1). False stops every root's watch. */
   watch_external_changes: boolean;
   /**

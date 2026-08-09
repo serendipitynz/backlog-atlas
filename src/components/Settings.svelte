@@ -1,5 +1,8 @@
 <script lang="ts">
-  // 設定画面 (decision-13, doc-7 §2.1「設定」). The six items decision-13 lists, and nothing else.
+  // 設定画面 (decision-13, doc-7 §2.1「設定」). The items decision-13's table lists, and nothing else.
+  //
+  // Two of them are written from outside this form as well — 既定の詳細配置 by the panel's switch
+  // (doc-8 §2.2) and 既定の並び順 by the 絞り込み帯 (doc-7 §5.4) — which is what `mergeDraft` is for.
   //
   // The component holds a draft and issues one 保存; it never writes as the user types. Same reason the
   // detail panel uses 明示保存 (doc-8 §6.3): a half-typed editor path saved on every keystroke would be
@@ -37,6 +40,7 @@
     statusNotice,
     toggleStorage,
   } from "../lib/settings";
+  import { CARD_ORDER_CHOICES } from "../lib/swimlane";
   import {
     RECORDED_THEME_IDS,
     THEME_UNSET_LABEL,
@@ -58,9 +62,9 @@
     /**
      * Persist the draft. Resolves with the failure's text, or `null` on success.
      *
-     * A *change* against the settings current at write time, not a snapshot: アプリ設定 has a second
-     * writer (the 詳細配置 switch, doc-8 §2.2), and by the time this save reaches the file that writer's
-     * value may already be in it. Only this form knows which fields are its own to impose — the ones
+     * A *change* against the settings current at write time, not a snapshot: アプリ設定 is written from
+     * outside this form too (the 詳細配置 switch, doc-8 §2.2; the 帯's 並び順, doc-7 §5.4), and by the
+     * time this save reaches the file one of those values may already be in it. Only this form knows which fields are its own to impose — the ones
      * the user edited — so it decides that here rather than sending the whole document blind.
      */
     onsave: (change: (current: AppSettings) => AppSettings) => Promise<string | null>;
@@ -390,6 +394,20 @@
             {label}
           </label>
         {/each}
+      </section>
+
+      <!-- 既定の並び順 (doc-7 §5.4, decision-13). The 絞り込み帯 writes the same item, so this is the
+           second place it can be set rather than the only one — which is why it is a `<select>` of the
+           same ten entries, in the same order, taking its 語 from the same `CARD_ORDERS`. -->
+      <section>
+        <h3>既定の並び順</h3>
+        <label>
+          <select bind:value={draft.default_card_order}>
+            {#each CARD_ORDER_CHOICES as [value, rule] (value)}
+              <option {value}>{rule.label}</option>
+            {/each}
+          </select>
+        </label>
       </section>
 
       <section>

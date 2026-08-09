@@ -38,8 +38,8 @@ use crate::interpret::status::{StatusColumn, StatusDeclaration, StatusMapping};
 use crate::interpret::type_value::derive_types;
 use crate::ledger::{Ledger, ProjectEntry};
 use crate::settings::{
-    AppSettings, CardDensity, DetailPlacement, LoadedSettings, SettingsStatus, StorageSelection,
-    KNOWN_SCHEMA_VERSION,
+    AppSettings, CardDensity, CardOrder, DetailPlacement, LoadedSettings, SettingsStatus,
+    StorageSelection, KNOWN_SCHEMA_VERSION,
 };
 use crate::update::{FailureKind, UpdateFailure, UpdateOutcome};
 
@@ -488,6 +488,7 @@ fn loaded_settings_is_recorded() {
                     StorageSelection::Indeterminate,
                 ],
                 default_detail_placement: DetailPlacement::Modal,
+                default_card_order: CardOrder::UpdatedDesc,
                 watch_external_changes: false,
                 backlog_cli: Some(PathBuf::from("/opt/backlog/backlog")),
                 external_editor: Some(EditorCommand {
@@ -798,6 +799,36 @@ fn every_detail_placement() -> Vec<DetailPlacement> {
     for value in &all {
         match value {
             DetailPlacement::Sidebar | DetailPlacement::Modal | DetailPlacement::Full => {}
+        }
+    }
+    all
+}
+
+fn every_card_order() -> Vec<CardOrder> {
+    let all = vec![
+        CardOrder::PriorityAsc,
+        CardOrder::PriorityDesc,
+        CardOrder::TaskIdAsc,
+        CardOrder::TaskIdDesc,
+        CardOrder::UpdatedAsc,
+        CardOrder::UpdatedDesc,
+        CardOrder::CreatedAsc,
+        CardOrder::CreatedDesc,
+        CardOrder::MilestoneAsc,
+        CardOrder::MilestoneDesc,
+    ];
+    for value in &all {
+        match value {
+            CardOrder::PriorityDesc
+            | CardOrder::PriorityAsc
+            | CardOrder::TaskIdAsc
+            | CardOrder::TaskIdDesc
+            | CardOrder::UpdatedAsc
+            | CardOrder::UpdatedDesc
+            | CardOrder::CreatedAsc
+            | CardOrder::CreatedDesc
+            | CardOrder::MilestoneAsc
+            | CardOrder::MilestoneDesc => {}
         }
     }
     all
@@ -1160,6 +1191,7 @@ fn every_union_token_is_recorded() {
     tokens.insert("EditorSource", unit_tokens(&every_editor_source()));
     tokens.insert("CardDensity", unit_tokens(&every_card_density()));
     tokens.insert("DetailPlacement", unit_tokens(&every_detail_placement()));
+    tokens.insert("CardOrder", unit_tokens(&every_card_order()));
 
     tokens.insert("FileHealth", tag_tokens(&every_file_health(), "state"));
     tokens.insert("DegradeEvent", tag_tokens(&every_degrade_event(), "event"));

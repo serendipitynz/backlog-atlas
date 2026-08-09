@@ -1,9 +1,12 @@
 /**
  * Sequencing for アプリ設定 writes (decision-13, doc-8 §2.2). `settings.toml` is one document and every
- * write sends the whole of it, while the screen has two writers: the 設定画面's 保存 and the 詳細配置
- * switch, which is pressable while that form sits open over the same screen.
+ * write sends the whole of it, while the screen has more than one writer: the 設定画面's 保存, and the
+ * controls that store a choice as its 既定 the moment it is made — the 詳細配置 switch (doc-8 §2.2) and
+ * the 帯's 並び順 (doc-7 §5.4) — each of them pressable while that form sits open over the same screen.
+ * The count is deliberately not written down: the shape below holds for any number of them, and a
+ * number here would go stale the next time one is added without anything failing.
  *
- * Two writers each sending *their own* snapshot is last-write-wins on the fields neither of them was
+ * Writers each sending *their own* snapshot is last-write-wins on the fields none of them was
  * editing: a placement switch issued while a form save is in flight carries the pre-save values back
  * to disk, and the reverse order puts the old placement back. Merging what comes *back* cannot undo
  * that — the value is already written — so a write is expressed as a **change against whatever is

@@ -14,6 +14,8 @@
   import FilterPopover from "./FilterPopover.svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import { defaultFilter, type CardFilter, type Facets } from "../lib/filter";
+  import { CARD_ORDER_CHOICES } from "../lib/swimlane";
+  import type { CardOrder } from "../lib/wire";
   import {
     filterTokens,
     lastCondition,
@@ -37,8 +39,16 @@
      * way in, and two openers would disagree about whether it is up.
      */
     popoverOpen: boolean;
+    /**
+     * 並び順 (doc-7 §5.4). Not part of `filter`: the bar holds both, but a 並び順 takes no card away,
+     * so it is neither a 絞り込み条件 nor something 既定に戻す reaches.
+     */
+    cardOrder: CardOrder;
+    /** Why the last choice could not be stored as the 既定, or `null` (doc-7 §5.4). */
+    cardOrderFailure: string | null;
     onpopover: (open: boolean) => void;
     onchange: (filter: CardFilter) => void;
+    oncardorder: (order: CardOrder) => void;
   }
 
   let {
@@ -46,8 +56,11 @@
     facets,
     defaultStorage,
     popoverOpen,
+    cardOrder,
+    cardOrderFailure,
     onpopover,
     onchange,
+    oncardorder,
   }: Props = $props();
 
   // The text box keeps its own state and is bound (DOM → state), never written back on every
@@ -92,6 +105,18 @@
   );
   /** Whether the 帯 itself already shows the reason, so it is not printed a second time (doc-11 §8). */
   let reasonOnScreen = $derived(clearBlocked);
+
+  /**
+   * Take the `<select>`'s value back to the union by looking it up, not by asserting it — the same
+   * bargain `card.ts` の `priorityStep` strikes with `find`. A cast would accept whatever the DOM
+   * handed over, and this is the one value on the bar that is written to `settings.toml`.
+   */
+  function chooseOrder(value: string): void {
+    const found = CARD_ORDER_CHOICES.find(([order]) => order === value);
+    if (found !== undefined) {
+      oncardorder(found[0]);
+    }
+  }
 
   let anchor = $state<HTMLDivElement | null>(null);
   let opener = $state<HTMLButtonElement | null>(null);
@@ -202,6 +227,28 @@
     <span class={reasonOnScreen ? "unseen" : "blocked-note"} id={BLOCKED_ID}>
       {blockedReason ?? ""}
     </span>
+  </div>
+
+  <!-- 並び順 (doc-7 §5.4). Outside `.tokens` and outside the two 解除 controls, because it is not a
+       絞り込み条件: it takes no card away, carries no トークン, and 既定に戻す does not reach it. The
+       visible 「並び順」 stays — unlike the text box's 属性名 (TASK-112), this word does say what the
+       control decides, and it is the one thing on the bar that says this control is not a filter.
+       A `<select>` spelling all ten orders in words, so the direction reads without hovering or
+       pressing, and doc-11 §2.4 gains no new form. -->
+  <div class="order">
+    <label>
+      並び順
+      <select value={cardOrder} onchange={(event) => chooseOrder(event.currentTarget.value)}>
+        {#each CARD_ORDER_CHOICES as [value, rule] (value)}
+          <option {value}>{rule.label}</option>
+        {/each}
+      </select>
+    </label>
+    <!-- The order took effect; only its persistence did not (doc-7 §5.4). Said rather than swallowed,
+         and only while it is true — there is no blocked control here to describe. -->
+    {#if cardOrderFailure !== null}
+      <span class="order-failure">{cardOrderFailure}</span>
+    {/if}
   </div>
   <!-- 総計 is not here (doc-7 §5.2, TASK-66): it is beside the 画面名 in the 固定ヘッダ, which is the one
        place that prints it. The per-row 内訳 on each レーンヘッダ行 stays where it is. -->
@@ -404,6 +451,44 @@
   // The 理由 doc-11 §5 requires to be readable without hovering. It sits on the bar's own line
   // rather than on one of its own, so stating it costs the grid no height.
   .blocked-note {
+    color: var(--muted);
+    font-size: 0.65rem;
+  }
+
+  // 並び順 (doc-7 §5.4). Takes the bar's own height like every other control here — 帯の高さは 1 行
+  // のまま (画面設計案 03 案A) is a property of the row, and a taller control would break it whether
+  // or not the row wraps.
+  .order {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      // 副次 (doc-11 §2.1), like the トークン's 属性名: the word names the control, the value is what
+      // is read.
+      color: var(--muted);
+      font-size: 0.64rem;
+    }
+
+    select {
+      box-sizing: border-box;
+      height: var(--bar-control);
+      max-width: 9rem;
+      padding: 0 0.16rem;
+      border: 1px solid var(--line-strong);
+      // ボタンの角丸 (doc-11 §2.2), the value every control in this bar takes.
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--fg);
+      font: inherit;
+      font-size: 0.66rem;
+    }
+  }
+
+  .order-failure {
     color: var(--muted);
     font-size: 0.65rem;
   }

@@ -24,6 +24,7 @@ const DEFAULTS: AppSettings = {
   card_density: "m",
   default_storage_filter: ["active"],
   default_detail_placement: "sidebar",
+  default_card_order: "priority_desc",
   watch_external_changes: true,
 };
 
@@ -197,7 +198,7 @@ describe("カード情報量", () => {
   });
 });
 
-describe("第 2 の書き手（既定の詳細配置）と開いているフォーム", () => {
+describe("フォームの外からの書き手（既定の詳細配置・既定の並び順）と開いているフォーム", () => {
   it("seeds straight from the new values while there is no draft to protect", () => {
     expect(mergeDraft(null, null, DEFAULTS)).toEqual(DEFAULTS);
   });

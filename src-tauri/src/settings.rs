@@ -9,12 +9,13 @@
 //!
 //! | term | here | is |
 //! |---|---|---|
-//! | decision-13 アプリ設定 | [`AppSettings`] | the six defaults decision-13 lists, plus the schema version |
+//! | decision-13 アプリ設定 | [`AppSettings`] | the defaults decision-13's item table lists, plus the schema version |
 //! | decision-13 アプリ設定ファイル | `settings.toml` under the app-config dir | the single file this module reads and writes |
 //! | decision-12 表示テーマ | [`AppSettings::theme`] | the chosen colour set's name; `None` means OS の明暗に従う (TASK-47) |
 //! | doc-7 §3 カード情報量 | [`CardDensity`] | which column of doc-7 §3's assignment table a card is drawn from |
 //! | doc-7 §5.2 既定の保存区分 | [`AppSettings::default_storage_filter`] | the 保存区分 the filter starts with |
 //! | doc-8 §2.1 詳細配置 | [`DetailPlacement`] | 併置サイドバー / 中央モーダル / 全面シングルビュー |
+//! | doc-7 §5.4 並び順 | [`CardOrder`] | which of the ten orders a レーンセル lays its cards out in |
 //! | doc-9 §3.1 継続検出の可否 | [`AppSettings::watch_external_changes`] | whether the per-root file watch is started at all |
 //! | doc-8 §7 外部エディタ指定 | [`AppSettings::external_editor`] | the 起動指定 that outranks `$VISUAL`/`$EDITOR` |
 //! | doc-5 §4 実行ファイル解決の順序 1 段目 | [`AppSettings::backlog_cli`] | the Backlog CLI executable to run, outranking every automatic resolution |
@@ -49,12 +50,13 @@ use std::path::{Path, PathBuf};
 /// *higher* one degrades to read-only and is left untouched (decision-13, AC #1) — the same rule the
 /// ledger follows (doc-3 §2.2), which decision-13 asks the two files to keep in step.
 ///
-/// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16). decision-13 puts 項目の追加 under
-/// this version's management, and the read-only degrade is what the raise buys: left at 1, a build
-/// predating the field would read the newer file as its own version, let serde drop the key it does
-/// not know, and delete the value on its next save. Older files are unaffected — a *lower* version
-/// loads with the missing keys defaulted, and the next save writes this version.
-pub const KNOWN_SCHEMA_VERSION: u32 = 2;
+/// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16) and to 3 when `default_card_order`
+/// was (TASK-132). decision-13 puts 項目の追加 under this version's management, and the read-only
+/// degrade is what the raise buys: left where it was, a build predating the field would read the newer
+/// file as its own version, let serde drop the key it does not know, and delete the value on its next
+/// save. Older files are unaffected — a *lower* version loads with the missing keys defaulted, and the
+/// next save writes this version.
+pub const KNOWN_SCHEMA_VERSION: u32 = 3;
 
 /// カード情報量 (doc-7 §3): which column of the card assignment table is in force.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -83,6 +85,37 @@ pub enum DetailPlacement {
     Full,
 }
 
+/// 並び順 (doc-7 §5.4): which of the ten orders the cards in a レーンセル are laid out in.
+///
+/// One flat token per order rather than an attribute paired with a direction, because the ten are
+/// exactly the ten choices the 絞り込み帯's control offers — the value in `settings.toml` and the
+/// entry the user picked are then the same enumeration, and the file stays a flat, hand-editable
+/// table (decision-13 形式). A nested `{ attribute, direction }` would serialize as a TOML sub-table,
+/// which also has to come after every scalar key in the file.
+///
+/// Attribute order follows the 原文 (2026-08-09 のユーザーの要求); the direction order is 昇順 then
+/// 降順 for **every** attribute, which is where the control's list departs from it — the 原文 wrote
+/// priority the other way round, and one attribute reading backwards is what a reader notices first
+/// (2026-08-10 のユーザー判断). This is also the order the control lists them in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CardOrder {
+    PriorityAsc,
+    /// 既定 (doc-7 §5.4). With the shared tie-break behind it, this is the order the grid had before
+    /// the orders became selectable, card for card. `#[default]` rather than first: the list's order
+    /// is the screen's, and the default is not tied to a position in it.
+    #[default]
+    PriorityDesc,
+    TaskIdAsc,
+    TaskIdDesc,
+    UpdatedAsc,
+    UpdatedDesc,
+    CreatedAsc,
+    CreatedDesc,
+    MilestoneAsc,
+    MilestoneDesc,
+}
+
 /// One 保存区分 choice the filter can hold (doc-7 §5.2). The four doc-4 §3.4 states plus
 /// `indeterminate`, which is a task file found outside the recognized scan locations (`storage_state`
 /// is `None`). The indeterminate case is included because the filter itself offers it: doc-4 §3.4
@@ -99,7 +132,9 @@ pub enum StorageSelection {
     Indeterminate,
 }
 
-/// アプリ設定 (decision-13): the six defaults, plus the schema version that governs them.
+/// アプリ設定 (decision-13): the items its table lists, plus the schema version that governs them.
+/// The count is not written here — decision-13's table is the register, and a number in this sentence
+/// would go stale on the next item without anything failing.
 ///
 /// Field names are the TOML keys *and* the IPC field names — no `rename_all` — which is the ledger's
 /// convention for the two app-config files (doc-3 §2.2 keeps them hand-editable, and a key that reads
@@ -125,6 +160,11 @@ pub struct AppSettings {
     pub default_storage_filter: Vec<StorageSelection>,
     #[serde(default)]
     pub default_detail_placement: DetailPlacement,
+    /// 既定の並び順 (doc-7 §5.4). Written by the 絞り込み帯's control as well as by the 設定画面 —
+    /// choosing an order *is* choosing the default, the same second-writer shape 既定の詳細配置 has
+    /// (doc-8 §2.2).
+    #[serde(default)]
+    pub default_card_order: CardOrder,
     /// 継続検出の可否 (doc-9 §3.1). Default true: the watch is what keeps cards in step with the files,
     /// and doc-9 §3.1 frames turning it off as a deliberate choice with a stated consequence.
     #[serde(default = "watch_external_changes_default")]
@@ -162,6 +202,7 @@ impl Default for AppSettings {
             card_density: CardDensity::default(),
             default_storage_filter: default_storage_filter(),
             default_detail_placement: DetailPlacement::default(),
+            default_card_order: CardOrder::default(),
             watch_external_changes: watch_external_changes_default(),
             backlog_cli: None,
             external_editor: None,
@@ -371,6 +412,7 @@ mod tests {
             loaded.settings.default_detail_placement,
             DetailPlacement::Sidebar
         );
+        assert_eq!(loaded.settings.default_card_order, CardOrder::PriorityDesc);
         assert!(loaded.settings.watch_external_changes);
         assert_eq!(loaded.settings.theme, None);
         assert!(loaded.status.writable(), "the next save creates the file");
@@ -387,6 +429,7 @@ mod tests {
             card_density: CardDensity::L,
             default_storage_filter: vec![StorageSelection::Active, StorageSelection::Draft],
             default_detail_placement: DetailPlacement::Full,
+            default_card_order: CardOrder::MilestoneAsc,
             watch_external_changes: false,
             // A path with a space, because that is what an npm global prefix under a Windows user
             // profile or an Application Support directory looks like (doc-5 §4 順序 1).
@@ -423,6 +466,7 @@ mod tests {
             card_density: CardDensity::L,
             default_storage_filter: vec![StorageSelection::Active, StorageSelection::Draft],
             default_detail_placement: DetailPlacement::Full,
+            default_card_order: CardOrder::MilestoneAsc,
             watch_external_changes: false,
             backlog_cli: Some(PathBuf::from("/opt/my tools/backlog")),
             external_editor: Some(EditorCommand {
@@ -624,6 +668,7 @@ mod tests {
                 "card_density",
                 "default_storage_filter",
                 "default_detail_placement",
+                "default_card_order",
                 "watch_external_changes",
             ],
             "settings.toml holds decision-13's items and nothing else"
