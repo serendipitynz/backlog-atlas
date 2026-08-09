@@ -3,7 +3,7 @@
  * 詳細の離脱と保存中状態, 再読込イベント後の選択・未保存・履歴の整合, 絞り込みが列を消しても画面が
  * 更新を受け付け続けること, 行の表示・非表示をメニュー 1 か所が持つこと, 並び順の 2 人の書き手.
  *
- * All four are `App.svelte`'s, and none is a rule a pure function holds — they are about *when* the
+ * All of them are `App.svelte`'s, and none is a rule a pure function holds — they are about *when* the
  * shell calls the boundary, about what survives an unmount, and about what one screen's binding may
  * do to every later update. `src/lib/*.test.ts` fixes the rules; this fixes the sequence they are
  * called in.
@@ -1199,88 +1199,6 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
  * shell's, the column is the grid's, and what breaks is neither of them but everything after. The
  * assertions are 「その後の操作が届くか」 for that reason, not the geometry the effect was measuring.
  */
-describe("並び順は帯と設定画面が書く 1 つの項目", () => {
-  /**
-   * 並び順 (doc-7 §5.4) は帯が選び、選んだ時点でアプリ設定の既定になる — 書き手が 2 つある 1 つの値で、
-   * その 2 つを結んでいるのはシェルだけである（帯は値を受け取って返すだけ、設定画面は自分の下書きしか
-   * 知らない）。純関数が持てるのは並びの規則そのもの（`swimlane.test.ts`）までで、**選択が保存に
-   * 失敗したあと、無関係な保存で元へ戻らない**ことはここでしか固定できない。
-   */
-  const OLDER = taskView({
-    id: "TASK-8",
-    title: "古い方",
-    status: "To Do",
-    column: "toDo",
-    updatedDate: "2026-07-01 09:00",
-  });
-  const NEWER = taskView({
-    id: "TASK-9",
-    title: "新しい方",
-    status: "To Do",
-    column: "toDo",
-    updatedDate: "2026-07-20 09:00",
-  });
-
-  /** The ids the grid is showing, top to bottom. Both tasks are in the one row's To Do cell. */
-  function cellIds(host: HTMLElement): string[] {
-    return [...host.querySelectorAll(".card .identity")].map(
-      (element) => element.textContent?.trim() ?? "",
-    );
-  }
-
-  function chooseOrder(host: HTMLElement, label: string): void {
-    // By the bar's own selector rather than by its announced name: the name comes from the `<label>`
-    // wrapping it, which `announced` does not walk up to (it reads the element's own).
-    const select = only<HTMLSelectElement>(host, ".bar .order select");
-    const option = [...select.options].find((candidate) => candidate.textContent?.trim() === label);
-    if (option === undefined) throw new Error(`no 並び順 called ${label}`);
-    select.value = option.value;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-    flushSync();
-  }
-
-  it("帯で選ぶと並びが変わり、その選択が既定として保存される", async () => {
-    const host = await startWith([loaded("atlas", [NEWER, OLDER])]);
-    // 既定 (priority 降順) では、priority も ordinal も無い 2 件は updated_date の新しい順になる。
-    expect(cellIds(host)).toEqual(["atlas:TASK-9", "atlas:TASK-8"]);
-
-    chooseOrder(host, "updated 昇順");
-    await settled();
-    expect(cellIds(host)).toEqual(["atlas:TASK-8", "atlas:TASK-9"]);
-    expect(madeTo("settings_save").at(-1)?.args[0]).toMatchObject({
-      default_card_order: "updated_asc",
-    });
-  });
-
-  it("保存が断られても選んだ並びは残り、次の保存もそれを戻さない", async () => {
-    const host = await startWith([loaded("atlas", [NEWER, OLDER])]);
-    answers.settingsSaveFails = true;
-
-    chooseOrder(host, "updated 昇順");
-    await settled();
-    // 並びは変わっている — 断られたのは永続だけで、選択そのものではない。
-    expect(cellIds(host)).toEqual(["atlas:TASK-8", "atlas:TASK-9"]);
-    expect(only(host, ".bar .order-failure").textContent).toContain("read-only");
-
-    // 断られた書き込みはファイルへ届いていないので、**別の項目**の保存が通ったときに返ってくる設定は
-    // 古い並び順を持っている。それをそのまま取り込むと、利用者から見れば「選び直した並びが、無関係な
-    // 保存のたびに勝手に戻る」ことになる。ここで通すのは設定画面の 継続検出 で、並び順には触れない。
-    answers.settingsSaveFails = false;
-    click(byLabel(host, "button.header-entry", "メニュー"));
-    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
-    click(byText(host, '[aria-label="設定"] label.choice', "継続検出を使う").querySelector("input")!);
-    click(byText(host, "footer button", SAVE_LABEL));
-    await settled();
-
-    expect(madeTo("settings_save").at(-1)?.args[0]).toMatchObject({
-      watch_external_changes: false,
-      // The file never took the bar's choice, so this write carries the order it had before.
-      default_card_order: "priority_desc",
-    });
-    expect(cellIds(host)).toEqual(["atlas:TASK-8", "atlas:TASK-9"]);
-  });
-});
-
 describe("絞り込みが列を消しても画面は更新を受け付ける", () => {
   /** In a canonical column, and the only task carrying the priority the test selects. */
   const MAPPED = taskView({
@@ -1383,6 +1301,92 @@ describe("絞り込みが列を消しても画面は更新を受け付ける", (
     press(open, "Escape");
     await settled();
     expect(host.querySelector('[role="dialog"][aria-label="絞り込みを追加"]')).toBeNull();
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+describe("並び順は帯と設定画面が書く 1 つの項目", () => {
+  /**
+   * 並び順 (doc-7 §5.4) は帯が選び、選んだ時点でアプリ設定の既定になる — 書き手が 2 つある 1 つの値で、
+   * その 2 つを結んでいるのはシェルだけである（帯は値を受け取って返すだけ、設定画面は自分の下書きしか
+   * 知らない）。純関数が持てるのは並びの規則そのもの（`swimlane.test.ts`）までで、**選択が保存に
+   * 失敗したあと、無関係な保存で元へ戻らない**ことはここでしか固定できない。
+   */
+  const OLDER = taskView({
+    id: "TASK-8",
+    title: "古い方",
+    status: "To Do",
+    column: "toDo",
+    updatedDate: "2026-07-01 09:00",
+  });
+  const NEWER = taskView({
+    id: "TASK-9",
+    title: "新しい方",
+    status: "To Do",
+    column: "toDo",
+    updatedDate: "2026-07-20 09:00",
+  });
+
+  /** The ids the grid is showing, top to bottom. Both tasks are in the one row's To Do cell. */
+  function cellIds(host: HTMLElement): string[] {
+    return [...host.querySelectorAll(".card .identity")].map(
+      (element) => element.textContent?.trim() ?? "",
+    );
+  }
+
+  function chooseOrder(host: HTMLElement, label: string): void {
+    // By the bar's own selector rather than by its announced name: the name comes from the `<label>`
+    // wrapping it, which `announced` does not walk up to (it reads the element's own).
+    const select = only<HTMLSelectElement>(host, ".bar .order select");
+    const option = [...select.options].find((candidate) => candidate.textContent?.trim() === label);
+    if (option === undefined) {
+      throw new Error(`no 並び順 called ${label}`);
+    }
+    select.value = option.value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    flushSync();
+  }
+
+  it("帯で選ぶと並びが変わり、その選択が既定として保存される", async () => {
+    const host = await startWith([loaded("atlas", [NEWER, OLDER])]);
+    // 既定 (priority 降順) では、priority も ordinal も無い 2 件は updated_date の新しい順になる。
+    expect(cellIds(host)).toEqual(["atlas:TASK-9", "atlas:TASK-8"]);
+
+    chooseOrder(host, "updated 昇順");
+    await settled();
+    expect(cellIds(host)).toEqual(["atlas:TASK-8", "atlas:TASK-9"]);
+    expect(madeTo("settings_save").at(-1)?.args[0]).toMatchObject({
+      default_card_order: "updated_asc",
+    });
+  });
+
+  it("保存が断られても選んだ並びは残り、次の保存もそれを戻さない", async () => {
+    const host = await startWith([loaded("atlas", [NEWER, OLDER])]);
+    answers.settingsSaveFails = true;
+
+    chooseOrder(host, "updated 昇順");
+    await settled();
+    // 並びは変わっている — 断られたのは永続だけで、選択そのものではない。
+    expect(cellIds(host)).toEqual(["atlas:TASK-8", "atlas:TASK-9"]);
+    expect(only(host, ".bar .order-failure").textContent).toContain("read-only");
+
+    // 断られた書き込みはファイルへ届いていないので、**別の項目**の保存が通ったときに返ってくる設定は
+    // 古い並び順を持っている。それをそのまま取り込むと、利用者から見れば「選び直した並びが、無関係な
+    // 保存のたびに勝手に戻る」ことになる。ここで通すのは設定画面の 継続検出 で、並び順には触れない。
+    answers.settingsSaveFails = false;
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+    click(byText(host, '[aria-label="設定"] label.choice', "継続検出を使う").querySelector("input")!);
+    click(byText(host, "footer button", SAVE_LABEL));
+    await settled();
+
+    expect(madeTo("settings_save").at(-1)?.args[0]).toMatchObject({
+      watch_external_changes: false,
+      // The file never took the bar's choice, so this write carries the order it had before.
+      default_card_order: "priority_desc",
+    });
+    expect(cellIds(host)).toEqual(["atlas:TASK-8", "atlas:TASK-9"]);
   });
 });
 

@@ -14,8 +14,8 @@
  * | doc-8 §7 外部エディタ指定 | [`editorCommandOf`] / [`editorArgsText`] | the 起動指定 as two form fields ↔ one `EditorCommand` |
  * | decision-12 表示テーマ | `theme.ts` の `RECORDED_THEMES` | the colour sets this build has; named there, defined in `app.scss` |
  * | doc-7 §5.2 既定の保存区分 | [`STORAGE_SELECTION_LABEL`] + [`toggleStorage`] | which 保存区分 the filter starts with |
- * | doc-8 §2.2 既定の詳細配置（第 2 の書き手） | [`mergeDraft`] | how a placement stored elsewhere lands in an open form without taking its input |
- * | doc-7 §5.4 既定の並び順 | `swimlane.ts` の `CARD_ORDERS` | the ten orders and their screen words; this module only carries the value through |
+ * | doc-8 §2.2 既定の詳細配置・doc-7 §5.4 既定の並び順（フォームの外から書かれる項目） | [`mergeDraft`] | how a value stored elsewhere lands in an open form without taking its input |
+ * | doc-7 §5.4 並び順の語 | `swimlane.ts` の `CARD_ORDERS` | the ten orders and their screen words; this module only carries the value through |
  * | TASK-74 下部操作行 | [`CLOSE_WITHOUT_SAVING_LABEL`] / [`SAVE_LABEL`] | the two ways out of the モーダル, named in one place |
  * | TASK-75 場所を開く | [`OPEN_LOCATION_LABEL`] / [`openLocationBlocked`] | opening the アプリ設定ディレクトリ (decision-13), and when it cannot be opened |
  *
@@ -241,8 +241,9 @@ export function openLocationFailure(error: CommandError): string {
  * new one. `baseline`/`draft` are `null` before the form has anything to protect, which is the plain
  * "seed from the new values" case.
  *
- * Needed because アプリ設定 has a second writer: choosing a 詳細配置 stores it as the 既定 (doc-8 §2.2)
- * while the 設定画面 may be open over the same screen with unsaved input. Re-seeding the whole form on
+ * Needed because アプリ設定 has writers outside this form: choosing a 詳細配置 (doc-8 §2.2) or a 並び順
+ * (doc-7 §5.4) stores it as the 既定 while the 設定画面 may be open over the same screen with unsaved
+ * input, and either of them can be the one that lands. Re-seeding the whole form on
  * that write would take the input away — which doc-8 §6.4 forbids of the detail panel's 編集セッション,
  * and the same reasoning applies to this form: an edit the user is in the middle of is not the writer's
  * to discard. Adopting the incoming value for *untouched* fields is what keeps 保存 from silently

@@ -314,7 +314,9 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
       "updated_asc",
     );
     const built = row(rows, "atlas");
-    if (built.state !== "loaded") throw new Error("row has no cells");
+    if (built.state !== "loaded") {
+      throw new Error("row has no cells");
+    }
     expect(built.unmapped.map((view) => view.task.id)).toEqual(["TASK-1", "TASK-2"]);
   });
 
@@ -487,17 +489,29 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
       const rank = (view: ReturnType<typeof taskView>): number =>
         ({ high: 3, medium: 2, low: 1 })[view.task.priority ?? ""] ?? 0;
       const priority = rank(y) - rank(x);
-      if (priority !== 0) return priority;
+      if (priority !== 0) {
+        return priority;
+      }
       const ordinals = [x.task.ordinal, y.task.ordinal];
       if (ordinals[0] !== ordinals[1]) {
-        if (ordinals[0] === null) return 1;
-        if (ordinals[1] === null) return -1;
+        if (ordinals[0] === null) {
+          return 1;
+        }
+        if (ordinals[1] === null) {
+          return -1;
+        }
         return ordinals[0] - ordinals[1];
       }
       const dates = [x.task.updatedDate, y.task.updatedDate];
-      if (dates[0] === dates[1]) return 0;
-      if (dates[0] === null) return 1;
-      if (dates[1] === null) return -1;
+      if (dates[0] === dates[1]) {
+        return 0;
+      }
+      if (dates[0] === null) {
+        return 1;
+      }
+      if (dates[1] === null) {
+        return -1;
+      }
       return dates[0] < dates[1] ? 1 : -1;
     };
     const views = [

@@ -113,7 +113,9 @@
    */
   function chooseOrder(value: string): void {
     const found = CARD_ORDER_CHOICES.find(([order]) => order === value);
-    if (found !== undefined) oncardorder(found[0]);
+    if (found !== undefined) {
+      oncardorder(found[0]);
+    }
   }
 
   let anchor = $state<HTMLDivElement | null>(null);

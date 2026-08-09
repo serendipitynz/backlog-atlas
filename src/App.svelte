@@ -792,7 +792,9 @@
     settings = next;
     if (first) placement = next.settings.default_detail_placement;
     if (untouched) filter = withStorage(filter, next.settings.default_storage_filter);
-    if (orderUntouched) cardOrder = next.settings.default_card_order;
+    if (orderUntouched) {
+      cardOrder = next.settings.default_card_order;
+    }
   }
 
   /**
@@ -845,8 +847,8 @@
 
   /**
    * Write アプリ設定 as a *change to whatever is current*, one write at a time (`settings-write.ts` says
-   * why: `settings.toml` is one document with two writers on screen at once). Held here beside the state
-   * it reads and adopts.
+   * why: `settings.toml` is one document, and several controls on screen write it at once). Held here
+   * beside the state it reads and adopts.
    */
   const writeSettings = createSettingsWriter({
     peek: () => untrack(() => settings?.settings ?? null),

@@ -159,9 +159,15 @@ function byOptional<T>(
   return (a, b) => {
     const x = read(a);
     const y = read(b);
-    if (x === null && y === null) return 0;
-    if (x === null) return 1;
-    if (y === null) return -1;
+    if (x === null && y === null) {
+      return 0;
+    }
+    if (x === null) {
+      return 1;
+    }
+    if (y === null) {
+      return -1;
+    }
     return direction * compare(x, y);
   };
 }
@@ -198,12 +204,16 @@ function compareNumberAware(a: string, b: string): number {
     const endB = digitRunEnd(b, j);
     if (endA !== null && endB !== null) {
       const byNumber = compareDigitRuns(a.slice(i, endA), b.slice(j, endB));
-      if (byNumber !== 0) return byNumber;
+      if (byNumber !== 0) {
+        return byNumber;
+      }
       i = endA;
       j = endB;
       continue;
     }
-    if (a[i] !== b[j]) return a[i] < b[j] ? -1 : 1;
+    if (a[i] !== b[j]) {
+      return a[i] < b[j] ? -1 : 1;
+    }
     i += 1;
     j += 1;
   }
@@ -214,7 +224,9 @@ function compareNumberAware(a: string, b: string): number {
 /** Where the run of digits starting at `at` ends, or `null` when there is no digit there. */
 function digitRunEnd(text: string, at: number): number | null {
   let end = at;
-  while (end < text.length && text[end] >= "0" && text[end] <= "9") end += 1;
+  while (end < text.length && text[end] >= "0" && text[end] <= "9") {
+    end += 1;
+  }
   return end === at ? null : end;
 }
 
@@ -226,8 +238,12 @@ function digitRunEnd(text: string, at: number): number | null {
 function compareDigitRuns(a: string, b: string): number {
   const x = a.replace(/^0+(?=\d)/, "");
   const y = b.replace(/^0+(?=\d)/, "");
-  if (x.length !== y.length) return x.length < y.length ? -1 : 1;
-  if (x !== y) return x < y ? -1 : 1;
+  if (x.length !== y.length) {
+    return x.length < y.length ? -1 : 1;
+  }
+  if (x !== y) {
+    return x < y ? -1 : 1;
+  }
   // Same value, different spelling (`TASK-01` vs `TASK-1`): decided by the written form, so the
   // order stays total rather than falling through to the read order for two different ids.
   return Math.sign(a.length - b.length);
@@ -323,10 +339,14 @@ export function cardComparator(order: CardOrder): Comparator {
   const chosen = CARD_ORDERS[order].compare;
   return (a, b) => {
     const answer = chosen(a, b);
-    if (answer !== 0) return answer;
+    if (answer !== 0) {
+      return answer;
+    }
     for (const step of TIE_BREAK) {
       const broken = step(a, b);
-      if (broken !== 0) return broken;
+      if (broken !== 0) {
+        return broken;
+      }
     }
     return 0;
   };
@@ -372,7 +392,9 @@ function buildRow(
     else byColumn.get(column)?.tasks.push(view);
   }
 
-  for (const cell of cells) cell.tasks.sort(compare);
+  for (const cell of cells) {
+    cell.tasks.sort(compare);
+  }
   unmapped.sort(compare);
 
   return {

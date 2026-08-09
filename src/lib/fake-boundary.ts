@@ -289,7 +289,9 @@ export const commandFakes = {
   settingsSave: (settings: AppSettings): Promise<LoadedSettings> =>
     record("settings_save", [settings], async () => {
       if (answers.settingsSaveHold !== null) await answers.settingsSaveHold.promise;
-      if (answers.settingsSaveFails) throw new Error("settings are read-only");
+      if (answers.settingsSaveFails) {
+        throw new Error("settings are read-only");
+      }
       answers.settings = { settings, status: { state: "stored" } };
       return answers.settings;
     }),
