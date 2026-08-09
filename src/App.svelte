@@ -1652,6 +1652,13 @@
   }
 
   /**
+   * The key whose default the handler below is stopping for as long as it is held (`null` while none
+   * is). Outside the `$effect` because the listener is re-made whenever the effect re-runs, and a
+   * press can outlive that.
+   */
+  let heldKey: string | null = null;
+
+  /**
    * The 割り当て一覧 (doc-7 §2.1) as the shell answers it. One listener rather than a handler per control:
    * these operations are the screen's own (open a modal, open the menu, open or undo a 絞り込み), and a
    * key that only worked while some particular button had focus would not be a screen-wide shortcut at
@@ -1661,19 +1668,23 @@
    * Every operation reached here also has a visible control: the two 共通入口 are in the header and in the
    * menu, the menu has its ☰, and the 絞り込み pair are buttons on the フィルタ帯 (doc-7 §2.1
    * ショートカットだけが入口の操作を作らない / AC #9).
+   *
+   * [`heldKey`] is the one thing it carries between presses: the key of a press it answered and
+   * stopped, so the rest of that press stays stopped as well ([`continuesHeldPress`]).
    */
-  /**
-   * The key whose default this handler is stopping for as long as it is held (`null` while none is).
-   * Held here rather than inside the listener because the listener is re-made per press.
-   */
-  let heldKey: string | null = null;
-
   $effect(() => {
     function pressed(event: KeyboardEvent): void {
       // Only a repeat continues the press that set `heldKey`, so any other keydown ends it. Done here
       // rather than on `keyup`, because a keyup can be missed — the window can lose focus mid-press —
       // and a stale key would stop a default the user does want.
       if (!event.repeat) heldKey = null;
+      // A press this handler answered stays its own until the key comes up, so its default is stopped
+      // ahead of everything below. Ahead of the 被せ層 check as well: a layer owns the presses that
+      // start under it, not the tail of the press that opened it — ⌘N's repeats reached the WebView
+      // because the register modal the first press opened made this handler return before stopping
+      // them. Not a `return` of its own, because a held press that still matches (Backspace) has to
+      // go on running its operation below.
+      if (continuesHeldPress(event, heldKey)) event.preventDefault();
       // 被せ層 answer their own keys where they are and consume the press (`Modal.svelte`,
       // `HeaderMenu.svelte`, `FilterPopover.svelte`). A モーダル additionally keeps focus inside itself,
       // so while one is up the shell offers no 適用範囲 and leaves the keyboard to it.
@@ -1685,13 +1696,10 @@
         textEntry: textEntryFocused(document.activeElement),
         mac: MAC_KEYBOARD,
       });
-      if (binding === null) {
-        // The press this handler answered has stopped matching, and a repeat is why: `addFilter` moves
-        // focus into the 値一覧's 検索欄, so §2.1 withholds the row from the caret's new position and
-        // the key's own character reaches the box the press opened. The press is still Atlas's.
-        if (continuesHeldPress(event, heldKey)) event.preventDefault();
-        return;
-      }
+      // A repeat whose row stopped matching lands here — `addFilter` moved focus into the 値一覧's
+      // 検索欄, so §2.1 withholds the row from the caret's new position — and its default is already
+      // stopped above.
+      if (binding === null) return;
       // Stopped for a matched press whatever happens next: the key is Atlas's from here on, and letting
       // the WebView act on it as well is how ⌘N would open a modal *and* a window.
       if (binding.preventsDefault !== null) {
