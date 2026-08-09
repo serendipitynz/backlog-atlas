@@ -71,7 +71,6 @@
     oncreateSubmit: () => void;
     onselect: (view: TaskView) => void;
     onmove: (slug: string, direction: -1 | 1) => void;
-    onhide: (slug: string) => void;
     onretry: (slug: string) => void;
     onreread: (slug: string) => void;
     /** Open プロジェクト詳細画面 (doc-10); the レーンヘッダ行 is its entry point (doc-7 §2.3). */
@@ -100,7 +99,6 @@
     oncreateSubmit,
     onselect,
     onmove,
-    onhide,
     onretry,
     onreread,
     onopenProject,
@@ -269,7 +267,7 @@
    * 列折畳み・行折畳み are 画面の一時状態 (doc-7 §5.1, decision-13): they are never written to the
    * settings file or the ledger, and nothing outside the grid reads them — the counts a fold keeps
    * are computed from the rows the shell already passes in — so they live here rather than in the
-   * shell beside 行非表示, which the 上部帯 does have to see.
+   * shell beside 行非表示, which decides which rows the shell hands over at all.
    */
   let collapsedColumns = $state<GridColumn[]>([]);
   let foldedRows = $state<string[]>([]);
@@ -308,13 +306,11 @@
     ].join(" "),
   );
 
-  // 行折畳み と 行非表示 は別の語・別の操作 (doc-7 §5.1). The two sentences are kept apart word for
-  // word — 件数を残す against 件数も読めなくなる — because that difference *is* the distinction, and
-  // a shared phrasing would be the取り違え the doc names.
+  // 行折畳み は 行非表示 と別の語・別の操作 (doc-7 §5.1), and since TASK-131 it is the only one of the
+  // two this row offers: 表示・非表示 は メニューのプロジェクト一覧 が 1 か所で扱う。The sentences below
+  // therefore say 件数を残す without a second control beside them saying 件数も読めなくなる.
   const ROW_FOLD_HINT = "行折畳み: レーンセルを畳み、列別の件数をこの行に残します。";
   const ROW_UNFOLD_HINT = "行折畳みを解き、レーンセルを戻します。";
-  const HIDE_HINT =
-    "行非表示: この行を画面から取り除きます（件数も読めなくなります）。上部の一覧から戻せます。";
   const COLUMN_FOLD_HINT = "列折畳み: この列を全行同時に畳み、列名を残します（件数は行ごとに残ります）。";
   const COLUMN_UNFOLD_HINT = "列折畳みを解き、この列のカードを全行で戻します。";
 </script>
@@ -501,7 +497,6 @@
           title={canReorder ? "表示順を下へ" : REORDER_BLOCKED_REASON}
           onclick={() => canReorder && onmove(row.slug, 1)}>↓</button
         >
-        <button type="button" title={HIDE_HINT} onclick={() => onhide(row.slug)}>隠す</button>
         {#if unwatched.includes(row.slug)}
           <!-- The manual 再読込契機 (doc-9 §3) sits on the row it refreshes: a row that says its
                cards may be stale has to carry the one control that resolves that. -->

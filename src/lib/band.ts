@@ -11,8 +11,8 @@
  * | term | here | is |
  * |---|---|---|
  * | doc-11 §4 上部帯 | [`TopBand`] | one line under the filter bar, announcing a state of the whole screen |
- * | doc-11 §4 の 6 種 | [`BandKind`] | the closed set — 6 種以外に上部帯を作らない |
- * | doc-11 §4 重要度の固定順 ①〜⑥ | [`BAND_ORDER`] | the order they stack in, as data rather than as markup order |
+ * | doc-11 §4 の帯の種別 | [`BandKind`] | the closed set — 本表に挙げた種以外に上部帯を作らない |
+ * | doc-11 §4 重要度の固定順 | [`BAND_ORDER`] | the order they stack in, as data rather than as markup order |
  * | doc-11 §4 ⑤ だけが × で閉じられる | [`TopBand.closable`] | whether the band offers a close control |
  * | doc-11 §4 縮約 | the texts below | the one-line form; the full reason stays where the operation is |
  * | doc-10 §3 台帳読取専用帯 | [`LEDGER_READ_ONLY_BAND`] | the ledger file degraded to read-only (doc-3 §2.2) |
@@ -20,30 +20,33 @@
  *
  * ## Why the texts here are shorter than the reasons elsewhere
  *
- * doc-11 §4 keeps every band to one line and forbids wrapping: 「フィルタ帯 1 行 ＋ 上部帯 6 本」で
- * 頭打ち という性質が、折り返しを許すと崩れる. So each band carries a 縮約 and the full reason stays
- * at the operation it is about — `readinessReason` beside every withheld operation for ②,
- * `OVERVIEW_READ_ONLY_NOTE` in the 概要区画 for ③, `UNWATCHED_MARK.detail` on the row's mark for ④,
- * and the 戻す chips themselves for ⑥. §4 asks for this duplication rather than a band that can only
- * be read by hovering.
+ * doc-11 §4 keeps every band to one line and forbids wrapping: フィルタ帯 1 行 ＋ 本表の帯 で頭打ち
+ * という性質が、折り返しを許すと崩れる. So each band carries a 縮約 and the full reason stays at the
+ * operation it is about — `readinessReason` beside every withheld operation for ②,
+ * `OVERVIEW_READ_ONLY_NOTE` in the 概要区画 for ③, and `UNWATCHED_MARK.detail` on the row's mark
+ * for ④. §4 asks for this duplication rather than a band that can only be read by hovering.
  */
 
 import { DISCARD_CONFIRM_QUESTION } from "./edit";
 import type { CliReadiness } from "./wire";
 
-/** The 6 種 doc-11 §4 allows, named after the doc's rows. Nothing else becomes a 上部帯. */
+/**
+ * The kinds doc-11 §4 allows, named after the doc's rows. Nothing else becomes a 上部帯.
+ *
+ * 行非表示 was ⑥ until TASK-131 moved the whole operation into the menu's プロジェクト一覧: the band
+ * announced a state the user had put the screen in themselves, and the count it carried is already said
+ * by 総件数's プロジェクト数 ratio (doc-7 §2.1).
+ */
 export type BandKind =
   | "confirm"
   | "cliDegraded"
   | "ledgerReadOnly"
   | "unwatched"
-  | "notice"
-  | "hiddenRows";
+  | "notice";
 
 /**
- * 重要度の固定順 ①〜⑥ (doc-11 §4): 回答待ち → 発行できない → 表示が古いかもしれない → 済んだことの
- * 報告 → 自分で隠したもの. Held as data so the stack cannot pick up the order of the markup that
- * happens to draw it.
+ * 重要度の固定順 (doc-11 §4): 回答待ち → 発行できない → 表示が古いかもしれない → 済んだことの報告.
+ * Held as data so the stack cannot pick up the order of the markup that happens to draw it.
  */
 export const BAND_ORDER: readonly BandKind[] = [
   "confirm",
@@ -51,7 +54,6 @@ export const BAND_ORDER: readonly BandKind[] = [
   "ledgerReadOnly",
   "unwatched",
   "notice",
-  "hiddenRows",
 ] as const;
 
 /** One band as the screen draws it. The controls it carries are the caller's, the order is not. */
@@ -62,7 +64,7 @@ export interface TopBand {
   /**
    * Whether the band offers a × (doc-11 §4). 通知 alone: ①〜④ describe a state that is still true
    * after a click, so a close control would let the user keep working past a 回答待ち or an
-   * 発行できない state by dismissing the only thing that says so. ⑥ ends by 戻す, not by dismissal.
+   * 発行できない state by dismissing the only thing that says so.
    */
   closable: boolean;
 }
@@ -79,8 +81,6 @@ export interface BandInputs {
   unwatchedReason: string | null;
   /** An action's own report, or `null`. */
   notice: string | null;
-  /** How many rows the user has hidden (doc-7 §5.1). */
-  hiddenRowCount: number;
 }
 
 /**
@@ -130,22 +130,9 @@ export function unwatchedBand(reason: string): string {
 }
 
 /**
- * 行非表示 (doc-7 §5.1), 縮約 to a count. すべて戻す stays in the band beside it (doc-11 §4: 帯が持つ操作
- * は縮約しても帯に残す), so undoing every hide opens nothing.
- *
- * The per-row 戻す is named as being in the menu, which is doc-11 §4's own example of 縮約: 行非表示の帯
- * は「非表示のレーン n 件」に縮約し、個々のレーンはメニューの一覧から戻す. §4 also requires the 別の場所 to
- * be *said* rather than left for the user to find, since the one-line form is allowed only while the
- * whole is readable somewhere — so the sentence carries the destination.
- */
-export function hiddenRowsBand(count: number): string {
-  return `非表示の行 ${count} 件（行ごとに戻すにはメニュー）`;
-}
-
-/**
  * The bands that stand, in doc-11 §4's fixed order. Every kind is answered here — the record is keyed
- * by `BandKind`, so a seventh band cannot be added without the compiler asking what it says, which is
- * the closed set §4 requires (この 6 種以外に上部帯を作らない).
+ * by `BandKind`, so a further band cannot be added without the compiler asking what it says, which is
+ * the closed set §4 requires (本表に挙げた種以外に上部帯を作らない).
  */
 export function topBands(inputs: BandInputs): TopBand[] {
   const texts: Record<BandKind, string | null> = {
@@ -154,7 +141,6 @@ export function topBands(inputs: BandInputs): TopBand[] {
     ledgerReadOnly: inputs.ledgerReadOnly ? LEDGER_READ_ONLY_BAND : null,
     unwatched: inputs.unwatchedReason === null ? null : unwatchedBand(inputs.unwatchedReason),
     notice: inputs.notice,
-    hiddenRows: inputs.hiddenRowCount > 0 ? hiddenRowsBand(inputs.hiddenRowCount) : null,
   };
   return BAND_ORDER.flatMap((kind) => {
     const text = texts[kind];

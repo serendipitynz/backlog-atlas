@@ -42,7 +42,7 @@ import {
   taskView,
   unreadable,
 } from "./lib/fixtures";
-import { SHORTCUT_HELP_LABEL } from "./lib/header";
+import { SHORTCUT_HELP_LABEL, SHOW_ALL_PROJECTS_LABEL } from "./lib/header";
 import { CLOSE_WITHOUT_SAVING_LABEL } from "./lib/settings";
 import { MAC_KEYBOARD } from "./lib/platform";
 import { SHORTCUTS } from "./lib/shortcuts";
@@ -1027,6 +1027,160 @@ describe("プロジェクト詳細の離脱", () => {
     click(byText(host, "button", "← スイムレーン"));
     expect(confirmBand(host)).toBeNull();
     expect(host.querySelector("button.card")).not.toBeNull();
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+/**
+ * 行の表示・非表示がメニュー 1 か所から届くこと (TASK-131).
+ *
+ * TASK-131 left 行非表示 one control, and it is on the header rather than in the grid — so what no
+ * pure function can hold is that the list survives the screen change. `header.ts` decides what the
+ * lines say; the shell decides whether they are offered at all, and a row hidden here is one the grid
+ * is no longer drawing on either screen.
+ */
+describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
+  const MENU = '[role="dialog"][aria-label="メニュー"]';
+
+  function menu(host: HTMLElement): HTMLElement | null {
+    return host.querySelector<HTMLElement>(MENU);
+  }
+
+  /** Open it if it is not already: a 表示切替行 leaves it up, so pressing ☰ again would close it. */
+  function openMenu(host: HTMLElement): void {
+    if (menu(host) === null) click(byLabel(host, "button.header-entry", "メニュー"));
+  }
+
+  function toggle(host: HTMLElement, label: string): void {
+    click(byText(host, `${MENU} button`, label));
+  }
+
+  /** The プロジェクト一覧's lines, in order, as the open menu draws them (doc-7 §2.1). */
+  function projectLines(host: HTMLElement): { label: string; shown: boolean }[] {
+    return [...only(host, MENU).querySelectorAll("button")]
+      .filter((button) => button.getAttribute("aria-pressed") !== null)
+      .map((button) => ({
+        label: button.querySelector(".label")?.textContent ?? "",
+        shown: button.getAttribute("aria-pressed") === "true",
+      }));
+  }
+
+  /**
+   * The two projects are deliberately of different kinds: one read (which has a name) and one
+   * unreadable (which has none and falls back to its slug, doc-7 §6). A 読取不能行 is exactly the row
+   * a user has reason to hide, so it must be listed like any other.
+   */
+  it("メニューのプロジェクト一覧は、画面が変わっても同じ行を同じ状態で出す", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), unreadable("kanri")]);
+
+    openMenu(host);
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: true },
+      { label: "kanri", shown: true },
+    ]);
+
+    // 表示切替行 を押すとその行がグリッドから消える (AC #2).
+    toggle(host, "Atlas");
+    await settled();
+    expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).toBeNull();
+
+    // Closed the way a user closes it before leaving for the other screen. Escape rather than a press
+    // outside because `render.ts`'s `click` is `HTMLElement.click()`, which dispatches no
+    // `pointerdown` — and `pointerdown` is what `HeaderMenu.svelte` listens for. The same substitution
+    // is used everywhere below.
+    press(only(host, MENU), "Escape");
+    click(only(host, '[title="kanri のプロジェクト詳細画面を開きます"]'));
+    await settled();
+    openMenu(host);
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: false },
+      { label: "kanri", shown: true },
+    ]);
+
+    // 戻すのも同じ 1 か所から、グリッドが立っていなくてもできる。
+    toggle(host, "Atlas");
+    press(only(host, MENU), "Escape");
+    click(byText(host, "button", "← スイムレーン"));
+    await settled();
+    expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).not.toBeNull();
+  });
+
+  /**
+   * 閉じる契機は群で決まる (doc-7 §2.1): a `rows` line leaves the menu up so that several rows are one
+   * errand, and a `layer` line closes it because 被せ層 は 1 枚だけ. Held here because the decision is
+   * `App.svelte`'s — `header.ts` knows the 群 but nothing about closing, and the two halves have to be
+   * checked against each other or a change to one reads as consistent on its own.
+   */
+  it("一覧の行ではメニューが開いたまま残り、被せ層を上げる行では閉じる", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), unreadable("kanri")]);
+
+    openMenu(host);
+    toggle(host, "Atlas");
+    expect(menu(host)).not.toBeNull();
+    toggle(host, "kanri");
+    expect(menu(host)).not.toBeNull();
+    await settled();
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: false },
+      { label: "kanri", shown: false },
+    ]);
+
+    // すべてのプロジェクトを表示 is a `rows` line too, and now has something to do.
+    toggle(host, SHOW_ALL_PROJECTS_LABEL);
+    expect(menu(host)).not.toBeNull();
+    expect(projectLines(host).every((line) => line.shown)).toBe(true);
+
+    // A `layer` line raises one, so it closes the menu on the way.
+    toggle(host, SHORTCUT_HELP_LABEL);
+    expect(menu(host)).toBeNull();
+    expect(host.querySelector(`[role="dialog"][aria-label="${SHORTCUT_HELP_LABEL}"]`)).not.toBeNull();
+  });
+
+  /**
+   * The menu is the only writer of 行非表示 (doc-7 §2.1・§5.1), and the exit that returns to a project's
+   * lane is where a second one used to sit: it un-hid the row on the way out, which was unreachable
+   * while the menu listed hidden rows alone and became reachable the moment it listed every project.
+   * A cross-screen contract precisely because both halves are on different screens.
+   */
+  it("詳細画面の出口は、そこで隠した行を戻さない", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), unreadable("kanri")]);
+    click(only(host, '[title="Atlas のプロジェクト詳細画面を開きます"]'));
+    await settled();
+
+    openMenu(host);
+    toggle(host, "Atlas");
+    press(only(host, MENU), "Escape");
+    click(byText(host, "button", "このプロジェクトのレーンへ"));
+    await settled();
+
+    expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).toBeNull();
+    openMenu(host);
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: false },
+      { label: "kanri", shown: true },
+    ]);
+  });
+
+  /**
+   * 行非表示 は画面の一時状態 (decision-13), and a reload is not the user asking for it back: the row
+   * that arrives re-read is still the row they put away.
+   */
+  it("再読込は非表示のままの行を戻さない", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), unreadable("kanri")]);
+    openMenu(host);
+    toggle(host, "Atlas");
+    await settled();
+
+    emitReload({ slug: "atlas", load: loaded("atlas", [TASK]) });
+    await settled();
+
+    expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).toBeNull();
+    openMenu(host);
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: false },
+      { label: "kanri", shown: true },
+    ]);
   });
 });
 

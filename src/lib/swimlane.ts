@@ -294,7 +294,8 @@ export function columnFoldable(collapsed: readonly GridColumn[], column: GridCol
  * - **The cards are counted over the rows the grid is drawing.** 行非表示のレーンは表示数からも全件
  *   からも外れる, so this total is exactly the sum of the per-row 内訳 on the レーンヘッダ行 — the two
  *   are read together, and a total counting rows that are not on screen would not add up to them.
- *   Those rows are accounted for by the 行非表示 帯 instead (doc-7 §5.3 ⑥).
+ *   Those rows are accounted for by the lane ratio below, and named one by one in the メニューの
+ *   プロジェクト一覧 (doc-7 §2.1).
  * - **The lanes are counted against the ledger.** 全件 is every registered entry, so hiding a row
  *   moves 表示数 alone and the pair says how many are put away. Counting hidden rows out of both
  *   would make the two numbers equal and the ratio would say nothing.
@@ -364,7 +365,8 @@ export function rowFoldable(row: SwimlaneRow): boolean {
  * (doc-11 §5).
  */
 export const ROW_FOLD_ABSENT_REASON =
-  "ルートが読めず畳む対象のセルがないため、この行に行折畳みは置きません。行非表示は使えます。";
+  "ルートが読めず畳む対象のセルがないため、この行に行折畳みは置きません。" +
+  "この行を画面から外すには、ヘッダのメニューのプロジェクト一覧を使います。";
 
 /**
  * Why the last open column's 列折畳み is blocked (doc-7 §2.2). This one *is* placed and disabled —

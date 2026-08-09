@@ -384,7 +384,6 @@
   );
   // 保存区分印 goes on cards only once a division beyond active is in play (doc-7 §3).
   let showStorageMark = $derived(filter.storage.some((state) => state !== "active"));
-  let hiddenRows = $derived(hidden.filter((slug) => order.includes(slug)));
   /**
    * The ledger entry プロジェクト詳細画面 is about, or `null` when there is none to show. Resolved
    * against the *current* ledger rather than captured on open, so an entry another window removed
@@ -468,12 +467,12 @@
   /**
    * 上部帯 (doc-11 §4) for whichever screen is up. Derived rather than drawn one `{#if}` per band,
    * because the order is a rule and not a property of the markup: 出現順に積むと、帯が増えるほど回答
-   * 待ちの ① が通知 ⑤ の下へ押し出される。The shell owns all six for both screens — プロジェクト詳細
+   * 待ちの ① が通知 ⑤ の下へ押し出される。The shell owns every kind for both screens — プロジェクト詳細
    * 画面's own 2 帯 (doc-10 §3) are ② and ③ of this same stack, and letting that screen draw them
    * itself would put them *below* the shell's ① and ⑤ and break the fixed order.
    *
-   * ④ and ⑥ are raised on the swimlane only: both are about grid rows — the mark and the 再読込 ④
-   * points at, and the rows ⑥ hides — and neither has anything to name while the grid is not up.
+   * ④ is raised on the swimlane only: it is about grid rows — the mark and the 再読込 it points at —
+   * and has nothing to name while the grid is not up.
    */
   let bands = $derived(
     topBands({
@@ -487,15 +486,30 @@
       unwatchedReason:
         screen === "swimlane" && unwatchedRows.length > 0 ? unwatchedReason : null,
       notice,
-      hiddenRowCount: screen === "swimlane" ? hiddenRows.length : 0,
     }),
   );
   /**
-   * The メニュー's lines (doc-7 §2.1): the 共通入口, then the line that opens the 一覧モーダル, then
-   * 行非表示 — すべて戻す and one line per hidden row, which is where doc-11 §4 puts the per-row list the
-   * 帯 ⑥ used to carry. Given the unfiltered `hiddenRows`, so a slug that left the ledger is not offered.
+   * プロジェクト一覧 (doc-7 §2.1) — every ledger entry, in ledger order, with the name the read layer
+   * found and whether the grid is drawing that row. Built from `order` rather than from `rows`: `rows`
+   * is what the grid draws, and a hidden project has to appear here precisely because it does not
+   * appear there. The name comes from the load when there is one; an unread or unreadable root has
+   * none, and `projectMenuLabel` is where that falls back to the slug.
    */
-  let menuItems = $derived(headerMenu(hiddenRows));
+  let menuProjects = $derived(
+    order.map((slug) => {
+      const load = loadBySlug[slug];
+      return {
+        slug,
+        name: load?.state === "loaded" ? load.project.config.projectName : null,
+        shown: !hidden.includes(slug),
+      };
+    }),
+  );
+  /**
+   * The メニュー's lines (doc-7 §2.1): the 共通入口, then the line that opens the 一覧モーダル, then the
+   * プロジェクト一覧 — すべてのプロジェクトを表示 and one 表示切替行 per registered project.
+   */
+  let menuItems = $derived(headerMenu(menuProjects));
   /**
    * Whether a モーダル is up. While one is, the shell answers no chord at all: doc-7 §2.1 keeps a modal's
    * focus inside itself, and the modal is what answers Escape and Tab there (`Modal.svelte`).
@@ -1229,10 +1243,21 @@
   }
 
   /**
-   * 出口 (doc-10 §2). `lane` is 「このプロジェクトのレーンへ」: the same return, plus the row asked
-   * for is brought into view — and un-hidden first, since 行非表示 would otherwise make the grid
-   * answer the request with a row that is not there (doc-7 §5.1 keeps 非表示 reversible from the 帯,
-   * but silently landing nowhere is not an answer).
+   * 出口 (doc-10 §2). `lane` is 「このプロジェクトのレーンへ」: the same return, plus a landing on the row
+   * asked for.
+   *
+   * It used to un-hide that row first, on the grounds that 行非表示 would otherwise answer the request
+   * with a row that is not there. That was written when 非表示 could not be set from this screen — the
+   * detail is entered from a レーンヘッダ行, so a row had to be visible to get here, and the menu of the
+   * day listed only hidden rows. TASK-131 gave the menu every project, and with it a way to hide the
+   * very project whose detail is open; un-hiding on the way out would then silently undo what the user
+   * pressed seconds ago, and doc-7 §2.1・§5.1 now put that state in one control. So the exit asks for a
+   * landing only when there is a row to land on: asking for one on a hidden row would leave `focusRow`
+   * set with nothing to clear it (`Swimlane.svelte` returns before `onfocused`), and the landing would
+   * then fire late, on whichever un-hide came next. **The exit is not withheld while the row is
+   * hidden** — its main job is leaving this screen, which it still does, and doc-10 §2 records why
+   * (a whole screen changing is not a return that looks like nothing happened, which is the case
+   * doc-7 §2.3's 一時的な強調 is for).
    */
   function leaveProject(lane: boolean): void {
     const slug = detailSlug;
@@ -1240,8 +1265,7 @@
       projectDirty = false;
       detailSlug = null;
       screen = "swimlane";
-      if (lane && slug !== null) {
-        show(slug);
+      if (lane && slug !== null && !hidden.includes(slug)) {
         focusRow = slug;
       }
     });
@@ -1518,12 +1542,15 @@
     void historyLoader.load(view.task.project, view.task.id, inputs);
   });
 
-  function hide(slug: string): void {
-    if (!hidden.includes(slug)) hidden = [...hidden, slug];
-  }
-
-  function show(slug: string): void {
-    hidden = hidden.filter((candidate) => candidate !== slug);
+  /**
+   * 表示切替行 の押した結果 (doc-7 §2.1): 行非表示 (doc-7 §5.1) in whichever direction the row is not in.
+   * Since TASK-131 this is the only way one row's 非表示 changes — the レーンヘッダ行's 隠す and the
+   * 上部帯 ⑥ both went, so the menu's tick is the state rather than a second copy of it.
+   */
+  function toggleProject(slug: string): void {
+    hidden = hidden.includes(slug)
+      ? hidden.filter((candidate) => candidate !== slug)
+      : [...hidden, slug];
   }
 
   // --- 固定ヘッダ・メニュー・ショートカット (doc-7 §2.1, TASK-56) -------------------------------
@@ -1615,7 +1642,23 @@
     if (open) menuOpen = false;
   }
 
-  /** Take one line of the menu. A line with a 保留理由 is not pressable, so it never arrives here. */
+  /**
+   * Take one line of the menu. A line with a 保留理由 is not pressable, so it never arrives here.
+   *
+   * **Whether the press closes the menu is decided by the line's 群** (doc-7 §2.1): the `layer` lines
+   * close it because 被せ層 は同時に 1 枚だけ and they are raising one — `raiseModal` does that here —
+   * while the `rows` lines leave it open. Setting several rows is one errand, and a menu that closed
+   * on each of them would make that errand as many round trips as there are rows; doc-7 §5.2 settled
+   * the same question the same way for the 値一覧ポップオーバー. Not a check on `item.group`: the switch
+   * is over `kind` so that a new line has to say which of the two it is rather than inheriting an
+   * answer from a field.
+   *
+   * **The `default` is what makes that a requirement rather than a wish.** This function returns
+   * nothing, so an unhandled `kind` would compile — `lucide.ts` spells out the difference, where the
+   * switch is held only because it returns a value. Assigning `item` to `never` puts the same
+   * pressure on a switch that returns nothing: a fifth `MenuItem` leaves that assignment impossible
+   * and the build stops, instead of drawing a line that looks pressable and does nothing.
+   */
   function chooseMenuItem(item: MenuItem): void {
     switch (item.kind) {
       case "entry":
@@ -1625,23 +1668,25 @@
         raiseModal();
         shortcutHelpOpen = true;
         break;
-      case "showAllRows":
-        showAllRows();
-        closeMenu();
+      case "showAllProjects":
+        showAllProjects();
         break;
-      case "showRow":
-        show(item.slug);
-        closeMenu();
+      case "toggleProject":
+        toggleProject(item.slug);
         break;
+      default: {
+        // Unreachable while every `kind` is answered above — and unassignable if one is not.
+        const unhandled: never = item;
+        throw new Error(`unhandled menu item: ${JSON.stringify(unhandled)}`);
+      }
     }
   }
 
   /**
-   * 行非表示をすべて戻す (doc-7 §5.1). One function for the 帯 ⑥'s own control and the menu's line, so the
-   * two cannot come to mean different things. Every hidden slug is a registered one — `removeProject`
+   * すべてのプロジェクトを表示 (doc-7 §2.1). Every hidden slug is a registered one — `removeProject`
    * prunes the list — so there is nothing here to keep back.
    */
-  function showAllRows(): void {
+  function showAllProjects(): void {
     hidden = [];
   }
 
@@ -1744,7 +1789,7 @@
            counting a screen that is not up. -->
       <span class="totals">{totalsLabel(gridTotals)}</span>
     {/if}
-    <!-- メニュー (doc-7 §2.1): the 共通入口, the line to the 一覧モーダル, and 行非表示 を戻す. It is the
+    <!-- メニュー (doc-7 §2.1): the 共通入口, the line to the 一覧モーダル, and the プロジェクト一覧. It is the
          header's only control — 登録 and 設定 no longer have a button of their own beside it, since the
          menu already held both and a header that offers each entry twice spends its width saying the same thing.
          Their chords still reach them directly, and the menu is the 併置 §2.1 requires of a shortcut.
@@ -1762,7 +1807,7 @@
         aria-expanded={menuOpen}
         aria-haspopup="dialog"
         aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
-        title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— ヘッダの入口と、${SHORTCUT_HELP_LABEL}と、行非表示を戻す操作をまとめて開きます`}
+        title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— ヘッダの入口と、${SHORTCUT_HELP_LABEL}と、プロジェクトごとの表示・非表示をまとめて開きます`}
         onclick={() => (menuOpen ? closeMenu() : openMenu())}
       >
         <Icon name="menu" />
@@ -1869,12 +1914,6 @@
              and answerable while the 中央モーダル is up. -->
         <button type="button" onclick={discardConfirmed}>{DISCARD_CONFIRM_PROCEED}</button>
         <button type="button" onclick={keepEditing}>{DISCARD_CONFIRM_KEEP}</button>
-      {:else if band.kind === "hiddenRows"}
-        <!-- 縮約しても帯に操作を残す (doc-11 §4): the count is the summary and すべて戻す is the band's own
-             操作, so undoing every hide needs nothing opened. The per-row list is the part that grew the
-             band sideways, and doc-11 §4 names its destination — 個々のレーンはメニューの一覧から戻す —
-             which is `headerMenu`'s `showRow` lines. -->
-        <button type="button" onclick={showAllRows}>すべて戻す</button>
       {:else if band.kind === "unwatched"}
         <!-- 帯が持つ操作は縮約しても帯に残す (doc-11 §4): 継続検出停止 is resolved by re-reading, so the
              再読込 is here and not only on each row's mark — a row that may be scrolled out of view. -->
@@ -1974,7 +2013,6 @@
           oncreateSubmit={submitLaneCreate}
           onselect={open}
           onmove={move}
-          onhide={hide}
           onretry={retry}
           onreread={rereadRow}
           onopenProject={openProject}
@@ -2206,12 +2244,6 @@
     // used to share the amber that is now 不整合's, which is what decision-6 forbids.
     &[data-band="unwatched"] {
       --family: var(--mark-undetectable);
-    }
-
-    // ⑥ 行非表示 takes no family colour (doc-11 §4): the user hid the row themselves, and nothing
-    // about the state is abnormal (decision-6 の中立表示).
-    &[data-band="hiddenRows"] {
-      --family: var(--line-strong);
     }
   }
 
