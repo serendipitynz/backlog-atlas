@@ -1,10 +1,10 @@
 ---
 id: TASK-132
 title: カードの並び順を絞り込み帯から選べるようにする
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-09 22:09'
+updated_date: '2026-08-09 22:24'
 labels:
   - ui
   - 'kind:feature'
