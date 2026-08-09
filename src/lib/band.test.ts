@@ -3,7 +3,6 @@ import {
   BAND_ORDER,
   LEDGER_READ_ONLY_BAND,
   cliDegradedBand,
-  hiddenRowsBand,
   topBands,
   unwatchedBand,
   type BandInputs,
@@ -19,7 +18,6 @@ const QUIET: BandInputs = {
   ledgerReadOnly: false,
   unwatchedReason: null,
   notice: null,
-  hiddenRowCount: 0,
 };
 
 /** Every band standing at once — doc-11 §4's worst case, and the cap it puts on the stack. */
@@ -29,7 +27,6 @@ const ALL: BandInputs = {
   ledgerReadOnly: true,
   unwatchedReason: "変更監視が動いていない行があります",
   notice: "行の並べ替えに失敗しました",
-  hiddenRowCount: 2,
 };
 
 function kinds(inputs: BandInputs): BandKind[] {
@@ -37,14 +34,13 @@ function kinds(inputs: BandInputs): BandKind[] {
 }
 
 describe("上部帯の順と本数", () => {
-  it("stacks the 6 種 in doc-11 §4's fixed order (AC #4)", () => {
+  it("stacks every kind in doc-11 §4's fixed order", () => {
     expect(kinds(ALL)).toEqual([
       "confirm",
       "cliDegraded",
       "ledgerReadOnly",
       "unwatched",
       "notice",
-      "hiddenRows",
     ]);
   });
 
@@ -56,12 +52,26 @@ describe("上部帯の順と本数", () => {
     expect(kinds({ ...noticeFirst, confirming: true })).toEqual(["confirm", "notice"]);
   });
 
-  it("holds the stack to 6 and lets no kind stand twice (AC #3)", () => {
+  /**
+   * The worst case is every kind at once, and it is checked as「本表の帯がすべて立った状態」rather than
+   * against a number: doc-11 §4's closed set is the table, and TASK-131 and TASK-134 each take a row
+   * out of it — a literal count here would be a third place to keep in step with them.
+   */
+  it("stands one band per kind at the worst case, and lets no kind stand twice (AC #4)", () => {
     const raised = kinds(ALL);
-    expect(raised).toHaveLength(6);
-    expect(new Set(raised).size).toBe(6);
-    expect(BAND_ORDER).toHaveLength(6);
+    expect(raised).toHaveLength(BAND_ORDER.length);
+    expect(new Set(raised).size).toBe(BAND_ORDER.length);
     expect(new Set(BAND_ORDER)).toEqual(new Set(raised));
+  });
+
+  /**
+   * AC #4: 上部帯から ⑥ 非表示の行 が無くなり、`BandKind` から同じ 1 種が消えている。Checked by absence
+   * from the order — the record in `topBands` is keyed by `BandKind`, so a kind that is gone from here
+   * has no text left anywhere either.
+   */
+  it("no longer carries 行非表示 as a band (AC #4)", () => {
+    expect(BAND_ORDER).not.toContain("hiddenRows" as BandKind);
+    expect(kinds(ALL)).not.toContain("hiddenRows" as BandKind);
   });
 
   it("raises nothing while every state is normal", () => {
@@ -73,7 +83,7 @@ describe("閉じられる帯", () => {
   it("gives the × to 通知 alone (AC #1, AC #5)", () => {
     // ①〜④ describe a state that is still true after a click — a 回答待ち, an 発行できない state, a
     // display that may be behind the files — so dismissing them would only hide the thing that says
-    // so. ⑥ ends by 戻す, not by dismissal.
+    // so.
     const closable = topBands(ALL).filter((band) => band.closable);
     expect(closable.map((band) => band.kind)).toEqual(["notice"]);
   });
@@ -111,20 +121,12 @@ describe("CLI 縮退帯 (②)", () => {
 
 describe("帯の 1 行 (doc-11 §4 の縮約)", () => {
   it("keeps every band's text to one line's worth and free of line breaks", () => {
-    // 折り返しを許すと「フィルタ帯 1 行 ＋ 上部帯 6 本」で頭打ちという性質が崩れる (doc-11 §4). The
-    // bound is a 縮約 check, not a layout measurement: the full reason lives at the operation itself.
+    // 折り返しを許すと「フィルタ帯 1 行 ＋ 本表の帯」で頭打ちという性質が崩れる (doc-11 §4). The bound
+    // is a 縮約 check, not a layout measurement: the full reason lives at the operation itself.
     for (const band of topBands(ALL)) {
       expect(band.text).not.toContain("\n");
       expect(band.text.length).toBeLessThanOrEqual(70);
     }
-  });
-
-  it("counts the hidden rows rather than listing them, and names where the list is", () => {
-    // doc-11 §4's own example of 縮約: 「非表示のレーン n 件」に縮約し、個々のレーンはメニューの一覧から
-    // 戻す。The 別の場所 is said, because a one-line band is allowed only while the whole is readable
-    // somewhere — すべて戻す itself stays a control in the band (`App.svelte`).
-    expect(hiddenRowsBand(3)).toContain("非表示の行 3 件");
-    expect(hiddenRowsBand(3)).toContain("メニュー");
   });
 
   it("states what 継続検出停止 costs, and sends the user nowhere to resolve it", () => {

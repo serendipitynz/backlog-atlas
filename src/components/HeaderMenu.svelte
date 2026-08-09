@@ -5,8 +5,9 @@
   //   away, so this is now the only place either is drawn. §2.1's ヘッダに出している操作はメニューにも
   //   同じものを置く is met by there being nothing on the header that is not here; each entry's own
   //   one-line 説明 came along with it, as the line's `title`.
-  // - **The per-row 行非表示 list.** doc-11 §4 names this case as its example of 縮約: the 帯 keeps the
-  //   count and its own すべて戻す, and 個々のレーンはメニューの一覧から戻す — which is this list.
+  // - **The プロジェクト一覧 (doc-7 §2.1).** Every registered project, one 表示切替行 apiece, with a
+  //   tick on the rows the grid is drawing. Since TASK-131 this is the only place 行非表示 is reached
+  //   from: the レーンヘッダ行's 隠す and the 上部帯 ⑥ both went, so one state has one control again.
   //
   // The 割り当て一覧 (doc-7 §2.1) is *reached* from here and its table is no longer drawn here: TASK-67
   // moved that table into the 一覧モーダル (`ShortcutHelp.svelte`), leaving this menu one line that opens
@@ -20,6 +21,7 @@
   } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import { startsGroup, type MenuItem } from "../lib/header";
+  import Icon from "../lib/icons/Icon.svelte";
 
   interface Props {
     items: MenuItem[];
@@ -98,9 +100,20 @@
           aria-disabled={item.held !== null}
           aria-describedby={item.held === null ? undefined : reasonId(index)}
           aria-keyshortcuts={item.kind === "entry" ? ariaKeyShortcuts(item.entry.action, MAC_KEYBOARD) : undefined}
+          aria-pressed={item.kind === "toggleProject" ? item.shown : undefined}
           title={item.kind === "entry" ? item.entry.note : undefined}
           onclick={() => item.held === null && onchoose(item)}
         >
+          {#if item.kind === "toggleProject"}
+            <!-- 表示中の印 (doc-7 §2.1). doc-11 §2.4's 可視の文言を持つ控えの中のアイコン: the row's
+                 name is the control's name, so the figure takes no `aria-label` and adds no word to
+                 it — `aria-pressed` above is what carries the state, which is the same test §2.4 puts
+                 to a `<summary>`'s open state (the control's own mechanism already announces it).
+                 The slot keeps its width when there is no tick, so the names line up as a column. -->
+            <span class="mark">
+              {#if item.shown}<Icon name="check" />{/if}
+            </span>
+          {/if}
           <span class="label">{item.kind === "entry" ? item.entry.label : item.label}</span>
           {#if item.kind === "entry"}
             <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). Printed from the 割り当て一覧, so the menu
@@ -130,8 +143,15 @@
     // remain ask for well under half of it — measured at 140.73px on WebKit and 148.53px on Chromium
     // against a 397.19px panel, so three fifths of the menu was blank. `max-content` is the width the
     // longest line wants; the cap and its value are doc-7 §2.1's, not this file's — it is what a long
-    // slug in a 戻す line runs into, and past it the label wraps rather than the panel growing across
-    // the window. 24rem is the width the panel already had, which is why the widest case is unchanged.
+    // project name in a 表示切替行 runs into, and past it the label wraps rather than the panel growing
+    // across the window. 24rem is the width the panel already had, which is why the widest case is
+    // unchanged.
+    //
+    // TASK-131 moved which line decides that width without changing the rule: the widest is now
+    // すべてのプロジェクトを表示 at 157.23px (WebKit) / 167.52px (Chromium), where before it was
+    // プロジェクトを登録 with its chord at 140.73 / 148.53 — so the panel went 153.92 → 170.42 and
+    // 161.72 → 180.70. The プロジェクト names the list added are not the driver ("Backlog Atlas" asks
+    // for 111.38px); a 60-character name is, and it wraps at the cap with 0px of horizontal overflow.
     width: max-content;
     max-width: min(24rem, 90vw);
     max-height: 70vh;
@@ -192,6 +212,20 @@
     &[aria-disabled="true"] {
       border-color: var(--line-strong);
     }
+  }
+
+  // 表示中の印 の置き場 (doc-7 §2.1). Held at the icon's own 1em (doc-11 §2.4) whether or not a tick is
+  // in it: a slot that collapsed when the row is hidden would move that row's name, and the column of
+  // names is what makes the list readable as a set of states rather than as separate lines.
+  .mark {
+    flex: none;
+    width: 1em;
+    // The tick is `align-items: baseline`'s to place otherwise, and a `block` SVG has no baseline of
+    // its own — it would sit on the line box's bottom edge instead of beside the word. Centred on the
+    // whole row rather than on its first line, because what the tick is about is the row: the only
+    // labels that take two lines are the ones long enough to hit doc-7 §2.1's cap, and there the tick
+    // belongs to both lines equally.
+    align-self: center;
   }
 
   .label {

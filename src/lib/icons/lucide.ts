@@ -59,7 +59,8 @@ export type IconName =
   | "x"
   | "triangle-alert"
   | "plus"
-  | "circle-question-mark";
+  | "circle-question-mark"
+  | "check";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -263,4 +264,11 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" },
     { shape: "path", d: "M12 17h.01" },
   ],
+  // 表示中の印 (doc-7 §2.1, TASK-131). The tick that says a project's row is one the grid draws. It sits
+  // inside a 表示切替行 that carries the project's name, so it is doc-11 §2.4's 可視の文言を持つ控えの中の
+  // アイコン and takes no `aria-label`; the state it draws is `aria-pressed`'s to announce.
+  //
+  // The same tick `clipboard-check` ends with, at the size lucide draws it alone — the figures are
+  // copied per name, so the shared stroke is written out twice rather than referenced once.
+  check: [{ shape: "path", d: "M20 6 9 17l-5-5" }],
 };

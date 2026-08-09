@@ -1033,6 +1033,89 @@ describe("プロジェクト詳細の離脱", () => {
 // -------------------------------------------------------------------------------------------------
 
 /**
+ * 行の表示・非表示がメニュー 1 か所から届くこと (TASK-131).
+ *
+ * TASK-131 left 行非表示 one control, and it is on the header rather than in the grid — so what no
+ * pure function can hold is that the list survives the screen change. `header.ts` decides what the
+ * lines say; the shell decides whether they are offered at all, and a row hidden here is one the grid
+ * is no longer drawing on either screen.
+ */
+describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
+  /** The プロジェクト一覧's lines, in order, as the open menu draws them (doc-7 §2.1). */
+  function projectLines(host: HTMLElement): { label: string; shown: boolean }[] {
+    const menu = only(host, '[role="dialog"][aria-label="メニュー"]');
+    return [...menu.querySelectorAll("button")]
+      .filter((button) => button.getAttribute("aria-pressed") !== null)
+      .map((button) => ({
+        label: button.querySelector(".label")?.textContent ?? "",
+        shown: button.getAttribute("aria-pressed") === "true",
+      }));
+  }
+
+  function openMenu(host: HTMLElement): void {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+  }
+
+  /**
+   * The two projects are deliberately of different kinds: one read (which has a name) and one
+   * unreadable (which has none and falls back to its slug, doc-7 §6). A 読取不能行 is exactly the row
+   * a user has reason to hide, so it must be listed like any other.
+   */
+  it("メニューのプロジェクト一覧は、画面が変わっても同じ行を同じ状態で出す", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), unreadable("kanri")]);
+
+    openMenu(host);
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: true },
+      { label: "kanri", shown: true },
+    ]);
+
+    // 表示切替行 を押すとその行がグリッドから消える (AC #2).
+    click(byText(host, '[role="dialog"][aria-label="メニュー"] button', "Atlas"));
+    await settled();
+    expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).toBeNull();
+
+    // The remaining row is the way to the other screen, and the menu goes with it.
+    click(only(host, '[title="kanri のプロジェクト詳細画面を開きます"]'));
+    await settled();
+    openMenu(host);
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: false },
+      { label: "kanri", shown: true },
+    ]);
+
+    // 戻すのも同じ 1 か所から、グリッドが立っていなくてもできる。
+    click(byText(host, '[role="dialog"][aria-label="メニュー"] button', "Atlas"));
+    click(byText(host, "button", "← スイムレーン"));
+    await settled();
+    expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).not.toBeNull();
+  });
+
+  /**
+   * 行非表示 は画面の一時状態 (decision-13), and a reload is not the user asking for it back: the row
+   * that arrives re-read is still the row they put away.
+   */
+  it("再読込は非表示のままの行を戻さない", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), unreadable("kanri")]);
+    openMenu(host);
+    click(byText(host, '[role="dialog"][aria-label="メニュー"] button', "Atlas"));
+    await settled();
+
+    emitReload({ slug: "atlas", load: loaded("atlas", [TASK]) });
+    await settled();
+
+    expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).toBeNull();
+    openMenu(host);
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: false },
+      { label: "kanri", shown: true },
+    ]);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+/**
  * 絞り込みが列を消しても画面が更新を受け付け続けること (TASK-119).
  *
  * The bug this holds against was not a filtering bug: 未分類区画 は常設ではない (doc-7 §2.2), so a
