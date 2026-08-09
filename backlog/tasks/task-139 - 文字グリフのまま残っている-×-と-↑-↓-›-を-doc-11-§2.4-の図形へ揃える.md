@@ -4,6 +4,7 @@ title: 文字グリフのまま残っている × と ↑ ↓ › を doc-11 §2
 status: To Do
 assignee: []
 created_date: '2026-08-09 05:02'
+updated_date: '2026-08-09 05:22'
 labels:
   - ui
   - design-system
@@ -31,7 +32,7 @@ TASK-80 の洗い出しで確定した追随項目。doc-11 §2.4 は画面の�
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 上部帯の通知・絞り込みトークンの解除・status 別名表の行削除の × が doc-11 §2.4 の図形になっている
-- [ ] #2 ↑ ↓ › が図形になっているか、文字グリフのまま残す理由が doc-7 §5.2 に書かれている
+- [ ] #2 `↑`・`↓`・`›` が doc-11 §2.4 の図形になっている
 - [ ] #3 画面に文字グリフの記号が残っていないことを数えた結果が Implementation Notes にある
 - [ ] #4 doc-11 §7 と doc-7 §5.2 の TASK-80 への預けが閉じている
 <!-- AC:END -->

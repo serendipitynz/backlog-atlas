@@ -4,6 +4,7 @@ title: 押せない控えのマウスカーソルを変えるのをやめる
 status: To Do
 assignee: []
 created_date: '2026-08-09 05:02'
+updated_date: '2026-08-09 05:22'
 labels:
   - ui
   - design-system
@@ -30,8 +31,9 @@ ordinal: 135500
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 押せない控えに載せたカーソルが、その控えから得られるものと食い違わない
+- [ ] #1 押せない控えに `cursor: help` を与えていない
 - [ ] #2 無効化提示として残る点が doc-11 §2.3・§5 に書かれている
-- [ ] #3 押せない控えのうち title を持つものと持たないものを数えた結果が Implementation Notes にある
-- [ ] #4 印チップの cursor: help を対象に含めるかどうかが決まり、理由が doc にある
+- [ ] #3 押せない控えのうち `title` を持つものと持たないものを数えた結果が Implementation Notes にある
+- [ ] #4 印チップ（doc-11 §3）とカードの図形の `cursor: help` を対象に含めるかどうかが決まり、理由が doc にある
+- [ ] #5 画面設計案 06 の契約 #9 からの逸脱として doc-11 に理由が記録されている
 <!-- AC:END -->
