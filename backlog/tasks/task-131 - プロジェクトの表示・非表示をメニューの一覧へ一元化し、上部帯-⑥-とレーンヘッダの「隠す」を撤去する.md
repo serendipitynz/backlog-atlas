@@ -1,10 +1,10 @@
 ---
 id: TASK-131
 title: プロジェクトの表示・非表示をメニューの一覧へ一元化し、上部帯 ⑥ とレーンヘッダの「隠す」を撤去する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-09 11:42'
+updated_date: '2026-08-09 12:40'
 labels:
   - ui
   - design-system
