@@ -151,3 +151,24 @@ describe("区切り線 (doc-7 §2.1)", () => {
   });
 });
 
+describe("画面に出る語", () => {
+  /**
+   * Both words came from the user (2026-08-09) and nothing in the build derives either, so they are
+   * recorded the way a wire payload and a measured number are — by equality. The 一覧 line is checked
+   * against its literal here because every other place that prints it now takes this constant, which
+   * means no other test would notice the word changing.
+   */
+  it("names the 一覧 line and すべて戻す in the user's words", () => {
+    expect(SHORTCUT_HELP_LABEL).toBe("キーボード操作一覧");
+    expect(SHOW_ALL_ROWS_LABEL).toBe("行非表示をすべて戻す");
+  });
+
+  /**
+   * The line is named for the layer it opens, as 登録 and 設定 already are. Held here rather than left to
+   * the component test: the ellipsis this word lost in TASK-130 was the whole of what once told the two
+   * apart, so a `…` added back to either would be the same drift returning.
+   */
+  it("names the 一覧 line for the layer, with nothing trailing", () => {
+    expect(SHORTCUT_HELP_LABEL).not.toMatch(/[…．.]+$/);
+  });
+});

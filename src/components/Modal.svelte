@@ -1,5 +1,5 @@
 <script lang="ts">
-  // モーダル (doc-7 §2.1, TASK-56): the layer 登録・設定・キーボード操作の一覧 open in (the third since
+  // モーダル (doc-7 §2.1, TASK-56): the layer 登録・設定・キーボード操作一覧 open in (the third since
   // TASK-67). §2.1 gives it three obligations and this component is where all three are met once, rather
   // than in each thing it opens —
   // 開いている間フォーカスを内側に留め、Escape で閉じ、閉じたら開く前の操作へフォーカスを戻す.

@@ -48,7 +48,7 @@
   import { REGISTERING_REASON, refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
   import { topBands } from "./lib/band";
-  import { headerMenu, type HeaderEntryId, type MenuItem } from "./lib/header";
+  import { SHORTCUT_HELP_LABEL, headerMenu, type HeaderEntryId, type MenuItem } from "./lib/header";
   import {
     ariaKeyShortcuts,
     continuesHeldPress,
@@ -1762,7 +1762,7 @@
         aria-expanded={menuOpen}
         aria-haspopup="dialog"
         aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
-        title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— ヘッダの入口と、キーボード操作の一覧と、行非表示を戻す操作をまとめて開きます`}
+        title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— ヘッダの入口と、${SHORTCUT_HELP_LABEL}と、行非表示を戻す操作をまとめて開きます`}
         onclick={() => (menuOpen ? closeMenu() : openMenu())}
       >
         <Icon name="menu" />
@@ -1838,7 +1838,10 @@
     <!-- The 割り当て一覧's 画面に出す列 as something read (doc-7 §2.1): a モーダル like the two 共通入口,
          because it is a reference rather than a place to work — nothing behind it is unmounted, so a
          グリッド mid-filter and an open 編集セッション are both still there when it closes. -->
-    <Modal label="キーボード操作の一覧" onclose={() => (shortcutHelpOpen = false)}>
+    <!-- Named by the same constant the menu line prints (`header.ts`): the line is named for the layer
+         it opens, so a second literal here is the drift that left this modal one character away from
+         its own menu line until TASK-130. -->
+    <Modal label={SHORTCUT_HELP_LABEL} onclose={() => (shortcutHelpOpen = false)}>
       <ShortcutHelp />
     </Modal>
   {/if}
@@ -2081,7 +2084,7 @@
   }
 
   // The fixed header's one entry point (doc-7 §2.1): the ☰, which opens the menu holding 登録・設定・
-  // キーボード操作の一覧. It opens a layer over the screen rather than switching to one, so it is drawn
+  // キーボード操作一覧. It opens a layer over the screen rather than switching to one, so it is drawn
   // unlike a tab that says which screen is current.
   //
   // アイコンのみのボタン (doc-11 §2.4): `font-size` is what sizes the figure, since the icon draws at 1em —
