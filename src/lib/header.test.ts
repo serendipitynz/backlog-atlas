@@ -5,6 +5,7 @@ import {
   SHOW_ALL_ROWS_LABEL,
   headerMenu,
   showAllRowsHeld,
+  startsGroup,
   type MenuItem,
 } from "./header";
 import { SHORTCUTS } from "./shortcuts";
@@ -102,3 +103,51 @@ describe("保留理由 (doc-11 §5)", () => {
     expect(showAllRowsHeld(1)).toBeNull();
   });
 });
+
+describe("区切り線 (doc-7 §2.1)", () => {
+  /** Every index a 区切り線 is drawn above, for a given number of hidden rows. */
+  function rules(hidden: readonly string[]): number[] {
+    const items = headerMenu(hidden);
+    return items.flatMap((_, index) => (startsGroup(items, index) ? [index] : []));
+  }
+
+  /**
+   * AC #2 の肯定形. Stated as "the mark does not appear and disappear", which a menu with no mark at all
+   * satisfies vacuously — and that was the state this task began in, so the check has to be that a mark
+   * is there and that it is at the same index in both conditions. The two conditions are the two the
+   * user saw: nothing to restore (すべて戻す held, 破線枠 up) and something to restore (pressable, no
+   * frame). doc-11 §5 keeps drawing that frame; what must not move with it is this.
+   */
+  it("draws one 区切り線, at the same place whether or not すべて戻す is held", () => {
+    const held = headerMenu([]).find((item) => item.kind === "showAllRows")?.held;
+    const free = headerMenu(["atlas"]).find((item) => item.kind === "showAllRows")?.held;
+    expect(held).not.toBeNull();
+    expect(free).toBeNull();
+
+    expect(rules([])).toEqual([3]);
+    expect(rules(["atlas"])).toEqual([3]);
+    expect(rules(["atlas", "kanri"])).toEqual([3]);
+  });
+
+  /**
+   * The 群 is what pressing the line does, not where the line sits: `layer` lines raise a 被せ層 and
+   * `rows` lines change which rows the grid draws. Checked as a partition rather than at indices, so a
+   * line added to either 群 keeps the boundary meaningful — TASK-131 rebuilds the `rows` 群 next.
+   */
+  it("puts every 被せ層 line in one 群 and every 行非表示 line in the other", () => {
+    const items = headerMenu(["atlas"]);
+    const groups = Object.fromEntries(items.map((item) => [item.key, item.group]));
+    expect(groups).toEqual({
+      "entry:register": "layer",
+      "entry:settings": "layer",
+      shortcutHelp: "layer",
+      showAllRows: "rows",
+      "row:atlas": "rows",
+    });
+  });
+
+  it("draws no 区切り線 above the first line", () => {
+    expect(startsGroup(headerMenu([]), 0)).toBe(false);
+  });
+});
+

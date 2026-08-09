@@ -19,7 +19,7 @@
     textEntryFocused,
   } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
-  import type { MenuItem } from "../lib/header";
+  import { startsGroup, type MenuItem } from "../lib/header";
 
   interface Props {
     items: MenuItem[];
@@ -89,7 +89,10 @@
     <!-- Keyed by the item's own `key` (`header.ts`), never by `kind`: the two 共通入口 share a kind, and
          Svelte makes duplicate keys a runtime error — which took the whole menu down. -->
     {#each items as item, index (item.key)}
-      <li>
+      <!-- 区切り線 is decided by `startsGroup` (`header.ts`) and not by anything in this file: it reads
+           the item's 群 and never its `held`, which is what keeps the mark from coming and going as
+           すべて戻す gains and loses something to restore. -->
+      <li class:group-start={startsGroup(items, index)}>
         <button
           type="button"
           aria-disabled={item.held !== null}
@@ -145,6 +148,15 @@
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  // 区切り線 (doc-7 §2.1): 罫線 は `--line` (doc-11 §2.1), 余白は .25rem 段 (doc-11 §2.2). Drawn on the
+  // `li` rather than on the button inside it, so hover and 無効化提示 — both of which move the button's
+  // own border — leave it where it is.
+  li.group-start {
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--line);
   }
 
   li > button {
