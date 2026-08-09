@@ -122,10 +122,14 @@
     z-index: 3;
     top: calc(100% + 0.25rem);
     right: 0;
-    // Narrower since TASK-67 took the table out: it was what needed 30rem — five columns then, three
-    // since TASK-125 — and the widest thing left is a 保留理由 sentence, which reads better wrapped than
-    // spread across a panel.
-    width: min(24rem, 90vw);
+    // Sized by what is in it. The panel held a fixed 24rem from the days it contained the 割り当て一覧
+    // table (TASK-67 moved that to `ShortcutHelp.svelte` and left the number behind), and the lines that
+    // remain ask for well under half of it — measured at 140.73px on WebKit and 148.53px on Chromium
+    // against a 397.19px panel, so three fifths of the menu was blank. `max-content` is the width the
+    // longest line wants; the cap is what a long slug in a 戻す line runs into, and past it the label
+    // wraps rather than the panel growing across the window.
+    width: max-content;
+    max-width: min(24rem, 90vw);
     max-height: 70vh;
     padding: 0.35rem;
     border: 1px solid var(--line-strong);
