@@ -20,7 +20,7 @@
     textEntryFocused,
   } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
-  import { startsGroup, type MenuItem } from "../lib/header";
+  import { omitsSentence, startsGroup, type MenuItem } from "../lib/header";
   import Icon from "../lib/icons/Icon.svelte";
 
   interface Props {
@@ -92,8 +92,9 @@
          Svelte makes duplicate keys a runtime error — which took the whole menu down. -->
     {#each items as item, index (item.key)}
       <!-- 区切り線 is decided by `startsGroup` (`header.ts`) and not by anything in this file: it reads
-           the item's 群 and never its `held`, which is what keeps the mark from coming and going as
-           すべて戻す gains and loses something to restore. -->
+           the item's 群 and never its `held`. That is what kept the mark from coming and going with the
+           破線枠 that used to stand at this boundary, and doc-7 §2.1 keeps the rule now that the frame
+           is gone — what the two describe stays different. -->
       <li class:group-start={startsGroup(items, index)}>
         <button
           type="button"
@@ -123,9 +124,11 @@
           {/if}
         </button>
         {#if item.held !== null}
-          <!-- 常時表示する補助文 (doc-11 §5): the reason is on screen rather than in a `title`, which is
-               unreachable from the keyboard and from touch. -->
-          <p class="held" id={reasonId(index)}>{item.held}</p>
+          <!-- 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形): the reason stays in the accessibility tree,
+               named by `aria-describedby` whether or not it is drawn. It is not drawn because the 一覧
+               below states it — every line the grid is drawing carries a tick — which is the licence
+               doc-11 §8 gives for omitting a sentence the 区画 already makes visible (doc-7 §2.1). -->
+          <p class="held" class:unseen={omitsSentence(item.held)} id={reasonId(index)}>{item.held}</p>
         {/if}
       </li>
     {/each}
@@ -206,12 +209,13 @@
       border-color: var(--line-strong);
     }
 
-    // A held line keeps a *visible* 破線枠. The shared rule in `app.scss` supplies only the dash
-    // (`border-style`), so leaving this border transparent would draw the 無効化 with no frame at all —
-    // and doc-11 §5 relies on that frame being the difference between held and pressable.
-    &[aria-disabled="true"] {
-      border-color: var(--line-strong);
-    }
+    // A held line draws **no** frame, which is doc-7 §2.1's own exception to doc-11 §5 (2026-08-09).
+    // §5 asks for a 破線枠 so that a held control differs in *form* from a pressable one (実線枠) — and
+    // in this menu no line has a visible frame until it is hovered or focused, so the dash has nothing
+    // to contrast with. Drawing it would put the list's only box around the one line that cannot be
+    // taken, which reads as a mark on the list rather than as an unavailable control. The shared rule
+    // in `app.scss` supplies the dash through `border-style` alone, so the transparent border above is
+    // what leaves the line unframed; opacity .45 from that same rule is what says held here.
   }
 
   // 表示中の印 の置き場 (doc-7 §2.1). Held at the icon's own 1em (doc-11 §2.4) whether or not a tick is
@@ -242,11 +246,27 @@
     font-variant-numeric: tabular-nums;
   }
 
-  // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1).
+  // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1). Kept for the day a
+  // 保留理由 arrives here that the 一覧 does not already state — doc-11 §8's licence is per reason, not
+  // per component, so the class that draws one has to stay drawable.
   .held {
     margin: 0 0.35rem 0.2rem;
     color: var(--muted);
     font-size: 0.68rem;
     line-height: 1.3;
+  }
+
+  // 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形), as `FilterBar.svelte` and `ProjectDetail.svelte` do it:
+  // removing the element or giving it `display: none` would take the reason out of the accessibility
+  // tree as well, and `aria-describedby` above would then name nothing.
+  .unseen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 </style>

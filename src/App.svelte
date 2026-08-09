@@ -1243,10 +1243,18 @@
   }
 
   /**
-   * 出口 (doc-10 §2). `lane` is 「このプロジェクトのレーンへ」: the same return, plus the row asked
-   * for is brought into view — and un-hidden first, since 行非表示 would otherwise make the grid
-   * answer the request with a row that is not there (doc-7 §5.1 keeps 非表示 reversible from the 帯,
-   * but silently landing nowhere is not an answer).
+   * 出口 (doc-10 §2). `lane` is 「このプロジェクトのレーンへ」: the same return, plus a landing on the row
+   * asked for.
+   *
+   * It used to un-hide that row first, on the grounds that 行非表示 would otherwise answer the request
+   * with a row that is not there. That was written when 非表示 could not be set from this screen — the
+   * detail is entered from a レーンヘッダ行, so a row had to be visible to get here, and the menu of the
+   * day listed only hidden rows. TASK-131 gave the menu every project, and with it a way to hide the
+   * very project whose detail is open; un-hiding on the way out would then silently undo what the user
+   * pressed seconds ago, and doc-7 §2.1・§5.1 now put that state in one control. So the exit asks for a
+   * landing only when there is a row to land on: asking for one on a hidden row would leave `focusRow`
+   * set with nothing to clear it (`Swimlane.svelte` returns before `onfocused`), and the landing would
+   * then fire late, on whichever un-hide came next.
    */
   function leaveProject(lane: boolean): void {
     const slug = detailSlug;
@@ -1254,8 +1262,7 @@
       projectDirty = false;
       detailSlug = null;
       screen = "swimlane";
-      if (lane && slug !== null) {
-        show(slug);
+      if (lane && slug !== null && !hidden.includes(slug)) {
         focusRow = slug;
       }
     });
@@ -1543,11 +1550,6 @@
       : [...hidden, slug];
   }
 
-  /** Put one row back on screen, whatever state it was in. */
-  function show(slug: string): void {
-    hidden = hidden.filter((candidate) => candidate !== slug);
-  }
-
   // --- 固定ヘッダ・メニュー・ショートカット (doc-7 §2.1, TASK-56) -------------------------------
 
   /**
@@ -1765,7 +1767,7 @@
            counting a screen that is not up. -->
       <span class="totals">{totalsLabel(gridTotals)}</span>
     {/if}
-    <!-- メニュー (doc-7 §2.1): the 共通入口, the line to the 一覧モーダル, and 行非表示 を戻す. It is the
+    <!-- メニュー (doc-7 §2.1): the 共通入口, the line to the 一覧モーダル, and the プロジェクト一覧. It is the
          header's only control — 登録 and 設定 no longer have a button of their own beside it, since the
          menu already held both and a header that offers each entry twice spends its width saying the same thing.
          Their chords still reach them directly, and the menu is the 併置 §2.1 requires of a shortcut.
@@ -1783,7 +1785,7 @@
         aria-expanded={menuOpen}
         aria-haspopup="dialog"
         aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
-        title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— ヘッダの入口と、${SHORTCUT_HELP_LABEL}と、行非表示を戻す操作をまとめて開きます`}
+        title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— ヘッダの入口と、${SHORTCUT_HELP_LABEL}と、プロジェクトごとの表示・非表示をまとめて開きます`}
         onclick={() => (menuOpen ? closeMenu() : openMenu())}
       >
         <Icon name="menu" />
@@ -2221,7 +2223,6 @@
     &[data-band="unwatched"] {
       --family: var(--mark-undetectable);
     }
-
   }
 
   .fatal,

@@ -1092,6 +1092,30 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
   });
 
   /**
+   * The menu is the only writer of 行非表示 (doc-7 §2.1・§5.1), and the exit that returns to a project's
+   * lane is where a second one used to sit: it un-hid the row on the way out, which was unreachable
+   * while the menu listed hidden rows alone and became reachable the moment it listed every project.
+   * A cross-screen contract precisely because both halves are on different screens.
+   */
+  it("詳細画面の出口は、そこで隠した行を戻さない", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), unreadable("kanri")]);
+    click(only(host, '[title="Atlas のプロジェクト詳細画面を開きます"]'));
+    await settled();
+
+    openMenu(host);
+    click(byText(host, '[role="dialog"][aria-label="メニュー"] button', "Atlas"));
+    click(byText(host, "button", "このプロジェクトのレーンへ"));
+    await settled();
+
+    expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).toBeNull();
+    openMenu(host);
+    expect(projectLines(host)).toEqual([
+      { label: "Atlas", shown: false },
+      { label: "kanri", shown: true },
+    ]);
+  });
+
+  /**
    * 行非表示 は画面の一時状態 (decision-13), and a reload is not the user asking for it back: the row
    * that arrives re-read is still the row they put away.
    */

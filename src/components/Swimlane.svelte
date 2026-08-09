@@ -267,7 +267,7 @@
    * 列折畳み・行折畳み are 画面の一時状態 (doc-7 §5.1, decision-13): they are never written to the
    * settings file or the ledger, and nothing outside the grid reads them — the counts a fold keeps
    * are computed from the rows the shell already passes in — so they live here rather than in the
-   * shell beside 行非表示, which the 上部帯 does have to see.
+   * shell beside 行非表示, which decides which rows the shell hands over at all.
    */
   let collapsedColumns = $state<GridColumn[]>([]);
   let foldedRows = $state<string[]>([]);

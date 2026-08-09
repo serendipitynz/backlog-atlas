@@ -104,6 +104,13 @@ export const SHORTCUT_HELP_LABEL = "キーボード操作一覧";
 export const SHOW_ALL_PROJECTS_LABEL = "すべてのプロジェクトを表示";
 
 /**
+ * 保留理由 for すべてのプロジェクトを表示. Written as a sentence rather than as parenthetical shorthand
+ * because nothing prints it any more — it is read aloud or not at all (see [`omitsSentence`]), and
+ * brackets that kept a visible note short only become noise in speech.
+ */
+export const SHOW_ALL_PROJECTS_HELD_REASON = "すべてのプロジェクトが表示されています。";
+
+/**
  * 保留理由 for すべてのプロジェクトを表示, or `null` while at least one row is hidden. A sentence rather
  * than a boolean for the reason doc-11 §5 gives: 理由の無い無効化を置かない — an unpressable control with
  * no reason cannot be told from a broken one.
@@ -111,7 +118,21 @@ export const SHOW_ALL_PROJECTS_LABEL = "すべてのプロジェクトを表示"
 export function showAllProjectsHeld(hiddenCount: number): string | null {
   return hiddenCount > 0
     ? null
-    : "（すべて表示中）";
+    : SHOW_ALL_PROJECTS_HELD_REASON;
+}
+
+/**
+ * Whether this 保留理由 is drawn without a visible sentence (doc-11 §8), following `manage.ts`'s
+ * `omitsSentence`. Enumerated rather than ruled over every reason, and for that module's stated
+ * reason: which licence a reason has is a fact about its 区画, so adding one means opening that 区画.
+ *
+ * The one entry is on **licence ①** — the 区画 states the reason itself. The プロジェクト一覧 sits
+ * directly under this line with a 表示中の印 on every row it draws, so a menu in which すべての
+ * プロジェクトを表示 is held is a menu the user is looking at all-ticked. What is omitted is the visible
+ * sentence and nothing else: doc-7 §2.1 keeps the reason in the accessibility tree.
+ */
+export function omitsSentence(reason: string): boolean {
+  return reason === SHOW_ALL_PROJECTS_HELD_REASON;
 }
 
 /**
