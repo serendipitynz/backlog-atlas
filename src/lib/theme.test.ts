@@ -48,6 +48,14 @@ describe("設定画面のテーマ一覧の語", () => {
     },
   );
 
+  // The wording is the user's own (TASK-126), so nothing derives it and the invariant below does not
+  // reach it: 「OS の明暗に従う」 names the state and no theme, satisfying that check while being the
+  // very wording this task was raised to remove. Recorded here for the same reason the 実測 numbers
+  // are recorded — a value that cannot be re-derived is held as data or not held at all.
+  it("offers 未選択 in the words the user asked for", () => {
+    expect(THEME_UNSET_LABEL).toBe("システム設定に従う");
+  });
+
   // 未選択 selects the state of following the system, not either theme that state resolves to. It
   // named both until TASK-126, which reads as though the option picks one of them — and a picked
   // theme would stop following the system, which is the one thing this option does.
