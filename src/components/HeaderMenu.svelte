@@ -124,10 +124,12 @@
           {/if}
         </button>
         {#if item.held !== null}
-          <!-- 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形): the reason stays in the accessibility tree,
-               named by `aria-describedby` whether or not it is drawn. It is not drawn because the 一覧
-               below states it — every line the grid is drawing carries a tick — which is the licence
-               doc-11 §8 gives for omitting a sentence the 区画 already makes visible (doc-7 §2.1). -->
+          <!-- Drawn or not by which 保留理由 this is (doc-7 §2.1 の 2 項). All rows shown is omitted:
+               the 一覧 below states it — every line the grid draws carries a tick — which is doc-11 §8's
+               licence for a sentence the 区画 already makes visible. An empty ledger is *not* on that
+               licence, because an empty list states nothing, so its reason keeps a visible line.
+               視覚的にのみ隠す (doc-11 §5 の 2 つ目の形) rather than dropped, so the reason stays in the
+               accessibility tree and `aria-describedby` names something either way. -->
           <p class="held" class:unseen={omitsSentence(item.held)} id={reasonId(index)}>{item.held}</p>
         {/if}
       </li>

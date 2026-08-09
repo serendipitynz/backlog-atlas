@@ -96,7 +96,11 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
     const held = allShown.find((item) => item.kind === "showAllProjects");
     const free = some.find((item) => item.kind === "showAllProjects");
     expect(held?.label).toBe(SHOW_ALL_PROJECTS_LABEL);
-    expect(held?.held).not.toBeNull();
+    // Which reason, not merely that there is one: `showAllProjectsHeld` takes two counts of the same
+    // type, so a call site that passed them the wrong way round would withhold a full ledger with
+    // 登録済みプロジェクトがありません — a sentence that is off the licence and would therefore be both
+    // printed and spoken. `not.toBeNull()` cannot see that; naming the reason can.
+    expect(held?.held).toBe(SHOW_ALL_PROJECTS_HELD_REASON);
     expect(free?.held).toBeNull();
   });
 
