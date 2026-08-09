@@ -1,10 +1,10 @@
 ---
 id: TASK-80
 title: 画面設計案と実装の差分を洗い出し、未反映点を doc とタスクへ落とす
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:32'
-updated_date: '2026-08-09 05:48'
+updated_date: '2026-08-09 06:15'
 labels:
   - ui
   - design-system
