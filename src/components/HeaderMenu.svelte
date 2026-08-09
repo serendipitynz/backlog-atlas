@@ -129,8 +129,9 @@
     // table (TASK-67 moved that to `ShortcutHelp.svelte` and left the number behind), and the lines that
     // remain ask for well under half of it — measured at 140.73px on WebKit and 148.53px on Chromium
     // against a 397.19px panel, so three fifths of the menu was blank. `max-content` is the width the
-    // longest line wants; the cap is what a long slug in a 戻す line runs into, and past it the label
-    // wraps rather than the panel growing across the window.
+    // longest line wants; the cap and its value are doc-7 §2.1's, not this file's — it is what a long
+    // slug in a 戻す line runs into, and past it the label wraps rather than the panel growing across
+    // the window. 24rem is the width the panel already had, which is why the widest case is unchanged.
     width: max-content;
     max-width: min(24rem, 90vw);
     max-height: 70vh;
@@ -153,6 +154,11 @@
   // 区切り線 (doc-7 §2.1): 罫線 は `--line` (doc-11 §2.1), 余白は .25rem 段 (doc-11 §2.2). Drawn on the
   // `li` rather than on the button inside it, so hover and 無効化提示 — both of which move the button's
   // own border — leave it where it is.
+  //
+  // Nothing carries it into the accessibility tree, and doc-7 §2.1 says so rather than leaving it to be
+  // read as an oversight: what the 群 separates is already said by each line's own words, which is the
+  // test doc-11 §2.4 puts to a figure that stands outside a control. Exposing the 群 as a named unit is
+  // a different question, and §2.1 is where it would be settled — not here.
   li.group-start {
     margin-top: 0.25rem;
     padding-top: 0.25rem;
