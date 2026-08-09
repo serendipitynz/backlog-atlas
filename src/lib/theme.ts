@@ -24,7 +24,12 @@ export type ThemeScheme = "light" | "dark";
 export interface RecordedTheme {
   /** The stored name (`settings.toml` の `theme`) and the `data-theme` value. */
   id: string;
-  /** What the 設定画面 calls it. */
+  /**
+   * What the 設定画面 calls it. States the theme's 明暗 in the word a user reads (ライト／ダーク),
+   * because four of the ten names carry it in neither language (Catppuccin Latte / Mocha, Rosé Pine
+   * Dawn / Rosé Pine). `theme.test.ts` requires that word to be the one `scheme` declares — a theme
+   * recorded with the wrong one reads correctly on screen and paints the other ground.
+   */
   label: string;
   scheme: ThemeScheme;
 }
@@ -38,22 +43,28 @@ export interface RecordedTheme {
  * the borrowed eight follow in the order 設計案 05 presents them, light before dark within each pair.
  */
 export const RECORDED_THEMES: RecordedTheme[] = [
-  { id: "atlas-light", label: "Atlas Light（明・既定）", scheme: "light" },
-  { id: "atlas-dark", label: "Atlas Dark（暗・既定）", scheme: "dark" },
-  { id: "one-light", label: "One Light（明）", scheme: "light" },
-  { id: "one-dark", label: "One Dark（暗）", scheme: "dark" },
-  { id: "solarized-light", label: "Solarized Light（明）", scheme: "light" },
-  { id: "solarized-dark", label: "Solarized Dark（暗）", scheme: "dark" },
-  { id: "catppuccin-latte", label: "Catppuccin Latte（明）", scheme: "light" },
-  { id: "catppuccin-mocha", label: "Catppuccin Mocha（暗）", scheme: "dark" },
-  { id: "rose-pine-dawn", label: "Rosé Pine Dawn（明）", scheme: "light" },
-  { id: "rose-pine", label: "Rosé Pine（暗）", scheme: "dark" },
+  { id: "atlas-light", label: "Atlas Light（ライト・既定）", scheme: "light" },
+  { id: "atlas-dark", label: "Atlas Dark（ダーク・既定）", scheme: "dark" },
+  { id: "one-light", label: "One Light（ライト）", scheme: "light" },
+  { id: "one-dark", label: "One Dark（ダーク）", scheme: "dark" },
+  { id: "solarized-light", label: "Solarized Light（ライト）", scheme: "light" },
+  { id: "solarized-dark", label: "Solarized Dark（ダーク）", scheme: "dark" },
+  { id: "catppuccin-latte", label: "Catppuccin Latte（ライト）", scheme: "light" },
+  { id: "catppuccin-mocha", label: "Catppuccin Mocha（ダーク）", scheme: "dark" },
+  { id: "rose-pine-dawn", label: "Rosé Pine Dawn（ライト）", scheme: "light" },
+  { id: "rose-pine", label: "Rosé Pine（ダーク）", scheme: "dark" },
 ];
 
 export const RECORDED_THEME_IDS: string[] = RECORDED_THEMES.map((theme) => theme.id);
 
-/** 未選択. Named as what it does rather than as an absence: it is a working state, not a gap. */
-export const THEME_UNSET_LABEL = "OS の明暗に従う（既定: Atlas Light / Atlas Dark）";
+/**
+ * 未選択. Named as what it does rather than as an absence: it is a working state, not a gap.
+ *
+ * It names no theme. The two this state resolves to are already marked 既定 in their own labels a
+ * few rows below, and naming them here reads as though picking this option picks one of them — what
+ * it picks is the state of following the system, which keeps following it when the system changes.
+ */
+export const THEME_UNSET_LABEL = "システム設定に従う";
 
 /** True when this build has the colour values for `name`. `null` (未選択) is always honourable. */
 export function isRecorded(name: string | null): boolean {
