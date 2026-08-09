@@ -3,6 +3,8 @@ import * as sass from "sass";
 import {
   RECORDED_THEMES,
   RECORDED_THEME_IDS,
+  THEME_UNSET_LABEL,
+  type ThemeScheme,
   isRecorded,
   themeAttribute,
   themeLabel,
@@ -23,6 +25,37 @@ describe("themeAttribute", () => {
     expect(themeAttribute("Gruvbox")).toBeNull();
     expect(isRecorded("Gruvbox")).toBe(false);
     expect(themeLabel("Gruvbox")).toBeNull();
+  });
+});
+
+// --- 設定画面が読む語 (TASK-126) ---------------------------------------------------------------
+//
+// The labels are the only place a user meets a theme, and `scheme` is the only place the build says
+// which ground the theme paints. Nothing joined the two before this: a theme recorded as ライト with
+// `scheme: "dark"` reads correctly in the list and paints the other ground, and the mismatch is
+// invisible on screen for the same reason decision-12 gives about the 収録条件 検算.
+
+const SCHEME_WORD: Record<ThemeScheme, string> = { light: "ライト", dark: "ダーク" };
+
+describe("設定画面のテーマ一覧の語", () => {
+  it.each(RECORDED_THEMES.map((theme) => [theme.id] as const))(
+    "%s states its 明暗 with the word its scheme declares, and not the other",
+    (id) => {
+      const theme = RECORDED_THEMES.find((recorded) => recorded.id === id)!;
+      const other: ThemeScheme = theme.scheme === "light" ? "dark" : "light";
+      expect(theme.label).toContain(SCHEME_WORD[theme.scheme]);
+      expect(theme.label).not.toContain(SCHEME_WORD[other]);
+    },
+  );
+
+  // 未選択 selects the state of following the system, not either theme that state resolves to. It
+  // named both until TASK-126, which reads as though the option picks one of them — and a picked
+  // theme would stop following the system, which is the one thing this option does.
+  it("offers 未選択 as a state, naming none of the themes it resolves to", () => {
+    for (const theme of RECORDED_THEMES) {
+      expect(THEME_UNSET_LABEL).not.toContain(theme.id);
+      expect(THEME_UNSET_LABEL).not.toContain(theme.label.split("（")[0]);
+    }
   });
 });
 
