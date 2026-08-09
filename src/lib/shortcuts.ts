@@ -124,6 +124,11 @@ interface Assignment {
    * What default this key would otherwise take, or `null` when nothing is stopped. doc-7 §2.1 limits
    * `preventDefault` to the keys that need it and requires the list to say so — a boolean would record
    * that a default is stopped without recording *which*, which is the part that can turn out wrong.
+   *
+   * A 単独キー needs one whenever its operation moves focus into something that takes characters:
+   * [`firesInTextEntry`] keeps the press out of a field that *already* holds the caret, but it cannot
+   * see a field the operation itself opens, and the key's own character reaches that field after the
+   * handler returns (TASK-129).
    */
   preventsDefault: string | null;
 }
@@ -158,12 +163,20 @@ const ASSIGNMENTS: Record<ShortcutAction, Assignment> = {
     firesInTextEntry: false,
     preventsDefault: null,
   },
+  // A bare key is only answered while the caret is *outside* a field, so its character normally lands
+  // nowhere — but this operation moves the caret into one. The popover focuses its 検索欄 from an
+  // `$effect`, which runs before the browser performs the keydown's default, so the `f` arrives in the
+  // box the press just opened and the list is filtered to the values containing one — none at all,
+  // where the values are Japanese, which reads as 絞り込める値が無い (TASK-129). Stopping the default is
+  // what §2.1 provides for; the alternatives were worse — not focusing the 検索欄 puts the keystrokes
+  // that follow nowhere the user can see (`FilterPopover.svelte`), and deferring the focus past the
+  // default ties the popover to when a particular engine performs it.
   addFilter: {
     chord: { key: "f" },
     operation: "絞り込みを追加（値一覧を開く）",
     scope: "swimlane",
     firesInTextEntry: false,
-    preventsDefault: null,
+    preventsDefault: "開いた検索欄への f の入力",
   },
   undoFilter: {
     chord: { key: "Backspace" },
@@ -348,6 +361,8 @@ export interface ShortcutKeyEvent {
    * `isComposing === false` and this code (`Editor.svelte` has checked both since doc-8 §6.2).
    */
   keyCode: number;
+  /** True when the OS is repeating a key the user has not released ([`continuesHeldPress`]). */
+  repeat: boolean;
 }
 
 /** Where the press happened, and whether the caret is in text. */
@@ -411,4 +426,25 @@ export function matchShortcut(
     if (chordMatches(binding.chord, event, context.mac)) return binding;
   }
   return null;
+}
+
+/**
+ * 押下の継続: whether this keydown is the OS repeating a key the caller has already answered and
+ * stopped, rather than a new press. `held` is that key (as [`Chord.key`] spells it, lower-cased), and
+ * `null` while the caller is holding none — only the caller knows which press it answered, so the key
+ * lives there and this decides what it means.
+ *
+ * A repeat has to be told apart because the operation an assignment runs can move focus into a field.
+ * [`matchShortcut`] then withholds the row — doc-7 §2.1's 単独キーの抑止 reads where the caret is, not
+ * which press is under way — and the key's own character lands in the box the press itself opened
+ * (TASK-129: holding `F` filled the 値一覧's 検索欄 with `f`s). **A repeat is not 文字入力**: the user
+ * has not let go of a key they pressed against a screen that had no field in it, so the whole press
+ * stays the caller's and its default stays stopped.
+ *
+ * The operation is *not* re-issued for a repeat — only the default is stopped. A held key that kept
+ * matching goes on answering as before (holding Backspace undoes one 絞り込み per repeat), because
+ * that press never stopped matching and never reaches here.
+ */
+export function continuesHeldPress(event: ShortcutKeyEvent, held: string | null): boolean {
+  return event.repeat && held !== null && event.key.toLowerCase() === held;
 }

@@ -5,12 +5,14 @@ import {
   SHORTCUT_ORDER,
   ariaKeyShortcuts,
   chordLabel,
+  continuesHeldPress,
   isMacUserAgent,
   matchShortcut,
   shortcutHint,
   shortcutOf,
   textEntryFocused,
   type Chord,
+  type ShortcutAction,
   type ShortcutKeyEvent,
   type ShortcutScope,
 } from "./shortcuts";
@@ -24,6 +26,7 @@ function press(part: Partial<ShortcutKeyEvent> & { key: string }): ShortcutKeyEv
     altKey: false,
     isComposing: false,
     keyCode: 0,
+    repeat: false,
     ...part,
   };
 }
@@ -89,12 +92,34 @@ describe("割り当て一覧 (doc-7 §2.1)", () => {
     const stopping = SHORTCUTS.filter((binding) => binding.preventsDefault !== null);
     expect(stopping.map((binding) => binding.action)).toEqual([
       "openRegister",
+      "addFilter",
       "undoFilter",
       "cycleModalFocus",
       "saveEditSession",
       "submitLaneCreate",
     ]);
     for (const binding of stopping) expect(binding.preventsDefault).not.toBe("");
+  });
+
+  /**
+   * The type TASK-129 was raised for, and the reason `addFilter` is in the list above: a 単独キー is
+   * only answered while the caret is outside a field, so its character normally lands nowhere — unless
+   * the operation itself puts a field under the caret before the default is performed. `firesInTextEntry`
+   * cannot see that field, so the row has to stop the key.
+   *
+   * The operations that move focus were counted on the real shell rather than assumed (WebKit,
+   * `_sandbox/app-check/`): F reaches the 値一覧's 検索欄, M reaches the menu's first button, Escape
+   * returns to the opener, and both ⌘ chords reach the modal's 閉じる. Only F lands on something that
+   * takes characters, which is why the set below has one member. A row added with the same shape
+   * belongs in it.
+   */
+  it("stops the key of every bare-key operation that moves focus into a text field", () => {
+    const focusesTextEntry: readonly ShortcutAction[] = ["addFilter"];
+    for (const action of focusesTextEntry) {
+      const binding = shortcutOf(action);
+      expect(binding.chord.mod).not.toBe(true);
+      expect(binding.preventsDefault).not.toBeNull();
+    }
   });
 
   /**
@@ -205,6 +230,36 @@ describe("照合 (doc-7 §2.1 の契約)", () => {
     expect(matchShortcut(press({ key: "F", shiftKey: true }), on(ON_GRID))).toBeNull();
     // Caps Lock leaves `shiftKey` false, and the letter still means the assignment.
     expect(matchShortcut(press({ key: "F" }), on(ON_GRID))?.action).toBe("addFilter");
+  });
+});
+
+/**
+ * The other half of TASK-129. Stopping the opening press is not enough on its own: `F` moves focus
+ * into the 値一覧's 検索欄, so from the second keydown on `matchShortcut` sees the caret in a field
+ * and withholds the row — measured in WebKit, holding `F` left `"fff"` in the box and 0 values
+ * shown, which is the very symptom the row's `preventsDefault` was added for.
+ */
+describe("押下の継続 (TASK-129)", () => {
+  const held = (part: Partial<ShortcutKeyEvent> & { key: string }, holding: string | null) =>
+    continuesHeldPress(press(part), holding);
+
+  it("reads a repeat of the held key as the same press", () => {
+    expect(held({ key: "f", repeat: true }, "f")).toBe(true);
+    // The 一覧 spells chords as they are typed, so the comparison is case-insensitive for the same
+    // reason `chordMatches` is: Caps Lock reports `F` for the key `f` names.
+    expect(held({ key: "F", repeat: true }, "f")).toBe(true);
+  });
+
+  it("reads a fresh press as a new one, whatever is being held", () => {
+    // Where the defect would return if this were true: the user opened the popover with the pointer
+    // and is typing an `f` into the 検索欄 — a press of its own, and 文字入力 by doc-7 §2.1.
+    expect(held({ key: "f" }, "f")).toBe(false);
+    expect(held({ key: "f", repeat: true }, null)).toBe(false);
+  });
+
+  it("holds one key at a time — a repeat of a different key is not this press", () => {
+    expect(held({ key: "m", repeat: true }, "f")).toBe(false);
+    expect(held({ key: "Backspace", repeat: true }, "f")).toBe(false);
   });
 });
 
