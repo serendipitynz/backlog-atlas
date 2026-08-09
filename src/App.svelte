@@ -772,11 +772,14 @@
   /**
    * Adopt a settings value the boundary returned, and apply the parts the shell owns.
    *
-   * Only 既定の保存区分 is applied to live state, and only when the filter is still the one the
-   * settings put there: it is an *initial* value (doc-7 §5.2), so overwriting a filter the user has
-   * since narrowed would undo their work at the moment they pressed 保存 in another panel. 継続検出の
-   * 可否 is read straight off `settings` by `watchEnabled`; the remaining two are stored for the
-   * screens that consume them (表示テーマ・カード情報量).
+   * **既定の保存区分 and 既定の並び順 are applied to live state, each only while the screen is still
+   * showing the one the settings put there.** Both are *initial* values (doc-7 §5.2, §5.4), so
+   * adopting one over a filter the user has since narrowed, or over an order they have since chosen,
+   * would undo their work at the moment they pressed 保存 in another panel. That test is also what
+   * keeps a refused 並び順 write from being reverted: the write failed, so the file still holds the
+   * old order, and an unrelated save that succeeds later brings it back — the screen no longer
+   * matches it, so it is not taken. 継続検出の可否 is read straight off `settings` by `watchEnabled`;
+   * the remaining two are stored for the screens that consume them (表示テーマ・カード情報量).
    *
    * 既定の詳細配置 is adopted on the *first* read only. It is the placement the app opens with
    * (doc-8 §2.2 再起動後も保つ); changing it later from the 設定画面 moves the 既定 without moving the
