@@ -19,7 +19,7 @@
     textEntryFocused,
   } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
-  import type { MenuItem } from "../lib/header";
+  import { startsGroup, type MenuItem } from "../lib/header";
 
   interface Props {
     items: MenuItem[];
@@ -89,7 +89,10 @@
     <!-- Keyed by the item's own `key` (`header.ts`), never by `kind`: the two 共通入口 share a kind, and
          Svelte makes duplicate keys a runtime error — which took the whole menu down. -->
     {#each items as item, index (item.key)}
-      <li>
+      <!-- 区切り線 is decided by `startsGroup` (`header.ts`) and not by anything in this file: it reads
+           the item's 群 and never its `held`, which is what keeps the mark from coming and going as
+           すべて戻す gains and loses something to restore. -->
+      <li class:group-start={startsGroup(items, index)}>
         <button
           type="button"
           aria-disabled={item.held !== null}
@@ -122,10 +125,15 @@
     z-index: 3;
     top: calc(100% + 0.25rem);
     right: 0;
-    // Narrower since TASK-67 took the table out: it was what needed 30rem — five columns then, three
-    // since TASK-125 — and the widest thing left is a 保留理由 sentence, which reads better wrapped than
-    // spread across a panel.
-    width: min(24rem, 90vw);
+    // Sized by what is in it. The panel held a fixed 24rem from the days it contained the 割り当て一覧
+    // table (TASK-67 moved that to `ShortcutHelp.svelte` and left the number behind), and the lines that
+    // remain ask for well under half of it — measured at 140.73px on WebKit and 148.53px on Chromium
+    // against a 397.19px panel, so three fifths of the menu was blank. `max-content` is the width the
+    // longest line wants; the cap and its value are doc-7 §2.1's, not this file's — it is what a long
+    // slug in a 戻す line runs into, and past it the label wraps rather than the panel growing across
+    // the window. 24rem is the width the panel already had, which is why the widest case is unchanged.
+    width: max-content;
+    max-width: min(24rem, 90vw);
     max-height: 70vh;
     padding: 0.35rem;
     border: 1px solid var(--line-strong);
@@ -141,6 +149,20 @@
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  // 区切り線 (doc-7 §2.1): 罫線 は `--line` (doc-11 §2.1), 余白は .25rem 段 (doc-11 §2.2). Drawn on the
+  // `li` rather than on the button inside it, so hover and 無効化提示 — both of which move the button's
+  // own border — leave it where it is.
+  //
+  // Nothing carries it into the accessibility tree, and doc-7 §2.1 says so rather than leaving it to be
+  // read as an oversight: what the 群 separates is already said by each line's own words, which is the
+  // test doc-11 §2.4 puts to a figure that stands outside a control. Exposing the 群 as a named unit is
+  // a different question, and §2.1 is where it would be settled — not here.
+  li.group-start {
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--line);
   }
 
   li > button {

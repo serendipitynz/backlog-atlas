@@ -1,8 +1,10 @@
 <script lang="ts">
   // The 一覧モーダル's contents (doc-7 §2.1), which TASK-67 moved this table into. On screen it is called
-  // キーボード操作の一覧, and what it draws is the 画面に出す列 — three of the five 欄 the 割り当て一覧
-  // holds, and not the 一覧 itself, which §2.1 has held apart from this table since TASK-125.
-  // `shortcuts.ts` is the 正本 of both.
+  // キーボード操作一覧 — the heading takes that word from `header.ts` rather than spelling it, because the
+  // menu line that opens this layer is named for the layer and the two are meant to read as one thing
+  // (they drifted a character apart until TASK-130). What it draws is the 画面に出す列 — three of the five
+  // 欄 the 割り当て一覧 holds, and not the 一覧 itself, which §2.1 has held apart from this table since
+  // TASK-125. `shortcuts.ts` is the 正本 of both.
   //
   // **Why it left the menu.** It used to sit inside the header menu as a closed `details`, which made the
   // menu two things at once: the entries a user picks from, and a reference table folded up underneath
@@ -14,6 +16,7 @@
   // typed out here would be a second place — one that keeps saying `⌘N` after the assignment moves.
   import { SCOPE_LABEL, SHORTCUTS, chordLabel } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
+  import { SHORTCUT_HELP_LABEL } from "../lib/header";
 </script>
 
 <section>
@@ -24,7 +27,7 @@
        table a short window opened the list already scrolled past its own heading. The × is first in the
        dialog and at the top of it, which is the same guarantee from the layer's side. -->
   <header>
-    <h2>キーボード操作の一覧</h2>
+    <h2>{SHORTCUT_HELP_LABEL}</h2>
   </header>
 
   <!-- doc-7 §2.1 の 3 列: キー・操作・使える場所。**この表は割り当て一覧そのものではない** — the 一覧 is

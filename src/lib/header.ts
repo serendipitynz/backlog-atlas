@@ -18,8 +18,10 @@
  * |---|---|---|
  * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the fixed header offers through its メニュー — 登録 and 設定 |
  * | doc-7 §2.1 メニュー | [`MenuItem`] + [`headerMenu`] | メニュー項目: one line of the menu, and the whole list in order |
- * | doc-7 §2.1 キーボード操作表示…（メニュー内） | [`SHORTCUT_HELP_LABEL`] + the `shortcutHelp` item | the menu line that opens the 一覧モーダル, where the 割り当て一覧's 画面に出す列 are drawn. The 一覧 itself is `shortcuts.ts`, which §2.1 holds apart from that table |
+ * | doc-7 §2.1 キーボード操作一覧（メニュー内） | [`SHORTCUT_HELP_LABEL`] + the `shortcutHelp` item | the menu line that opens the 一覧モーダル, where the 割り当て一覧's 画面に出す列 are drawn. The 一覧 itself is `shortcuts.ts`, which §2.1 holds apart from that table |
  * | doc-7 §5.1 行非表示 / doc-11 §4 ⑥ | [`SHOW_ALL_ROWS_LABEL`] + the `showRow` items | すべて戻す, and the per-row list doc-11 §4 puts in the menu rather than in the 帯 |
+ * | doc-7 §2.1 群（項目の並びの単位） | [`MenuGroup`] + each item's `group` | which of the two 群 a line is in: `layer` raises a 被せ層, `rows` changes which rows the grid draws |
+ * | doc-7 §2.1 区切り線 | [`startsGroup`] | メニューの群と群の境目に置く水平の線を指す。Where one is drawn — read from 群 alone, never from `held` |
  * | doc-11 §5 無効化提示 | [`showAllRowsHeld`] | 保留理由: why すべて戻す cannot be pressed, or `null` when it can |
  *
  * ## Why the 行非表示 items are here and not in the 帯
@@ -75,13 +77,18 @@ export const HEADER_ENTRIES: readonly HeaderEntry[] = [
 // --- メニュー項目 (doc-7 §2.1, doc-11 §4 ⑥) ----------------------------------------------------
 
 /**
- * The line that opens the 一覧モーダル (doc-7 §2.1). The `…` follows `ProjectRegister`'s 選択… — the app's
- * one existing precedent for it — and says the line leads to the list rather than being it. The two
- * 共通入口 above open modals without one, and stay as they are: they are named for the thing they open
- * (プロジェクトを登録・設定), while this line is named for the *display* of something, which is the case an
- * ellipsis is for. Adding one to those two would be a rename this task was not asked for.
+ * The line that opens the 一覧モーダル (doc-7 §2.1), named for the thing it opens — the same string the
+ * modal carries as its `Modal label` and its `<h2>`, which is already how the two 共通入口 above work
+ * (プロジェクトを登録・設定 name both the line and the layer, and `shortcuts.ts` gives those two the same
+ * word again as their `operation`).
+ *
+ * It read キーボード操作表示… until TASK-130, where the `…` said the line led to the list rather than being
+ * it. The user's word replaced that (2026-08-09), and with the ellipsis gone the distinction it drew has
+ * nothing left to stand on — so the 呼び名 of the modal came to this word too rather than staying one
+ * character away from it. What stays apart is the 割り当て一覧 itself: `shortcuts.ts` holds the five-欄
+ * record, and doc-7 §2.1 keeps that word for the record and never for what is drawn (TASK-125).
  */
-export const SHORTCUT_HELP_LABEL = "キーボード操作表示…";
+export const SHORTCUT_HELP_LABEL = "キーボード操作一覧";
 
 /** 行非表示をすべて戻す (doc-7 §5.1). The band's own operation, echoed here like the two 共通入口. */
 export const SHOW_ALL_ROWS_LABEL = "行非表示をすべて戻す";
@@ -98,6 +105,14 @@ export function showAllRowsHeld(hiddenRowCount: number): string | null {
 }
 
 /**
+ * Which 群 a line belongs to (doc-7 §2.1). `layer` lines raise a 被せ層 and leave the grid as it is;
+ * `rows` lines change which rows the grid draws and raise nothing. That is the axis, not the position:
+ * a line's 群 is a property of what pressing it does, so it is decided here and cannot drift with how
+ * the menu happens to be laid out.
+ */
+export type MenuGroup = "layer" | "rows";
+
+/**
  * One line of the menu. `held` is the 保留理由 (doc-11 §5), or `null` when the line is pressable.
  *
  * `key` identifies the line for the markup that draws it. It is decided here rather than derived at the
@@ -107,10 +122,23 @@ export function showAllRowsHeld(hiddenRowCount: number): string | null {
  * menu did. Keeping the key in the data makes uniqueness a property this module can be tested for.
  */
 export type MenuItem =
-  | { kind: "entry"; key: string; entry: HeaderEntry; held: null }
-  | { kind: "shortcutHelp"; key: string; label: string; held: null }
-  | { kind: "showAllRows"; key: string; label: string; held: string | null }
-  | { kind: "showRow"; key: string; slug: string; label: string; held: null };
+  | { kind: "entry"; key: string; group: MenuGroup; entry: HeaderEntry; held: null }
+  | { kind: "shortcutHelp"; key: string; group: MenuGroup; label: string; held: null }
+  | { kind: "showAllRows"; key: string; group: MenuGroup; label: string; held: string | null }
+  | { kind: "showRow"; key: string; group: MenuGroup; slug: string; label: string; held: null };
+
+/**
+ * 区切り線とは、メニューの群と群の境目に置く水平の線を指す。True for the line a 区切り線 is drawn above.
+ *
+ * It reads 群 and nothing else — in particular not `held`. Until TASK-130 the menu drew no 区切り線 at
+ * all, and what a user saw at this very boundary was the 無効化提示 破線枠 of すべて戻す (doc-11 §5): a
+ * line that appeared when there was nothing to restore and vanished when there was, which reads as the
+ * menu's grouping coming and going. The 破線枠 is right and stays; what was missing is a mark of the
+ * 群 that does not depend on whether the line below it can be pressed.
+ */
+export function startsGroup(items: readonly MenuItem[], index: number): boolean {
+  return index > 0 && items[index - 1].group !== items[index].group;
+}
 
 /**
  * The menu in order: the 共通入口 first (they are what the header itself offers), then the line to the
@@ -129,23 +157,32 @@ export type MenuItem =
 export function headerMenu(hiddenRows: readonly string[]): MenuItem[] {
   return [
     ...HEADER_ENTRIES.map(
-      (entry): MenuItem => ({ kind: "entry", key: `entry:${entry.id}`, entry, held: null }),
+      (entry): MenuItem => ({
+        kind: "entry",
+        key: `entry:${entry.id}`,
+        group: "layer",
+        entry,
+        held: null,
+      }),
     ),
     {
       kind: "shortcutHelp",
       key: "shortcutHelp",
+      group: "layer",
       label: SHORTCUT_HELP_LABEL,
       held: null,
     },
     {
       kind: "showAllRows",
       key: "showAllRows",
+      group: "rows",
       label: SHOW_ALL_ROWS_LABEL,
       held: showAllRowsHeld(hiddenRows.length),
     },
     ...hiddenRows.map((slug): MenuItem => ({
       kind: "showRow",
       key: `row:${slug}`,
+      group: "rows",
       slug,
       label: `${slug} を戻す`,
       held: null,

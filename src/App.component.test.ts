@@ -487,27 +487,31 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
    * A test that only pressed the line and looked for a dialog would pass with the table still folded
    * into the menu underneath — which is the shape this change was made to end.
    */
-  it("キーボード操作の一覧はメニューではなくモーダルが持ち、同じ 2 経路で閉じる", async () => {
+  it("キーボード操作一覧はメニューではなくモーダルが持ち、同じ 2 経路で閉じる", async () => {
     const byEscape = await startWith([loaded("atlas", [TASK])]);
 
     click(byLabel(byEscape, "button.header-entry", "メニュー"));
     expect(only(byEscape, '[role="dialog"][aria-label="メニュー"]').querySelector("table")).toBeNull();
     click(byLabel(byEscape, '[role="dialog"][aria-label="メニュー"] button', SHORTCUT_HELP_LABEL));
 
+    // The layer is named by the same word as the line that opened it (TASK-130), so the query uses the
+    // constant: a modal renamed away from its own menu line stops being findable here. What the word
+    // itself is, is pinned in `header.test.ts` — it came from the user and nothing derives it.
+    const list = only(byEscape, `[role="dialog"][aria-label="${SHORTCUT_HELP_LABEL}"]`);
     // Printed from `SHORTCUTS` (doc-7 §2.1 の 1 箇所), so a row missing here means a row missing there.
-    const list = only(byEscape, '[role="dialog"][aria-label="キーボード操作の一覧"]');
     expect(list.querySelectorAll("tbody tr")).toHaveLength(SHORTCUTS.length);
+    expect(list.querySelector("h2")?.textContent).toBe(SHORTCUT_HELP_LABEL);
 
     press(list, "Escape");
-    expect(byEscape.querySelector('[aria-label="キーボード操作の一覧"]')).toBeNull();
+    expect(byEscape.querySelector(`[aria-label="${SHORTCUT_HELP_LABEL}"]`)).toBeNull();
     expectFocusBackOnMenu(byEscape);
 
     cleanup();
 
     const byControl = await startWith([loaded("atlas", [TASK])]);
     chooseFromMenu(byControl, SHORTCUT_HELP_LABEL);
-    click(closeOf(byControl, "キーボード操作の一覧"));
-    expect(byControl.querySelector('[aria-label="キーボード操作の一覧"]')).toBeNull();
+    click(closeOf(byControl, SHORTCUT_HELP_LABEL));
+    expect(byControl.querySelector(`[aria-label="${SHORTCUT_HELP_LABEL}"]`)).toBeNull();
     expectFocusBackOnMenu(byControl);
   });
 });

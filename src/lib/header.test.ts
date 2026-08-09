@@ -5,6 +5,7 @@ import {
   SHOW_ALL_ROWS_LABEL,
   headerMenu,
   showAllRowsHeld,
+  startsGroup,
   type MenuItem,
 } from "./header";
 import { SHORTCUTS } from "./shortcuts";
@@ -100,5 +101,74 @@ describe("保留理由 (doc-11 §5)", () => {
   it("holds すべて戻す at 0 hidden rows only", () => {
     expect(showAllRowsHeld(0)).not.toBeNull();
     expect(showAllRowsHeld(1)).toBeNull();
+  });
+});
+
+describe("区切り線 (doc-7 §2.1)", () => {
+  /** Every index a 区切り線 is drawn above, for a given number of hidden rows. */
+  function rules(hidden: readonly string[]): number[] {
+    const items = headerMenu(hidden);
+    return items.flatMap((_, index) => (startsGroup(items, index) ? [index] : []));
+  }
+
+  /**
+   * AC #2 の肯定形. Stated as "the mark does not appear and disappear", which a menu with no mark at all
+   * satisfies vacuously — and that was the state this task began in, so the check has to be that a mark
+   * is there and that it is at the same index in both conditions. The two conditions are the two the
+   * user saw: nothing to restore (すべて戻す held, 破線枠 up) and something to restore (pressable, no
+   * frame). doc-11 §5 keeps drawing that frame; what must not move with it is this.
+   */
+  it("draws one 区切り線, at the same place whether or not すべて戻す is held", () => {
+    const held = headerMenu([]).find((item) => item.kind === "showAllRows")?.held;
+    const free = headerMenu(["atlas"]).find((item) => item.kind === "showAllRows")?.held;
+    expect(held).not.toBeNull();
+    expect(free).toBeNull();
+
+    expect(rules([])).toEqual([3]);
+    expect(rules(["atlas"])).toEqual([3]);
+    expect(rules(["atlas", "kanri"])).toEqual([3]);
+  });
+
+  /**
+   * The 群 is what pressing the line does, not where the line sits: `layer` lines raise a 被せ層 and
+   * `rows` lines change which rows the grid draws. Checked as a partition rather than at indices, so a
+   * line added to either 群 keeps the boundary meaningful — TASK-131 rebuilds the `rows` 群 next.
+   */
+  it("puts every 被せ層 line in one 群 and every 行非表示 line in the other", () => {
+    const items = headerMenu(["atlas"]);
+    const groups = Object.fromEntries(items.map((item) => [item.key, item.group]));
+    expect(groups).toEqual({
+      "entry:register": "layer",
+      "entry:settings": "layer",
+      shortcutHelp: "layer",
+      showAllRows: "rows",
+      "row:atlas": "rows",
+    });
+  });
+
+  it("draws no 区切り線 above the first line", () => {
+    expect(startsGroup(headerMenu([]), 0)).toBe(false);
+  });
+});
+
+describe("画面に出る語", () => {
+  /**
+   * Both words came from the user (2026-08-09) and nothing in the build derives either, so they are
+   * recorded the way a wire payload and a measured number are — by equality. The 一覧 line is checked
+   * against its literal here because every other place that prints it now takes this constant, which
+   * means no other test would notice the word changing.
+   */
+  it("names the 一覧 line and すべて戻す in the user's words", () => {
+    expect(SHORTCUT_HELP_LABEL).toBe("キーボード操作一覧");
+    expect(SHOW_ALL_ROWS_LABEL).toBe("行非表示をすべて戻す");
+  });
+
+  /**
+   * The line is named for the layer it opens, as 登録 and 設定 already are. Held here rather than left to
+   * the component test: the ellipsis this word lost in TASK-130 was the whole of what once told the two
+   * apart, so a `…` added back to either would be the same drift returning.
+   */
+  it("names the 一覧 line for the layer, with nothing trailing", () => {
+    expect(SHORTCUT_HELP_LABEL).not.toMatch(/[…．.]+$/);
   });
 });
