@@ -1649,8 +1649,15 @@
    * close it because 被せ層 は同時に 1 枚だけ and they are raising one — `raiseModal` does that here —
    * while the `rows` lines leave it open. Setting several rows is one errand, and a menu that closed
    * on each of them would make that errand as many round trips as there are rows; doc-7 §5.2 settled
-   * the same question the same way for the 値一覧ポップオーバー. Not a `default` and not a check on
-   * `item.group`: the switch is over `kind` so that a new line has to say which it is.
+   * the same question the same way for the 値一覧ポップオーバー. Not a check on `item.group`: the switch
+   * is over `kind` so that a new line has to say which of the two it is rather than inheriting an
+   * answer from a field.
+   *
+   * **The `default` is what makes that a requirement rather than a wish.** This function returns
+   * nothing, so an unhandled `kind` would compile — `lucide.ts` spells out the difference, where the
+   * switch is held only because it returns a value. Assigning `item` to `never` puts the same
+   * pressure on a switch that returns nothing: a fifth `MenuItem` leaves that assignment impossible
+   * and the build stops, instead of drawing a line that looks pressable and does nothing.
    */
   function chooseMenuItem(item: MenuItem): void {
     switch (item.kind) {
@@ -1667,6 +1674,11 @@
       case "toggleProject":
         toggleProject(item.slug);
         break;
+      default: {
+        // Unreachable while every `kind` is answered above — and unassignable if one is not.
+        const unhandled: never = item;
+        throw new Error(`unhandled menu item: ${JSON.stringify(unhandled)}`);
+      }
     }
   }
 

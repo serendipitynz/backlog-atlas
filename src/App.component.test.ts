@@ -1085,7 +1085,10 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
     await settled();
     expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).toBeNull();
 
-    // The remaining row is the way to the other screen, and the menu goes with it.
+    // Closed the way a user closes it before leaving for the other screen. Escape rather than a press
+    // outside because `render.ts`'s `click` is `HTMLElement.click()`, which dispatches no
+    // `pointerdown` — and `pointerdown` is what `HeaderMenu.svelte` listens for. The same substitution
+    // is used everywhere below.
     press(only(host, MENU), "Escape");
     click(only(host, '[title="kanri のプロジェクト詳細画面を開きます"]'));
     await settled();
