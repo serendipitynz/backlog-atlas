@@ -11,6 +11,7 @@
   import { omitsSentence } from "../lib/manage";
   import { ariaKeyShortcuts, matchShortcut, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
+  import Icon from "../lib/icons/Icon.svelte";
 
   interface Props {
     /** Whether this column offers the entry, and its 作成時 status 候補 (doc-7 §4.1). */
@@ -111,7 +112,10 @@
     title={held ?? `${label} 列に新規タスクを作ります`}
     onclick={() => held === null && onopen()}
   >
-    <span aria-hidden="true">＋</span>新規
+    <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4): 「新規」 is the name, so the figure takes no
+         `aria-label` of its own. The same `plus` the 文書・マイルストーン の作成の入口 draws
+         (doc-10 §1) — the mark for「ここから 1 件作る」is one figure, not one per screen. -->
+    <Icon name="plus" />新規
   </button>
 {:else}
   <div class="entry">

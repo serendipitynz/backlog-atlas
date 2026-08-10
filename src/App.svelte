@@ -2128,8 +2128,11 @@
         {/key}
         <!-- ⑤ 通知 だけが閉じられる (doc-11 §4): it reports something already finished, so dismissing
              it hides nothing that is still true. -->
+        <!-- アイコンのみのボタン (doc-11 §2.4): the figure is decorative, so the name is all on
+             `aria-label`. Same `x` the モーダル draws, and doc-11 §7 is explicit that this is not that
+             section's contract — this closes one band, not a layer. -->
         <button type="button" class="close" aria-label="通知を閉じる" onclick={() => (notice = null)}>
-          ×
+          <Icon name="x" />
         </button>
       {/if}
     </div>
@@ -2384,7 +2387,12 @@
       cursor: pointer;
     }
 
+    // アイコンのみのボタン (doc-11 §2.4). Centred explicitly: the figure is a `display: block` svg, so
+    // unlike the `×` it replaced it brings no line box of its own to sit the button's padding around.
+    // The `font-size` above is what sizes it, since an icon draws at 1em.
     .close {
+      display: inline-flex;
+      align-items: center;
       margin-left: auto;
     }
 

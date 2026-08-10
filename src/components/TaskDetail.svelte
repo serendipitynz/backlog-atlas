@@ -1330,8 +1330,12 @@
         <ul class="ac">
           {#each task.acceptanceCriteria as item (item.number)}
             <li class:checked={item.checked}>
-              <span class="box" aria-label={item.checked ? "完了" : "未完了"}>
-                {item.checked ? "☑" : "☐"}
+              <!-- 族を持たない状態の印 (doc-11 §2.4): not pressable outside an 編集セッション, so the
+                   name goes on the wrapper. `role="img"` is required, not decoration — with the figure
+                   `aria-hidden` this span has no content left, and `aria-label` on a bare span is not
+                   announced. While it printed a glyph, the glyph itself was the name. -->
+              <span class="box" role="img" aria-label={item.checked ? "完了" : "未完了"}>
+                <Icon name={item.checked ? "square-check" : "square"} />
               </span>
               <span class="number">#{item.number}</span>
               <span class="text">{item.text}</span>
@@ -1365,13 +1369,17 @@
         <ul class="ac">
           {#each acView as row (row.number)}
             <li class:checked={row.checked} class:removed={row.removed}>
+              <!-- 編集セッション中は同じ印がアイコンのみのボタンになる (doc-11 §2.4). The figure pair is
+                   the one 閲覧 draws, so the項 does not change appearance when the session opens; what
+                   changes is that it can be pressed. The state the figure shows is in the name already
+                   (「を完了にする」 can only be said of an unchecked one), so nothing is added for it. -->
               <button
                 type="button"
                 class="box"
                 aria-label={`#${row.number} を${row.checked ? "未完了" : "完了"}にする`}
                 onclick={() => (session = toggleAcCheck(session!, row.number))}
               >
-                {row.checked ? "☑" : "☐"}
+                <Icon name={row.checked ? "square-check" : "square"} />
               </button>
               <span class="number">#{row.number}</span>
               <span class="text">{row.text}</span>
@@ -2635,11 +2643,20 @@
     background: color-mix(in srgb, var(--fg) 18%, transparent);
   }
 
+  // AC の完了印 (doc-11 §2.4): a span in 閲覧, a button in the 編集セッション, the same figure in both.
+  // The size is stated once here rather than on each, so the two cannot drift apart — the figure draws
+  // at 1em of it (§2.4). `display: block` because `.ac li` aligns on the baseline and an svg has none:
+  // the row then puts its bottom edge on the text's baseline, which is where the glyph used to sit.
+  .ac .box {
+    display: block;
+    flex: none;
+    font-size: 0.8rem;
+  }
+
   .ac button.box {
     padding: 0;
     border: none;
     background: none;
-    font-size: 0.8rem;
   }
 
   .ac-replace li {

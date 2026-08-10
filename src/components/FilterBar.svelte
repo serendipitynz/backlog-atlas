@@ -100,7 +100,9 @@
     clearBlocked
       ? "絞り込みは既定のままです。"
       : undoBlocked
-        ? "自分で足した条件がないため、直前の 1 つは戻せません（保存区分の既定は各トークンの × で外します）。"
+        ? // Names the control by what it does, not by the glyph it used to print: since TASK-139 the
+          // token's remove control is a figure, and a figure has no words for a sentence to quote.
+          "自分で足した条件がないため、直前の 1 つは戻せません（保存区分の既定は各トークンの解除で外します）。"
         : null,
   );
   /** Whether the 帯 itself already shows the reason, so it is not printed a second time (doc-11 §8). */
@@ -184,12 +186,17 @@
         {#if token.value !== null}
           <span class="value" title={token.value}>{token.value}</span>
         {/if}
+        <!-- アイコンのみのボタン (doc-11 §2.4). doc-11 §3 keeps the トークン out of the 4 系統 because
+             it carries this control; the figure is the same `x` the モーダル draws, and §7 says so
+             without lending this control that section's contract. -->
         <button
           type="button"
           class="drop"
           aria-label="{token.facet}{token.value === null ? '' : ` ${token.value}`} を解除"
-          onclick={() => onchange(removeCondition(filter, token.condition))}>×</button
+          onclick={() => onchange(removeCondition(filter, token.condition))}
         >
+          <Icon name="x" />
+        </button>
       </span>
     {:else}
       <!-- Only reachable by taking every 保存区分 off: the selection is positive (doc-7 §5.2), so an
