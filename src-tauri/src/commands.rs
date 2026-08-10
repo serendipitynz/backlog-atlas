@@ -1650,6 +1650,42 @@ pub fn settings_location(app: AppHandle) -> Result<PathBuf, CommandError> {
     Ok(ConfigFiles::resolve(&app)?.settings)
 }
 
+/// Whether the アプリ設定ディレクトリ is there yet (doc-3 §2.1). What withholds 場所を開く: the control
+/// opens the *folder*, so the folder's absence is the only thing that can stop it — the settings
+/// file's absence never could, and [`settings_location_open`] does not read it.
+///
+/// Its own read rather than part of [`settings_location`]: that one resolves a path and its answer
+/// cannot change while the app runs, whereas this one is a filesystem fact that the first save turns
+/// true (`store::replace` creates the destination's parent before it writes anything), so the two
+/// have different lifetimes and only one of them can be resolved once at startup.
+///
+/// No lock: the directory is created before any 一時ファイル置換 and nothing here removes it, so a
+/// concurrent save can only turn this answer from false to true.
+#[tauri::command(async)]
+pub fn settings_directory_present(app: AppHandle) -> Result<bool, CommandError> {
+    directory_present(&ConfigFiles::resolve(&app)?)
+}
+
+/// [`settings_directory_present`] without the Tauri handle, so the folder-not-file rule can be
+/// exercised against a real directory.
+///
+/// `metadata` rather than `try_exists`, which answers "an entry is there" and would say yes to a
+/// plain file left at that path — the control would then be offered and hand a file to the
+/// association launcher, which is the same 開く先 mix-up in the other direction. An undeterminable
+/// answer stays an error rather than collapsing to `false`: the screen states this as the reason the
+/// control is withheld, and "the folder is not there" is not something an `io::Error` establishes.
+/// The variant is the one [`ConfigFiles::resolve`] already uses for a failure about this same
+/// directory.
+fn directory_present(files: &ConfigFiles) -> Result<bool, CommandError> {
+    match files.directory.metadata() {
+        Ok(metadata) => Ok(metadata.is_dir()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(CommandError::Ledger {
+            detail: format!("the application config directory could not be examined: {e}"),
+        }),
+    }
+}
+
 /// Open the アプリ設定ディレクトリ in whatever the OS opens a directory with (TASK-75 AC #1). The
 /// counterpart of [`settings_location`]: that one says where the file is, this one takes the user
 /// there.
@@ -3554,6 +3590,47 @@ labels: []\n\
 
         release_tx.send(()).unwrap();
         updating.join().unwrap().expect("the update finishes");
+    }
+
+    /// TASK-144: what 場所を開く asks about is the **folder**, and the folder is there as soon as
+    /// anything has been saved into it. `two_projects` is exactly the state a user reaches by
+    /// registering one project — a written ledger, no settings file — and the control that opens the
+    /// folder must not read the file's absence as the folder's.
+    #[test]
+    fn the_folder_is_there_once_either_file_has_been_written() {
+        let (temp, files, _alpha, _beta) = two_projects();
+        assert_eq!(
+            read_settings(&files).status,
+            crate::settings::SettingsStatus::Absent,
+            "the state under test is a written ledger with no settings file beside it"
+        );
+        assert!(
+            directory_present(&files).unwrap(),
+            "the ledger's own save created the folder, so it is there"
+        );
+
+        let untouched = ConfigFiles {
+            directory: temp.path.join("never-written"),
+            ledger: temp.path.join("never-written").join("projects.toml"),
+            settings: temp.path.join("never-written").join("settings.toml"),
+        };
+        assert!(
+            !directory_present(&untouched).unwrap(),
+            "a first run has written neither file, so there is no folder to open"
+        );
+
+        // A plain file at the directory's own path is not a folder to open: the control would
+        // otherwise be offered and the association launcher handed a file (PR #92 の [P3]).
+        temp.write("not-a-directory", "");
+        let file_in_the_way = ConfigFiles {
+            directory: temp.path.join("not-a-directory"),
+            ledger: temp.path.join("not-a-directory").join("projects.toml"),
+            settings: temp.path.join("not-a-directory").join("settings.toml"),
+        };
+        assert!(
+            !directory_present(&file_in_the_way).unwrap(),
+            "an entry that is not a directory is not a folder 場所を開く can open"
+        );
     }
 
     /// The other half of the split (AC #2): what the one boundary-wide lock protected for a *single*

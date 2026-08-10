@@ -17,7 +17,8 @@
  * | doc-8 §2.2 既定の詳細配置・doc-7 §5.4 既定の並び順（フォームの外から書かれる項目） | [`mergeDraft`] | how a value stored elsewhere lands in an open form without taking its input |
  * | doc-7 §5.4 並び順の語 | `swimlane.ts` の `CARD_ORDERS` | the ten orders and their screen words; this module only carries the value through |
  * | TASK-74 下部操作行 | [`CLOSE_WITHOUT_SAVING_LABEL`] / [`SAVE_LABEL`] | the two ways out of the モーダル, named in one place |
- * | TASK-75 場所を開く | [`OPEN_LOCATION_LABEL`] / [`openLocationBlocked`] | opening the アプリ設定ディレクトリ (decision-13), and when it cannot be opened |
+ * | TASK-75 場所を開く | [`OPEN_LOCATION_LABEL`] / [`openLocationAvailability`] | opening the アプリ設定ディレクトリ (decision-13), and when it cannot be opened |
+ * | doc-3 §2.1 フォルダの有無 | [`openLocationAvailability`] の `present` | whether the folder that control opens is there yet — the boundary's answer, not this module's |
  *
  * One rule runs through it, the same one `edit.ts` and `external-editor.ts` follow: **a withheld
  * control says why** (doc-5 §5, doc-11 §5). No item is hidden because it cannot be changed yet or
@@ -209,19 +210,48 @@ export const OPEN_LOCATION_TITLE =
 export const OPENING_LOCATION_REASON = "いま開いています（OS の応答を待っています）。";
 
 /**
- * 場所を開く が押せない理由 (TASK-75 AC #3)、または `null`。ファイルがまだ書かれていない状態
- * (`absent`) と、起動を発行してまだ応答が返っていない状態の 2 つが理由になる。読めない・上位版の
- * ファイルは**存在する**ので、場所へは行ける — 手で直すならまさにそこを開く必要があり、読めないことを
- * 理由に閉ざすと直す手段まで閉ざすことになる。
+ * フォルダがまだ無いときの、場所を開く の理由。**述べるのはフォルダであって、その中のファイルの有無
+ * ではない** (doc-3 §2.1)。作る手立てを 2 つとも挙げるのは、どちらの保存でもフォルダが作られるから
+ * である — 設定の保存はこのフォームの中にあり、登録はこのモーダルの外にある。
+ */
+export const LOCATION_ABSENT_REASON =
+  "そのフォルダはまだありません（設定を保存するか、プロジェクトを登録すると作成します）。";
+
+/**
+ * フォルダの有無の答えがまだ手元に無いときの、場所を開く の理由。**「フォルダが無い」と書き分ける** —
+ * 問い合わせが返っていない、あるいはその問い合わせ自体が失敗した状態で、フォルダが無いことは分かって
+ * いない。分けないと、測っていないことを測ったかのように述べることになる。
+ */
+export const LOCATION_UNCONFIRMED_REASON = "そのフォルダがあるかどうかを確認できていません。";
+
+/**
+ * 場所を開く の 保留判定 と 保留理由 (TASK-75 AC #3、doc-11 §5)。判定を理由文の非 null で代えないのは
+ * 同節のためで、兼ねさせると理由文を落とした日に無効化まで一緒に落ちる。
  *
- * 発行中を状態ではなく**理由**として持つのは doc-11 §5 のためで、控えが `aria-disabled` になる間ずっと
+ * 判定が読むのは**フォルダの有無**であって、設定ファイルが書かれているかではない (doc-3 §2.1)。
+ * 控えが開くのはフォルダで、そのフォルダは台帳・アプリ設定のどちらかを最初に保存した時点で作られる
+ * ので、**プロジェクトを 1 件登録して設定を一度も保存していない状態でも開ける** — TASK-144 まではその
+ * 状態で押せず、しかも理由は利用者が必要としていない別のファイルについて述べていた。読めない・上位版の
+ * ファイルも同じ判定に収まる: ファイルが**ある**ならフォルダもあり、手で直すならまさにそこを開く必要が
+ * ある。
+ *
+ * 発行中を状態ではなく**理由**として持つのも doc-11 §5 のためで、控えが `aria-disabled` になる間ずっと
  * `aria-describedby` の指す先が空だと、それは同節が禁じる理由の無い無効化そのものになる。
  */
-export function openLocationBlocked(status: SettingsStatus, opening: boolean): string | null {
-  if (opening) return OPENING_LOCATION_REASON;
-  return status.state === "absent"
-    ? "設定ファイルはまだ作成されていないため、その場所を開けません（保存すると作成します）。"
-    : null;
+export function openLocationAvailability(
+  present: boolean | null,
+  opening: boolean,
+): { enabled: boolean; reason: string | null } {
+  if (opening) {
+    return { enabled: false, reason: OPENING_LOCATION_REASON };
+  }
+  if (present === null) {
+    return { enabled: false, reason: LOCATION_UNCONFIRMED_REASON };
+  }
+  if (!present) {
+    return { enabled: false, reason: LOCATION_ABSENT_REASON };
+  }
+  return { enabled: true, reason: null };
 }
 
 /**

@@ -87,6 +87,7 @@ pub fn run() {
             commands::settings_read,
             commands::settings_save,
             commands::settings_location,
+            commands::settings_directory_present,
             commands::settings_location_open,
             // 外部エディタ経路 (doc-8 §7): neither path — Atlas starts an editor and writes nothing.
             commands::editor_probe,

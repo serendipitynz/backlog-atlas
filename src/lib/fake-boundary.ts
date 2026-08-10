@@ -97,6 +97,8 @@ export const answers = {
   ledgerPath: "/config/ledger.toml",
   settings: { settings: DEFAULT_SETTINGS, status: { state: "stored" } } as LoadedSettings,
   settingsPath: "/config/settings.toml",
+  /** Answers `settings_directory_present` — whether 場所を開く has a folder to open (doc-3 §2.1). */
+  settingsDirectory: true,
   loads: [] as ProjectLoad[],
   /** Answers `git_remote_read` — the 概要区画's remote 現在値 (doc-10 §4.1). */
   gitRemote: { state: "remoteAbsent" } as GitRemoteRead,
@@ -173,6 +175,7 @@ export function reset(): void {
   answers.ledgerPath = "/config/ledger.toml";
   answers.settings = { settings: { ...DEFAULT_SETTINGS }, status: { state: "stored" } };
   answers.settingsPath = "/config/settings.toml";
+  answers.settingsDirectory = true;
   answers.loads = [];
   answers.gitRemote = { state: "remoteAbsent" };
   answers.history = new Map();
@@ -298,6 +301,9 @@ export const commandFakes = {
 
   settingsLocation: (): Promise<string> =>
     record("settings_location", [], () => Promise.resolve(answers.settingsPath)),
+
+  settingsDirectoryPresent: (): Promise<boolean> =>
+    record("settings_directory_present", [], () => Promise.resolve(answers.settingsDirectory)),
 
   settingsLocationOpen: (): Promise<EditorLaunch> =>
     record("settings_location_open", [], () =>

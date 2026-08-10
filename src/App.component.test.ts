@@ -160,6 +160,21 @@ describe("起動時の設定・workspace・監視の順序", () => {
     expect(madeTo("project_watch_start")).toEqual([]);
   });
 
+  it("フォルダの有無を、起動時と設定モーダルを開くたびに問い直す", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    expect(madeTo("settings_directory_present")).toHaveLength(1);
+
+    // doc-3 §2.1: the answer changes while the app runs — a 登録 creates the folder — so an open that
+    // reused the startup answer would offer TASK-144's symptom again, a folder that is there and a
+    // control that refuses. The 2 つのパス are the opposite case and are resolved once, which is why
+    // only this one is re-asked; nothing else in the shell reads it, so no other call site can be
+    // what keeps it current.
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+    await settled();
+    expect(madeTo("settings_directory_present")).toHaveLength(2);
+  });
+
   it("設定の読取が失敗しても既定値で起動を続ける", async () => {
     // What is fixed here is that a *rejection* is not fatal: the boundary already degrades a missing
     // or unreadable file to the defaults, so only an IPC failure reaches the shell, and leaving
