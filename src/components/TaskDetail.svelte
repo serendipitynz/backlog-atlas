@@ -972,10 +972,12 @@
   </div>
 {/snippet}
 
-<!-- 編集入口 (doc-8 §3): the 編集卓's buttons, drawn at the right end of the heading's title row so
-     that the primary action on this task is reachable without scrolling — the same requirement that
-     fixes the heading at all (doc-8 §3). Only the buttons move: the console below keeps every sentence,
-     because those grow and shrink with the session and the heading has no room to grow into. -->
+<!-- 編集入口 (doc-8 §3): drawn at the right end of the heading's title row so that the way into an
+     edit is reachable without scrolling — the same requirement that fixes the heading at all.
+     **保存 と キャンセル are not here** (2026-08-10, doc-11 §11): those are the 発行 and its 取りやめ,
+     and the rule puts them in a row pinned to the bottom of the panel (`editIssueRow`). What stays is
+     the entry, which issues nothing. The slot is empty during a session, and the console below keeps
+     every sentence that outlives the press. -->
 {#snippet editEntry()}
   <div class="entry">
     {#if session === null}
@@ -988,7 +990,32 @@
       >
         編集
       </button>
-    {:else}
+    {/if}
+  </div>
+{/snippet}
+
+<!-- 発行の行 (doc-11 §11): the 編集セッション is the only 発行 this panel holds and the panel scrolls,
+     so the row pins to its bottom. Inside it goes what has to be read *before* the press — the reason
+     保存 is withheld, and the chord that runs it. The result of the press does not: a save that lands
+     ends the session (doc-8 §6.3), so a sentence in this row would go down with the row. Those stay in
+     the 編集卓 (doc-8 §3), which is drawn whether or not a session is open. -->
+{#snippet editIssueRow()}
+  <div class="issue">
+    {#if !missing}
+      <!-- 操作の近くに併記する (doc-7 §2.1). Printed from the 割り当て一覧, never spelled here, and it
+           names where the chord is answered — the 編集部品 (its 適用範囲), not the whole session. -->
+      <p class="hint">
+        本文欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも保存を発行できます。
+      </p>
+    {/if}
+    {#if plan !== null && plan.state === "refused"}
+      <p class="warn">{plan.reason}</p>
+    {:else if plan !== null && plan.state === "nothingToSave" && !missing}
+      <p class="hint">{NOTHING_TO_SAVE_REASON}。</p>
+    {/if}
+    <div class="issue-actions">
+      <!-- 取りやめ → 発行 (doc-11 §11). -->
+      <button type="button" onclick={cancelEditing}>キャンセル</button>
       <button
         type="button"
         class="primary"
@@ -1001,8 +1028,7 @@
       >
         {busy ? "保存中…" : "保存"}
       </button>
-      <button type="button" onclick={cancelEditing}>キャンセル</button>
-    {/if}
+    </div>
   </div>
 {/snippet}
 
@@ -1018,22 +1044,10 @@
         <p class="hint">{availability.reason}</p>
       {/if}
     {:else}
-      {#if !missing}
-        <!-- Withheld while the file is gone: naming the save shortcut there would advertise an
-             operation that cannot be issued (doc-5 §5). The banner above carries the reason.
-             The chord is printed from the 割り当て一覧 (doc-7 §2.1) rather than spelled here, so this
-             sentence cannot outlive the assignment — and it names *where* the chord is answered, which
-             is the 編集部品 (its 適用範囲) and not the whole session. Enter's own meaning is stated at the
-             field itself (`Editor.svelte`), where the key is pressed. -->
-        <p class="hint">
-          保存は保存ボタン、または本文欄で {shortcutHint("saveEditSession", MAC_KEYBOARD)} です。
-        </p>
-      {/if}
-      {#if plan !== null && plan.state === "refused"}
-        <p class="warn">{plan.reason}</p>
-      {:else if plan !== null && plan.state === "nothingToSave" && !missing}
-        <p class="hint">{NOTHING_TO_SAVE_REASON}。</p>
-      {/if}
+      <!-- The chord's 併記 and the reason 保存 is withheld moved to the 発行の行 (doc-11 §11,
+           `editIssueRow`): both have to be read at the moment the control is pressed, and that
+           control is no longer here. Enter's own meaning stays stated at the field itself
+           (`Editor.svelte`), where the key is pressed. -->
       {#if dirty}
         <!-- 破棄前確認 (doc-8 §6.3) を、押す前に読める形で置く: 入力を失う操作の前には同じ確認が
              上部帯に出る、という予告である。§6.3 の 5 経路をここへ数え上げないのは doc-11 §8 の
@@ -1752,6 +1766,12 @@
     <div class="flow">{@render column(SINGLE_COLUMN_ORDER)}</div>
   {/if}
 
+  <!-- 発行の行 (doc-11 §11), last so it pins against this panel's bottom edge in all three placements —
+       the same box the 見出し pins against at the top. Only while a session is open: there is no 発行
+       to place otherwise, and a row standing empty would take height from the body for nothing. -->
+  {#if session !== null}
+    {@render editIssueRow()}
+  {/if}
 </aside>
 
 <style lang="scss">
@@ -1958,6 +1978,44 @@
     flex: none;
     gap: 0.3rem;
     margin-left: auto;
+  }
+
+  /*
+   * 発行の行 (doc-11 §11), pinned against the same box the 見出し band pins against — `.detail` is the
+   * scroll container in all three placements, so one rule covers them. The sideways pull-out and the
+   * opaque background are the band's requirements read the other way up: a transparent pinned row is
+   * one the body scrolls *through*, and a row that stops at the panel's padding leaves a strip of
+   * text showing beside it.
+   *
+   * Unlike the band, this row may grow: the withheld reason is a sentence of unknown length. That is
+   * affordable here and was not there — the band takes its height off the top of the body permanently,
+   * while this row stands only during a session and is what the session is being read for.
+   */
+  .issue {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0 calc(var(--panel-padding) * -1);
+    padding: 0.45rem var(--panel-padding) 0.5rem;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+
+    .hint,
+    .warn {
+      margin: 0;
+      text-align: center;
+      font-size: 0.7rem;
+    }
+  }
+
+  .issue-actions {
+    display: flex;
+    // 行の中で中央 (doc-11 §11).
+    justify-content: center;
+    gap: 0.3rem;
   }
 
   .line {

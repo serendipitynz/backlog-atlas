@@ -290,21 +290,26 @@
     <p class="problem">{report.message}</p>
   {/if}
 
-  <div class="row">
-    <button
-      type="button"
-      class="primary"
-      aria-disabled={!canRegister}
-      aria-describedby={canRegister ? undefined : BLOCKED_ID}
-      title={blocked ?? "入力の内容で台帳へ登録します"}
-      onclick={submit}
-    >
-      {submitting ? "登録中…" : "登録"}
-    </button>
+  <!-- 発行の行 (doc-11 §11): pinned to the bottom of the layer's scrolling region. The reason 登録 is
+       withheld goes inside the same pinned box — half of what pinning is for is that what the press
+       has to say is on screen at the moment it is pressed. -->
+  <div class="issue">
+    {#if blocked !== null}
+      <p class="blocked-note" id={BLOCKED_ID}>{blocked}</p>
+    {/if}
+    <div class="row">
+      <button
+        type="button"
+        class="primary"
+        aria-disabled={!canRegister}
+        aria-describedby={canRegister ? undefined : BLOCKED_ID}
+        title={blocked ?? "入力の内容で台帳へ登録します"}
+        onclick={submit}
+      >
+        {submitting ? "登録中…" : "登録"}
+      </button>
+    </div>
   </div>
-  {#if blocked !== null}
-    <p class="blocked-note" id={BLOCKED_ID}>{blocked}</p>
-  {/if}
 </section>
 
 <style lang="scss">
@@ -313,7 +318,9 @@
     flex-direction: column;
     gap: 0.35rem;
     max-width: 42rem;
-    padding: 0.7rem 0.75rem 1rem;
+    // No bottom padding: the 発行の行 below is pinned to the bottom of the scrolling region, and a
+    // padding here would hold it that far off the edge it is pinned to.
+    padding: 0.7rem 0.75rem 0;
     font-size: 0.8rem;
   }
 
@@ -370,10 +377,30 @@
     }
   }
 
+  /*
+   * 発行の行 (doc-11 §11). `sticky` rather than a box outside the scroll: the scrolling region belongs
+   * to `Modal.svelte` and this form is drawn inside it, so there is no outside to sit in. Opaque and
+   * ruled off for the same reason the 見出し band in `TaskDetail.svelte` is — a transparent pinned box
+   * is one the text scrolls *through*.
+   */
+  .issue {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+    padding: 0.45rem 0 0.7rem;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+  }
+
   .row {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
+    // 行の中で中央 (doc-11 §11).
+    justify-content: center;
     gap: 0.25rem;
   }
 
