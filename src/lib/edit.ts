@@ -1127,15 +1127,18 @@ export function transitionConfirmation(offer: TransitionOffer): IssueConfirmatio
 // Keyed by `TransitionKind` so a sixth transition cannot be added without the compiler asking what its
 // question says — the same reason `band.ts` keys its texts by `BandKind`.
 //
-// アーカイブ・完了整理 name the CLI's absence rather than saying 元に戻せません: what a user can do next is
-// decided by whether a subcommand exists (2026-08-11 に `--help` で実測。doc-8 §6.5), and 差し戻す・昇格
-// *can* be taken back — what those two lose is the id, which is why they say that instead.
+// **The three one-way moves say 戻せません plainly, and do not name the CLI's absence** (the wording is the
+// user's, from the 2026-08-11 目視). The first draft said "アーカイブから戻す操作は v1.48.0 の CLI に
+// ありません" — true, and measured (doc-8 §6.5 holds that measurement, which is where a reader who needs
+// the reason goes) — but a version number in a question about *this* press answers something the user did
+// not ask at the moment of asking. 差し戻す・昇格 *can* be taken back, so those two say what is lost
+// instead: the id.
 const TRANSITION_CONFIRM_QUESTION: Record<TransitionKind, string> = {
   taskDemote: "このタスクを draft へ差し戻します。id は採番し直されます。",
-  taskArchive: "このタスクをアーカイブします。アーカイブから戻す操作は v1.48.0 の CLI にありません。",
-  taskComplete: "このタスクを完了整理します。completed から戻す操作は v1.48.0 の CLI にありません。",
+  taskArchive: "このタスクをアーカイブします。この操作は戻せません。",
+  taskComplete: "このタスクを完了整理します。この操作は戻せません。",
   draftPromote: "この draft をタスクへ昇格します。id は採番し直されます。",
-  draftArchive: "この draft をアーカイブします。アーカイブから戻す操作は v1.48.0 の CLI にありません。",
+  draftArchive: "この draft をアーカイブします。この操作は戻せません。",
 };
 
 /** 進む側は動作を名乗る (doc-11 §12). Two kinds share `アーカイブする`: the act is the same act, and the

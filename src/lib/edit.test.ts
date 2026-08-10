@@ -615,13 +615,19 @@ describe("実行前確認 (doc-11 §12)", () => {
     expect(transitionConfirmation(complete).question).not.toContain("Done のときのみ");
   });
 
-  it("戻せない遷移は、戻す操作が CLI に無いことを述べる", () => {
-    // 「元に戻せません」 alone would not say what a user can do next; what decides it is whether the
-    // subcommand exists (doc-8 §6.5 の実測).
+  it("片道の遷移は 3 件とも同じ語で戻せないことを述べる", () => {
+    // One wording for the three, because it is one fact about them (the user's word, 2026-08-11 の目視).
+    // The version number that first draft carried belongs to doc-8 §6.5, not to a question about this
+    // press. 差し戻す・昇格 must not pick it up: those two *can* be taken back.
     for (const kind of ["taskArchive", "taskComplete", "draftArchive"] as const) {
       const offer = everyOffer().find((entry) => entry.kind === kind);
       if (offer === undefined) throw new Error(`expected ${kind}`);
-      expect(transitionConfirmation(offer).question).toContain("v1.48.0 の CLI にありません");
+      expect(transitionConfirmation(offer).question).toContain("この操作は戻せません。");
+    }
+    for (const kind of ["taskDemote", "draftPromote"] as const) {
+      const offer = everyOffer().find((entry) => entry.kind === kind);
+      if (offer === undefined) throw new Error(`expected ${kind}`);
+      expect(transitionConfirmation(offer).question).not.toContain("戻せません");
     }
   });
 
