@@ -147,7 +147,10 @@
       </label>
     {/if}
 
+    <!-- 発行の行 (doc-11 §11), left where it is: this 層 does not scroll, so nothing can carry the
+         controls off screen and there is no pinning to do. 取りやめ → 発行 all the same. -->
     <div class="actions">
+      <button type="button" onclick={onclose}>キャンセル</button>
       <!-- 無効化提示 (doc-11 §5): the control stays and keeps a reason. The sentence below is drawn
            only when the 区画 does not already state it — a title marked「（必須）」sitting empty is
            itself the 常時表示 reason §5 asks for (doc-11 §8). -->
@@ -162,7 +165,6 @@
         <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4); the chord is on `aria-keyshortcuts` as data. -->
         <span class="hint" aria-hidden="true">{shortcutHint("submitLaneCreate", MAC_KEYBOARD)}</span>
       </button>
-      <button type="button" onclick={onclose}>キャンセル</button>
     </div>
     {#if blocked !== null && !omitsSentence(blocked)}
       <p class="reason">{blocked}</p>

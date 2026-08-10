@@ -515,29 +515,21 @@
 
 <style lang="scss">
   /*
-   * The box the モーダル holds, bounded so the 下部操作行 can sit outside the scroll (AC #1).
-   *
-   * The bound is the window less what `Modal.svelte` puts between this box and the window edge: its
-   * backdrop's padding on both sides, the dialog's own border on both, and the 破棄前確認's row while
-   * one stands (`0px` while none does). Those numbers are declared there as custom properties and read
-   * here, so the box that is sized and the box that is drawn are the same one — a literal `4rem`
-   * copied into this file is exactly how a padding changed in one place leaves a footer two pixels
-   * below the fold in another. The confirmation is the case where that was not two pixels: the row
-   * takes its height off the top, and without subtracting it the 下部操作行 goes under the window's
-   * edge just as the user is asked whether to leave by it.
-   *
-   * `box-sizing` because this box states a height in `rem` and carries padding (the repository has no
-   * global reset — the height would otherwise be the content's and the padding would be added outside
-   * it).
+   * The box the モーダル holds. **It no longer bounds its own height** (2026-08-10): `Modal.svelte`
+   * bounds the dialog and scrolls the region this box sits in (doc-11 §11), so the 下部操作行 keeps
+   * itself on screen by pinning to that region rather than by sitting outside a scroll of this file's
+   * own. What went is a `calc` over three numbers — the backdrop's padding, the dialog's border, and
+   * the 破棄前確認's row while one stood — held in two files that had to agree, and twice did not:
+   * a literal copied here is how a padding changed there left the footer below the fold, and the
+   * question's row took its height off the top without this box knowing, putting the 下部操作行 under
+   * the window's edge exactly while the user was asked whether to leave by it.
    *
    * **The side padding is on the three children, not here.** A scroll container clips what is painted
-   * to its padding box, and a focus ring is painted outside the control it belongs to — so with the
-   * scrolling moved into `.body`, a control flush against its content edge had its ring cut down the
-   * left side (the 表示テーマ `select`, reported from the real WKWebView). While this box was the one
-   * that scrolled, its own side padding was the room that ring needed; giving that padding to the box
-   * that scrolls now is putting the same room back where it was, rather than estimating how wide a
-   * ring the platform draws. One declaration, read by all three, so the row and the two rules under
-   * the heading and above the 下部操作行 cannot drift apart.
+   * to its padding box, and a focus ring is painted outside the control it belongs to — so a control
+   * flush against the scrollport's content edge had its ring cut down the left side (the 表示テーマ
+   * `select`, reported from the real WKWebView). The scrollport is `Modal`'s now, and this box has no
+   * side padding of its own, so the room that ring needs is exactly this declaration — read by all
+   * three children, so the row and the two rules cannot drift apart.
    */
   .settings {
     --panel-inline: 0.75rem;
@@ -545,12 +537,10 @@
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    max-height: calc(
-      100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2 -
-        var(--modal-confirm-height)
-    );
     gap: 0.6rem;
-    padding: 0.6rem 0 1rem;
+    // No bottom padding: the 下部操作行 pins to the bottom of the scrolling region, and a padding here
+    // would hold it that far off the edge it pins to.
+    padding: 0.6rem 0 0;
     font-size: 0.8rem;
   }
 
@@ -560,29 +550,29 @@
     padding-inline: var(--panel-inline);
   }
 
-  /*
-   * Everything between the heading and the 下部操作行. `min-height: 0` because a flex item's default
-   * `min-height: auto` is its content's height, which would let this box push past the bound above
-   * instead of scrolling inside it — and the footer would go down with it.
-   */
   .body {
     display: flex;
-    flex: 1;
     flex-direction: column;
-    min-height: 0;
     gap: 0.6rem;
-    overflow-y: auto;
   }
 
-  // The rule under the heading says the same thing the one above the 下部操作行 does: what is on the
-  // other side of it scrolls, and this does not.
+  /*
+   * Pinned, as the 下部操作行 below is: the two rules say the same thing about what is between them,
+   * and the heading names the layer being worked in, which is not something to lose to a scroll.
+   * Opaque, or the form scrolls *through* it. The × `Modal.svelte` draws is outside this box's flow,
+   * so the two do not have to be told about each other.
+   */
   header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
     flex: none;
     align-items: baseline;
     gap: 0.5rem;
     padding-bottom: 0.45rem;
     border-bottom: 1px solid var(--line);
+    background: var(--panel);
 
     h2 {
       margin: 0;
@@ -630,22 +620,32 @@
   }
 
   /*
-   * 下部操作行 (AC #1). Outside `.body`, so it is where it is whatever the form has been scrolled to;
-   * `flex: none` keeps it at its own height when the body wants the rest.
+   * 下部操作行 (TASK-74 AC #1), and the 発行の行 as well (doc-11 §11) — this is the one place where the
+   * two are the same row: 保存する is a 発行 and a way out, 変更せずに閉じる is its 取りやめ and the other
+   * way out. Pinned to the bottom of the layer's scrolling region so it is where it is whatever the
+   * form has been scrolled to. Opaque and ruled off, or the form scrolls *through* it.
    */
   footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
     display: flex;
     flex: none;
     flex-direction: column;
     gap: 0.3rem;
     padding-top: 0.45rem;
+    padding-bottom: 0.6rem;
     border-top: 1px solid var(--line);
+    background: var(--panel);
   }
 
+  // 発行の行 (doc-11 §11): centred in the row, 取りやめ then 発行. It was flush right until 2026-08-10,
+  // on the side the affirmative control takes on this platform; the rule now puts every 発行 in the
+  // same place whichever screen draws it, and the platform's side is what it gives up to do that.
   .actions {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: center;
     gap: 0.4rem;
   }
 

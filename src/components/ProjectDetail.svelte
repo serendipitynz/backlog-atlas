@@ -1207,6 +1207,19 @@
     return availability.state === "blocked" ? (availability.reason ?? "") : "";
   }
 
+  /**
+   * The `title` of a 発行 control that has a chord (doc-7 §2.1 の併記). When the control is pressable
+   * the chord is what the title has to carry — since 2026-08-10 the 併記 is discharged by the control
+   * itself and the キーボード操作一覧, with no visible line beside the row (目視). When it is withheld,
+   * the reason takes the title's place: naming a chord for a 発行 that cannot be issued advertises an
+   * operation the form is refusing (doc-5 §5).
+   */
+  function issueTitle(availability: { state: string; reason?: string }, label: string): string {
+    return availability.state === "blocked"
+      ? (availability.reason ?? "")
+      : `${label} (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`;
+  }
+
   function addTo(values: string[], value: string): string[] {
     const trimmed = value.trim();
     return trimmed === "" || values.includes(trimmed) ? values : [...values, trimmed];
@@ -1822,37 +1835,42 @@
                       )}
                     </div>
 
+                  </div>
+                  <!-- 発行の行 (doc-11 §11): this 編集セッション is the only 発行 this column holds, so
+                       the row pins to the bottom of the column and is read wherever the form has been
+                       scrolled to. **Outside the framed 更新フォーム above**, the way the 設定モーダル's
+                       下部操作行 sits outside its body: a row inside that frame is held off the column's
+                       edges by the frame's own border and padding, and cannot reach the edge it pins
+                       to (目視 2026-08-10). The reason the 発行 is withheld goes in with it. -->
+                  <div class="issue">
+                    <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because
+                         `aria-describedby` points at it: hidden when the 区画 already states it
+                         (doc-11 §8), visible otherwise. -->
+                    <span
+                      id={DOC_UPDATE_BLOCKED_ID}
+                      class={docUpdateIssue.state === "blocked" &&
+                      omitsSentence(docUpdateIssue.reason)
+                        ? "unseen"
+                        : "reason"}
+                    >
+                      {docUpdateIssue.state === "blocked" ? docUpdateIssue.reason : ""}
+                    </span>
+                    <!-- 併記 は控えの `title` と `aria-keyshortcuts`、そしてキーボード操作一覧が担う
+                         (doc-7 §2.1)。可視の 1 行はここに置かない。 -->
                     <div class="actions">
+                      <!-- 取りやめ → 発行 (doc-11 §11): one order everywhere, since the row is centred. -->
+                      <button type="button" onclick={closeEditor}>編集を止める</button>
                       <button
                         type="button"
                         aria-disabled={docUpdateIssue.state !== "ready"}
                         aria-describedby={docUpdateIssue.state === "blocked" ? DOC_UPDATE_BLOCKED_ID : undefined}
                         aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-                        title={why(docUpdateIssue)}
+                        title={issueTitle(docUpdateIssue, "文書を更新")}
                         onclick={() => docUpdateIssue.state === "ready" && updateDoc()}
                       >
                         文書を更新
                       </button>
-                      <button type="button" onclick={closeEditor}>編集を止める</button>
-                      <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because
-                           `aria-describedby` points at it: hidden when the 区画 already states it
-                           (doc-11 §8), visible otherwise. -->
-                      <span
-                        id={DOC_UPDATE_BLOCKED_ID}
-                        class={docUpdateIssue.state === "blocked" &&
-                        omitsSentence(docUpdateIssue.reason)
-                          ? "unseen"
-                          : "reason"}
-                      >
-                        {docUpdateIssue.state === "blocked" ? docUpdateIssue.reason : ""}
-                      </span>
                     </div>
-                    <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4). The chord is answered inside the 本文欄
-                         (its 適用範囲 is 編集部品の内側), so it is named here at the 発行 it runs — printed from
-                         the 割り当て一覧, never spelled by hand. -->
-                    <p class="hint">
-                      本文欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも更新を発行できます。
-                    </p>
                   </div>
                 {:else if selectedDocument !== null}
                   {@const document = selectedDocument}
@@ -2105,7 +2123,10 @@
                           (milestoneDescriptionDraft = event.currentTarget.value)}
                       ></textarea>
                     </label>
+                    <!-- Not pinned (doc-11 §11): this column holds 改称・削除・アーカイブ as well, so no
+                         one 発行 owns its bottom row. 取りやめ → 発行 all the same. -->
                     <div class="actions">
+                      <button type="button" onclick={closeMilestoneEdit}>編集を止める</button>
                       <button
                         type="button"
                         aria-disabled={describeIssue.state !== "ready"}
@@ -2116,7 +2137,6 @@
                       >
                         説明を保存
                       </button>
-                      <button type="button" onclick={closeMilestoneEdit}>編集を止める</button>
                       <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). See the 文書ペイン's copy above. -->
                       <span
                         id={DESCRIBE_BLOCKED_ID}
@@ -2262,6 +2282,8 @@
                         </div>
 
                         <div class="actions">
+                          <!-- 取りやめ → 発行 (doc-11 §11). Not pinned: see the 説明を保存 row above. -->
+                          <button type="button" onclick={closeMilestoneOp}>キャンセル</button>
                           <button
                             type="button"
                             disabled={opIssue?.state !== "ready"}
@@ -2282,7 +2304,6 @@
                                 ? "削除を発行"
                                 : "アーカイブを発行"}
                           </button>
-                          <button type="button" onclick={closeMilestoneOp}>キャンセル</button>
                           {#if opIssue?.state === "blocked" && !omitsSentence(opIssue.reason)}
                             <span class="reason">{opIssue.reason}</span>
                           {/if}
@@ -2488,26 +2509,25 @@
               )}
             </div>
 
-            <div class="actions">
-              <button
-                type="button"
-                disabled={taskIssue.state !== "ready"}
-                aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-                title={why(taskIssue)}
-                onclick={createTask}
-              >
-                タスクを作成
-              </button>
+            <!-- 発行の行 (doc-11 §11): the only 発行 this 区画 holds, and the form is long enough to
+                 carry it off screen, so it pins to the bottom of the 区画. -->
+            <div class="issue">
               {#if taskIssue.state === "blocked" && !omitsSentence(taskIssue.reason)}
                 <span class="reason">{taskIssue.reason}</span>
               {/if}
+              <!-- 併記 は控えの `aria-keyshortcuts`・`title` とキーボード操作一覧が担う (doc-7 §2.1)。 -->
+              <div class="actions">
+                <button
+                  type="button"
+                  disabled={taskIssue.state !== "ready"}
+                  aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
+                  title={issueTitle(taskIssue, "タスクを作成")}
+                  onclick={createTask}
+                >
+                  タスクを作成
+                </button>
+              </div>
             </div>
-            <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4): the same chord, answered in the description
-                 欄. It reads「作成」here because what a 編集部品's chord confirms is its form's own 発行 —
-                 which is why the 割り当て一覧 words that row for both. -->
-            <p class="hint">
-              description 欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも作成を発行できます。
-            </p>
           {/if}
 
         </section>
@@ -2572,24 +2592,27 @@
             />
           </label>
         </div>
-        <p class="hint">
-          本文は作成時には渡せません。
-        </p>
+        <!-- 本文の欄をここに出さないことについては何も述べない (doc-11 §8): 画面が欄を見せていない
+             ものについて、なぜ無いかを述べない、が本則である。作成した文書へ本文を入れる先は
+             文書ペインの編集セッションで、そこには欄がある。 -->
         <!-- No 下部操作行 (doc-11 §7): 「文書を作成」 writes but does not leave the layer, so there is
              only one way out and nothing for a second wording to tell apart. What the × does with
-             what is typed here is said by the 破棄前確認 instead. -->
-        <div class="actions">
-          <button
-            type="button"
-            disabled={docCreateIssue.state !== "ready"}
-            title={why(docCreateIssue)}
-            onclick={createDoc}
-          >
-            文書を作成
-          </button>
+             what is typed here is said by the 破棄前確認 instead. **The pinned 発行の行 below is not one**
+             (doc-11 §11): that row carries a 発行, and a 下部操作行 carries exits. -->
+        <div class="issue">
           {#if docCreateIssue.state === "blocked" && !omitsSentence(docCreateIssue.reason)}
             <span class="reason">{docCreateIssue.reason}</span>
           {/if}
+          <div class="actions">
+            <button
+              type="button"
+              disabled={docCreateIssue.state !== "ready"}
+              title={why(docCreateIssue)}
+              onclick={createDoc}
+            >
+              文書を作成
+            </button>
+          </div>
         </div>
       </div>
     {:else if layerOpen === "task-note"}
@@ -2625,18 +2648,21 @@
             oninput={(event) => (milestoneInput.description = event.currentTarget.value)}
           />
         </label>
-        <div class="actions">
-          <button
-            type="button"
-            disabled={milestoneIssue.state !== "ready"}
-            title={why(milestoneIssue)}
-            onclick={addMilestone}
-          >
-            マイルストーンを作成
-          </button>
+        <!-- 発行の行 (doc-11 §11), as the 文書を作成 layer above. -->
+        <div class="issue">
           {#if milestoneIssue.state === "blocked" && !omitsSentence(milestoneIssue.reason)}
             <span class="reason">{milestoneIssue.reason}</span>
           {/if}
+          <div class="actions">
+            <button
+              type="button"
+              disabled={milestoneIssue.state !== "ready"}
+              title={why(milestoneIssue)}
+              onclick={addMilestone}
+            >
+              マイルストーンを作成
+            </button>
+          </div>
         </div>
       </div>
     {/if}
@@ -2727,6 +2753,16 @@
     min-width: 0;
     padding: 0.6rem 0.75rem 1.5rem;
     overflow-y: auto;
+
+    // 発行の行 を持つ区画では、この箱の下 padding は行が持つ (上の `.pane` と同じ理由)。
+    &:has(> section > .issue) {
+      padding-bottom: 0;
+    }
+
+    > section > .issue {
+      margin-right: -0.75rem;
+      margin-left: -0.75rem;
+    }
 
     // 一覧列を持つ区画 (doc-10 §1: 文書 §5 と マイルストーン §6): the panel stops being the scroller
     // and hands its height to the two columns, each scrolling on its own. Its horizontal padding
@@ -2926,6 +2962,19 @@
     > :first-child {
       margin-top: 0;
     }
+
+    // 編集セッション中は下端に発行の行が居るので、この列自身の下 padding は要らない — 残すと行が
+    // 縁から浮き、スクロールの末尾でそのぶん持ち上がる (目視 2026-08-10)。
+    &:has(.issue) {
+      padding-bottom: 0;
+    }
+
+    // 発行の行 は框の外 — 列の子として直接置いているので、引き出しは要らない。左右は列の padding を
+    // 打ち消して縁まで届かせ、内側の余白は行が自分で持つ。
+    > .issue {
+      margin-right: -0.75rem;
+      margin-left: -0.6rem;
+    }
   }
 
   h2 {
@@ -3049,6 +3098,46 @@
     align-items: center;
     gap: 0.4rem;
     margin-top: 0.4rem;
+  }
+
+  /*
+   * 発行の行 (doc-11 §11), for the three faces here that hold exactly one 発行: the 文書ペイン's
+   * 編集セッション, the 新規タスク区画, and each 作成モーダル. Pinned to the bottom of whichever box is
+   * scrolling — the pane, the panel, or `Modal.svelte`'s content region — so `sticky` rather than a
+   * row outside the scroll: the scroller is not this component's in the modal case, so there is no
+   * outside to sit in, and one mechanism for all three is one rule to read.
+   *
+   * Opaque and ruled off, or the form scrolls *through* it (the same requirement `TaskDetail.svelte`
+   * states for its pinned 見出し band). The 概要区画 and the マイルストーンペイン have no rule of their
+   * own here: they hold two 発行 apiece, so their rows stay in the flow (doc-10 §4.1・§6).
+   */
+  .issue {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    /*
+     * Pulled out to the edges of the box that scrolls, and given that room back as its own padding —
+     * a rule that stops short of the edge reads as a line drawn *inside* the panel rather than as the
+     * panel's own division (目視 2026-08-10). Each face states its own two values because the three
+     * scrollers do not share a padding: the pane is 0.6/0.75rem, the panel 0.75rem both sides, and a
+     * modal form keeps the × clear on the right.
+     */
+    margin-top: 0.4rem;
+    padding: 0.45rem 0.75rem 0.6rem;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+
+    .actions {
+      // 行の中で中央 (doc-11 §11).
+      justify-content: center;
+      margin-top: 0;
+    }
+
+    .reason {
+      text-align: center;
+    }
   }
 
   .aliases {
@@ -3344,9 +3433,19 @@
   .modal-form {
     padding: 0.75rem;
     padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
+    // The 発行の行 pins to the bottom of the layer's scrolling region (doc-11 §11); a padding here
+    // would hold it that far off the edge it pins to, and it carries its own instead.
+    padding-bottom: 0;
 
     > :first-child {
       margin-top: 0;
+    }
+
+    // 区切りは層の幅いっぱいに引く — 設定モーダルの下部操作行と同じ見え方にする (目視 2026-08-10)。
+    // 右は × のぶんまで戻す: 行の中身は × を避ける必要が無く、避けているのは上の欄だけである。
+    .issue {
+      margin-right: calc(-1 * (var(--modal-close-inset) * 2 + var(--modal-close-size)));
+      margin-left: -0.75rem;
     }
   }
 
@@ -3495,6 +3594,10 @@
   // 注記モーダル (doc-10 §7): one sentence and the names under it. No `code`, no per-item reason —
   // what the layer is for is 代替経路の案内 alone (doc-11 §8).
   .note {
+    // Keeps the bottom padding the other two give up: this layer holds no 発行, so there is no row
+    // pinned to the bottom edge to carry it (doc-11 §11 — 発行の控えを持たない面は本節の外である).
+    padding-bottom: 0.75rem;
+
     ul {
       margin: 0.35rem 0 0;
       padding-left: 1.1rem;

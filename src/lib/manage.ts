@@ -39,7 +39,7 @@
  *   (doc-9 §5) — that one is a reason a *pressable* control was turned away.
  */
 
-import { readinessReason } from "./edit";
+import { NOTHING_TO_SAVE_REASON, readinessReason } from "./edit";
 import { conflictSetDetail } from "./mark";
 import { OVERVIEW_INPUT_PROBLEMS_REASON, OVERVIEW_NO_CHANGES_REASON } from "./project-detail";
 import type {
@@ -652,7 +652,11 @@ export const MILESTONE_DESCRIPTION_UNCHANGED_REASON = "説明は変更されて�
  * - **② nothing typed / nothing changed yet**, where the form itself makes the next move obvious.
  *   No marker states it, so these two take §5's *second* form — the control is `aria-disabled` and
  *   focusable, and `aria-describedby` names a span that is always in the DOM
- *   (`DOC_NOTHING_TO_UPDATE_REASON`, `MILESTONE_DESCRIPTION_UNCHANGED_REASON`).
+ *   (`DOC_NOTHING_TO_UPDATE_REASON`, `MILESTONE_DESCRIPTION_UNCHANGED_REASON`, and
+ *   `NOTHING_TO_SAVE_REASON` — the タスク詳細's 保存, added 2026-08-10 from the 目視 on TASK-135).
+ *   **`NOTHING_TO_SAVE_REASON` is the first entry from outside プロジェクト詳細**, which is why this
+ *   list sits beside `omitsSentence` rather than beside any one screen: the licence is a fact about
+ *   the reason and its 区画, and both screens ask the same question of it.
  *
  * **Reasons caused from outside the form are on neither licence and keep their sentence** — CLI 縮退,
  * 台帳読取専用, 発行中, 競合. That is why this is a listed set and not a rule over all 保留理由: which
@@ -666,6 +670,7 @@ const REASONS_WITHOUT_SENTENCE: readonly string[] = [
   MILESTONE_NAME_REQUIRED_REASON,
   MILESTONE_RENAME_REQUIRED_REASON,
   MILESTONE_DESCRIPTION_UNCHANGED_REASON,
+  NOTHING_TO_SAVE_REASON,
   OVERVIEW_INPUT_PROBLEMS_REASON,
   OVERVIEW_NO_CHANGES_REASON,
 ];

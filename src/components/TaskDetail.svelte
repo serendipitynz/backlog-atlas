@@ -24,6 +24,7 @@
   import GitHistory from "./GitHistory.svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import { cardIdentity, crossTaskId, priorityStep } from "../lib/card";
+  import { omitsSentence } from "../lib/manage";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import {
@@ -40,7 +41,6 @@
     EMPTY_DEPENDENCIES_REASON,
     EMPTY_REFERENCES_REASON,
     FILE_MISSING_REASON,
-    NOTHING_TO_SAVE_REASON,
     PRIORITIES,
     TYPE_NOT_EDITABLE,
     acDeltaDroppedByRebase,
@@ -265,6 +265,9 @@
   let crossId = $derived(crossTaskId(view));
 
   // --- 編集セッション (doc-8 §6.3) ---------------------------------------------------------
+
+  /** The 発行の行's reason element — named so `aria-describedby` can point at it (doc-11 §5). */
+  const SAVE_REASON_ID = "task-detail-save-reason";
 
   /** `null` outside a session: the panel is display-only until 編集 is pressed (明示保存の前提). */
   let session = $state<EditSession | null>(null);
@@ -972,10 +975,12 @@
   </div>
 {/snippet}
 
-<!-- 編集入口 (doc-8 §3): the 編集卓's buttons, drawn at the right end of the heading's title row so
-     that the primary action on this task is reachable without scrolling — the same requirement that
-     fixes the heading at all (doc-8 §3). Only the buttons move: the console below keeps every sentence,
-     because those grow and shrink with the session and the heading has no room to grow into. -->
+<!-- 編集入口 (doc-8 §3): drawn at the right end of the heading's title row so that the way into an
+     edit is reachable without scrolling — the same requirement that fixes the heading at all.
+     **保存 と キャンセル are not here** (2026-08-10, doc-11 §11): those are the 発行 and its 取りやめ,
+     and the rule puts them in a row pinned to the bottom of the panel (`editIssueRow`). What stays is
+     the entry, which issues nothing. The slot is empty during a session, and the console below keeps
+     every sentence that outlives the press. -->
 {#snippet editEntry()}
   <div class="entry">
     {#if session === null}
@@ -988,11 +993,41 @@
       >
         編集
       </button>
-    {:else}
+    {/if}
+  </div>
+{/snippet}
+
+<!-- 発行の行 (doc-11 §11): the 編集セッション is the only 発行 this panel holds and the panel scrolls,
+     so the row pins to its bottom. Inside it goes what has to be read *before* the press — the reason
+     保存 is withheld, and the chord that runs it. The result of the press does not: a save that lands
+     ends the session (doc-8 §6.3), so a sentence in this row would go down with the row. Those stay in
+     the 編集卓 (doc-8 §3), which is drawn whether or not a session is open. -->
+{#snippet editIssueRow()}
+  <div class="issue">
+    <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because `aria-describedby` points at
+         it; printed unless the reason is one §8 licences the screen to leave unsaid. 変更はまだありません
+         is such a reason (licence ②: the form itself says what to do next), so the row stays quiet
+         until there is something to say. The chord's 併記 is not here at all any more — doc-7 §2.1
+         takes `title` and `aria-keyshortcuts` plus the キーボード操作一覧 as discharging it. -->
+    <span
+      class="hint"
+      id={SAVE_REASON_ID}
+      class:unseen={saveGate.state === "ready" || omitsSentence(saveGate.reason)}
+    >
+      {saveGate.state === "ready" ? "" : saveGate.reason}
+    </span>
+    <div class="issue-actions">
+      <!-- 取りやめ → 発行 (doc-11 §11). -->
+      <button type="button" onclick={cancelEditing}>キャンセル</button>
+      <!-- `aria-disabled` rather than `disabled`: this control's 保留理由 are of both kinds (doc-11 §8)
+           — 発行中 and ファイルが無い are caused from outside the form and keep a printed line, 変更は
+           まだありません is licensed away — and one control may not take focus or not depending on why
+           it is withheld. `save()` holds the same gate, so a press while withheld issues nothing. -->
       <button
         type="button"
         class="primary"
-        disabled={saveGate.state !== "ready"}
+        aria-disabled={saveGate.state !== "ready"}
+        aria-describedby={saveGate.state === "ready" ? undefined : SAVE_REASON_ID}
         aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
         title={saveGate.state === "ready"
           ? `保存 (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`
@@ -1001,8 +1036,7 @@
       >
         {busy ? "保存中…" : "保存"}
       </button>
-      <button type="button" onclick={cancelEditing}>キャンセル</button>
-    {/if}
+    </div>
   </div>
 {/snippet}
 
@@ -1018,22 +1052,10 @@
         <p class="hint">{availability.reason}</p>
       {/if}
     {:else}
-      {#if !missing}
-        <!-- Withheld while the file is gone: naming the save shortcut there would advertise an
-             operation that cannot be issued (doc-5 §5). The banner above carries the reason.
-             The chord is printed from the 割り当て一覧 (doc-7 §2.1) rather than spelled here, so this
-             sentence cannot outlive the assignment — and it names *where* the chord is answered, which
-             is the 編集部品 (its 適用範囲) and not the whole session. Enter's own meaning is stated at the
-             field itself (`Editor.svelte`), where the key is pressed. -->
-        <p class="hint">
-          保存は保存ボタン、または本文欄で {shortcutHint("saveEditSession", MAC_KEYBOARD)} です。
-        </p>
-      {/if}
-      {#if plan !== null && plan.state === "refused"}
-        <p class="warn">{plan.reason}</p>
-      {:else if plan !== null && plan.state === "nothingToSave" && !missing}
-        <p class="hint">{NOTHING_TO_SAVE_REASON}。</p>
-      {/if}
+      <!-- The chord's 併記 and the reason 保存 is withheld moved to the 発行の行 (doc-11 §11,
+           `editIssueRow`): both have to be read at the moment the control is pressed, and that
+           control is no longer here. Enter's own meaning stays stated at the field itself
+           (`Editor.svelte`), where the key is pressed. -->
       {#if dirty}
         <!-- 破棄前確認 (doc-8 §6.3) を、押す前に読める形で置く: 入力を失う操作の前には同じ確認が
              上部帯に出る、という予告である。§6.3 の 5 経路をここへ数え上げないのは doc-11 §8 の
@@ -1752,6 +1774,12 @@
     <div class="flow">{@render column(SINGLE_COLUMN_ORDER)}</div>
   {/if}
 
+  <!-- 発行の行 (doc-11 §11), last so it pins against this panel's bottom edge in all three placements —
+       the same box the 見出し pins against at the top. Only while a session is open: there is no 発行
+       to place otherwise, and a row standing empty would take height from the body for nothing. -->
+  {#if session !== null}
+    {@render editIssueRow()}
+  {/if}
 </aside>
 
 <style lang="scss">
@@ -1768,6 +1796,12 @@
     background: var(--panel);
     // Scrolls inside itself so the swimlane keeps its own scroll position while the panel is open.
     overflow-y: auto;
+
+    // 編集セッション中は下端に発行の行が居るので、この箱の下 padding は要らない — 残すと行が縁から
+    // 浮き、スクロールの末尾でそのぶん持ち上がる (目視 2026-08-10。3 配置とも)。
+    &:has(> .issue) {
+      padding-bottom: 0;
+    }
   }
 
   // 併置サイドバー (doc-8 §2.1): a fixed share of the width — the grid beside it is the element
@@ -1942,7 +1976,15 @@
    * way left to copy it, and no figure says that. It stays visible — which is why the class is driven
    * by the failure state rather than by "is there anything to say".
    */
-  .live.unseen {
+  /*
+   * The 発行の行's reason takes the same treatment for a different requirement: doc-11 §8 licences the
+   * screen not to *print* 変更はまだありません, and doc-11 §5 keeps it reachable all the same, because
+   * 保存 points at it with `aria-describedby`. Selecting on the class alone rather than qualifying it
+   * as `.live.unseen` does, so both users of it get the same hiding — this was two rules for one
+   * behaviour until the reason was added (2026-08-10), and the reason was drawn on screen in the
+   * meantime because nothing here matched the class the markup was setting.
+   */
+  .unseen {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1958,6 +2000,43 @@
     flex: none;
     gap: 0.3rem;
     margin-left: auto;
+  }
+
+  /*
+   * 発行の行 (doc-11 §11), pinned against the same box the 見出し band pins against — `.detail` is the
+   * scroll container in all three placements, so one rule covers them. The sideways pull-out and the
+   * opaque background are the band's requirements read the other way up: a transparent pinned row is
+   * one the body scrolls *through*, and a row that stops at the panel's padding leaves a strip of
+   * text showing beside it.
+   *
+   * Unlike the band, this row may grow: the withheld reason is a sentence of unknown length. That is
+   * affordable here and was not there — the band takes its height off the top of the body permanently,
+   * while this row stands only during a session and is what the session is being read for.
+   */
+  .issue {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0 calc(var(--panel-padding) * -1);
+    padding: 0.45rem var(--panel-padding) 0.5rem;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+
+    .hint {
+      margin: 0;
+      text-align: center;
+      font-size: 0.7rem;
+    }
+  }
+
+  .issue-actions {
+    display: flex;
+    // 行の中で中央 (doc-11 §11).
+    justify-content: center;
+    gap: 0.3rem;
   }
 
   .line {
