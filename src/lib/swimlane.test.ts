@@ -3,6 +3,7 @@ import { DEFAULT_FILTER, type CardFilter } from "./filter";
 import { loadMap, loaded, taskView, unreadable } from "./fixtures";
 import {
   CANONICAL_COLUMNS,
+  LANE_FIGURE,
   LAST_COLUMN_FOLD_BLOCKED_REASON,
   ROW_FOLD_ABSENT_REASON,
   UNMAPPED_LABEL,
@@ -25,6 +26,7 @@ import {
   type SwimlaneRow,
 } from "./swimlane";
 import { cardIdentity, crossTaskId } from "./card";
+import { DISCLOSURE_ICON } from "./placement";
 import type { CardOrder, StatusColumn } from "./wire";
 
 function swimlane(
@@ -909,5 +911,51 @@ describe("2 層スティッキーの下への着地", () => {
     expect(laneScrollDelta({ ...folded, offset: 40 })).toBe(-16);
     // …and what was already in place under a 32px head is not under a 56px one.
     expect(laneScrollDelta({ ...grid, offset: 40 })).toBe(0);
+  });
+});
+
+// 図形の族 (doc-11 §2.4 の 同じ図形を別の操作へ与えない, TASK-139). The rule is cross-screen — chevron は
+// 折畳み、arrow は移動、and no figure belongs to both — so it is checked against both screens' tables at
+// once: this screen's `LANE_FIGURE` and タスク詳細's `DISCLOSURE_ICON` (doc-8 §3). Reading only one of
+// them would let the other take a chevron for a move without anything noticing, which is exactly what
+// the rule was written for: 行末の入口 looks like `›` and the nearest figure by shape is the 列折畳み's.
+describe("レーンの図形", () => {
+  const FOLD = [
+    ...Object.values(LANE_FIGURE.rowFold),
+    ...Object.values(LANE_FIGURE.columnFold),
+    ...Object.values(DISCLOSURE_ICON),
+  ];
+  const MOVE = [LANE_FIGURE.moveUp, LANE_FIGURE.moveDown, LANE_FIGURE.openProject];
+
+  it("折畳みは chevron、移動は arrow で描く", () => {
+    for (const figure of FOLD) {
+      expect(figure).toMatch(/^chevron-/);
+    }
+    for (const figure of MOVE) {
+      expect(figure).toMatch(/^arrow-/);
+    }
+  });
+
+  it("同じ図形が折畳みと移動の両方に出ない", () => {
+    expect(FOLD.filter((figure) => (MOVE as string[]).includes(figure))).toEqual([]);
+  });
+
+  // 行折畳み points at the state (doc-7 §2.3), 列折畳み at what the press does (§2.2) — so neither pair
+  // may be the other's, and neither may print one figure in both of its states.
+  it("2 つの折畳みは向きの組を共有せず、各組の 2 態も違う図形になる", () => {
+    expect(LANE_FIGURE.rowFold.open).not.toBe(LANE_FIGURE.rowFold.folded);
+    expect(LANE_FIGURE.columnFold.fold).not.toBe(LANE_FIGURE.columnFold.unfold);
+    expect(Object.values(LANE_FIGURE.rowFold)).not.toEqual(
+      expect.arrayContaining(Object.values(LANE_FIGURE.columnFold)),
+    );
+  });
+
+  // 行の並べ替え と 前後移動 は同じ 2 つを取る (doc-11 §2.4): both move one step up or down, and the
+  // 脇パネル配置 puts them on screen together — the rule bars sharing between operations that point at
+  // different things, so this pair being shared is the rule holding rather than an exception to it.
+  it("並べ替えは 前後移動 と同じ組を取り、行末の入口だけが別の図形になる", () => {
+    expect([LANE_FIGURE.moveUp, LANE_FIGURE.moveDown]).toEqual(["arrow-up", "arrow-down"]);
+    expect(LANE_FIGURE.openProject).not.toBe(LANE_FIGURE.moveUp);
+    expect(LANE_FIGURE.openProject).not.toBe(LANE_FIGURE.moveDown);
   });
 });
