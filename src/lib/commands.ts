@@ -199,6 +199,16 @@ export function settingsLocation(): Promise<string> {
 }
 
 /**
+ * Whether the アプリ設定ディレクトリ is there yet (doc-3 §2.1) — what withholds 場所を開く, since that
+ * control opens the folder and not either file. Asked separately from `settingsLocation` because the
+ * answers have different lifetimes: a path is resolved once and cannot change while the app runs,
+ * while this turns true the first time either file is saved.
+ */
+export function settingsDirectoryPresent(): Promise<boolean> {
+  return invoke<boolean>("settings_directory_present");
+}
+
+/**
  * Open the アプリ設定ディレクトリ in the OS's file manager (TASK-75). The directory the settings file is
  * in, not the file: opening a `.toml` by association starts a text editor, which is not what 場所を開く
  * asks for. 台帳ファイル is in the same directory (decision-13), so this one call is its 場所を開く too.
