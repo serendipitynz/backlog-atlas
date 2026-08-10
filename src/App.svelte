@@ -225,6 +225,13 @@
    * file is saved (`store::replace` creates the destination's parent).
    */
   let settingsDirectory = $state<boolean | null>(null);
+  /**
+   * Which probe of the folder is the current one. Two can be in flight — the startup one and the one
+   * a 設定 open issues over it — and without this the later *answer* wins rather than the later
+   * *question*: a startup rejection landing after an open-time `true` would put the control back to
+   * 確認できていません while the モーダル is up. Not `$state`: nothing renders from it.
+   */
+  let settingsDirectoryProbe = 0;
   /** Whether the 設定画面 is open. Opened from the fixed header's 設定 (doc-7 §2.1). */
   let settingsOpen = $state(false);
   /**
@@ -734,7 +741,11 @@
     } catch {
       settingsPath = null;
     }
-    await refreshSettingsDirectory();
+    // Not awaited: nothing in startup reads the answer — it is the 設定モーダル's, and the モーダル
+    // cannot be up yet — so awaiting it would only put an IPC round trip in front of the first
+    // draw. Issued here all the same, so the 区画 has an answer before its first open rather than
+    // showing 確認できていません for the moment that open's own probe takes.
+    void refreshSettingsDirectory();
     // 外部エディタ経路 (doc-8 §7): one environment read, so it is probed once beside the CLI probe.
     // Probed *after* the settings are read, because doc-8 §7's 起動指定の解決順 starts at アプリ設定 —
     // probing first would report `$EDITOR` as the editor in effect when a setting outranks it.
@@ -992,10 +1003,12 @@
    * established that the folder is missing.
    */
   async function refreshSettingsDirectory(): Promise<void> {
+    const issued = (settingsDirectoryProbe += 1);
     try {
-      settingsDirectory = await settingsDirectoryPresent();
+      const present = await settingsDirectoryPresent();
+      if (issued === settingsDirectoryProbe) settingsDirectory = present;
     } catch {
-      settingsDirectory = null;
+      if (issued === settingsDirectoryProbe) settingsDirectory = null;
     }
   }
 

@@ -242,9 +242,16 @@ export function openLocationAvailability(
   present: boolean | null,
   opening: boolean,
 ): { enabled: boolean; reason: string | null } {
-  if (opening) return { enabled: false, reason: OPENING_LOCATION_REASON };
-  if (present === null) return { enabled: false, reason: LOCATION_UNCONFIRMED_REASON };
-  return present ? { enabled: true, reason: null } : { enabled: false, reason: LOCATION_ABSENT_REASON };
+  if (opening) {
+    return { enabled: false, reason: OPENING_LOCATION_REASON };
+  }
+  if (present === null) {
+    return { enabled: false, reason: LOCATION_UNCONFIRMED_REASON };
+  }
+  if (!present) {
+    return { enabled: false, reason: LOCATION_ABSENT_REASON };
+  }
+  return { enabled: true, reason: null };
 }
 
 /**

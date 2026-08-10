@@ -1667,17 +1667,23 @@ pub fn settings_directory_present(app: AppHandle) -> Result<bool, CommandError> 
 }
 
 /// [`settings_directory_present`] without the Tauri handle, so the folder-not-file rule can be
-/// exercised against a real directory. An undeterminable answer is an error rather than `false`:
-/// the screen states this as the reason the control is withheld, and "the folder is not there" is
-/// not something an `io::Error` establishes. The variant is the one [`ConfigFiles::resolve`] already
-/// uses for a failure about this same directory.
+/// exercised against a real directory.
+///
+/// `metadata` rather than `try_exists`, which answers "an entry is there" and would say yes to a
+/// plain file left at that path — the control would then be offered and hand a file to the
+/// association launcher, which is the same 開く先 mix-up in the other direction. An undeterminable
+/// answer stays an error rather than collapsing to `false`: the screen states this as the reason the
+/// control is withheld, and "the folder is not there" is not something an `io::Error` establishes.
+/// The variant is the one [`ConfigFiles::resolve`] already uses for a failure about this same
+/// directory.
 fn directory_present(files: &ConfigFiles) -> Result<bool, CommandError> {
-    files
-        .directory
-        .try_exists()
-        .map_err(|e| CommandError::Ledger {
+    match files.directory.metadata() {
+        Ok(metadata) => Ok(metadata.is_dir()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(CommandError::Ledger {
             detail: format!("the application config directory could not be examined: {e}"),
-        })
+        }),
+    }
 }
 
 /// Open the アプリ設定ディレクトリ in whatever the OS opens a directory with (TASK-75 AC #1). The
@@ -3611,6 +3617,19 @@ labels: []\n\
         assert!(
             !directory_present(&untouched).unwrap(),
             "a first run has written neither file, so there is no folder to open"
+        );
+
+        // A plain file at the directory's own path is not a folder to open: the control would
+        // otherwise be offered and the association launcher handed a file (PR #92 の [P3]).
+        temp.write("not-a-directory", "");
+        let file_in_the_way = ConfigFiles {
+            directory: temp.path.join("not-a-directory"),
+            ledger: temp.path.join("not-a-directory").join("projects.toml"),
+            settings: temp.path.join("not-a-directory").join("settings.toml"),
+        };
+        assert!(
+            !directory_present(&file_in_the_way).unwrap(),
+            "an entry that is not a directory is not a folder 場所を開く can open"
         );
     }
 
