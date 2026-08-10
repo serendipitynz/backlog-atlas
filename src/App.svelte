@@ -883,12 +883,13 @@
       settingsSaving = false;
     }
     if (failure !== null) return failure;
-    // 保存した旨 (TASK-74 AC #4) as the 上部帯 ⑤ 通知 (doc-11 §4 済んだ操作の結果). It is worth a 帯
-    // because not every item shows itself: a 表示テーマ change is visible the moment the モーダル closes,
-    // while 既定の保存区分・既定の詳細配置・外部エディタ指定 only take effect on a later start or a later
-    // press. The モーダル covers the 上部帯 (`Modal.svelte`), so this is read after it closes, which is
-    // where 保存する goes (`Settings.svelte`).
-    notice = "設定を保存しました。";
+    // 発行が通った事実そのものは ⑤ 通知 に載せない (doc-11 §4). 保存する closes the モーダル only when
+    // the write landed (`Settings.svelte`), so the layer coming down is the report, and a 帯 would
+    // restate it at the top of a screen the user is not looking at yet — the 変化が分かりづらい
+    // TASK-74's 目視 left. Cleared rather than left alone, for the reason `retry` and `move` clear it:
+    // a 帯 from before this save (「設定を読み込めませんでした。既定値で動きます。」) is no longer true of
+    // the settings now in force, and beside a save that worked it reads as this one having failed.
+    notice = null;
     if (before !== watchEnabled) await reconcileWatches();
     // 起動指定の解決順 starts at アプリ設定 (doc-8 §7), so the probe's answer changes with this save.
     // Re-probed here rather than left until the next start: the panel names the editor it would
@@ -1499,15 +1500,22 @@
         outcome.state === "applied"
           ? (tasksOf(at.slug).find((view) => !before.has(view.task.sourcePath)) ?? null)
           : null;
-      notice =
-        outcomeMessage(outcome, `${at.slug} の ${column} 列にタスクを作成しました。`) +
-        // 絞り込みはカードの取捨だけを行う (doc-7 §5.2), so a filter in force can take the new card away
-        // the moment it is read. Said here because otherwise「作成しました」and an unchanged cell are
-        // indistinguishable from a create that silently did nothing — and the filter is reversible from
-        // the フィルタ帯, so the card is one 解除 away rather than lost.
-        (created !== null && !matchesFilter(created, filter, inconsistentView)
+      // 絞り込みはカードの取捨だけを行う (doc-7 §5.2), so a filter in force can take the new card away
+      // the moment it is read — the one thing about this create the screen does not state, since an
+      // unchanged cell is otherwise indistinguishable from a create that silently did nothing. The
+      // filter is reversible from the フィルタ帯, so the card is one 解除 away rather than lost.
+      const outOfFilter =
+        created !== null && !matchesFilter(created, filter, inconsistentView)
           ? "（今の絞り込みでは表示されないため、カードは出ていません。フィルタ帯で条件を外すと出ます）"
-          : "");
+          : null;
+      // 発行が通った事実そのものは ⑤ 通知 に載せない (doc-11 §4): the card lands in the cell the ＋新規
+      // that made it sits in, so a 帯 would repeat what the screen already shows. What stands is the
+      // 帰結 above, and every outcome that is not 通った.
+      notice =
+        outcome.state === "applied" && outOfFilter === null
+          ? null
+          : outcomeMessage(outcome, `${at.slug} の ${column} 列にタスクを作成しました。`) +
+            (outOfFilter ?? "");
       if (outcome.state === "applied") laneCreateTitle = "";
     } finally {
       laneCreateBusy = false;

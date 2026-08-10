@@ -47,15 +47,17 @@ describe("上部帯の順と本数", () => {
   it("keeps the order when the bands are raised in another order (AC #4)", () => {
     // 出現順にしない: the 通知 was set long before the 確認 was asked for, and the 確認 still goes on
     // top — this is the case doc-11 §4 exists for, since ⑤ under ① is what buries a 回答待ち.
-    const noticeFirst: BandInputs = { ...QUIET, notice: "設定を保存しました" };
+    const noticeFirst: BandInputs = { ...QUIET, notice: "行の並べ替えに失敗しました" };
     expect(kinds(noticeFirst)).toEqual(["notice"]);
     expect(kinds({ ...noticeFirst, confirming: true })).toEqual(["confirm", "notice"]);
   });
 
   /**
    * The worst case is every kind at once, and it is checked as「本表の帯がすべて立った状態」rather than
-   * against a number: doc-11 §4's closed set is the table, and TASK-131 and TASK-134 each take a row
-   * out of it — a literal count here would be a third place to keep in step with them.
+   * against a number: doc-11 §4's closed set is the table, and a literal count here would be a third
+   * place to keep in step with it. TASK-131 took ⑥ out; TASK-134 was expected to take ⑤ and did not
+   * (成功 left ⑤, but 失敗・差し控え・画面が述べない帰結 stayed), which is the case this form is for —
+   * whether a row falls is not known until the work is done.
    */
   it("stands one band per kind at the worst case, and lets no kind stand twice (AC #4)", () => {
     const raised = kinds(ALL);
