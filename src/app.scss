@@ -313,12 +313,13 @@ $themes: (
 //
 // `cursor: default` rather than the `cursor: help` this block carried until TASK-138 (doc-11 §5):
 // `help` announces something readable on hover, and the block reaches every blocked control whatever
-// its `title` — 13 of the 50 記述 it selects raise no tooltip at all, so the cursor promised what they
-// do not have. `not-allowed` does not take its place: a second special cursor would rebuild, in
-// another value, the per-component drift this block was written to end.
+// its `title`. Of the 50 記述 it selects, 11 carry no `title` at all and 2 more carry one naming the
+// action rather than the 保留理由 — so on 13 the cursor pointed at an explanation that was not there.
+// `not-allowed` does not take its place: a second special cursor would rebuild, in another value,
+// the per-component drift this block was written to end.
 //
 // The declaration cannot simply be dropped, which is what「カーソルは変えない」sounds like it means.
-// 24 `cursor: pointer` rules across 14 components draw the pressable controls, and `help` had been
+// 30 `cursor: pointer` rules across 14 Svelte files draw the pressable controls, and `help` had been
 // overriding them; removing it let the hand through, so a control that cannot be pressed offered the
 // cursor that promises a press (measured in WebKit and Chromium before this line was written).
 // `default` is the ground-state arrow — the pointer stays as it was on the surrounding panel.
