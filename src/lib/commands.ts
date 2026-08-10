@@ -69,9 +69,9 @@ export function ledgerList(): Promise<LedgerResponse> {
 }
 
 /**
- * Where the ledger file is (doc-3 §2.1). Shown by the 台帳管理画面 so the user can see that the
- * registration lives in Atlas's own config dir and in no project's Backlog root — and so they can
- * hand-edit it, which doc-3 §2.2 keeps supported.
+ * Where the ledger file is (doc-3 §2.1). Shown by the 設定モーダル's ファイルの場所 区画 — the one place
+ * that says where Atlas's own files live — so the user can hand-edit it, which doc-3 §2.2 keeps
+ * supported.
  */
 export function ledgerLocation(): Promise<string> {
   return invoke<string>("ledger_location");

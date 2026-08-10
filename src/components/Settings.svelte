@@ -57,8 +57,20 @@
   interface Props {
     /** The settings in force and why (decision-13). `null` while the first read is in flight. */
     loaded: LoadedSettings | null;
-    /** Where `settings.toml` is — shown because it is Atlas's own file and hand-editable. */
-    path: string | null;
+    /**
+     * Where Atlas's own two files are (doc-3 §2.1, decision-13). Shown because both are hand-editable
+     * and this 区画 is the only place that says where they live. `null` while the resolution is
+     * unknown, which draws no row rather than a placeholder — the paths are resolved once at startup
+     * and never retried, so nothing here is 確認中.
+     *
+     * **Both `null` leaves the 区画 stating no location**, since both resolutions are the same one
+     * (`app_config_dir()`) and fail together. No reason is drawn for it, which is deliberate: the
+     * failure is not about anything the user did or can act on here, and 場所を開く is left alone
+     * because the folder is reachable whether or not this screen can name it. What the 区画 would
+     * still owe a reason for is a *withheld control* (doc-11 §5), and there is none in that state.
+     */
+    settingsPath: string | null;
+    ledgerPath: string | null;
     /**
      * Persist the draft. Resolves with the failure's text, or `null` on success.
      *
@@ -108,7 +120,8 @@
 
   let {
     loaded,
-    path,
+    settingsPath,
+    ledgerPath,
     onsave,
     onopenLocation,
     saving,
@@ -436,15 +449,25 @@
         </label>
       </section>
 
-      <!-- 設定ファイルの場所 (decision-13). Moved out of the foot and into the form (TASK-74/75): the
-           下部操作行 holds the two exits and nothing else, and the path belongs beside the control that
-           opens it — 開く操作の隣がパスの置き場, which is what doc-8 §7 already asks of the 外部エディタ
-           経路's own path line. -->
+      <!-- ファイルの場所 (doc-3 §2.1) — Atlas 自身が書く 2 つのファイルの保存場所を述べる唯一の区画。
+           Moved out of the foot and into the form (TASK-74/75): the 下部操作行 holds the two exits and
+           nothing else, and a path belongs beside the control that opens it — 開く操作の隣がパスの置き場,
+           which is what doc-8 §7 already asks of the 外部エディタ経路's own path line.
+           台帳ファイル joined it in TASK-136, which took the path off the 登録モーダル. Both rows sit in
+           one 区画 because the control opens the *folder*, and the folder is the same one — a second
+           区画 with its own heading would put the 台帳 beside a control that never mentions it. -->
       <section class="location">
-        <h3>設定ファイル</h3>
-        {#if path !== null}
-          <p class="path">{path}</p>
-        {/if}
+        <h3>ファイルの場所</h3>
+        <dl>
+          {#if settingsPath !== null}
+            <dt>設定ファイル</dt>
+            <dd class="path">{settingsPath}</dd>
+          {/if}
+          {#if ledgerPath !== null}
+            <dt>台帳ファイル</dt>
+            <dd class="path">{ledgerPath}</dd>
+          {/if}
+        </dl>
         <div class="row">
           <!-- `aria-disabled` rather than `disabled`, so the reason below stays reachable without a
                pointer (doc-11 §5). -->
@@ -650,6 +673,21 @@
   }
 
   .location {
+    dl {
+      margin: 0;
+    }
+
+    // Stacked rather than a label column: a path is one unbreakable token near the モーダル's own
+    // width, so a column beside it would wrap every value onto a second line anyway.
+    dt {
+      font-size: 0.7rem;
+      opacity: 0.7;
+    }
+
+    dd + dt {
+      margin-top: 0.3rem;
+    }
+
     .row {
       display: flex;
       align-items: center;

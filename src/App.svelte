@@ -699,9 +699,9 @@
       readiness = { state: "unavailable", detail: unreadableDetail(asCommandError(error)) };
     }
     // The ledger file's location (doc-3 §2.1). One path resolution, and it cannot change while the
-    // app runs, so it is read once here rather than each time the 台帳管理画面 opens. A failure leaves
-    // it `null`, which that screen shows as 確認中 — it withholds no control, since knowing the path
-    // is not what makes an edit possible.
+    // app runs, so it is read once here rather than each time the 設定モーダル opens. A failure leaves
+    // it `null`, which draws no row — it withholds no control, since knowing the path is not what
+    // makes an edit possible.
     try {
       ledgerPath = await ledgerLocation();
     } catch {
@@ -1887,7 +1887,6 @@
         readOnly={ledgerReadOnly}
         busy={ledgerBusy}
         submitting={registerSubmitting}
-        {ledgerPath}
         onpickDirectory={pickDirectory}
         ondefaultSlug={ledgerDefaultSlug}
         onregister={registerProject}
@@ -1912,7 +1911,8 @@
     >
       <Settings
         loaded={settings}
-        path={settingsPath}
+        {settingsPath}
+        {ledgerPath}
         onsave={saveSettings}
         onopenLocation={openSettingsLocation}
         saving={settingsSaving}
