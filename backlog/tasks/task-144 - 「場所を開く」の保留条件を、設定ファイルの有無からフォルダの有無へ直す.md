@@ -1,10 +1,10 @@
 ---
 id: TASK-144
 title: 「場所を開く」の保留条件を、設定ファイルの有無からフォルダの有無へ直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-10 10:46'
-updated_date: '2026-08-10 11:45'
+updated_date: '2026-08-10 12:16'
 labels:
   - 'kind:bug'
 milestone: m-2
