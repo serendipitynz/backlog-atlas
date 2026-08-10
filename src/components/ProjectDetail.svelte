@@ -3552,6 +3552,10 @@
   // 注記モーダル (doc-10 §7): one sentence and the names under it. No `code`, no per-item reason —
   // what the layer is for is 代替経路の案内 alone (doc-11 §8).
   .note {
+    // Keeps the bottom padding the other two give up: this layer holds no 発行, so there is no row
+    // pinned to the bottom edge to carry it (doc-11 §11 — 発行の控えを持たない面は本節の外である).
+    padding-bottom: 0.75rem;
+
     ul {
       margin: 0.35rem 0 0;
       padding-left: 1.1rem;
