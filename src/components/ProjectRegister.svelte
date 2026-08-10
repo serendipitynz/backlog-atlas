@@ -458,6 +458,19 @@
     font-size: 0.72rem;
   }
 
+  // doc-11 §5 の 2 つ目の形: 可視から外しても、`aria-describedby` の指す先はツリーに残す。
+  // `display: none` も要素の取り外しもツリーから消すので、理由がどこにも無いのと同じになる。
+  .unseen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   code {
     font-size: 0.95em;
   }
