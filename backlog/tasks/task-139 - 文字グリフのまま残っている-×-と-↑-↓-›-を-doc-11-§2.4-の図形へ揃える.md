@@ -1,10 +1,10 @@
 ---
 id: TASK-139
 title: 文字グリフのまま残っている × と ↑ ↓ › を doc-11 §2.4 の図形へ揃える
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-10 23:45'
+updated_date: '2026-08-10 23:57'
 labels:
   - ui
   - design-system
