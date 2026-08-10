@@ -305,16 +305,31 @@ $themes: (
   }
 }
 
-// 無効化提示 (doc-11 §2.3・§5): 破線枠 ＋ opacity .45 ＋ cursor: help。The three visual points live
+// 無効化提示 (doc-11 §2.3・§5): 破線枠 ＋ opacity .45。The two visual points live
 // here, once, rather than in each component: written per component they had drifted to opacity
 // .4／.45／.5 and cursor default／not-allowed, so "押せない" looked like a different thing on each
 // screen. The dash is what separates a blocked control from a pressable one (実線枠) — a difference in
 // form, so it survives every 表示テーマ and does not depend on telling two colours apart.
 //
+// `cursor: default` rather than the `cursor: help` this block carried until TASK-138 (doc-11 §5):
+// `help` announces something readable on hover, and the block reaches every blocked control whatever
+// its `title`. Of the 50 記述 it selects, 11 carry no `title` at all and 2 more carry one naming the
+// action rather than the 保留理由 — so on 13 the cursor pointed at an explanation that was not there.
+// `not-allowed` does not take its place: a second special cursor would rebuild, in another value,
+// the per-component drift this block was written to end.
+//
+// The declaration cannot simply be dropped, which is what「カーソルは変えない」sounds like it means.
+// 30 `cursor: pointer` rules across 14 Svelte files draw the pressable controls, and `help` had been
+// overriding them; removing it let the hand through, so a control that cannot be pressed offered the
+// cursor that promises a press (measured in WebKit and Chromium before this line was written).
+// `default` is the ground-state arrow — the pointer stays as it was on the surrounding panel.
+//
+// 印チップ・印グリフ keep their `cursor: help` (doc-11 §3): there it is keyed on the explanation
+// being present, so it promises nothing that is not there.
+//
 // Element selectors rather than a class: 無効化提示 must not be something a call site can leave off.
 // `[aria-disabled="true"]` is included because doc-11 §5 keeps some controls focusable so that
 // `aria-describedby` can carry their 理由; `:disabled` alone would draw those as pressable.
-// `cursor: help` goes with a `title` that supplements the reason — never the only place it is kept.
 //
 // Written under `:root` for specificity, not for scope. A component's own `button { … }` compiles to
 // `button.svelte-hash`, which ties with a bare `button:disabled` — the winner would then be whichever
@@ -327,7 +342,7 @@ $themes: (
 :root textarea:disabled {
   border-style: dashed;
   opacity: 0.45;
-  cursor: help;
+  cursor: default;
 }
 
 body {
