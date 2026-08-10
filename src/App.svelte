@@ -1303,14 +1303,28 @@
   }
 
   /**
+   * The file a 実行前確認 may be asked about (doc-11 §12): the one the panel is showing a **current** read
+   * of. `null` while there is no task on screen, and also while the panel is showing a `retained` read
+   * (`shown.missing`) — the file has left the read result there, and every control that would ask is
+   * withheld for that reason (`transitionOffers`'s `fileMissing`, `editorOffers`'s). A question left
+   * standing over that state would offer, in the layer, the act the screen underneath is refusing.
+   *
+   * One value for both the asking and the 失効 below, so the two cannot disagree about what the question
+   * is about.
+   */
+  let issueSubject = $derived(
+    shown !== null && !shown.missing ? shown.view.task.sourcePath : null,
+  );
+
+  /**
    * Raise the 実行前確認 the panel asked for (doc-11 §12), filed against the task it is showing.
    *
    * The path is read here rather than passed in: what the question is about is whatever the panel has
    * on screen at the moment of the press, and taking the caller's word for it would let a stale path
-   * decide 失効. No task on screen means no control to answer from, so nothing is asked.
+   * decide 失効.
    */
   function askIssue(confirmation: IssueConfirmation, proceed: () => void): void {
-    const path = shown?.view.task.sourcePath ?? null;
+    const path = issueSubject;
     if (path === null) return;
     // 被せ層 は 1 枚だけ (see `raiseModal`), and an unanswered 破棄前確認 from behind lapses under the layer
     // about to cover it — the reason `detailOverlay` and `openEntry` do the same: which layer draws a
@@ -1337,14 +1351,15 @@
   }
 
   /**
-   * 失効 (doc-11 §12 の ③): the question was about one task, so the panel moving off that file takes it.
+   * 失効 (doc-11 §12 の ③): the question was about one task's current read, so the panel moving off it
+   * takes the question — whether by another selection or by that file leaving the read result
+   * (`issueSubject`).
    *
-   * Cleared rather than only hidden while the paths disagree — held, it would come back the next time
-   * that task is selected, and the user would meet a question they never asked twice over.
+   * Cleared rather than only hidden while the two disagree — held, it would come back the next time that
+   * task is selected, and the user would meet a question they never asked twice over.
    */
   $effect(() => {
-    const path = shown?.view.task.sourcePath ?? null;
-    if (pendingIssue !== null && pendingIssue.path !== path) pendingIssue = null;
+    if (pendingIssue !== null && pendingIssue.path !== issueSubject) pendingIssue = null;
   });
 
   /** Take the exit the user just confirmed, discarding the panel's 未保存入力 (doc-8 §6.3). */

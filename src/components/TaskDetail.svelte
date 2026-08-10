@@ -474,9 +474,24 @@
    * back on a 進む answer. That is also what closes the hole the 二度押し had: the layer is the shell's,
    * so it goes with the question when the panel is pointed at another task (doc-11 §12 の失効).
    */
-  function runTransition(offer: TransitionOffer): void {
+  function runTransition(offer: TransitionOffer, control: HTMLButtonElement): void {
     if (!offer.enabled || busy) return;
+    focusForReturn(control);
     onconfirmIssue(transitionConfirmation(offer), () => void issueTransition(offer));
+  }
+
+  /**
+   * Take focus onto the control the question is about to be asked from (doc-7 §2.1 閉じたら開く前の操作へ
+   * フォーカスを戻す).
+   *
+   * The layer captures whatever holds focus as it mounts, and **macOS WebKit does not focus a button on a
+   * pointer press** (by platform convention) — so without this the layer would capture whatever the user
+   * happened to focus earlier, and closing it would send focus there instead of back to the press. A
+   * keyboard press already holds focus here, which makes this a no-op on that path. `App.svelte`'s
+   * `raiseModal` does the same thing for the ☰, and for the same reason.
+   */
+  function focusForReturn(control: HTMLButtonElement): void {
+    control.focus();
   }
 
   /**
@@ -550,13 +565,14 @@
    * an external edit take the 未保存入力, so opening the file neither saves nor discards the draft. The
    * two are reconciled where they already are — the 継続検出 notice above, and the save's 更新前競合検出.
    */
-  function openExternally(offer: EditorOffer): void {
+  function openExternally(offer: EditorOffer, control: HTMLButtonElement): void {
     if (!offer.enabled) return;
     // The path is captured before anything can be awaited: the launch is for the task that was on
     // screen when it was asked for, and the answer is filed under that file rather than under whatever
     // is shown when it arrives (the shell resolves the same (slug, path) pair).
     const path = task.sourcePath;
     if (needsConfirmation(dirty)) {
+      focusForReturn(control);
       onconfirmIssue(launchConfirmation(offer), () => void launch(offer, path));
       return;
     }
@@ -1640,7 +1656,7 @@
               class="transition"
               disabled={!offer.enabled || busy}
               title={busy ? TRANSITION_BUSY_REASON : (offer.reason ?? offer.effect)}
-              onclick={() => runTransition(offer)}
+              onclick={(event) => runTransition(offer, event.currentTarget)}
             >
               <!-- 語尾の … (doc-11 §12): every 状態遷移 asks first, so the mark is unconditional here. -->
               {confirmMarkedLabel(offer.label)}
@@ -1684,7 +1700,7 @@
             type="button"
             disabled={!offer.enabled}
             title={offer.reason ?? offer.command}
-            onclick={() => openExternally(offer)}
+            onclick={(event) => openExternally(offer, event.currentTarget)}
           >
             <!-- 語尾の … only while the launch asks (doc-11 §12): the question is raised by 未保存入力,
                  and a mark left on when nothing will be asked predicts nothing. -->

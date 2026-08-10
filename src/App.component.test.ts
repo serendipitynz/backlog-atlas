@@ -915,7 +915,11 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     const host = await withTransitions();
     const demote = byText<HTMLButtonElement>(host, "button.transition", "draft へ差し戻す…");
 
-    pressControl(demote);
+    // **`pressControl` ではなく素の `click`。** 層は自分がマウントされた時点で焦点にある要素を開き元と
+    // して捕まえるが、**macOS WebKit はポインタ押下でボタンへ焦点を移さない**（プラットフォームの慣習。
+    // jsdom の `click()` も同じで焦点を動かさない）。先に `focus()` してから押す試験は、実機で起きる
+    // 経路をまたいでしまう — 控えが自分で焦点を取るのは押下ハンドラの中である（PR #93 1R [P2]）。
+    click(demote);
     const dialog = layer(host, "draft へ差し戻す");
     if (dialog === null) throw new Error("expected the question");
     // フォーカスを内側に (doc-7 §2.1): `Modal.svelte` puts it on its × as the layer mounts.
@@ -928,7 +932,7 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     // came from is still pressable — which is why the return is observable on this answer.
     expect(document.activeElement).toBe(demote);
 
-    pressControl(demote);
+    click(demote);
     press(only(host, '[role="dialog"][aria-label="draft へ差し戻す"]'), "Escape");
     await settled();
     // 層の出口は戻る側と同じ (doc-11 §12): an unanswered question starts nothing.
@@ -960,6 +964,30 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     expect(layer(host, "アーカイブ")).toBeNull();
     openSection(host, "状態遷移");
     expect(byText(host, "button.transition", "アーカイブ…")).not.toBeNull();
+  });
+
+  it("問いの対象がファイルごと読み取り結果から消えたら、未保存入力があっても失効する", async () => {
+    // 未保存入力があるあいだ、パネルはファイルが消えても保持した読みを描き続ける (`shown.missing`) ので、
+    // パスは同じままである。**それでも問いは失効しなければならない** — その状態では控えが 3 つとも
+    // 「読み取り結果にありません」で無効化されており、層だけが、画面が断っている動作を差し出すことに
+    // なる (PR #93 1R [P2])。
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
+    await settled();
+    click(byText(host, "button.primary", "編集"));
+    fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
+    openSection(host, "外部エディタで開く");
+    click(byText<HTMLButtonElement>(host, ".editor-list button", "OS の関連付けで開く…"));
+    expect(layer(host, "OS の関連付けで開く")).not.toBeNull();
+
+    emitReload({ slug: "atlas", load: loaded("atlas", [NEIGHBOUR]) });
+    await settled();
+
+    // パネルは残る (未保存入力を守るため)。問いは残らない。
+    expect(host.querySelector('[aria-label="タスク詳細"]')).not.toBeNull();
+    expect(layer(host, "OS の関連付けで開く")).toBeNull();
+    expect(madeTo("task_file_open")).toHaveLength(0);
+    expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
   });
 
   it("外部エディタ起動は未保存入力があるときだけ問い、語尾の … もそのときだけ付く", async () => {
