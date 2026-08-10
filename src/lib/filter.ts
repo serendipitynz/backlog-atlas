@@ -14,6 +14,7 @@
  * | テキスト | `CardFilter.text` | 横断タスクID・title 部分一致, case-insensitive |
  * | 不整合 | `CardFilter.inconsistentOnly` | keep only 不整合 tasks (decision-22) |
  * | タスク保存区分 | `CardFilter.storage` | `StorageSelection`, defaulting to `active` alone |
+ * | 更新期間 | `CardFilter.updatedFrom` / `.updatedTo` | 暦日 の始端・終端, each in force on its own |
  * | §5.2 条件を足した順 | `CardFilter.order` | the keys of the above, in the order they were added |
  *
  * Two rules run through all of it:
@@ -28,6 +29,9 @@
 // `normalizePriority` lives in `card.ts` (decision-23): the 絞り込み and the 優先度の縁 have to call a
 // task `high` on the same terms, and this module already owns that agreement for the identity.
 import { cardIdentity, normalizePriority } from "./card";
+// 更新期間 は暦日で比べる (doc-7 §5.2). The conversion from a written timestamp to the reader's 暦日 is
+// `period.ts`'s alone, so nothing here has to know what a 基準時間帯 is.
+import { localDay } from "./period";
 import type { StorageSelection, TaskView } from "./wire";
 
 /**
@@ -72,6 +76,19 @@ export interface CardFilter {
   inconsistentOnly: boolean;
   storage: StorageSelection[];
   /**
+   * 更新期間の始端・終端 (doc-7 §5.2), each a `YYYY-MM-DD` 暦日 or `""` for an end that is not set.
+   *
+   * Two fields rather than one range, because the doc gives the three forms — 両端指定・始端指定・
+   * 終端指定 — and with an end apiece those are just which of the two are filled in; a range object
+   * would have to carry the same emptiness inside it and then say again, somewhere else, that half a
+   * range is a legal condition. Each end is its own 絞り込み条件: it takes its own place in `order`,
+   * draws its own token, and 直前の 1 つを戻す peels one end at a time.
+   *
+   * Empty means unrestricted, as it does for every facet but 保存区分.
+   */
+  updatedFrom: string;
+  updatedTo: string;
+  /**
    * 条件を足した順 (doc-7 §5.2): the keys of the conditions above — `conditionKey` in `token.ts` —
    * in the order they were added. The per-facet arrays hold no order *between* facets, so without
    * this neither the token row's order nor 直前の 1 つを戻す has an answer; doc-7 §5.2 makes both
@@ -95,6 +112,8 @@ export const DEFAULT_FILTER: CardFilter = {
   text: "",
   inconsistentOnly: false,
   storage: ["active"],
+  updatedFrom: "",
+  updatedTo: "",
   order: [],
 };
 
@@ -135,6 +154,8 @@ export function isDefaultFilter(filter: CardFilter, storage: readonly StorageSel
     filter.assignees.length === 0 &&
     filter.text.trim() === "" &&
     !filter.inconsistentOnly &&
+    filter.updatedFrom === "" &&
+    filter.updatedTo === "" &&
     filter.storage.length === storage.length &&
     filter.storage.every((state, index) => state === storage[index])
   );
@@ -179,8 +200,26 @@ export function matchesFilter(
     matchesAny(filter.priorities, priorityValues(view)) &&
     matchesAny(filter.assignees, view.task.assignee) &&
     matchesText(view, filter.text) &&
+    matchesUpdatedPeriod(view, filter.updatedFrom, filter.updatedTo) &&
     (!filter.inconsistentOnly || inconsistent(view))
   );
+}
+
+/**
+ * 更新期間 (doc-7 §5.2): both ends are 暦日 and both are inclusive, so a task updated at any hour of
+ * the 終端 の日 is kept — the comparison is between days, and the time inside the day never reaches it.
+ *
+ * **A task whose 暦日 cannot be read is dropped while either end is in force**, whether the value is
+ * missing or unparseable. The condition asks which tasks are *in* the period, and neither kind can be
+ * shown to be. This is the opposite of what doc-7 §5.4 does with the same absence in a 並び順 — there
+ * every card is laid out and the question is only where, so 欠落 goes last; here the question is
+ * whether, and there is no answer that keeps it.
+ */
+function matchesUpdatedPeriod(view: TaskView, from: string, to: string): boolean {
+  if (from === "" && to === "") return true;
+  const day = localDay(view.task.updatedDate);
+  if (day === null) return false;
+  return (from === "" || day >= from) && (to === "" || day <= to);
 }
 
 function matchesStorage(view: TaskView, storage: readonly StorageSelection[]): boolean {

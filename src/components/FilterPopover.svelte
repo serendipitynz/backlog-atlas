@@ -13,12 +13,22 @@
     conditionKey,
     conditionValueLabel,
     hasCondition,
+    setPeriodEnd,
     toggleCondition,
     typeLabel,
     FACET_LABEL,
+    PERIOD_END_LABEL,
+    PERIOD_ENDS,
     type FilterCondition,
     type FilterFacet,
+    type PeriodEnd,
   } from "../lib/token";
+  import {
+    relativeStart,
+    PERIOD_UNITS,
+    PERIOD_UNIT_LABEL,
+    type PeriodUnit,
+  } from "../lib/period";
   import type { CardFilter, Facets } from "../lib/filter";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
@@ -135,6 +145,32 @@
       .filter((section) => section.entries.length > 0);
   });
 
+  // 更新期間 (doc-7 §5.2). It has no value list to search, so it is matched on its heading alone —
+  // and it is drawn whenever nothing is being searched for, like a section whose entries all matched.
+  let periodShown = $derived.by(() => {
+    const needle = query.trim().toLowerCase();
+    return needle === "" || FACET_LABEL.updated.toLowerCase().includes(needle);
+  });
+
+  function endValue(end: PeriodEnd): string {
+    return end === "from" ? filter.updatedFrom : filter.updatedTo;
+  }
+
+  // 相対指定. The number and the unit are this control's own state rather than part of the filter:
+  // what they produce is a 暦日, and it is the 暦日 that becomes the condition.
+  let count = $state(7);
+  let unit = $state<PeriodUnit>("day");
+
+  /**
+   * 解決時点 は押した時点 (doc-7 §5.2): `new Date()` is read here, when the press happens, and the
+   * day it resolves to is stored as the 始端. Nothing downstream keeps a clock, which is why the
+   * token can name a day and be telling the truth about the boundary indefinitely.
+   */
+  function applyRelative(): void {
+    const day = relativeStart(count, unit, new Date());
+    if (day !== null) onchange(setPeriodEnd(filter, "from", day));
+  }
+
   let selected = $derived(conditionCount(filter));
 
   let root = $state<HTMLDivElement | null>(null);
@@ -212,11 +248,48 @@
           </button>
         {/each}
       </section>
-    {:else}
+    {/each}
+
+    <!-- 更新期間 (doc-7 §5.2). The eighth facet, and the only one whose values are entered rather
+         than picked: a 暦日 belongs to no set the workspace holds, so 検索・件数 have nothing to say
+         about it. It sits last, where doc-7 §5.2 lists it, and inside the scrolling area so the
+         panel's height stays the one the value list decides. -->
+    {#if periodShown}
+      <section class="period">
+        <h3>{FACET_LABEL.updated}</h3>
+        {#each PERIOD_ENDS as end (end)}
+          <label class="end">
+            <span class="caption">{PERIOD_END_LABEL[end]}</span>
+            <!-- 端は暦日 (doc-7 §5.2), which is exactly what a date input yields: `YYYY-MM-DD` or
+                 the empty string. Emptying it takes the end off, the same as pressing its token's ×.
+                 `change` rather than `input`, so a half-typed year is not applied as a condition. -->
+            <input
+              type="date"
+              value={endValue(end)}
+              onchange={(event) => onchange(setPeriodEnd(filter, end, event.currentTarget.value))}
+            />
+          </label>
+        {/each}
+        <div class="relative">
+          <label>
+            いまから
+            <input type="number" min="1" step="1" bind:value={count} />
+          </label>
+          <select bind:value={unit} aria-label="いまから数える単位">
+            {#each PERIOD_UNITS as value (value)}
+              <option {value}>{PERIOD_UNIT_LABEL[value]}</option>
+            {/each}
+          </select>
+          <button type="button" class="plain" onclick={applyRelative}>始端にする</button>
+        </div>
+      </section>
+    {/if}
+
+    {#if shown.length === 0 && !periodShown}
       <!-- 正常な不在 (doc-11 §6): a search that matched nothing is not an error, so it gets the
            neutral mark and a sentence, never a colour. -->
       <p class="none"><span class="dash">—</span> 「{query.trim()}」に一致する値はありません</p>
-    {/each}
+    {/if}
   </div>
 
   <footer>
@@ -378,5 +451,81 @@
     font: inherit;
     font-size: 0.68rem;
     cursor: pointer;
+  }
+
+  // 更新期間 (doc-7 §5.2). Fields rather than a list, but the same 区画見出し and the same gaps as
+  // the value sections above — the panel should not read as two panels because one facet is entered.
+  .period {
+    gap: 0.25rem;
+  }
+
+  .end {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+
+    // Both captions take one width, so the two date fields start on the same column. Without it the
+    // 始端・終端 boxes step sideways by the width difference of their labels.
+    .caption {
+      width: 2.4rem;
+      flex: none;
+    }
+  }
+
+  // 日付には tabular-nums (doc-11 §2.2): the two ends are read as a pair, and proportional digits
+  // put the same day in two different places.
+  input[type="date"],
+  input[type="number"] {
+    box-sizing: border-box;
+    padding: 0.16rem 0.25rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+    font-size: 0.68rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type="date"] {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .relative {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    // 副次 (doc-11 §2.1): the row that builds a 始端 is quieter than the two ends themselves, which
+    // are what actually filter.
+    color: var(--muted);
+    font-size: 0.65rem;
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    input[type="number"] {
+      width: 2.8rem;
+      font-size: 0.65rem;
+    }
+
+    select {
+      box-sizing: border-box;
+      padding: 0.16rem 0.16rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--fg);
+      font: inherit;
+      font-size: 0.65rem;
+    }
+
+    .plain {
+      margin-left: auto;
+      font-size: 0.65rem;
+    }
   }
 </style>

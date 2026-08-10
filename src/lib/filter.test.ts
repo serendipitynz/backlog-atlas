@@ -10,6 +10,7 @@ import {
   type CardFilter,
 } from "./filter";
 import { taskView, type } from "./fixtures";
+import { localDay } from "./period";
 import type { TaskView } from "./wire";
 
 function filter(overrides: Partial<CardFilter> = {}): CardFilter {
@@ -221,5 +222,67 @@ describe("facets offered by the control", () => {
 
     const indeterminate = collectFacets([taskView({ storageState: null })], readInconsistent);
     expect(indeterminate.storage.at(-1)).toEqual({ value: "indeterminate", count: 1 });
+  });
+});
+
+describe("更新期間 (doc-7 §5.2)", () => {
+  const period = (from = "", to = "") => filter({ updatedFrom: from, updatedTo: to });
+  const updated = (value: string | null) => taskView({ updatedDate: value });
+  const keeps = (view: TaskView, applied: CardFilter) =>
+    matchesFilter(view, applied, readInconsistent);
+
+  // 時刻を持たない値はどの時間帯でも同じ暦日を名乗る (period.ts), which is what lets these cases state
+  // the 端 rules without arranging the runner's zone. The zone itself is `period.test.ts`.
+  it("takes the three forms: 両端指定・始端指定・終端指定", () => {
+    const july = updated("2026-07-15");
+    const august = updated("2026-08-15");
+
+    expect(keeps(july, period("2026-07-01", "2026-07-31"))).toBe(true);
+    expect(keeps(august, period("2026-07-01", "2026-07-31"))).toBe(false);
+
+    expect(keeps(august, period("2026-08-01"))).toBe(true);
+    expect(keeps(july, period("2026-08-01"))).toBe(false);
+
+    expect(keeps(july, period("", "2026-07-31"))).toBe(true);
+    expect(keeps(august, period("", "2026-07-31"))).toBe(false);
+  });
+
+  it("includes both ends (AC #2)", () => {
+    const from = "2026-08-01";
+    const to = "2026-08-09";
+    expect(keeps(updated(from), period(from, to))).toBe(true);
+    expect(keeps(updated(to), period(from, to))).toBe(true);
+    expect(keeps(updated("2026-07-31"), period(from, to))).toBe(false);
+    expect(keeps(updated("2026-08-10"), period(from, to))).toBe(false);
+  });
+
+  it("keeps the whole of the 終端 の日, whatever time of day the value carries", () => {
+    // The comparison is between 暦日, so the hours inside the day never reach it. Compared as raw
+    // frontmatter text instead, `'2026-08-09 22:46' <= '2026-08-09'` is false and the task would drop
+    // out of a period that names its own day — in every zone, which is why this case is here rather
+    // than among the zone-injected ones.
+    const stamped = "2026-08-09 22:46";
+    const day = localDay(stamped);
+    expect(day).not.toBeNull();
+    expect(keeps(updated(stamped), period("", day as string))).toBe(true);
+    expect(keeps(updated(stamped), period(day as string))).toBe(true);
+  });
+
+  it("drops a task whose 暦日 cannot be read, while an end is in force (AC #4)", () => {
+    const missing = updated(null);
+    const unreadable = updated("いつか");
+    for (const view of [missing, unreadable]) {
+      expect(keeps(view, period("2026-08-01"))).toBe(false);
+      expect(keeps(view, period("", "2026-08-31"))).toBe(false);
+      expect(keeps(view, period("2026-08-01", "2026-08-31"))).toBe(false);
+      // …and is untouched by a filter that names no period at all.
+      expect(keeps(view, period())).toBe(true);
+    }
+  });
+
+  it("counts as a departure from the 既定", () => {
+    expect(isDefaultFilter(period())).toBe(true);
+    expect(isDefaultFilter(period("2026-08-01"))).toBe(false);
+    expect(isDefaultFilter(period("", "2026-08-31"))).toBe(false);
   });
 });

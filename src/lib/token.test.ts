@@ -10,6 +10,7 @@ import {
   nothingToClear,
   removeCondition,
   removeLastCondition,
+  setPeriodEnd,
   setText,
   toggleCondition,
   type FilterCondition,
@@ -205,5 +206,60 @@ describe("order kept as a hint, never as a second source of truth", () => {
     const filter = { ...built({ facet: "label", value: "ui" }) };
     const direct = { ...filter, labels: toggleValue(filter.labels, "backend") };
     expect(names(direct)).toEqual(["保存区分:active", "ラベル:backend", "ラベル:ui"]);
+  });
+});
+
+describe("更新期間のトークン (doc-7 §5.2)", () => {
+  const from = (filter: CardFilter, day: string) => setPeriodEnd(filter, "from", day);
+  const to = (filter: CardFilter, day: string) => setPeriodEnd(filter, "to", day);
+  const both = to(from(DEFAULT_FILTER, "2026-08-01"), "2026-08-09");
+
+  it("draws one token per end, each naming the day it takes in", () => {
+    expect(names(both)).toEqual([
+      "保存区分:active",
+      "updated 期間:2026-08-01 以降",
+      "updated 期間:2026-08-09 以前",
+    ]);
+  });
+
+  it("takes the ends back one at a time, in 追加順", () => {
+    const once = removeLastCondition(both);
+    expect([once.updatedFrom, once.updatedTo]).toEqual(["2026-08-01", ""]);
+    const twice = removeLastCondition(once);
+    expect([twice.updatedFrom, twice.updatedTo]).toEqual(["", ""]);
+  });
+
+  it("takes one end off by its own ×, leaving the other standing", () => {
+    const dropped = removeCondition(both, { facet: "updated", end: "from", value: "2026-08-01" });
+    expect([dropped.updatedFrom, dropped.updatedTo]).toEqual(["", "2026-08-09"]);
+  });
+
+  it("keeps an end's place in 追加順 when its day is corrected", () => {
+    const withLabel = addCondition(from(DEFAULT_FILTER, "2026-08-01"), { facet: "label", value: "ui" });
+    const corrected = from(withLabel, "2026-07-01");
+    expect(names(corrected)).toEqual([
+      "保存区分:active",
+      "updated 期間:2026-07-01 以降",
+      "ラベル:ui",
+    ]);
+    // 直前の 1 つを戻す therefore still takes the label — the end was edited, not added again.
+    expect(removeLastCondition(corrected).labels).toEqual([]);
+    expect(removeLastCondition(corrected).updatedFrom).toBe("2026-07-01");
+  });
+
+  it("drops the condition when an end is emptied, rather than leaving one that restricts nothing", () => {
+    const cleared = from(from(DEFAULT_FILTER, "2026-08-01"), "");
+    expect(cleared.updatedFrom).toBe("");
+    expect(cleared.order).toEqual([]);
+    expect(lastCondition(cleared)).toBeNull();
+  });
+
+  it("is counted by 選択数 and reached by 既定に戻す", () => {
+    expect(conditionCount(both)).toBe(3);
+    expect(nothingToClear(both, ["active"])).toBe(false);
+
+    const cleared = defaultFilter(["active"]);
+    expect([cleared.updatedFrom, cleared.updatedTo]).toEqual(["", ""]);
+    expect(nothingToClear(cleared, ["active"])).toBe(true);
   });
 });
