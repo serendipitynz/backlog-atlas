@@ -16,6 +16,14 @@
  * | §5.2 末尾から 1 件ずつ解除 | `removeLastCondition` | drop the last *added* condition |
  * | §5.2 既定に戻す | `defaultFilter` (`filter.ts`) | back to the state the screen opens in |
  * | §5.2 値の一覧 | `Facets` (`filter.ts`) + `FilterPopover.svelte` | the values a condition can be built from |
+ * | §5.2 更新期間の始端・終端 | `FilterCondition` with `facet: "updated"` | one end of the period, on its own |
+ *
+ * **更新期間 is the one facet with no value list.** The other seven are chosen from a set the
+ * workspace holds, which is what the 値一覧ポップオーバー is built to show (検索・スクロール・件数);
+ * a 暦日 is not in any such set, so its two ends are *entered* rather than picked. Everything after
+ * that is the same as any other condition — each end takes a place in 追加順, draws a token, and is
+ * reachable by both 解除 controls — because nothing downstream of the entry cares where a condition
+ * came from.
  *
  * Two things are deliberately *not* tokens:
  *
@@ -48,7 +56,20 @@ export type FilterFacet =
   | "priority"
   | "assignee"
   | "text"
-  | "inconsistent";
+  | "inconsistent"
+  | "updated";
+
+/** Which end of 更新期間 a condition is (doc-7 §5.2). */
+export type PeriodEnd = "from" | "to";
+
+/** The two ends, in the order they are drawn and gathered. */
+export const PERIOD_ENDS: readonly PeriodEnd[] = ["from", "to"];
+
+/** The screen's word for each end, where the control has to name one (the token says 以降・以前). */
+export const PERIOD_END_LABEL: Record<PeriodEnd, string> = {
+  from: "始端",
+  to: "終端",
+};
 
 /** One 絞り込み条件: a facet and, for all but 不整合, the value selected inside it. */
 export type FilterCondition =
@@ -58,7 +79,10 @@ export type FilterCondition =
   | { facet: "priority"; value: string }
   | { facet: "assignee"; value: string }
   | { facet: "text"; value: string }
-  | { facet: "inconsistent" };
+  | { facet: "inconsistent" }
+  // The only condition that names which *part* of its facet it is: the two ends are independent, so
+  // a facet name alone would not tell them apart.
+  | { facet: "updated"; end: PeriodEnd; value: string };
 
 /** 属性名 as the bar and the popover name it (doc-7 §5.2 lists the facets in this order). */
 export const FACET_LABEL: Record<FilterFacet, string> = {
@@ -69,6 +93,10 @@ export const FACET_LABEL: Record<FilterFacet, string> = {
   assignee: "assignee",
   text: "テキスト",
   inconsistent: "不整合",
+  // The attribute's word (the one doc-7 §5.4 の並び順 already prints) and what is being filtered by
+  // it, as one label — this is both the token's 属性名 and the value list's section heading, and the
+  // heading has to say what the section is when its two fields are the only other words in it.
+  updated: "updated 期間",
 };
 
 /** The order facets are drawn in, wherever they are listed together (bar tokens, popover sections). */
@@ -81,6 +109,8 @@ export const FACET_ORDER: readonly FilterFacet[] = [
   "priority",
   "assignee",
   "inconsistent",
+  // Last, as doc-7 §5.2 lists it: the eighth facet, and the only one whose values are entered.
+  "updated",
 ];
 
 const STORAGE_LABEL: Record<StorageSelection, string> = {
@@ -124,6 +154,11 @@ export function conditionKey(condition: FilterCondition): string {
       return "text";
     case "inconsistent":
       return "inconsistent";
+    // The end, not the day: moving a 端 keeps the position it was added at, exactly as retyping the
+    // search box does. Keying on the day would make every correction a new condition at the end of
+    // 追加順, and 直前の 1 つを戻す would then take back a 端 the user had merely edited.
+    case "updated":
+      return `updated:${condition.end}`;
     default:
       return `${condition.facet}:${condition.value}`;
   }
@@ -138,6 +173,10 @@ export function conditionValueLabel(condition: FilterCondition): string | null {
       return typeLabel(condition.value);
     case "inconsistent":
       return null;
+    // 端の包含 (doc-7 §5.2) read out of the token itself: 以降・以前 both take the named day in, so
+    // the row states the rule rather than leaving it to the doc.
+    case "updated":
+      return `${condition.value} ${condition.end === "from" ? "以降" : "以前"}`;
     default:
       return condition.value;
   }
@@ -159,7 +198,13 @@ export function hasCondition(filter: CardFilter, condition: FilterCondition): bo
       return filter.text.trim() !== "";
     case "inconsistent":
       return filter.inconsistentOnly;
+    case "updated":
+      return periodEnd(filter, condition.end) !== "";
   }
+}
+
+function periodEnd(filter: CardFilter, end: PeriodEnd): string {
+  return end === "from" ? filter.updatedFrom : filter.updatedTo;
 }
 
 /** Add one condition, recording where it lands in 追加順. Adding a held condition changes nothing. */
@@ -193,6 +238,20 @@ export function setText(filter: CardFilter, text: string): CardFilter {
     : withOrder(next, condition, filter.text.trim() === "" ? true : null);
 }
 
+/**
+ * Set one end of 更新期間 to a 暦日, or to `""` to take that end off (doc-7 §5.2).
+ *
+ * The same bargain `setText` strikes, for the same reason: an end already standing keeps its place in
+ * 追加順 when its day is corrected, a first value appends, and emptying it removes the condition
+ * rather than leaving an end that draws a token while restricting nothing.
+ */
+export function setPeriodEnd(filter: CardFilter, end: PeriodEnd, value: string): CardFilter {
+  const condition: FilterCondition = { facet: "updated", end, value };
+  const standing = hasCondition(filter, condition);
+  const next = applyCondition(filter, condition, value !== "");
+  return withOrder(next, condition, value === "" ? false : standing ? null : true);
+}
+
 /** Apply the selection itself, leaving `order` to `withOrder`. */
 function applyCondition(
   filter: CardFilter,
@@ -214,6 +273,12 @@ function applyCondition(
       return { ...filter, text: add ? condition.value : "" };
     case "inconsistent":
       return { ...filter, inconsistentOnly: add };
+    case "updated": {
+      const value = add ? condition.value : "";
+      return condition.end === "from"
+        ? { ...filter, updatedFrom: value }
+        : { ...filter, updatedTo: value };
+    }
   }
 }
 
@@ -349,6 +414,14 @@ function heldConditions(filter: CardFilter): FilterCondition[] {
         break;
       case "inconsistent":
         if (filter.inconsistentOnly) held.push({ facet });
+        break;
+      case "updated":
+        for (const end of PERIOD_ENDS) {
+          const value = periodEnd(filter, end);
+          if (value !== "") {
+            held.push({ facet, end, value });
+          }
+        }
         break;
     }
   }
