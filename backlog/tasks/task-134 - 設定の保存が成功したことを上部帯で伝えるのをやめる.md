@@ -1,10 +1,10 @@
 ---
 id: TASK-134
 title: 設定の保存が成功したことを上部帯で伝えるのをやめる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-10 06:47'
+updated_date: '2026-08-10 07:19'
 labels:
   - ui
   - 'kind:feature'
