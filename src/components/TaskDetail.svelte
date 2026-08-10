@@ -105,6 +105,7 @@
     SIDEBAR_WIDTH_REM,
     SIDE_COLUMN_ORDER,
     SINGLE_COLUMN_ORDER,
+    STEP_ICON,
     layoutFor,
     placementPersistence,
     placementPersistenceNote,
@@ -794,7 +795,7 @@
            名前がその行の 97px を占めていた (TASK-72 の実測)。端での無効化の理由は隣の位置表示と
            下の控えが担う — 読めない位置に理由を隠さない、が doc-11 §5 の要求である。 -->
       <div class="nav">
-        {#each [{ dir: "previous", icon: "arrow-up", name: "前のタスクへ", edge: "先頭" }, { dir: "next", icon: "arrow-down", name: "次のタスクへ", edge: "末尾" }] as const as step (step.dir)}
+        {#each [{ dir: "previous", name: "前のタスクへ", edge: "先頭" }, { dir: "next", name: "次のタスクへ", edge: "末尾" }] as const as step (step.dir)}
           {@const target = neighbours === null ? null : neighbours[step.dir]}
           <button
             type="button"
@@ -808,7 +809,10 @@
                 : `${laneGroupLabel(neighbours.group)}内の${step.name}`}
             onclick={() => moveTo(target)}
           >
-            <Icon name={step.icon} />
+            <!-- 移動の図形 (doc-11 §2.4) は `placement.ts` の `STEP_ICON` が持つ — the family rule is
+                 cross-screen (this pair is 行の並べ替え's too), so the choice has to be somewhere a
+                 test can read it rather than here. -->
+            <Icon name={STEP_ICON[step.dir]} />
           </button>
         {/each}
         <span class="position">

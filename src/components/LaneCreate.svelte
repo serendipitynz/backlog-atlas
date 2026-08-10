@@ -112,9 +112,14 @@
     title={held ?? `${label} 列に新規タスクを作ります`}
     onclick={() => held === null && onopen()}
   >
-    <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4): 「新規」 is the name, so the figure takes no
-         `aria-label` of its own. The same `plus` the 文書・マイルストーン の作成の入口 draws
-         (doc-10 §1) — the mark for「ここから 1 件作る」is one figure, not one per screen. -->
+    <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4). The same `plus` the 文書・マイルストーン の
+         作成の入口 draws (doc-10 §1) — the mark for「ここから 1 件作る」is one figure, not one per
+         screen.
+         **The `aria-label` above stays**, under both of the exemptions §2.4 states for that type's
+         first condition: 「新規」 does not say which of the row's cells this one is, and under CLI 縮退
+         the name is where doc-7 §4.1's 保留理由 has to live (a `disabled` control takes no focus, so
+         `aria-describedby` never reaches it — doc-11 §5). Until the `＋` became a figure the type did
+         not apply here at all. -->
     <Icon name="plus" />新規
   </button>
 {:else}

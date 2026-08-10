@@ -26,7 +26,7 @@ import {
   type SwimlaneRow,
 } from "./swimlane";
 import { cardIdentity, crossTaskId } from "./card";
-import { DISCLOSURE_ICON } from "./placement";
+import { DISCLOSURE_ICON, STEP_ICON } from "./placement";
 import type { CardOrder, StatusColumn } from "./wire";
 
 function swimlane(
@@ -920,12 +920,22 @@ describe("2 層スティッキーの下への着地", () => {
 // them would let the other take a chevron for a move without anything noticing, which is exactly what
 // the rule was written for: 行末の入口 looks like `›` and the nearest figure by shape is the 列折畳み's.
 describe("レーンの図形", () => {
+  /** The figures the two screens draw, by family — every one the rule speaks about. */
   const FOLD = [
     ...Object.values(LANE_FIGURE.rowFold),
     ...Object.values(LANE_FIGURE.columnFold),
     ...Object.values(DISCLOSURE_ICON),
   ];
-  const MOVE = [LANE_FIGURE.moveUp, LANE_FIGURE.moveDown, LANE_FIGURE.openProject];
+  const MOVE = [
+    LANE_FIGURE.moveUp,
+    LANE_FIGURE.moveDown,
+    LANE_FIGURE.openProject,
+    ...Object.values(STEP_ICON),
+  ];
+
+  /** The figures two given sets have in common — an empty result is what the rule asks for. */
+  const shared = (a: readonly string[], b: readonly string[]): string[] =>
+    [...new Set(a.filter((figure) => b.includes(figure)))];
 
   it("折畳みは chevron、移動は arrow で描く", () => {
     for (const figure of FOLD) {
@@ -937,24 +947,29 @@ describe("レーンの図形", () => {
   });
 
   it("同じ図形が折畳みと移動の両方に出ない", () => {
-    expect(FOLD.filter((figure) => (MOVE as string[]).includes(figure))).toEqual([]);
+    expect(shared(FOLD, MOVE)).toEqual([]);
   });
 
   // 行折畳み points at the state (doc-7 §2.3), 列折畳み at what the press does (§2.2) — so neither pair
-  // may be the other's, and neither may print one figure in both of its states.
-  it("2 つの折畳みは向きの組を共有せず、各組の 2 態も違う図形になる", () => {
+  // may be the other's, and neither may print one figure in both of its states. The check is on the
+  // intersection rather than on the pairs being unequal: a pair that shares *one* figure with the other
+  // already puts a single chevron on both「この行は開いている」and「押すとこの列が開く」, on the screen
+  // that draws both, and comparing the pairs as wholes would let that through.
+  it("2 つの折畳みは 1 つも図形を共有せず、各組の 2 態も違う図形になる", () => {
     expect(LANE_FIGURE.rowFold.open).not.toBe(LANE_FIGURE.rowFold.folded);
     expect(LANE_FIGURE.columnFold.fold).not.toBe(LANE_FIGURE.columnFold.unfold);
-    expect(Object.values(LANE_FIGURE.rowFold)).not.toEqual(
-      expect.arrayContaining(Object.values(LANE_FIGURE.columnFold)),
+    expect(shared(Object.values(LANE_FIGURE.rowFold), Object.values(LANE_FIGURE.columnFold))).toEqual(
+      [],
     );
   });
 
   // 行の並べ替え と 前後移動 は同じ 2 つを取る (doc-11 §2.4): both move one step up or down, and the
   // 脇パネル配置 puts them on screen together — the rule bars sharing between operations that point at
   // different things, so this pair being shared is the rule holding rather than an exception to it.
+  // Read from both tables rather than restated once, so a change to either side has to move the other.
   it("並べ替えは 前後移動 と同じ組を取り、行末の入口だけが別の図形になる", () => {
-    expect([LANE_FIGURE.moveUp, LANE_FIGURE.moveDown]).toEqual(["arrow-up", "arrow-down"]);
+    expect([LANE_FIGURE.moveUp, LANE_FIGURE.moveDown]).toEqual([STEP_ICON.previous, STEP_ICON.next]);
+    expect([STEP_ICON.previous, STEP_ICON.next]).toEqual(["arrow-up", "arrow-down"]);
     expect(LANE_FIGURE.openProject).not.toBe(LANE_FIGURE.moveUp);
     expect(LANE_FIGURE.openProject).not.toBe(LANE_FIGURE.moveDown);
   });

@@ -253,9 +253,12 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M12 9v4" },
     { shape: "path", d: "M12 17h.01" },
   ],
-  // 作成の入口 (doc-10 §1, TASK-117). Sits inside a 控え that carries its own visible wording
-  // (「新規文書」/「新規マイルストーン」), so it is doc-11 §2.4's 可視の文言を持つ控えの中のアイコン
-  // and takes no `aria-label` of its own. Two paths, so the shape enumeration does not grow.
+  // 作成の入口 の 2 系統: 文書・マイルストーン (doc-10 §1, TASK-117) と レーンセルの ＋新規
+  // (doc-7 §4.1, TASK-139). Both sit inside a 控え carrying its own visible wording (「新規文書」/
+  // 「新規マイルストーン」/「新規」), so both are doc-11 §2.4's 可視の文言を持つ控えの中のアイコン.
+  // The レーンセル one keeps an `aria-label` under the two exemptions §2.4 states for that type — its
+  // wording does not say which cell, and CLI 縮退 puts the 保留理由 in the name. Two paths, so the
+  // shape enumeration does not grow.
   plus: [
     { shape: "path", d: "M5 12h14" },
     { shape: "path", d: "M12 5v14" },
@@ -275,9 +278,12 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" },
     { shape: "path", d: "M12 17h.01" },
   ],
-  // 表示中の印 (doc-7 §2.1, TASK-131). The tick that says a project's row is one the grid draws. It sits
-  // inside a 表示切替行 that carries the project's name, so it is doc-11 §2.4's 可視の文言を持つ控えの中の
-  // アイコン and takes no `aria-label`; the state it draws is `aria-pressed`'s to announce.
+  // 「選ばれている」印 の 2 か所: メニューの 表示中の印 (doc-7 §2.1, TASK-131) と 値一覧ポップオーバーの
+  // 選択中の印 (doc-7 §5.2, TASK-139). Both sit inside a 控え carrying the thing's own name — a
+  // project's, a value's — so both are doc-11 §2.4's 可視の文言を持つ控えの中のアイコン and take no
+  // `aria-label`; the state each draws is `aria-pressed`'s to announce. One figure rather than one per
+  // screen, which is what §2.4 の 同じ図形を別の操作へ与えない reads the other way round: these two
+  // point at the same thing.
   //
   // The same tick `clipboard-check` ends with, at the size lucide draws it alone — the figures are
   // copied per name, so the shared stroke is written out twice rather than referenced once.
