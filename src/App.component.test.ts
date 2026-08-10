@@ -841,6 +841,180 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
  * Neither is a rule a pure function holds: one is about a `window` listener staying quiet while a
  * component two levels down has a layer up, and the other is about what survives an unmount.
  */
+describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
+  /** The 共通修飾キー as a press carries it (doc-7 §2.1) — Command on macOS, Control elsewhere. */
+  const MOD: KeyboardEventInit = MAC_KEYBOARD ? { metaKey: true } : { ctrlKey: true };
+
+  /**
+   * Press a control the way a pointer does, focus and all — jsdom's `click()` moves no focus, and part
+   * of what this describe fixes is where focus goes back to.
+   */
+  function pressControl(control: HTMLElement): void {
+    control.focus();
+    click(control);
+  }
+
+  /** Open a 折畳み区画 of the detail panel by its heading (doc-8 §3). */
+  function openSection(host: HTMLElement, title: string): void {
+    const summary = [...host.querySelectorAll<HTMLElement>('[aria-label="タスク詳細"] summary')].filter(
+      (element) => element.textContent?.includes(title),
+    );
+    if (summary.length !== 1) throw new Error(`expected one ${title} summary, found ${summary.length}`);
+    const box = summary[0].closest("details");
+    if (box === null) throw new Error("a 区画見出し outside its details");
+    if (!(box as HTMLDetailsElement).open) click(summary[0]);
+  }
+
+  /** Open the first task and reach its 状態遷移 controls (doc-8 §6.5). */
+  async function withTransitions(): Promise<HTMLElement> {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
+    await settled();
+    openSection(host, "状態遷移");
+    return host;
+  }
+
+  /** The layer the question is drawn in, or `null` while nothing is being asked. */
+  function layer(host: HTMLElement, title: string): HTMLElement | null {
+    return host.querySelector<HTMLElement>(`[role="dialog"][aria-label="${title}"]`);
+  }
+
+  it("押下は層を上げるだけで、同じ座標を続けて押しても発行に届かない", async () => {
+    const host = await withTransitions();
+
+    // 語尾の … (doc-11 §12 の ②): the mark is on every 状態遷移, since all five ask.
+    const archive = byText<HTMLButtonElement>(host, "button.transition", "アーカイブ…");
+    pressControl(archive);
+
+    expect(layer(host, "アーカイブ")).not.toBeNull();
+    expect(madeTo("update_apply")).toHaveLength(0);
+
+    // 連打で素通りできない: the answer is in another layer, so pressing where the press was — twice more,
+    // as a 連打 does — cannot reach the act. This is the property the 二度押し did not have.
+    click(archive);
+    click(archive);
+    expect(madeTo("update_apply")).toHaveLength(0);
+  });
+
+  it("進む側の答えだけが発行し、それは 1 件だけである", async () => {
+    const host = await withTransitions();
+    answers.update = () => deferred<UpdateResult>().promise;
+    pressControl(byText(host, "button.transition", "アーカイブ…"));
+
+    const dialog = layer(host, "アーカイブ");
+    if (dialog === null) throw new Error("expected the question");
+    // 進む側は動作を名乗る (doc-11 §12): 実行する would be wider than what the press does.
+    click(byText(dialog, ".answers button", "アーカイブする"));
+    await settled();
+
+    expect(madeTo("update_apply")).toHaveLength(1);
+    expect(layer(host, "アーカイブ")).toBeNull();
+  });
+
+  it("やめる と Escape はどちらも何も発行せず、押した控えへフォーカスを戻す", async () => {
+    const host = await withTransitions();
+    const demote = byText<HTMLButtonElement>(host, "button.transition", "draft へ差し戻す…");
+
+    pressControl(demote);
+    const dialog = layer(host, "draft へ差し戻す");
+    if (dialog === null) throw new Error("expected the question");
+    // フォーカスを内側に (doc-7 §2.1): `Modal.svelte` puts it on its × as the layer mounts.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    click(byText(dialog, ".answers button", "やめる"));
+    await settled();
+
+    expect(madeTo("update_apply")).toHaveLength(0);
+    // 閉じたら開く前の操作へフォーカスを戻す (doc-7 §2.1). Nothing was started, so the control the question
+    // came from is still pressable — which is why the return is observable on this answer.
+    expect(document.activeElement).toBe(demote);
+
+    pressControl(demote);
+    press(only(host, '[role="dialog"][aria-label="draft へ差し戻す"]'), "Escape");
+    await settled();
+    // 層の出口は戻る側と同じ (doc-11 §12): an unanswered question starts nothing.
+    expect(madeTo("update_apply")).toHaveLength(0);
+    expect(layer(host, "draft へ差し戻す")).toBeNull();
+    expect(document.activeElement).toBe(demote);
+  });
+
+  it("別のタスクへ移ると問いは失効し、戻ってきても立っていない", async () => {
+    const host = await withTransitions();
+    pressControl(byText(host, "button.transition", "アーカイブ…"));
+    expect(layer(host, "アーカイブ")).not.toBeNull();
+
+    // The layer covers the window, so no card can be pressed while it is up. What can still move the
+    // panel off the file the question was about is a re-read that no longer holds it — 失効 (doc-11 §12
+    // の ③) is about exactly that, and it is the case the 二度押し got wrong (its armed state had no key,
+    // so the next task inherited it and went in one press).
+    emitReload({ slug: "atlas", load: loaded("atlas", [NEIGHBOUR]) });
+    await settled();
+
+    expect(host.querySelector('[aria-label="タスク詳細"]')).toBeNull();
+    expect(layer(host, "アーカイブ")).toBeNull();
+    expect(madeTo("update_apply")).toHaveLength(0);
+
+    // 戻ってきても立っていない: the request was dropped, not hidden — selecting the neighbour draws its
+    // own controls with no question over them.
+    click(byText(host, "button.card .title", "隣の題").closest("button.card")!);
+    await settled();
+    expect(layer(host, "アーカイブ")).toBeNull();
+    openSection(host, "状態遷移");
+    expect(byText(host, "button.transition", "アーカイブ…")).not.toBeNull();
+  });
+
+  it("外部エディタ起動は未保存入力があるときだけ問い、語尾の … もそのときだけ付く", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    openSection(host, "外部エディタで開く");
+
+    // 未保存入力が無いあいだは問わない (doc-8 §7): 毎回問うと 2 打目が反射になる。語尾に … も付かない。
+    pressControl(byText<HTMLButtonElement>(host, ".editor-list button", "OS の関連付けで開く"));
+    await settled();
+    expect(madeTo("task_file_open")).toHaveLength(1);
+
+    click(byText(host, "button.primary", "編集"));
+    fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
+    openSection(host, "外部エディタで開く");
+
+    // 未保存入力があるあいだは問う (doc-8 §6.4): 同じ控えが … を持ち、押下は起動に届かない。
+    const asking = byText<HTMLButtonElement>(host, ".editor-list button", "OS の関連付けで開く…");
+    pressControl(asking);
+    const dialog = layer(host, "OS の関連付けで開く");
+    if (dialog === null) throw new Error("expected the question");
+    // 問いの文は区画が出している注意文そのもの (doc-11 §12): 層がその区画を覆うので、同じことを
+    // 2 通りに述べない。
+    expect(dialog.textContent).toContain("二重に編集する");
+    click(byText(dialog, ".answers button", "やめる"));
+    await settled();
+    expect(madeTo("task_file_open")).toHaveLength(1);
+
+    // 未保存入力はどちらの答えでも失われない (doc-8 §6.4)。
+    expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
+
+    pressControl(asking);
+    click(byText(only(host, '[role="dialog"][aria-label="OS の関連付けで開く"]'), ".answers button", "OS の関連付けで開く"));
+    await settled();
+    expect(madeTo("task_file_open")).toHaveLength(2);
+    expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
+  });
+
+  it("層が上がっている間はシェルの和音が届かない（被せ層 は 1 枚だけ）", async () => {
+    const host = await withTransitions();
+    pressControl(byText(host, "button.transition", "アーカイブ…"));
+    expect(layer(host, "アーカイブ")).not.toBeNull();
+
+    press(document.body, ",", MOD);
+    await settled();
+
+    // 被せ層 は同時に 1 枚 (`raiseModal`): the shell must keep that of a layer it raised for a 区画 too.
+    expect(layer(host, "設定")).toBeNull();
+    expect(layer(host, "アーカイブ")).not.toBeNull();
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
 describe("プロジェクト詳細が自分で上げる被せ層", () => {
   /**
    * The 共通修飾キー as a press carries it (doc-7 §2.1): Command on macOS, Control elsewhere, and
