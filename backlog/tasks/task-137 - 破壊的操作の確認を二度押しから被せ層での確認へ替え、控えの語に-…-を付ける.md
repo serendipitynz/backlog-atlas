@@ -1,10 +1,10 @@
 ---
 id: TASK-137
 title: 破壊的操作の確認を二度押しから被せ層での確認へ替え、控えの語に … を付ける
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-10 20:45'
+updated_date: '2026-08-10 21:01'
 labels:
   - ui
   - design-system
