@@ -35,7 +35,7 @@
     emptyStorageWarning,
     isDirty,
     mergeDraft,
-    openLocationBlocked,
+    openLocationAvailability,
     saveAvailability,
     statusNotice,
     toggleStorage,
@@ -71,6 +71,14 @@
      */
     settingsPath: string | null;
     ledgerPath: string | null;
+    /**
+     * Whether the folder those two files live in is there yet (doc-3 §2.1), or `null` while the
+     * boundary's answer is not in hand. What withholds 場所を開く — the control opens the *folder*,
+     * which the first save of either file creates, so neither file's own absence can stand in for
+     * this. Asked of the shell rather than derived here: this form is given the settings, and the
+     * settings' absence is precisely the fact that used to be mistaken for this one.
+     */
+    directoryPresent: boolean | null;
     /**
      * Persist the draft. Resolves with the failure's text, or `null` on success.
      *
@@ -122,6 +130,7 @@
     loaded,
     settingsPath,
     ledgerPath,
+    directoryPresent,
     onsave,
     onopenLocation,
     saving,
@@ -269,13 +278,12 @@
   /** Whether a launch has been issued and not yet answered. */
   let opening = $state(false);
   /**
-   * Why 場所を開く cannot be pressed, or `null`. The launch in flight is one of the reasons, not a state
-   * beside them: a control that goes `aria-disabled` while its `aria-describedby` stays empty is the
-   * 理由の無い無効化 doc-11 §5 refuses, and a user who cannot see the pointer cannot tell it from a fault.
+   * Whether 場所を開く may be pressed, and why not. The launch in flight is one of the reasons, not a
+   * state beside them: a control that goes `aria-disabled` while its `aria-describedby` stays empty is
+   * the 理由の無い無効化 doc-11 §5 refuses, and a user who cannot see the pointer cannot tell it from a
+   * fault. 判定 and 理由 are separate fields of the one value for the same section's other reason.
    */
-  let locationBlocked = $derived(
-    loaded === null ? null : openLocationBlocked(loaded.status, opening),
-  );
+  let locationAvailability = $derived(openLocationAvailability(directoryPresent, opening));
   const LOCATION_BLOCKED_ID = "settings-location-blocked";
 
   function setStorage(value: StorageSelection, on: boolean): void {
@@ -316,7 +324,7 @@
 
   /** 場所を開く (TASK-75 AC #1). Nothing is read or written; the OS opens the directory or says why not. */
   async function openLocation(): Promise<void> {
-    if (locationBlocked !== null) return;
+    if (!locationAvailability.enabled) return;
     opening = true;
     try {
       locationFailure = await onopenLocation();
@@ -473,16 +481,16 @@
                pointer (doc-11 §5). -->
           <button
             type="button"
-            aria-disabled={locationBlocked !== null}
-            aria-describedby={locationBlocked === null ? undefined : LOCATION_BLOCKED_ID}
-            title={locationBlocked ?? OPEN_LOCATION_TITLE}
+            aria-disabled={!locationAvailability.enabled}
+            aria-describedby={locationAvailability.reason === null ? undefined : LOCATION_BLOCKED_ID}
+            title={locationAvailability.reason ?? OPEN_LOCATION_TITLE}
             onclick={openLocation}
           >
             {OPEN_LOCATION_LABEL}
           </button>
         </div>
-        {#if locationBlocked !== null}
-          <p class="hint" id={LOCATION_BLOCKED_ID}>{locationBlocked}</p>
+        {#if locationAvailability.reason !== null}
+          <p class="hint" id={LOCATION_BLOCKED_ID}>{locationAvailability.reason}</p>
         {/if}
         {#if locationFailure !== null}
           <p class="warn">{locationFailure}</p>

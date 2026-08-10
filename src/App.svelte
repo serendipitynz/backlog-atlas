@@ -35,6 +35,7 @@
     projectOpen,
     projectWatchStart,
     projectWatchStop,
+    settingsDirectoryPresent,
     settingsLocation,
     settingsLocationOpen,
     settingsRead,
@@ -213,6 +214,17 @@
   let settings = $state<LoadedSettings | null>(null);
   /** Where `settings.toml` is (decision-13), for the 設定画面 to name. `null` while unknown. */
   let settingsPath = $state<string | null>(null);
+  /**
+   * Whether the folder both of Atlas's own files live in is there yet (doc-3 §2.1), for the 設定画面 to
+   * withhold 場所を開く with. `null` until an answer is in hand — a probe still in flight and one that
+   * failed are one state to the screen, which says it has not looked rather than reporting a folder
+   * it has not looked at.
+   *
+   * Held apart from the two paths above because the answers have different lifetimes: a path is
+   * resolved once and cannot change while the app runs, while this turns true the first time either
+   * file is saved (`store::replace` creates the destination's parent).
+   */
+  let settingsDirectory = $state<boolean | null>(null);
   /** Whether the 設定画面 is open. Opened from the fixed header's 設定 (doc-7 §2.1). */
   let settingsOpen = $state(false);
   /**
@@ -722,6 +734,7 @@
     } catch {
       settingsPath = null;
     }
+    await refreshSettingsDirectory();
     // 外部エディタ経路 (doc-8 §7): one environment read, so it is probed once beside the CLI probe.
     // Probed *after* the settings are read, because doc-8 §7's 起動指定の解決順 starts at アプリ設定 —
     // probing first would report `$EDITOR` as the editor in effect when a setting outranks it.
@@ -969,6 +982,21 @@
   function closeRegister(): void {
     if (registerSubmitting) return;
     guardDiscard(registerDirty, dropRegisterModal);
+  }
+
+  /**
+   * Ask the boundary whether the アプリ設定ディレクトリ is there (doc-3 §2.1). Issued at startup and
+   * again each time the 設定モーダル opens, which is where the one control this withholds lives: a 登録
+   * in between creates the folder, and the control must not still be reading the answer from before
+   * it. A rejection leaves the state `null` rather than `false` — a probe that did not answer has not
+   * established that the folder is missing.
+   */
+  async function refreshSettingsDirectory(): Promise<void> {
+    try {
+      settingsDirectory = await settingsDirectoryPresent();
+    } catch {
+      settingsDirectory = null;
+    }
   }
 
   /**
@@ -1663,7 +1691,13 @@
     // discards nothing: the request lapses and the 未保存入力 it was about stays where it is.
     pendingDiscard = null;
     if (id === "register") registerOpen = true;
-    else settingsOpen = true;
+    else {
+      settingsOpen = true;
+      // Not awaited: the モーダル goes up now, and the answer lands in the 区画 when it arrives. Until
+      // then 場所を開く holds the previous answer, or says it has not been confirmed on the first open
+      // of a run whose startup probe has not returned.
+      void refreshSettingsDirectory();
+    }
   }
 
   function openMenu(): void {
@@ -1913,6 +1947,7 @@
         loaded={settings}
         {settingsPath}
         {ledgerPath}
+        directoryPresent={settingsDirectory}
         onsave={saveSettings}
         onopenLocation={openSettingsLocation}
         saving={settingsSaving}

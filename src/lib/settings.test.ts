@@ -8,8 +8,10 @@ import {
   emptyStorageWarning,
   isDirty,
   mergeDraft,
+  LOCATION_ABSENT_REASON,
+  LOCATION_UNCONFIRMED_REASON,
   OPENING_LOCATION_REASON,
-  openLocationBlocked,
+  openLocationAvailability,
   openLocationFailure,
   saveAvailability,
   statusNotice,
@@ -69,32 +71,39 @@ describe("saveAvailability", () => {
 });
 
 describe("場所を開く (TASK-75)", () => {
-  it("withholds the control while the file has never been written (AC #3)", () => {
-    expect(openLocationBlocked({ state: "absent" }, false)).toContain("まだ作成されていない");
+  it("opens the folder once it is there, whatever is or is not in it (TASK-144 AC #1)", () => {
+    // 到達しやすい状態が「プロジェクトを 1 件登録し、設定を一度も保存していない」である。フォルダは
+    // 最初の保存で作られるので現にあり、そこにアプリ設定ファイルがあるかどうかは控えの条件ではない。
+    expect(openLocationAvailability(true, false)).toEqual({ enabled: true, reason: null });
   });
 
-  it("gives the launch in flight a reason of its own, whatever the file's state", () => {
+  it("withholds the control while there is no folder, saying so (TASK-144 AC #2・#3)", () => {
+    const availability = openLocationAvailability(false, false);
+    expect(availability.enabled).toBe(false);
+    expect(availability.reason).toBe(LOCATION_ABSENT_REASON);
+    // AC #3: 理由の指示対象はフォルダであり、設定ファイルの有無を述べない。
+    expect(availability.reason).toContain("フォルダ");
+    expect(availability.reason).not.toContain("設定ファイル");
+  });
+
+  it("says it has not looked, rather than that there is no folder (TASK-144)", () => {
+    // 問い合わせが返っていない・失敗した状態で「フォルダはありません」と述べると、測っていないことを
+    // 測ったかのように書くことになる。押せないのは同じでも、述べられる事実が違う。
+    const availability = openLocationAvailability(null, false);
+    expect(availability.enabled).toBe(false);
+    expect(availability.reason).toBe(LOCATION_UNCONFIRMED_REASON);
+    expect(availability.reason).not.toBe(LOCATION_ABSENT_REASON);
+  });
+
+  it("gives the launch in flight a reason of its own, whatever the folder's state", () => {
     // doc-11 §5: 押せない間ずっと `aria-describedby` の指す先が空になる形は、理由の無い無効化である。
     // 発行中を状態ではなくこの関数の返す理由にしているのは、控えが黙って押せなくなるのを防ぐためで、
-    // ファイルが読める状態でも同じである。
-    for (const status of [
-      { state: "stored" },
-      { state: "absent" },
-      { state: "readOnly", version: 9 },
-    ] satisfies SettingsStatus[]) {
-      expect(openLocationBlocked(status, true)).toBe(OPENING_LOCATION_REASON);
-    }
-  });
-
-  it("opens the location for a file that exists but cannot be used", () => {
-    // 読めない・上位版 の 2 つは、ファイルが**ある**状態である。手で直すならその場所を開く必要が
-    // あるので、読めないことを理由に閉ざすと、直す手段のほうを閉ざすことになる。
-    for (const status of [
-      { state: "stored" },
-      { state: "unreadable", detail: "expected an equals" },
-      { state: "readOnly", version: 9 },
-    ] satisfies SettingsStatus[]) {
-      expect(openLocationBlocked(status, false)).toBeNull();
+    // フォルダがある状態でも同じである。
+    for (const present of [true, false, null]) {
+      expect(openLocationAvailability(present, true)).toEqual({
+        enabled: false,
+        reason: OPENING_LOCATION_REASON,
+      });
     }
   });
 
