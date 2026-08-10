@@ -660,6 +660,38 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     expect(saved.querySelector('[aria-label="設定"]')).toBeNull();
   });
 
+  /**
+   * doc-11 §4・§7 の一対 (TASK-134). 発行が通った事実そのものは ⑤ に載せず、通らなかったときは層を
+   * 保ったまま控えの隣で述べる — 二つで一つの規則なので、片方だけを押さえると残る半分が黙って反転する
+   * (成功で帯を立て直しても失敗側の試験は通り、失敗で層を閉じても成功側の試験は通る)。
+   *
+   * どちらも呼び出し元からしか固定できない。`band.ts` は 通知 か `null` を渡されるだけでどの押下が
+   * それを産んだか知らず、`Settings.svelte` はシェルへ失敗文を返すだけで、帯が立ったかどうかを見ない。
+   */
+  it("保存が通っても上部帯は立たない（TASK-134 AC #1）", async () => {
+    const host = await withSettingsDraft();
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+
+    // 層が下りたあとで見る: このモーダルは上部帯を覆う (doc-7 §2.1) ので、開いている間は立っていても
+    // 見えない。「見えなかった」ではなく「立っていない」を押さえるための順序である。
+    expect(madeTo("settings_save")).toHaveLength(1);
+    expect(host.querySelector('[aria-label="設定"]')).toBeNull();
+    expect(host.querySelector('.band[data-band="notice"]')).toBeNull();
+  });
+
+  it("保存が通らなければ層は残り、失敗は控えの隣に出る（TASK-134 AC #2）", async () => {
+    answers.settingsSaveFails = true;
+    const host = await withSettingsDraft();
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+
+    const dialog = dialogOf(host, "設定");
+    expect(dialog.querySelector("footer p.warn")?.textContent).toContain("保存できませんでした");
+    // ⑤ へは回さない (doc-11 §7): 層が残っているのだから、押した控えの隣が届く場所である。
+    expect(host.querySelector('.band[data-band="notice"]')).toBeNull();
+  });
+
   it("プロジェクト登録の 2 経路も、入力があると確認を経る", async () => {
     // This モーダル has no 下部操作行 (doc-11 §7): 登録 writes without leaving the layer, so the two
     // routes that lose what has been typed are the × and Escape, and both are wired outside the form.

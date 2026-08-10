@@ -79,7 +79,12 @@ export interface BandInputs {
   ledgerReadOnly: boolean;
   /** Why 継続検出 is stopped (doc-9 §3), or `null` when every row is watched. */
   unwatchedReason: string | null;
-  /** An action's own report, or `null`. */
+  /**
+   * What ⑤ carries, or `null` (doc-11 §4, narrowed by TASK-134): an issue that did not go through, one
+   * that was withheld, or a 帰結 the screen does not state itself. Never the bare fact that an issue
+   * landed — the screen is already in that shape, and 発行の結果 belongs beside the control that issued
+   * it (控えの隣の結果文) wherever that control is still up.
+   */
   notice: string | null;
 }
 
