@@ -1,10 +1,10 @@
 ---
 id: TASK-133
 title: updated date の期間でタスクを絞り込む条件を足す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-10 00:23'
+updated_date: '2026-08-10 01:19'
 labels:
   - ui
   - 'kind:feature'
