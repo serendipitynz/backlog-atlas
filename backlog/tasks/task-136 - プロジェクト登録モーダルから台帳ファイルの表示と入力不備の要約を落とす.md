@@ -1,10 +1,10 @@
 ---
 id: TASK-136
 title: プロジェクト登録モーダルから台帳ファイルの表示と入力不備の要約を落とす
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-10 10:50'
+updated_date: '2026-08-10 11:11'
 labels:
   - ui
   - 'kind:chore'
