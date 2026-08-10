@@ -418,7 +418,9 @@ function heldConditions(filter: CardFilter): FilterCondition[] {
       case "updated":
         for (const end of PERIOD_ENDS) {
           const value = periodEnd(filter, end);
-          if (value !== "") held.push({ facet, end, value });
+          if (value !== "") {
+            held.push({ facet, end, value });
+          }
         }
         break;
     }

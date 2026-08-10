@@ -216,9 +216,13 @@ export function matchesFilter(
  * whether, and there is no answer that keeps it.
  */
 function matchesUpdatedPeriod(view: TaskView, from: string, to: string): boolean {
-  if (from === "" && to === "") return true;
+  if (from === "" && to === "") {
+    return true;
+  }
   const day = localDay(view.task.updatedDate);
-  if (day === null) return false;
+  if (day === null) {
+    return false;
+  }
   return (from === "" || day >= from) && (to === "" || day <= to);
 }
 

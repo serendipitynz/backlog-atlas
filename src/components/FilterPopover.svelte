@@ -25,6 +25,8 @@
   } from "../lib/token";
   import {
     relativeStart,
+    usableCount,
+    MAX_RELATIVE_COUNT,
     PERIOD_UNITS,
     PERIOD_UNIT_LABEL,
     type PeriodUnit,
@@ -161,6 +163,12 @@
   let count = $state(7);
   let unit = $state<PeriodUnit>("day");
 
+  // 無効化提示 (doc-11 §5): judged on the count alone, so the state is a pure function of what is in
+  // the field. Resolving it here instead would put a clock inside a `$derived` and give the row a
+  // value that changes without anything being typed.
+  const RELATIVE_BLOCKED_ID = "filter-relative-blocked";
+  let countUsable = $derived(usableCount(count));
+
   /**
    * 解決時点 は押した時点 (doc-7 §5.2): `new Date()` is read here, when the press happens, and the
    * day it resolves to is stored as the 始端. Nothing downstream keeps a clock, which is why the
@@ -168,7 +176,9 @@
    */
   function applyRelative(): void {
     const day = relativeStart(count, unit, new Date());
-    if (day !== null) onchange(setPeriodEnd(filter, "from", day));
+    if (day !== null) {
+      onchange(setPeriodEnd(filter, "from", day));
+    }
   }
 
   let selected = $derived(conditionCount(filter));
@@ -273,14 +283,28 @@
         <div class="relative">
           <label>
             いまから
-            <input type="number" min="1" step="1" bind:value={count} />
+            <input type="number" min="1" max={MAX_RELATIVE_COUNT} step="1" bind:value={count} />
           </label>
           <select bind:value={unit} aria-label="いまから数える単位">
             {#each PERIOD_UNITS as value (value)}
               <option {value}>{PERIOD_UNIT_LABEL[value]}</option>
             {/each}
           </select>
-          <button type="button" class="plain" onclick={applyRelative}>始端にする</button>
+          <!-- 無効化提示 (doc-11 §5): the control stays in place with `aria-disabled` and the reason
+               beside it, rather than a press that appears to work and sets nothing. `max` above bounds
+               what the field offers; this is what answers a value typed past it. -->
+          <button
+            type="button"
+            class="plain"
+            aria-disabled={!countUsable}
+            aria-describedby={countUsable ? undefined : RELATIVE_BLOCKED_ID}
+            onclick={() => countUsable && applyRelative()}>始端にする</button
+          >
+          {#if !countUsable}
+            <span class="blocked" id={RELATIVE_BLOCKED_ID}>
+              1 〜 {MAX_RELATIVE_COUNT} の整数を入れてください
+            </span>
+          {/if}
         </div>
       </section>
     {/if}
@@ -494,6 +518,8 @@
 
   .relative {
     display: flex;
+    // So the reason below can take a row of its own (`flex-basis: 100%`).
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.3rem;
     // 副次 (doc-11 §2.1): the row that builds a 始端 is quieter than the two ends themselves, which
@@ -526,6 +552,13 @@
     .plain {
       margin-left: auto;
       font-size: 0.65rem;
+    }
+
+    // 理由はホバーせずに読める (doc-11 §5). It takes the whole row below the controls rather than
+    // sitting between them, so appearing does not move the three above it sideways.
+    .blocked {
+      flex-basis: 100%;
+      font-size: 0.62rem;
     }
   }
 </style>

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { localDay, relativeStart, todayLocal, type ZoneOffset } from "./period";
+import {
+  localDay,
+  relativeStart,
+  todayLocal,
+  usableCount,
+  MAX_RELATIVE_COUNT,
+  PERIOD_UNITS,
+  type ZoneOffset,
+} from "./period";
 
 /**
  * 基準時間帯 is injected in every case here (doc-7 §5.2). The machine's own zone is the one thing
@@ -114,6 +122,29 @@ describe("相対指定 (doc-7 §5.2)", () => {
   it("has no answer for a count that is not a positive whole number", () => {
     for (const count of [0, -1, 1.5, Number.NaN]) {
       expect(relativeStart(count, "day", now, UTC)).toBeNull();
+    }
+  });
+
+  it("takes counts up to the control's cap and nothing past it", () => {
+    expect(usableCount(1)).toBe(true);
+    expect(usableCount(MAX_RELATIVE_COUNT)).toBe(true);
+    expect(usableCount(MAX_RELATIVE_COUNT + 1)).toBe(false);
+    expect(usableCount(0)).toBe(false);
+    expect(usableCount(1.5)).toBe(false);
+
+    // Every unit still lands on a real day at the cap, which is what makes it a width rather than a
+    // place the arithmetic gives out.
+    for (const unit of PERIOD_UNITS) {
+      expect(relativeStart(MAX_RELATIVE_COUNT, unit, now, UTC)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  it("answers null rather than a nonsense day for a count no calendar can hold", () => {
+    // A billion 日 leaves the range `Date` holds; every component of the result then reads NaN, and
+    // formatting it would give `0NaN-NaN-NaN` — a 始端 that draws a token nobody can read beside a
+    // condition that no longer means what the token says.
+    for (const unit of PERIOD_UNITS) {
+      expect(relativeStart(1_000_000_000, unit, now, UTC)).toBeNull();
     }
   });
 });

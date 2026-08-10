@@ -53,6 +53,19 @@ export const PERIOD_UNIT_LABEL: Record<PeriodUnit, string> = {
 };
 
 /**
+ * The largest 相対指定 the control takes: four digits, which is 27 years in 日, 191 in 週 and 833 in
+ * 月 — past any ledger's life, and every unit still resolves to a real day well inside what `Date`
+ * can hold. **This is the width of the field, not a limit of the calendar**: `relativeStart` answers
+ * `null` for anything it cannot resolve whether or not it came through this control.
+ */
+export const MAX_RELATIVE_COUNT = 9999;
+
+/** Whether a 相対指定 count is one the control offers — 1〜`MAX_RELATIVE_COUNT`, whole. */
+export function usableCount(count: number): boolean {
+  return Number.isInteger(count) && count >= 1 && count <= MAX_RELATIVE_COUNT;
+}
+
+/**
  * The two forms a `created_date` / `updated_date` is accepted in. Both occur in real ledgers: this
  * repository's own `backlog/tasks/` holds nine tasks whose `updated_date` is a bare `2026-07-22`
  * alongside the timestamped ones the current CLI writes.
@@ -81,7 +94,9 @@ function utcInstant(
   minute: number,
   second: number,
 ): number | null {
-  if (hour > 23 || minute > 59 || second > 59) return null;
+  if (hour > 23 || minute > 59 || second > 59) {
+    return null;
+  }
   const ms = Date.UTC(year, month - 1, day, hour, minute, second);
   const back = new Date(ms);
   const real =
@@ -111,7 +126,9 @@ function dayAt(instantMs: number, zone: ZoneOffset): string {
  * while `2026-07-22 22:46` names the day it falls on where the reader is.
  */
 export function localDay(value: string | null, zone: ZoneOffset = SYSTEM_ZONE): string | null {
-  if (value === null) return null;
+  if (value === null) {
+    return null;
+  }
 
   const plain = DAY_ONLY.exec(value);
   if (plain !== null) {
@@ -121,7 +138,9 @@ export function localDay(value: string | null, zone: ZoneOffset = SYSTEM_ZONE): 
   }
 
   const stamped = WITH_TIME.exec(value);
-  if (stamped === null) return null;
+  if (stamped === null) {
+    return null;
+  }
   const [, year, month, day, hour, minute, second] = stamped;
   const instant = utcInstant(
     Number(year),
@@ -141,8 +160,9 @@ export function todayLocal(now: Date, zone: ZoneOffset = SYSTEM_ZONE): string {
 
 /**
  * 相対指定 → 始端 (doc-7 §5.2): the 暦日 that is `count` 日 / 週 / 月 back from 今日, resolved at
- * `now` and returned as an absolute day. `null` when `count` is not a positive whole number, which
- * is the state the control offers it in before anything is typed.
+ * `now` and returned as an absolute day. `null` for a `count` outside `usableCount` — which includes
+ * the state the control offers it in before anything is typed — and for one that resolves to no real
+ * day at all.
  *
  * 週 is seven 日; 月 is a 暦月, clamped to the end of the shorter month — 2026-03-31 の 1 か月前 is
  * 2026-02-28. The arithmetic runs on the *calendar* components rather than by subtracting a duration,
@@ -154,11 +174,16 @@ export function relativeStart(
   now: Date,
   zone: ZoneOffset = SYSTEM_ZONE,
 ): string | null {
-  if (!Number.isInteger(count) || count < 1) return null;
+  if (!usableCount(count)) {
+    return null;
+  }
   const [year, month, day] = todayLocal(now, zone).split("-").map(Number);
 
   if (unit === "month") {
     const anchor = new Date(Date.UTC(year, month - 1 - count, 1));
+    if (Number.isNaN(anchor.getTime())) {
+      return null;
+    }
     const targetYear = anchor.getUTCFullYear();
     const targetMonth = anchor.getUTCMonth() + 1;
     // Day 0 of the following month is the last day of this one.
@@ -168,5 +193,13 @@ export function relativeStart(
 
   const back = unit === "week" ? count * 7 : count;
   const shifted = new Date(Date.UTC(year, month - 1, day - back));
+  // A count far enough back leaves the range `Date` can hold (±273,790 years), and every component
+  // of an invalid `Date` reads `NaN` — which `formatDay` would happily render as `0NaN-NaN-NaN` and
+  // install as a 始端, giving a token that names a day nobody can read beside a condition that no
+  // longer says what the token says. `MAX_RELATIVE_COUNT` keeps the control away from here; this is
+  // what makes a value that reached the function anyway produce no 始端 rather than a nonsense one.
+  if (Number.isNaN(shifted.getTime())) {
+    return null;
+  }
   return formatDay(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
 }
