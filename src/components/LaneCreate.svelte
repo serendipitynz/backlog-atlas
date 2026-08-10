@@ -11,6 +11,7 @@
   import { omitsSentence } from "../lib/manage";
   import { ariaKeyShortcuts, matchShortcut, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
+  import Icon from "../lib/icons/Icon.svelte";
 
   interface Props {
     /** Whether this column offers the entry, and its 作成時 status 候補 (doc-7 §4.1). */
@@ -111,7 +112,16 @@
     title={held ?? `${label} 列に新規タスクを作ります`}
     onclick={() => held === null && onopen()}
   >
-    <span aria-hidden="true">＋</span>新規
+    <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4). The same `plus` the 文書・マイルストーン の
+         作成の入口 draws (doc-10 §1) — the mark for「ここから 1 件作る」is one figure, not one per
+         screen.
+         **The `aria-label` above stays**, under both of the exemptions §2.4 states for that type's
+         first condition: 「新規」 does not say which of the row's cells this one is, and under CLI 縮退
+         the name is the only place this control says why it cannot be pressed — the reason is
+         画面全体に効く, so it lives on the 上部帯 (the paragraph above) and there is no element beside
+         this button for `aria-describedby` to point at. Until the `＋` became a figure the type did
+         not apply here at all. -->
+    <Icon name="plus" />新規
   </button>
 {:else}
   <div class="entry">

@@ -11,6 +11,7 @@
   import {
     CANONICAL_COLUMNS,
     CANONICAL_COLUMN_LABEL,
+    LANE_FIGURE,
     LAST_COLUMN_FOLD_BLOCKED_REASON,
     ROW_FOLD_ABSENT_REASON,
     UNMAPPED_LABEL,
@@ -356,7 +357,7 @@
           : LAST_COLUMN_FOLD_BLOCKED_REASON}
         onclick={() => foldable && toggleColumn(column)}
       >
-        <Icon name={folded ? "chevron-right" : "chevron-left"} />
+        <Icon name={folded ? LANE_FIGURE.columnFold.unfold : LANE_FIGURE.columnFold.fold} />
       </button>
       <!-- 畳んだ列は列名を残す (doc-7 §2.2). One line in both states: the name gives up its tail to an
            ellipsis rather than wrapping, because a head that grew a second line would push every row
@@ -427,7 +428,7 @@
           title={folded ? ROW_UNFOLD_HINT : ROW_FOLD_HINT}
           onclick={() => toggleRow(row.slug)}
         >
-          <Icon name={folded ? "chevron-up" : "chevron-down"} />
+          <Icon name={folded ? LANE_FIGURE.rowFold.folded : LANE_FIGURE.rowFold.open} />
         </button>
       {/if}
       <div class="names">
@@ -478,25 +479,33 @@
         </span>
       {/if}
       <div class="controls">
-        <!-- 押せない矢印は消さずに残す (doc-11 §5). `aria-label` carries the name the arrow glyph does
-             not spell out, and the reason travels through `aria-describedby` to the one line above the
-             rows; `title` repeats it for the pointer only, never as its only home. -->
+        <!-- 押せない矢印は消さずに残す (doc-11 §5). `aria-label` carries the name the figure does not
+             spell out, and the reason travels through `aria-describedby` to the one line above the
+             rows; `title` repeats it for the pointer only, never as its only home.
+             移動の族 (doc-11 §2.4): the same pair 前後移動 takes in `TaskDetail.svelte`, which the
+             section allows because both point at the same thing — moving one step up or down. What is
+             moved (this row's place in the ledger / the task the panel shows) is what the labels say,
+             and the 脇パネル配置 is where both are on screen at once. -->
         <button
           type="button"
           aria-label="{row.slug} を上へ"
           aria-disabled={!canReorder}
           aria-describedby={canReorder ? undefined : REORDER_REASON_ID}
           title={canReorder ? "表示順を上へ" : REORDER_BLOCKED_REASON}
-          onclick={() => canReorder && onmove(row.slug, -1)}>↑</button
+          onclick={() => canReorder && onmove(row.slug, -1)}
         >
+          <Icon name={LANE_FIGURE.moveUp} />
+        </button>
         <button
           type="button"
           aria-label="{row.slug} を下へ"
           aria-disabled={!canReorder}
           aria-describedby={canReorder ? undefined : REORDER_REASON_ID}
           title={canReorder ? "表示順を下へ" : REORDER_BLOCKED_REASON}
-          onclick={() => canReorder && onmove(row.slug, 1)}>↓</button
+          onclick={() => canReorder && onmove(row.slug, 1)}
         >
+          <Icon name={LANE_FIGURE.moveDown} />
+        </button>
         {#if unwatched.includes(row.slug)}
           <!-- The manual 再読込契機 (doc-9 §3) sits on the row it refreshes: a row that says its
                cards may be stale has to carry the one control that resolves that. -->
@@ -506,16 +515,19 @@
             onclick={() => onreread(row.slug)}>再読込</button
           >
         {/if}
-        <!-- The `›` at the row's end (doc-7 §2.3's sketch, doc-10 §2): the same destination as the
-             project name, as an entry point at the end of the row. The name is the part that gives
-             up room as the window narrows; this one keeps its width, so it stays pressable. -->
+        <!-- 行末の入口 (doc-7 §2.3's sketch, doc-10 §2): the same destination as the project name, as
+             an entry point at the end of the row. The name is the part that gives up room as the
+             window narrows; this one keeps its width, so it stays pressable.
+             移動の族 (doc-11 §2.4): `arrow-right`, not the `chevron-right` the sketch's `›` looks like
+             — that figure is the 列折畳み one column head away, and the section copies what the glyph
+             pointed at rather than how it was drawn. -->
         <button
           type="button"
           aria-label="{row.slug} のプロジェクト詳細画面を開く"
           title="プロジェクト詳細画面を開きます"
           onclick={() => onopenProject(row.slug)}
         >
-          <span aria-hidden="true">›</span>
+          <Icon name={LANE_FIGURE.openProject} />
         </button>
       </div>
     </div>
@@ -868,8 +880,14 @@
     gap: 0.2rem;
     margin-left: auto;
 
+    // 並べ替えと行末の入口はアイコンのみのボタン、再読込は文言 (doc-11 §2.4). Centred both ways for the
+    // same reason `.fold` is: the height is stated rather than taken from a text line, and a figure is
+    // a `display: block` svg that brings no line box to be centred by. The 再読込 label rides along.
     button {
       box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       height: var(--head-control);
       padding: 0 0.35rem;
       border: 1px solid var(--line-strong);

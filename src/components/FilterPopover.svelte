@@ -34,6 +34,7 @@
   import type { CardFilter, Facets } from "../lib/filter";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
+  import Icon from "../lib/icons/Icon.svelte";
 
   interface Props {
     filter: CardFilter;
@@ -252,7 +253,11 @@
             aria-pressed={on}
             onclick={() => onchange(toggleCondition(filter, value.condition))}
           >
-            <span class="mark" aria-hidden="true">{on ? "✓" : ""}</span>
+            <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4): the row carries the value's own name,
+                 so the tick takes no `aria-label` — `aria-pressed` above is what announces the state.
+                 The same `check` the メニューの表示中の印 draws (doc-7 §2.1), which is the point: one
+                 「選ばれている」 mark, not one per screen. -->
+            <span class="mark">{#if on}<Icon name="check" />{/if}</span>
             <span class="name">{value.label}</span>
             <span class="count">{value.count}</span>
           </button>
@@ -420,9 +425,15 @@
     }
   }
 
+  // 選択中の印 (doc-11 §2.4 の 可視の文言を持つ控えの中のアイコン). The width is the box the tick sits
+  // in, held whether or not the tick is there, so the value names below line up in both states — the
+  // figure itself takes the row's font-size like every icon does (1em, §2.4). Centred because the svg
+  // is `display: block` and narrower than this box.
   .mark {
+    display: flex;
     width: 0.7rem;
     flex: none;
+    justify-content: center;
     color: var(--info);
   }
 

@@ -434,6 +434,25 @@ export const DISCLOSURE_ICON: Record<"open" | "closed", IconName> = {
 };
 
 /**
+ * 前後移動 が刷る図形 (doc-8 §2.2, TASK-139). Arrows, not the chevrons above: doc-11 §2.4's
+ * 同じ図形を別の操作へ与えない makes chevron the 折畳み family and arrow the 移動 one, and a fold is
+ * not a move.
+ *
+ * Here rather than inline in `TaskDetail.svelte` for the reason [`DISCLOSURE_ICON`] is here — but the
+ * rule this one carries is **cross-screen**, so being reachable matters more than being tidy: 脇パネル
+ * 配置 draws this pair beside the swimlane's own four figures, and `swimlane.test.ts` checks the two
+ * screens' tables together. Left in the markup it was read by nothing, and giving it a chevron would
+ * have collided with 行折畳み on that very placement with every test still passing.
+ *
+ * **The same pair is 行の並べ替え's** (`LANE_FIGURE`, `swimlane.ts`). §2.4 allows that: it bars sharing
+ * between operations that point at different things, and both of these move one step up or down.
+ */
+export const STEP_ICON: Record<"previous" | "next", IconName> = {
+  previous: "arrow-up",
+  next: "arrow-down",
+};
+
+/**
  * What the switch says about the 既定 beyond the mark, or `null` when the placement on screen *is*
  * the 既定 and the mark alone says everything.
  */

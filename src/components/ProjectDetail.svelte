@@ -1469,7 +1469,11 @@
                   bind:value={row.key}
                   disabled={ledgerReadOnly}
                 />
-                <span aria-hidden="true">→</span>
+                <!-- 値の対応を示す記号 (doc-11 §2.4). 操作に属さないアイコン: not inside a pressable
+                     control, and what it shows — 原文 status を正準列へ対応づける — is what the 区画's
+                     own hint sentence above says in words, which is the condition §2.4 puts on this
+                     type. So it carries no `aria-label`, no `title` and no focus. -->
+                <Icon name="arrow-right" />
                 <select bind:value={row.value} disabled={ledgerReadOnly}>
                   {#each CANONICAL_STATUS_NAMES as name (name)}
                     <option value={name}>{name}</option>
@@ -1482,13 +1486,22 @@
                     <option value={row.value}>{row.value}（不正: 正準列ではありません）</option>
                   {/if}
                 </select>
+                <!-- アイコンのみのボタン (doc-11 §2.4). 原文 is the wording「行を外す」; doc-10 §4.2
+                     records why this row takes a figure instead. The name has to name *which* row —
+                     with the glyph gone there is no visible name left, and the rows are otherwise
+                     alike. A row whose 原文 status is still empty has nothing to be called but its
+                     place in the table. -->
                 <button
                   type="button"
+                  class="drop"
+                  aria-label={row.key.trim() === ""
+                    ? `${index + 1} 行目を削除`
+                    : `${row.key} の行を削除`}
                   title="この行を削除"
                   disabled={ledgerReadOnly}
                   onclick={() => removeAliasRow(index)}
                 >
-                  ×
+                  <Icon name="x" />
                 </button>
                 {#if row.key.trim() !== ""}
                   {#if note !== null}
@@ -1538,10 +1551,17 @@
             {:else}
               <ul class="submitted">
                 {#each submitted as attribute (attribute.attribute)}
+                  <!-- 値の対応を示す記号 (doc-11 §2.4 の 操作に属さないアイコン). That type requires the
+                       区画's own words to say what the figure says, and here nothing did: the two
+                       values were told apart by the arrow alone, which is `aria-hidden`, so a reader
+                       heard「project_root 旧パス 新パス」. The words are 視覚的にのみ隠す (doc-11 §5 の
+                       2 つ目の形) — the figure already says it to the eye. -->
                   <li>
                     <code>{attribute.attribute}</code>
+                    <span class="unseen">変更前</span>
                     <span class="from">{attribute.from}</span>
-                    <span aria-hidden="true">→</span>
+                    <Icon name="arrow-right" />
+                    <span class="unseen">変更後</span>
                     <span class="to">{attribute.to}</span>
                   </li>
                 {/each}
@@ -3201,6 +3221,15 @@
 
     input[type="text"] {
       width: 12rem;
+    }
+
+    // 行削除 as an アイコンのみのボタン (doc-11 §2.4, doc-10 §4.2 の逸脱 1 件目). Centred and squared
+    // off: the shared `button` padding above is sized for a word, and a figure given it sits in a box
+    // wider than it is tall — beside an input and a select, that reads as a third field.
+    .drop {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem 0.3rem;
     }
   }
 

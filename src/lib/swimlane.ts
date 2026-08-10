@@ -42,6 +42,7 @@ import type {
   TaskView,
 } from "./wire";
 import { matchesFilter, type CardFilter, type InconsistentLookup } from "./filter";
+import type { IconName } from "./icons/lucide";
 
 /** 正準ステータス列 in left-to-right order (decision-4, doc-7 §2). Fixed for every row. */
 export const CANONICAL_COLUMNS: readonly StatusColumn[] = [
@@ -583,6 +584,40 @@ export const ROW_FOLD_ABSENT_REASON =
  */
 export const LAST_COLUMN_FOLD_BLOCKED_REASON =
   "残り 1 列は畳めません。すべて畳むと、どの列のカードも読めない画面になります。";
+
+// --- レーンヘッダ行と列ヘッダの図形 (doc-7 §2.2・§2.3, doc-11 §2.4) ----------------------------
+
+/**
+ * この画面が刷る図形 (doc-11 §2.4 の 同じ図形を別の操作へ与えない). Four controls, two families: 折畳み
+ * speaks chevron and 移動 speaks arrow, and no figure may be claimed by both.
+ *
+ * Held here rather than inline in the markup because §2.4 states the rule and something has to be able
+ * to check it — the markup can only pick a figure, so a rule kept there is a rule nothing can be tested
+ * against (the same reason doc-7 §5.2 took the ポップオーバーの閉じる契機 out of a code comment). This is
+ * the swimlane's part of the claim; タスク詳細's is `DISCLOSURE_ICON` and `STEP_ICON` (`placement.ts`),
+ * and `swimlane.test.ts` reads all three together. **Every figure that stands for an operation the rule
+ * speaks about has to be in one of them** — one left in the markup is one the check cannot see, and
+ * 前後移動 was exactly that until TASK-139's review: 脇パネル配置 draws it beside these four, so a
+ * chevron given to it would have collided with 行折畳み with every test still passing. The rule reaches
+ * operations only, so the `arrow-right` in `ProjectDetail.svelte`'s 値の対応 is outside it and outside
+ * these tables — §2.4 says why, and it is an 操作に属さないアイコン rather than a control.
+ *
+ * **Which figure of a pair is showing is doc-7's rule, and the two folds do not share it.** 行折畳み
+ * points at the state the row is in (§2.3), 列折畳み at what the press would do (§2.2) — sideways there
+ * is no open or closed to point at. The keys are named for that difference, so neither pair can be
+ * copied onto the other by reading this table alone.
+ */
+export const LANE_FIGURE = {
+  /** 行折畳み (§2.3): the state the row's cells are in. */
+  rowFold: { open: "chevron-down", folded: "chevron-up" },
+  /** 列折畳み (§2.2): what pressing would do to the column. */
+  columnFold: { fold: "chevron-left", unfold: "chevron-right" },
+  /** 行の並べ替え (§2.3): the pair 前後移動 also takes (doc-8 §2.2) — both move one step. */
+  moveUp: "arrow-up",
+  moveDown: "arrow-down",
+  /** 行末の入口 (§2.3): a move to another screen, so an arrow rather than the sketch's `›`. */
+  openProject: "arrow-right",
+} as const satisfies Record<string, IconName | Record<string, IconName>>;
 
 // --- 2 層スティッキーへの着地 (doc-7 §2.3, doc-10 §2) -----------------------------------------
 

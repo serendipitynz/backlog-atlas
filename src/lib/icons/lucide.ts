@@ -56,11 +56,14 @@ export type IconName =
   | "clipboard-check"
   | "arrow-up"
   | "arrow-down"
+  | "arrow-right"
   | "x"
   | "triangle-alert"
   | "plus"
   | "circle-question-mark"
-  | "check";
+  | "check"
+  | "square-check"
+  | "square";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -211,9 +214,10 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     },
     { shape: "path", d: "m9 14 2 2 4-4" },
   ],
-  // 前後移動 (doc-8 §2.2) の ↑↓. Arrows rather than the chevron pair above: doc-8 §2.2 writes this
-  // operation as ↑↓, and the 折畳み controls already speak chevron on the same screens — a fold and a
-  // move to the neighbouring task are different operations and should not share a figure.
+  // 移動の族 (doc-11 §2.4 の 同じ図形を別の操作へ与えない). Arrows rather than the chevron pair above,
+  // because chevron is the 折畳み family and a fold is not a move; doc-8 §2.2 and doc-7 §2.3 both write
+  // their operation as ↑↓, so the pair is shared by 前後移動 and 行の並べ替え — §2.4 forbids sharing a
+  // figure between operations that point at different things, and these two point at the same thing.
   "arrow-up": [
     { shape: "path", d: "m5 12 7-7 7 7" },
     { shape: "path", d: "M12 19V5" },
@@ -222,9 +226,16 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M12 5v14" },
     { shape: "path", d: "m19 12-7 7-7-7" },
   ],
-  // モーダルの閉じる (doc-11 §7). The only figure here that also exists on screen as a character glyph
-  // (上部帯通知・絞り込みトークン・status 別名表の行削除 all print `×`): those three are older than
-  // `src/lib/icons/` and TASK-80 has them, while this one is new and takes the form §2.4 asks for.
+  // 行末の入口 (doc-7 §2.3) と 値の対応 (doc-10 §4.2 の別名表、§4.1 の保存で送る属性). The sketch prints
+  // `›` and the nearest figure by shape would be `chevron-right`, but that one is already the 列折畳み
+  // and the 区画見出し on the same screen: §2.4 copies what the glyph pointed at, not how it looked.
+  "arrow-right": [
+    { shape: "path", d: "M5 12h14" },
+    { shape: "path", d: "m12 5 7 7-7 7" },
+  ],
+  // 閉じる・解除・削除 (doc-11 §7 のモーダル、上部帯の通知、絞り込みトークン、status 別名表の行).
+  // Those last three printed `×` until TASK-139 — they are older than `src/lib/icons/`, and doc-11 §7
+  // is careful that sharing this figure is not sharing that section's contract.
   x: [
     { shape: "path", d: "M18 6 6 18" },
     { shape: "path", d: "m6 6 12 12" },
@@ -242,9 +253,12 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M12 9v4" },
     { shape: "path", d: "M12 17h.01" },
   ],
-  // 作成の入口 (doc-10 §1, TASK-117). Sits inside a 控え that carries its own visible wording
-  // (「新規文書」/「新規マイルストーン」), so it is doc-11 §2.4's 可視の文言を持つ控えの中のアイコン
-  // and takes no `aria-label` of its own. Two paths, so the shape enumeration does not grow.
+  // 作成の入口 の 2 系統: 文書・マイルストーン (doc-10 §1, TASK-117) と レーンセルの ＋新規
+  // (doc-7 §4.1, TASK-139). Both sit inside a 控え carrying its own visible wording (「新規文書」/
+  // 「新規マイルストーン」/「新規」), so both are doc-11 §2.4's 可視の文言を持つ控えの中のアイコン.
+  // The レーンセル one keeps an `aria-label` under the two exemptions §2.4 states for that type — its
+  // wording does not say which cell, and CLI 縮退 puts the 保留理由 in the name. Two paths, so the
+  // shape enumeration does not grow.
   plus: [
     { shape: "path", d: "M5 12h14" },
     { shape: "path", d: "M12 5v14" },
@@ -264,11 +278,26 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" },
     { shape: "path", d: "M12 17h.01" },
   ],
-  // 表示中の印 (doc-7 §2.1, TASK-131). The tick that says a project's row is one the grid draws. It sits
-  // inside a 表示切替行 that carries the project's name, so it is doc-11 §2.4's 可視の文言を持つ控えの中の
-  // アイコン and takes no `aria-label`; the state it draws is `aria-pressed`'s to announce.
+  // 「選ばれている」印 の 2 か所: メニューの 表示中の印 (doc-7 §2.1, TASK-131) と 値一覧ポップオーバーの
+  // 選択中の印 (doc-7 §5.2, TASK-139). Both sit inside a 控え carrying the thing's own name — a
+  // project's, a value's — so both are doc-11 §2.4's 可視の文言を持つ控えの中のアイコン and take no
+  // `aria-label`; the state each draws is `aria-pressed`'s to announce. One figure rather than one per
+  // screen, which is what §2.4 の 同じ図形を別の操作へ与えない reads the other way round: these two
+  // point at the same thing.
   //
   // The same tick `clipboard-check` ends with, at the size lucide draws it alone — the figures are
   // copied per name, so the shared stroke is written out twice rather than referenced once.
   check: [{ shape: "path", d: "M20 6 9 17l-5-5" }],
+  // ACCEPTANCE CRITERIA の完了印 (doc-8 §3). 閲覧 draws it as doc-11 §2.4's 族を持たない状態の印 and
+  // 編集セッション as an アイコンのみのボタン that toggles it — the same pair of figures either way, so
+  // the項 does not change appearance when the session opens.
+  //
+  // Not a native checkbox: what 閲覧 shows is a state, not an input, and a disabled `<input>` there
+  // would be a control that refuses. The two figures share their `rect` the way `clipboard` and
+  // `clipboard-check` share theirs, which is what makes the swap read as one box being ticked.
+  "square-check": [
+    { shape: "rect", width: "18", height: "18", x: "3", y: "3", rx: "2" },
+    { shape: "path", d: "m9 12 2 2 4-4" },
+  ],
+  square: [{ shape: "rect", width: "18", height: "18", x: "3", y: "3", rx: "2" }],
 };
