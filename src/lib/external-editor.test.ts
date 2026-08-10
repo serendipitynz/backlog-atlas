@@ -13,6 +13,7 @@ import {
   NO_CONFIGURED_EDITOR_REASON,
   UNSAVED_INPUT_WARNING,
   editorOffers,
+  launchConfirmation,
   launchFailureDetail,
   launchSummary,
   needsConfirmation,
@@ -131,6 +132,19 @@ describe("二重取り込みの回避 (AC #4)", () => {
     expect(UNSAVED_INPUT_WARNING).toContain("破棄しません");
     expect(UNSAVED_INPUT_WARNING).toContain("外部変更");
     expect(UNSAVED_INPUT_WARNING).toContain("更新前競合検出");
+  });
+
+  it("問いは区画が出している注意文そのもので、両方の答えが起動を名乗る (doc-11 §12)", () => {
+    // The layer covers the 区画 that prints the warning, so the question has to carry it — and doc-11
+    // §7 already settled that the same thing is not worded a second way for the second place.
+    for (const offer of editorOffers(WITH_EDITOR, { fileMissing: false })) {
+      const confirmation = launchConfirmation(offer);
+      expect(confirmation.question).toBe(UNSAVED_INPUT_WARNING);
+      expect(confirmation.title).toBe(offer.label);
+      expect(confirmation.proceed).toBe(offer.label);
+      // 語尾の … belongs to the 控え, not to the layer's name (doc-11 §12 の ②).
+      expect(confirmation.title).not.toContain("…");
+    }
   });
 });
 

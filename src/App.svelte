@@ -62,10 +62,12 @@
   import {
     DISCARD_CONFIRM_KEEP,
     DISCARD_CONFIRM_PROCEED,
+    ISSUE_CONFIRM_CANCEL,
     commandErrorDetail,
     failureDetail,
     type ApplyOutcome,
     type DiscardAnswers,
+    type IssueConfirmation,
   } from "./lib/edit";
   import { issueAvailability, outcomeMessage, type IssueOutcome } from "./lib/manage";
   import {
@@ -345,6 +347,20 @@
    */
   let pendingDiscard = $state<(() => void) | null>(null);
   /**
+   * The 実行前確認 standing right now (doc-11 §12), or `null` while nothing is being asked: the question
+   * as the layer prints it, what a 進む answer runs, and the file the control it came from belongs to.
+   *
+   * Held by the shell for the reason the 破棄前確認 is: 被せ層 は同時に 1 枚 is the shell's to keep
+   * (`raiseModal`), and a layer a 区画 raised for itself would fall outside that count. The path is
+   * what makes 失効 decidable — the question is about the task the panel was pointed at when it was
+   * asked (§12 の ③), and `shown` moving off that file takes the question with it.
+   */
+  let pendingIssue = $state<{
+    path: string;
+    confirmation: IssueConfirmation;
+    proceed: () => void;
+  } | null>(null);
+  /**
    * 詳細配置 (doc-8 §2.1) in force. Held by the shell rather than the panel because the placement is
    * *where the panel goes*: beside the grid, over it, or instead of it — and only the shell can put it
    * there. Starts from アプリ設定 (`applySettings`) and is written back on every switch (doc-8 §2.2).
@@ -559,7 +575,11 @@
    * anyway — a fact worth asserting whether or not the retraction holds.
    */
   let modalOpen = $derived(
-    registerOpen || settingsOpen || shortcutHelpOpen || (screen === "project" && detailModalOpen),
+    registerOpen ||
+      settingsOpen ||
+      shortcutHelpOpen ||
+      pendingIssue !== null ||
+      (screen === "project" && detailModalOpen),
   );
 
   /**
@@ -1282,6 +1302,66 @@
     else proceed();
   }
 
+  /**
+   * The file a 実行前確認 may be asked about (doc-11 §12): the one the panel is showing a **current** read
+   * of. `null` while there is no task on screen, and also while the panel is showing a `retained` read
+   * (`shown.missing`) — the file has left the read result there, and every control that would ask is
+   * withheld for that reason (`transitionOffers`'s `fileMissing`, `editorOffers`'s). A question left
+   * standing over that state would offer, in the layer, the act the screen underneath is refusing.
+   *
+   * One value for both the asking and the 失効 below, so the two cannot disagree about what the question
+   * is about.
+   */
+  let issueSubject = $derived(
+    shown !== null && !shown.missing ? shown.view.task.sourcePath : null,
+  );
+
+  /**
+   * Raise the 実行前確認 the panel asked for (doc-11 §12), filed against the task it is showing.
+   *
+   * The path is read here rather than passed in: what the question is about is whatever the panel has
+   * on screen at the moment of the press, and taking the caller's word for it would let a stale path
+   * decide 失効.
+   */
+  function askIssue(confirmation: IssueConfirmation, proceed: () => void): void {
+    const path = issueSubject;
+    if (path === null) return;
+    // 被せ層 は 1 枚だけ (see `raiseModal`), and an unanswered 破棄前確認 from behind lapses under the layer
+    // about to cover it — the reason `detailOverlay` and `openEntry` do the same: which layer draws a
+    // question is decided by which one is frontmost (doc-11 §7). Dropping it discards nothing.
+    menuOpen = false;
+    filterPopoverOpen = false;
+    pendingDiscard = null;
+    pendingIssue = { path, confirmation, proceed };
+  }
+
+  /** 進む: close the question and take the act it was about (doc-11 §12). */
+  function issueConfirmed(): void {
+    const pending = pendingIssue;
+    pendingIssue = null;
+    pending?.proceed();
+  }
+
+  /**
+   * やめる, and the layer's own exits (`×`・Escape) with it: drop the request. Nothing is lost — the act
+   * never started, which is what makes this question different from the 破棄前確認 (doc-11 §12).
+   */
+  function cancelIssue(): void {
+    pendingIssue = null;
+  }
+
+  /**
+   * 失効 (doc-11 §12 の ③): the question was about one task's current read, so the panel moving off it
+   * takes the question — whether by another selection or by that file leaving the read result
+   * (`issueSubject`).
+   *
+   * Cleared rather than only hidden while the two disagree — held, it would come back the next time that
+   * task is selected, and the user would meet a question they never asked twice over.
+   */
+  $effect(() => {
+    if (pendingIssue !== null && pendingIssue.path !== issueSubject) pendingIssue = null;
+  });
+
   /** Take the exit the user just confirmed, discarding the panel's 未保存入力 (doc-8 §6.3). */
   function discardConfirmed(): void {
     const proceed = pendingDiscard;
@@ -1983,6 +2063,27 @@
     </Modal>
   {/if}
 
+  {#if pendingIssue !== null}
+    <!-- 実行前確認 (doc-11 §12): a 被せ層 of its own, so the answer is not at the coordinates the press
+         was — which is the whole of 連打で素通りできない. Raised here rather than by the 区画 that asked,
+         because 被せ層 は同時に 1 枚 is this file's to keep (`raiseModal`). -->
+    <!-- No 下部操作行 (doc-11 §7): this layer holds no 下書き, so what the row below carries is the two
+         answers to the question and not the ways out of a form. -->
+    <Modal label={pendingIssue.confirmation.title} onclose={cancelIssue}>
+      <section class="issue-confirm">
+        <h2>{pendingIssue.confirmation.title}</h2>
+        <p>{pendingIssue.confirmation.question}</p>
+        <!-- 進む → 戻る, the order the 破棄前確認 is drawn in at both of its places (doc-11 §12): the same
+             question must not swap sides between the layers that ask it. The 進む answer names the act,
+             so it is the caller's word rather than a 実行する this file could spell. -->
+        <div class="answers">
+          <button type="button" onclick={issueConfirmed}>{pendingIssue.confirmation.proceed}</button>
+          <button type="button" onclick={cancelIssue}>{ISSUE_CONFIRM_CANCEL}</button>
+        </div>
+      </section>
+    </Modal>
+  {/if}
+
   {#if screen === "swimlane"}
     <FilterBar
       {filter}
@@ -2161,6 +2262,7 @@
           : void historyLoader.load(view.task.project, view.task.id, historyInputs)}
       ondirty={(dirty) => (detailDirty = dirty)}
       onconfirmDiscard={(proceed) => guardDiscard(true, proceed)}
+      onconfirmIssue={askIssue}
       onclose={closeDetail}
     />
   {:else}
@@ -2376,6 +2478,62 @@
     justify-content: center;
     padding: 1rem;
     background: color-mix(in srgb, var(--fg) 28%, transparent);
+  }
+
+  /*
+   * 実行前確認 (doc-11 §12) inside the 被せ層 that asks it. Laid out like the other layers' contents
+   * (面の余白 0.75rem, heading first) rather than like the 破棄前確認's one-line row in `Modal.svelte`:
+   * that row is an annex to a layer whose subject is elsewhere, and this layer's whole subject is the
+   * question, so the text may take the lines it needs.
+   *
+   * The heading keeps its right end clear of the ×, using the two numbers `Modal.svelte` declares for
+   * it — a long act name (an editor command among them) would otherwise run under the control.
+   */
+  .issue-confirm {
+    padding: 0.75rem;
+    font-size: 0.75rem;
+
+    h2 {
+      margin: 0 0 0.45rem;
+      padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
+      // 画面見出し .92rem / 650 (doc-11 §2.2 のタイポ).
+      font-size: 0.92rem;
+      font-weight: 650;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    // 発行の行ではない (doc-11 §11 は入力を持つ発行の話): 2 つの答えなので、順は問いの側の規則に従う。
+    .answers {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.6rem;
+    }
+
+    button {
+      padding: 0.15rem 0.5rem;
+      border: 1px solid var(--line-strong);
+      // カード・ボタン 4px (doc-11 §2.2).
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 0.72rem;
+      cursor: pointer;
+
+      // hover は 枠線 --line → --line-strong (doc-11 §2.3); the rest is already `--line-strong`, so what
+      //答える controls show on hover is the surface, like the 帯's answers do.
+      &:hover {
+        background: var(--inset);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--sel);
+        outline-offset: 1px;
+      }
+    }
   }
 
   .detail-gone {

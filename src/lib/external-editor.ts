@@ -14,6 +14,7 @@
  * | doc-8 §7 `$EDITOR` 起動 / OS の関連付け起動 | [`EditorOffer`] per `LaunchMethod` | one control each, because the two are not interchangeable |
  * | doc-8 §7 開く前の注意表示 | [`FRONTMATTER_NOTICE`] | breaking frontmatter degrades the read (doc-4 §5), stated before the launch |
  * | doc-8 §6.4 二重取り込みの回避 | [`UNSAVED_INPUT_WARNING`] + [`needsConfirmation`] | an open 編集セッション makes the launch ask first |
+ * | doc-11 §12 実行前確認 | [`launchConfirmation`] | the same warning as the question a launch asks before it starts |
  * | doc-8 §7 書き戻し（継続検出が動いている場合） | — | the save arrives through doc-9's watch and the screen says nothing: §7 states the behaviour but requires no notice, so TASK-79 dropped the sentence |
  * | doc-8 §7 書き戻し（継続検出が止まっている場合） | [`WATCH_STOPPED_NOTE`] | the save will *not* arrive on its own; the row has to be re-read, and the panel offers it |
  * | doc-5 §3.1 / doc-8 §6.5 の案内先 | — | each withheld operation names this route in its own 保留理由 (`edit.ts`), so the list that repeated them was dropped by TASK-79 |
@@ -33,7 +34,7 @@ import type {
   EditorSource,
   LaunchMethod,
 } from "./wire";
-import { commandErrorDetail } from "./edit";
+import { commandErrorDetail, type IssueConfirmation } from "./edit";
 
 /**
  * What became of one launch, as the shell reports it back to the panel. Mirrors `ApplyOutcome`: the
@@ -190,12 +191,31 @@ export function editorOffers(
 }
 
 /**
- * Whether the launch asks before it starts. Only with 未保存入力: the notice above is on screen
- * whether or not this is true, and a confirmation on every launch would train the second press into a
- * reflex — which is the one thing that would make the warning that matters (doc-8 §6.4) invisible.
+ * Whether the launch asks before it starts (doc-11 §12 の実行前確認). Only with 未保存入力: the notice
+ * above is on screen whether or not this is true, and asking on every launch would train the answer
+ * into a reflex — which is the one thing that would make the warning that matters (doc-8 §6.4)
+ * invisible.
+ *
+ * The judgement is this boolean and the question is [`launchConfirmation`] below, kept apart on
+ * purpose (doc-11 §5): with the question's presence *being* the judgement, dropping the text would
+ * drop the asking, and the 語尾の … decides off the same value.
  */
 export function needsConfirmation(hasUnsavedInput: boolean): boolean {
   return hasUnsavedInput;
+}
+
+/**
+ * 実行前確認 (doc-11 §12) for one launch, asked only while [`needsConfirmation`] holds.
+ *
+ * The question is [`UNSAVED_INPUT_WARNING`] itself — the same text this 区画 prints. The layer covers
+ * the 区画, so the warning has to be readable inside it, and doc-11 §7 already settled that the same
+ * thing is not to be worded twice for the sake of the second place it appears in.
+ *
+ * Both answers name the launch, because that is what the press does; the layer's name and its 進む
+ * answer are the same act stated once each (doc-11 §12 refuses a wider word like 実行する).
+ */
+export function launchConfirmation(offer: EditorOffer): IssueConfirmation {
+  return { title: offer.label, question: UNSAVED_INPUT_WARNING, proceed: offer.label };
 }
 
 /** What was started, as the panel states it. The argument array is shown, not a reconstructed

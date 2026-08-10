@@ -11,6 +11,7 @@ import {
   buildSave,
   canRemoveLast,
   commandErrorDetail,
+  confirmMarkedLabel,
   divergence,
   editAvailability,
   externallyChanged,
@@ -26,8 +27,10 @@ import {
   startSession,
   toggleAcCheck,
   toggleAcRemoval,
+  transitionConfirmation,
   transitionOffers,
   type EditSession,
+  type TransitionOffer,
 } from "./edit";
 import { snapshot, taskView } from "./fixtures";
 import type { AcceptanceCriterion, CliReadiness, TaskEdit, UpdateOperation } from "./wire";
@@ -547,6 +550,90 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
     });
     if (offers.state !== "offered") throw new Error("expected offers");
     expect(offers.offers.every((offer) => !offer.enabled)).toBe(true);
+  });
+});
+
+describe("実行前確認 (doc-11 §12)", () => {
+  const context = { readiness: READY, hasUnsavedInput: false };
+
+  /** Every transition either 保存区分 offers — the five doc-8 §6.5 says all ask. */
+  function everyOffer(): TransitionOffer[] {
+    return ["active", "draft"].flatMap((storageState) => {
+      const offers = transitionOffers(
+        taskView({ storageState: storageState as "active" | "draft", status: "Done" }),
+        context,
+      );
+      if (offers.state !== "offered") throw new Error("expected offers");
+      return offers.offers;
+    });
+  }
+
+  it("5 件とも問いと進む側の答えを持つ", () => {
+    const offers = everyOffer();
+    expect(offers.map((offer) => offer.kind)).toEqual([
+      "taskDemote",
+      "taskArchive",
+      "taskComplete",
+      "draftPromote",
+      "draftArchive",
+    ]);
+    for (const offer of offers) {
+      const confirmation = transitionConfirmation(offer);
+      expect(confirmation.question).not.toBe("");
+      expect(confirmation.proceed).not.toBe("");
+    }
+  });
+
+  it("層の名前は控えの語そのもので、… を含まない", () => {
+    // 語尾の … belongs to the 控え that asks (doc-11 §12 の ②); the layer is named for the act itself,
+    // and a mark inside its own name would predict a question that is already standing.
+    for (const offer of everyOffer()) {
+      expect(transitionConfirmation(offer).title).toBe(offer.label);
+      expect(transitionConfirmation(offer).title).not.toContain("…");
+    }
+  });
+
+  it("進む側は動作を名乗り、実行する では答えない", () => {
+    // doc-11 §12: 指示対象より広い語を選ばない — the same judgement §7 made for 破棄して閉じる.
+    for (const offer of everyOffer()) {
+      const { proceed } = transitionConfirmation(offer);
+      expect(proceed).not.toBe("実行する");
+      // Naming the act means the 控え's own word is in the answer — 「アーカイブ」→「アーカイブする」.
+      expect(proceed).toContain(offer.label);
+    }
+  });
+
+  it("問いは控えの隣の 結果の予告 の言い直しではない", () => {
+    // The effect line answers 「この控えは何をするか」 before the press and carries 完了整理's precondition,
+    // which is already satisfied once the question can stand (doc-11 §12 の註).
+    for (const offer of everyOffer()) {
+      expect(transitionConfirmation(offer).question).not.toBe(offer.effect);
+    }
+    const complete = everyOffer().find((offer) => offer.kind === "taskComplete");
+    if (complete === undefined) throw new Error("expected taskComplete");
+    expect(complete.effect).toContain("Done のときのみ");
+    expect(transitionConfirmation(complete).question).not.toContain("Done のときのみ");
+  });
+
+  it("片道の遷移は 3 件とも同じ語で戻せないことを述べる", () => {
+    // One wording for the three, because it is one fact about them (the user's word, 2026-08-11 の目視).
+    // The version number that first draft carried belongs to doc-8 §6.5, not to a question about this
+    // press. 差し戻す・昇格 must not pick it up: those two *can* be taken back.
+    for (const kind of ["taskArchive", "taskComplete", "draftArchive"] as const) {
+      const offer = everyOffer().find((entry) => entry.kind === kind);
+      if (offer === undefined) throw new Error(`expected ${kind}`);
+      expect(transitionConfirmation(offer).question).toContain("この操作は戻せません。");
+    }
+    for (const kind of ["taskDemote", "draftPromote"] as const) {
+      const offer = everyOffer().find((entry) => entry.kind === kind);
+      if (offer === undefined) throw new Error(`expected ${kind}`);
+      expect(transitionConfirmation(offer).question).not.toContain("戻せません");
+    }
+  });
+
+  it("語尾の … は語の末尾にだけ足す", () => {
+    expect(confirmMarkedLabel("アーカイブ")).toBe("アーカイブ…");
+    expect(confirmMarkedLabel("OS の関連付けで開く")).toBe("OS の関連付けで開く…");
   });
 });
 

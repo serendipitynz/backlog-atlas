@@ -48,6 +48,7 @@
     assigneeCollapseWarning,
     buildSave,
     canRemoveLast,
+    confirmMarkedLabel,
     divergence,
     editAvailability,
     externallyChanged,
@@ -62,9 +63,11 @@
     startSession,
     toggleAcCheck,
     toggleAcRemoval,
+    transitionConfirmation,
     transitionOffers,
     type ApplyOutcome,
     type EditSession,
+    type IssueConfirmation,
     type SaveState,
     type TransitionOffer,
   } from "../lib/edit";
@@ -74,6 +77,7 @@
     UNSAVED_INPUT_WARNING,
     WATCH_STOPPED_NOTE,
     editorOffers,
+    launchConfirmation,
     launchSummary,
     needsConfirmation,
     type EditorOffer,
@@ -202,6 +206,12 @@
      * four routes are the shell's, and go through the same band with the same words.
      */
     onconfirmDiscard: (proceed: () => void) => void;
+    /**
+     * Ask the 実行前確認 (doc-11 §12). The 被せ層 it is drawn in belongs to the shell — that is what
+     * keeps 被せ層 を同時に 1 枚 true — so the panel hands over the question and what to do with a
+     * 進む answer, exactly as it does for the 破棄前確認 above.
+     */
+    onconfirmIssue: (confirmation: IssueConfirmation, proceed: () => void) => void;
     onclose: () => void;
   }
 
@@ -228,6 +238,7 @@
     onreloadHistory,
     ondirty,
     onconfirmDiscard,
+    onconfirmIssue,
     onclose,
   }: Props = $props();
 
@@ -272,8 +283,6 @@
   /** `null` outside a session: the panel is display-only until 編集 is pressed (明示保存の前提). */
   let session = $state<EditSession | null>(null);
   let saveState = $state<SaveState>({ state: "idle" });
-  /** A destructive action awaiting its second press — see `CONFIRMED_ACTIONS` below. */
-  let confirming = $state<string | null>(null);
   let busy = $state(false);
   /** Why every 状態遷移 is withheld while one is in flight (doc-11 §5: 理由の無い無効化を残さない). */
   const TRANSITION_BUSY_REASON = "更新を発行中です。完了するまで次の遷移は始められません。";
@@ -331,7 +340,6 @@
   function endSession(): void {
     session = null;
     saveState = { state: "idle" };
-    confirming = null;
     clearAddBoxes();
   }
 
@@ -352,7 +360,6 @@
   function startEditing(): void {
     session = startSession(view);
     saveState = { state: "idle" };
-    confirming = null;
     acDeltaDropped = false;
     clearAddBoxes();
   }
@@ -392,7 +399,6 @@
           const diverged = divergence(submitted, outcome.view);
           if (stillOpen) {
             session = null;
-            confirming = null;
             clearAddBoxes();
             saveState =
               diverged.length === 0 ? { state: "applied" } : { state: "diverged", fields: diverged };
@@ -460,16 +466,44 @@
   let acDeltaDropped = $state(false);
 
   /**
-   * Transitions ask for a second press. Not a general habit — none of these has a reverse
-   * operation in v1.48.0 (doc-5 §3.1), so an accidental one cannot be undone from Atlas at all.
+   * Every 状態遷移 asks first (doc-11 §12 の実行前確認). Not a general habit — none of the five has a way
+   * back to the state before the press in v1.48.0 (the measurement is in doc-8 §6.5), so an
+   * accidental one cannot be undone from Atlas at all.
+   *
+   * The question goes to the shell rather than being drawn here, and the act is what the shell hands
+   * back on a 進む answer. That is also what closes the hole the 二度押し had: the layer is the shell's,
+   * so it goes with the question when the panel is pointed at another task (doc-11 §12 の失効).
    */
-  async function runTransition(offer: TransitionOffer): Promise<void> {
+  function runTransition(offer: TransitionOffer, control: HTMLButtonElement): void {
     if (!offer.enabled || busy) return;
-    if (confirming !== offer.kind) {
-      confirming = offer.kind;
-      return;
-    }
-    confirming = null;
+    focusForReturn(control);
+    onconfirmIssue(transitionConfirmation(offer), () => void issueTransition(offer));
+  }
+
+  /**
+   * Take focus onto the control the question is about to be asked from (doc-7 §2.1 閉じたら開く前の操作へ
+   * フォーカスを戻す).
+   *
+   * The layer captures whatever holds focus as it mounts, and **macOS WebKit does not focus a button on a
+   * pointer press** (by platform convention) — so without this the layer would capture whatever the user
+   * happened to focus earlier, and closing it would send focus there instead of back to the press. A
+   * keyboard press already holds focus here, which makes this a no-op on that path. `App.svelte`'s
+   * `raiseModal` does the same thing for the ☰, and for the same reason.
+   */
+  function focusForReturn(control: HTMLButtonElement): void {
+    control.focus();
+  }
+
+  /**
+   * Issue the transition the 実行前確認 was answered for.
+   *
+   * `busy` is checked again because the answer arrives later than the press. Nothing else is
+   * re-checked against the current read: the layer covered the window while the question stood, so the
+   * only thing that can have moved underneath is the file itself — and that is what 更新前競合検出
+   * (doc-9 §4) is for, which this call already goes through.
+   */
+  async function issueTransition(offer: TransitionOffer): Promise<void> {
+    if (busy) return;
     // A transition needs no 未保存入力, so nothing asks before the selection changes — the swimlane's
     // cards stay clickable while the CLI runs, and `busy` only disables this panel's own controls.
     // The target is therefore captured here rather than read back afterwards.
@@ -521,16 +555,9 @@
     | { state: "deferred"; path: string; detail: string }
     | { state: "failed"; path: string; detail: string }
   >({ state: "idle" });
-  /** A launch awaiting its second press — asked for only while there is 未保存入力 (doc-8 §6.4). */
-  let confirmingOpen = $state<{ method: LaunchMethod; path: string } | null>(null);
   /** The notice belonging to the *open* task; anything else counts as no launch on this task. */
   let openNotice = $derived(
     openState.state !== "idle" && openState.path === task.sourcePath ? openState : null,
-  );
-  let pendingOpen = $derived(
-    confirmingOpen !== null && confirmingOpen.path === task.sourcePath
-      ? confirmingOpen.method
-      : null,
   );
 
   /**
@@ -538,17 +565,22 @@
    * an external edit take the 未保存入力, so opening the file neither saves nor discards the draft. The
    * two are reconciled where they already are — the 継続検出 notice above, and the save's 更新前競合検出.
    */
-  async function openExternally(offer: EditorOffer): Promise<void> {
+  function openExternally(offer: EditorOffer, control: HTMLButtonElement): void {
     if (!offer.enabled) return;
-    // The path is captured before the await: the launch is for the task that was on screen when it was
-    // asked for, and the answer is filed under that file rather than under whatever is shown when it
-    // arrives (the shell resolves the same (slug, path) pair).
+    // The path is captured before anything can be awaited: the launch is for the task that was on
+    // screen when it was asked for, and the answer is filed under that file rather than under whatever
+    // is shown when it arrives (the shell resolves the same (slug, path) pair).
     const path = task.sourcePath;
-    if (needsConfirmation(dirty) && pendingOpen !== offer.method) {
-      confirmingOpen = { method: offer.method, path };
+    if (needsConfirmation(dirty)) {
+      focusForReturn(control);
+      onconfirmIssue(launchConfirmation(offer), () => void launch(offer, path));
       return;
     }
-    confirmingOpen = null;
+    void launch(offer, path);
+  }
+
+  /** Start the editor, and say what became of it against the file it was asked for (doc-8 §7). */
+  async function launch(offer: EditorOffer, path: string): Promise<void> {
     const outcome = await onopenExternally(offer.method);
     openState =
       outcome.state === "launched"
@@ -1624,13 +1656,11 @@
               class="transition"
               disabled={!offer.enabled || busy}
               title={busy ? TRANSITION_BUSY_REASON : (offer.reason ?? offer.effect)}
-              onclick={() => runTransition(offer)}
+              onclick={(event) => runTransition(offer, event.currentTarget)}
             >
-              {confirming === offer.kind ? `${offer.label}：実行してよいですか？（もう一度押す）` : offer.label}
+              <!-- 語尾の … (doc-11 §12): every 状態遷移 asks first, so the mark is unconditional here. -->
+              {confirmMarkedLabel(offer.label)}
             </button>
-            {#if confirming === offer.kind}
-              <button type="button" class="mini" onclick={() => (confirming = null)}>やめる</button>
-            {/if}
             <span class="effect">{offer.reason ?? offer.effect}</span>
           </li>
         {/each}
@@ -1659,8 +1689,8 @@
       <p><button type="button" class="mini" onclick={onreread}>{REREAD_ROOT_LABEL}</button></p>
     {/if}
     {#if dirty}
-      <!-- 二重取り込みの回避 (doc-8 §6.4): stated, and the launch asks for a second press. The input
-           is not discarded either way. -->
+      <!-- 二重取り込みの回避 (doc-8 §6.4): stated here, and the launch asks before it starts
+           (doc-11 §12) with this same text as the question. The input is not discarded either way. -->
       <p class="warn">{UNSAVED_INPUT_WARNING}</p>
     {/if}
     <ul class="editor-list">
@@ -1670,15 +1700,12 @@
             type="button"
             disabled={!offer.enabled}
             title={offer.reason ?? offer.command}
-            onclick={() => openExternally(offer)}
+            onclick={(event) => openExternally(offer, event.currentTarget)}
           >
-            {pendingOpen === offer.method
-              ? `${offer.label}：開いてよいですか？（もう一度押す）`
-              : offer.label}
+            <!-- 語尾の … only while the launch asks (doc-11 §12): the question is raised by 未保存入力,
+                 and a mark left on when nothing will be asked predicts nothing. -->
+            {needsConfirmation(dirty) ? confirmMarkedLabel(offer.label) : offer.label}
           </button>
-          {#if pendingOpen === offer.method}
-            <button type="button" class="mini" onclick={() => (confirmingOpen = null)}>やめる</button>
-          {/if}
           <span class="effect">{offer.enabled ? offer.command : ""}</span>
           {#if offer.reason !== null}
             <span class="effect">{offer.reason}</span>

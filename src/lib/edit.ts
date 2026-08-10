@@ -16,6 +16,8 @@
  * | doc-8 §1 明示保存 | [`buildSave`] | turning the session into the 更新操作 the save button issues |
  * | doc-8 §6.5 保存区分別の編集可否 | [`EditAvailability`] | whether content editing is offered, and why not |
  * | doc-5 §3.2/§3.3 状態遷移の入口 | [`TransitionOffer`] | one transition, its 能動化 and its 無効化理由 |
+ * | doc-11 §12 実行前確認 | [`IssueConfirmation`] + [`transitionConfirmation`] | the question a press raises before the act |
+ * | doc-11 §12 語尾の … | [`confirmMarkedLabel`] | the mark on a 控え whose press asks first |
  * | doc-5 §3 assignee の設定・付け替え | `EditDraft.assignee` + [`ASSIGNEE_NOT_CLEARABLE`] | the single value `-a` sends, and why blanking it changes nothing |
  * | doc-5 §3 References 非空全置換 | `EditDraft.references` + [`canRemoveLast`] | the whole non-empty set, last removal withheld |
  * | doc-5 §3 AC 全体差し替え（複合） | [`AcDraft`] mode `replace` | remove-all ＋ add ＋ check in one `task edit` |
@@ -641,6 +643,43 @@ export interface DiscardAnswers {
   onkeep: () => void;
 }
 
+// --- 実行前確認 (doc-11 §12) ------------------------------------------------------------------
+//
+// The other question this app asks, and it is not the one above. 破棄前確認 asks what becomes of the
+// 未保存入力 on a route that is already being taken; this one asks whether to take the act at all, and
+// its 戻る answer leaves nothing behind. Held here beside the discard texts so the two cannot drift
+// into wording each other's question.
+
+/**
+ * A question standing between a press and the act its 控え names (doc-11 §12).
+ *
+ * Three fields rather than one text because the layer needs three different things: its own
+ * accessible name, the question, and the word the 進む side is answered with. §12 requires that word
+ * to name the act (`アーカイブする`) rather than say 実行する, so it cannot be derived from the question.
+ */
+export interface IssueConfirmation {
+  /** 層の名前 — the operation as its 控え names it, without the 語尾の …. */
+  title: string;
+  /** What the press is about to do, and what it cannot take back. */
+  question: string;
+  /** 進む側の答え, naming the act. */
+  proceed: string;
+}
+
+/** 戻る側の答え (doc-11 §12): one word, for every question of this kind. */
+export const ISSUE_CONFIRM_CANCEL = "やめる";
+
+/**
+ * 語尾の … (doc-11 §12): the mark saying this press does not reach the act.
+ *
+ * A function applied where the question is raised rather than a suffix stored on the 控え, because a
+ * control that asks only under a condition (外部エディタ起動 while there is 未保存入力, doc-8 §7) has to
+ * lose the mark when it stops asking — a mark whose question never comes predicts nothing.
+ */
+export function confirmMarkedLabel(label: string): string {
+  return `${label}…`;
+}
+
 /**
  * Whether the save control may be pressed, and the reason when it may not. A single decision for
  * both the disabled state and the tooltip: with the two derived separately, a state that stops
@@ -1066,6 +1105,51 @@ const DRAFT_ARCHIVE_EFFECT = "id・status は保持されます";
 const TASK_DEMOTE_EFFECT = "id は採番し直されます";
 const TASK_ARCHIVE_EFFECT = "元に戻せません";
 const TASK_COMPLETE_EFFECT = "status が Done のときのみ実行可能です。元に戻せません";
+
+/**
+ * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — v1.48.0 has no way back to the state before
+ * the press for any of them (the measurement is in doc-8 §6.5), so there is no line to draw inside
+ * the five.
+ *
+ * **The question is not built from `effect` above.** That line answers 「この控えは何をするか」 before the
+ * press and carries the precondition 完了整理 has (`status が Done のときのみ`), which is already
+ * satisfied by the time this question can stand. What the question has to say is what is about to
+ * happen and what will not be undoable — so the two texts differ per transition, not per field.
+ */
+export function transitionConfirmation(offer: TransitionOffer): IssueConfirmation {
+  return {
+    title: offer.label,
+    question: TRANSITION_CONFIRM_QUESTION[offer.kind],
+    proceed: TRANSITION_CONFIRM_PROCEED[offer.kind],
+  };
+}
+
+// Keyed by `TransitionKind` so a sixth transition cannot be added without the compiler asking what its
+// question says — the same reason `band.ts` keys its texts by `BandKind`.
+//
+// **The three one-way moves say 戻せません plainly, and do not name the CLI's absence** (the wording is the
+// user's, from the 2026-08-11 目視). The first draft said "アーカイブから戻す操作は v1.48.0 の CLI に
+// ありません" — true, and measured (doc-8 §6.5 holds that measurement, which is where a reader who needs
+// the reason goes) — but a version number in a question about *this* press answers something the user did
+// not ask at the moment of asking. 差し戻す・昇格 *can* be taken back, so those two say what is lost
+// instead: the id.
+const TRANSITION_CONFIRM_QUESTION: Record<TransitionKind, string> = {
+  taskDemote: "このタスクを draft へ差し戻します。id は採番し直されます。",
+  taskArchive: "このタスクをアーカイブします。この操作は戻せません。",
+  taskComplete: "このタスクを完了整理します。この操作は戻せません。",
+  draftPromote: "この draft をタスクへ昇格します。id は採番し直されます。",
+  draftArchive: "この draft をアーカイブします。この操作は戻せません。",
+};
+
+/** 進む側は動作を名乗る (doc-11 §12). Two kinds share `アーカイブする`: the act is the same act, and the
+ * layer's own name says which of the two 保存区分 it was pressed from. */
+const TRANSITION_CONFIRM_PROCEED: Record<TransitionKind, string> = {
+  taskDemote: "draft へ差し戻す",
+  taskArchive: "アーカイブする",
+  taskComplete: "完了整理する",
+  draftPromote: "タスクへ昇格する",
+  draftArchive: "アーカイブする",
+};
 
 // --- 選択肢 (doc-5 §3 の値域) --------------------------------------------------------------
 
