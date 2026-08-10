@@ -117,8 +117,9 @@
          screen.
          **The `aria-label` above stays**, under both of the exemptions §2.4 states for that type's
          first condition: 「新規」 does not say which of the row's cells this one is, and under CLI 縮退
-         the name is where doc-7 §4.1's 保留理由 has to live (a `disabled` control takes no focus, so
-         `aria-describedby` never reaches it — doc-11 §5). Until the `＋` became a figure the type did
+         the name is the only place this control says why it cannot be pressed — the reason is
+         画面全体に効く, so it lives on the 上部帯 (the paragraph above) and there is no element beside
+         this button for `aria-describedby` to point at. Until the `＋` became a figure the type did
          not apply here at all. -->
     <Icon name="plus" />新規
   </button>

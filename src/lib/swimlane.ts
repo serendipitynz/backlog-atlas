@@ -595,10 +595,12 @@ export const LAST_COLUMN_FOLD_BLOCKED_REASON =
  * to check it — the markup can only pick a figure, so a rule kept there is a rule nothing can be tested
  * against (the same reason doc-7 §5.2 took the ポップオーバーの閉じる契機 out of a code comment). This is
  * the swimlane's part of the claim; タスク詳細's is `DISCLOSURE_ICON` and `STEP_ICON` (`placement.ts`),
- * and `swimlane.test.ts` reads all three together. **Every figure the rule speaks about has to be in one
- * of them** — one left in the markup is one the check cannot see, and 前後移動 was exactly that until
- * TASK-139's review: 脇パネル配置 draws it beside these four, so a chevron given to it would have
- * collided with 行折畳み with every test still passing.
+ * and `swimlane.test.ts` reads all three together. **Every figure that stands for an operation the rule
+ * speaks about has to be in one of them** — one left in the markup is one the check cannot see, and
+ * 前後移動 was exactly that until TASK-139's review: 脇パネル配置 draws it beside these four, so a
+ * chevron given to it would have collided with 行折畳み with every test still passing. The rule reaches
+ * operations only, so the `arrow-right` in `ProjectDetail.svelte`'s 値の対応 is outside it and outside
+ * these tables — §2.4 says why, and it is an 操作に属さないアイコン rather than a control.
  *
  * **Which figure of a pair is showing is doc-7's rule, and the two folds do not share it.** 行折畳み
  * points at the state the row is in (§2.3), 列折畳み at what the press would do (§2.2) — sideways there
