@@ -1,10 +1,10 @@
 ---
 id: TASK-138
 title: 押せない控えのマウスカーソルを変えるのをやめる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-10 21:46'
+updated_date: '2026-08-10 21:55'
 labels:
   - ui
   - design-system
