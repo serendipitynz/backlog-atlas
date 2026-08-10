@@ -24,6 +24,8 @@
     type RefusalReport,
     type RegisterInput,
   } from "../lib/ledger";
+  import { omitsSentence } from "../lib/manage";
+  import { OVERVIEW_INPUT_PROBLEMS_REASON } from "../lib/project-detail";
   import { createSlugPreviewLoader, type SlugPreview } from "../lib/slug-preview";
   import type { ProjectEntry, RegisterRequest } from "../lib/wire";
 
@@ -97,9 +99,13 @@
 
   /**
    * Why registration is held, and only when it is (doc-11 §5). One string drives both the withheld
-   * state and the sentence under the button, so the two cannot disagree. The per-field problems are
-   * shown separately, but that they are what stops the registration is said again here — being able
-   * to read a problem is not the same as knowing why the button will not go.
+   * state and the sentence under the button, so the two cannot disagree.
+   *
+   * **The input-problem reason is the shared constant**, not a second literal saying the same thing:
+   * `omitsSentence` (doc-11 §8) is keyed on the string, and two copies would put this screen's copy
+   * outside the licence the moment either was reworded. The name is 概要区画's because that 区画
+   * needed it first; the fact is the same one — every problem is printed under the field it is about,
+   * which is §8's licence ① and why the sentence is no longer drawn here (目視 2026-08-10).
    */
   let blocked = $derived(
     readOnly
@@ -107,7 +113,7 @@
       : busy || submitting
         ? "台帳の更新を実行中です。完了するまで登録は始められません。"
         : issues.length > 0
-          ? "入力に問題があります（各欄の指摘を参照）。"
+          ? OVERVIEW_INPUT_PROBLEMS_REASON
           : null,
   );
 
@@ -294,9 +300,16 @@
        withheld goes inside the same pinned box — half of what pinning is for is that what the press
        has to say is on screen at the moment it is pressed. -->
   <div class="issue">
-    {#if blocked !== null}
-      <p class="blocked-note" id={BLOCKED_ID}>{blocked}</p>
-    {/if}
+    <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM for `aria-describedby`; drawn unless
+         §8 licences the screen to leave it unsaid — 入力に問題があります is such a reason (each field
+         states its own problem), 台帳読取専用 と 実行中 are not (their cause is outside this form). -->
+    <p
+      class="blocked-note"
+      id={BLOCKED_ID}
+      class:unseen={blocked === null || omitsSentence(blocked)}
+    >
+      {blocked ?? ""}
+    </p>
     <div class="row">
       <button
         type="button"
@@ -317,7 +330,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    max-width: 42rem;
     // No bottom padding: the 発行の行 below is pinned to the bottom of the scrolling region, and a
     // padding here would hold it that far off the edge it is pinned to.
     padding: 0.7rem 0.75rem 0;
@@ -389,8 +401,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    margin-top: 0.25rem;
-    padding: 0.45rem 0 0.7rem;
+    // Pulled out to the layer's edges and given that room back as padding, so the rule reads as the
+    // layer's own division rather than as a line inside the form — the same as the 設定モーダル's
+    // 下部操作行 (目視 2026-08-10). The form's own 42rem cap went with it: the dialog already caps the
+    // layer at 44rem, and a form 0.5rem narrower than that only kept the rule off the edge.
+    margin: 0.25rem -0.75rem 0;
+    padding: 0.45rem 0.75rem 0.7rem;
     border-top: 1px solid var(--line);
     background: var(--panel);
   }

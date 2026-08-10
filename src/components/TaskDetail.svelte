@@ -24,6 +24,7 @@
   import GitHistory from "./GitHistory.svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import { cardIdentity, crossTaskId, priorityStep } from "../lib/card";
+  import { omitsSentence } from "../lib/manage";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import {
@@ -40,7 +41,6 @@
     EMPTY_DEPENDENCIES_REASON,
     EMPTY_REFERENCES_REASON,
     FILE_MISSING_REASON,
-    NOTHING_TO_SAVE_REASON,
     PRIORITIES,
     TYPE_NOT_EDITABLE,
     acDeltaDroppedByRebase,
@@ -265,6 +265,9 @@
   let crossId = $derived(crossTaskId(view));
 
   // --- 編集セッション (doc-8 §6.3) ---------------------------------------------------------
+
+  /** The 発行の行's reason element — named so `aria-describedby` can point at it (doc-11 §5). */
+  const SAVE_REASON_ID = "task-detail-save-reason";
 
   /** `null` outside a session: the panel is display-only until 編集 is pressed (明示保存の前提). */
   let session = $state<EditSession | null>(null);
@@ -1001,25 +1004,30 @@
      the 編集卓 (doc-8 §3), which is drawn whether or not a session is open. -->
 {#snippet editIssueRow()}
   <div class="issue">
-    {#if !missing}
-      <!-- 操作の近くに併記する (doc-7 §2.1). Printed from the 割り当て一覧, never spelled here, and it
-           names where the chord is answered — the 編集部品 (its 適用範囲), not the whole session. -->
-      <p class="hint">
-        本文欄では {shortcutHint("saveEditSession", MAC_KEYBOARD)} でも保存を発行できます。
-      </p>
-    {/if}
-    {#if plan !== null && plan.state === "refused"}
-      <p class="warn">{plan.reason}</p>
-    {:else if plan !== null && plan.state === "nothingToSave" && !missing}
-      <p class="hint">{NOTHING_TO_SAVE_REASON}。</p>
-    {/if}
+    <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because `aria-describedby` points at
+         it; printed unless the reason is one §8 licences the screen to leave unsaid. 変更はまだありません
+         is such a reason (licence ②: the form itself says what to do next), so the row stays quiet
+         until there is something to say. The chord's 併記 is not here at all any more — doc-7 §2.1
+         takes `title` and `aria-keyshortcuts` plus the キーボード操作一覧 as discharging it. -->
+    <span
+      class="hint"
+      id={SAVE_REASON_ID}
+      class:unseen={saveGate.state === "ready" || omitsSentence(saveGate.reason)}
+    >
+      {saveGate.state === "ready" ? "" : saveGate.reason}
+    </span>
     <div class="issue-actions">
       <!-- 取りやめ → 発行 (doc-11 §11). -->
       <button type="button" onclick={cancelEditing}>キャンセル</button>
+      <!-- `aria-disabled` rather than `disabled`: this control's 保留理由 are of both kinds (doc-11 §8)
+           — 発行中 and ファイルが無い are caused from outside the form and keep a printed line, 変更は
+           まだありません is licensed away — and one control may not take focus or not depending on why
+           it is withheld. `save()` holds the same gate, so a press while withheld issues nothing. -->
       <button
         type="button"
         class="primary"
-        disabled={saveGate.state !== "ready"}
+        aria-disabled={saveGate.state !== "ready"}
+        aria-describedby={saveGate.state === "ready" ? undefined : SAVE_REASON_ID}
         aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
         title={saveGate.state === "ready"
           ? `保存 (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`
@@ -1788,6 +1796,12 @@
     background: var(--panel);
     // Scrolls inside itself so the swimlane keeps its own scroll position while the panel is open.
     overflow-y: auto;
+
+    // 編集セッション中は下端に発行の行が居るので、この箱の下 padding は要らない — 残すと行が縁から
+    // 浮き、スクロールの末尾でそのぶん持ち上がる (目視 2026-08-10。3 配置とも)。
+    &:has(> .issue) {
+      padding-bottom: 0;
+    }
   }
 
   // 併置サイドバー (doc-8 §2.1): a fixed share of the width — the grid beside it is the element
@@ -1962,7 +1976,15 @@
    * way left to copy it, and no figure says that. It stays visible — which is why the class is driven
    * by the failure state rather than by "is there anything to say".
    */
-  .live.unseen {
+  /*
+   * The 発行の行's reason takes the same treatment for a different requirement: doc-11 §8 licences the
+   * screen not to *print* 変更はまだありません, and doc-11 §5 keeps it reachable all the same, because
+   * 保存 points at it with `aria-describedby`. Selecting on the class alone rather than qualifying it
+   * as `.live.unseen` does, so both users of it get the same hiding — this was two rules for one
+   * behaviour until the reason was added (2026-08-10), and the reason was drawn on screen in the
+   * meantime because nothing here matched the class the markup was setting.
+   */
+  .unseen {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -2003,8 +2025,7 @@
     border-top: 1px solid var(--line);
     background: var(--panel);
 
-    .hint,
-    .warn {
+    .hint {
       margin: 0;
       text-align: center;
       font-size: 0.7rem;

@@ -326,9 +326,16 @@ describe("タスク詳細の離脱と保存中状態", () => {
 
     // 保存中 exists only while the call is in flight, which is why the answer is held open here. The
     // button states it and refuses a second press — a re-issue would run the CLI twice for one edit.
+    //
+    // **The refusal is checked by pressing, not by reading `disabled`.** Since 2026-08-10 this control
+    // is `aria-disabled` and focusable (doc-11 §5 の 2 つ目の形 — its 保留理由 are of both kinds, doc-11
+    // §8), so the attribute no longer carries the contract and a test that read it would report a
+    // regression where there is none. What must hold either way is that the second press issues
+    // nothing.
     const busy = only<HTMLButtonElement>(host, "button.primary");
     expect(busy.textContent?.trim()).toBe("保存中…");
-    expect(busy.disabled).toBe(true);
+    expect(busy.getAttribute("aria-disabled")).toBe("true");
+    click(busy);
     expect(madeTo("update_apply")).toHaveLength(1);
 
     pending.resolve({ state: "ran", outcome: { state: "succeeded" }, project: snapshot("atlas", [TASK]) });
