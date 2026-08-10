@@ -62,6 +62,12 @@
      * and this 区画 is the only place that says where they live. `null` while the resolution is
      * unknown, which draws no row rather than a placeholder — the paths are resolved once at startup
      * and never retried, so nothing here is 確認中.
+     *
+     * **Both `null` leaves the 区画 stating no location**, since both resolutions are the same one
+     * (`app_config_dir()`) and fail together. No reason is drawn for it, which is deliberate: the
+     * failure is not about anything the user did or can act on here, and 場所を開く is left alone
+     * because the folder is reachable whether or not this screen can name it. What the 区画 would
+     * still owe a reason for is a *withheld control* (doc-11 §5), and there is none in that state.
      */
     settingsPath: string | null;
     ledgerPath: string | null;
