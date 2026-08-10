@@ -242,7 +242,15 @@
         <button type="button" onclick={confirmDiscard.onkeep}>{DISCARD_CONFIRM_KEEP}</button>
       </div>
     {/if}
-    {@render children()}
+    <!--
+      The scrolling region of the layer. It is this box rather than the backdrop that scrolls, so a
+      caller's 発行の行 can pin itself to the bottom of what is on screen (doc-11 §11): `sticky` sticks
+      inside the nearest scrolling ancestor, and while that was the backdrop there was nothing inside
+      the dialog to stick to.
+    -->
+    <div class="content">
+      {@render children()}
+    </div>
   </div>
 </div>
 
@@ -250,9 +258,8 @@
   .backdrop {
     /*
      * How far the dialog is held off the window's top and bottom edges. Declared rather than written
-     * into `padding` alone because a child that bounds its own height has to subtract it (`Settings`
-     * does, so its 下部操作行 can stay outside the scroll), and the two numbers must be one number.
-     * It inherits, which is what lets a child read it without either file naming the other's value.
+     * into `padding` alone because the dialog subtracts it from the window when it bounds its own
+     * height below, and the two numbers must be one number.
      */
     --modal-backdrop-inset: 2rem;
 
@@ -288,27 +295,33 @@
     --modal-close-inset: 0.5rem;
     --modal-close-size: 1.5rem;
     /*
-     * The 破棄前確認's row: its own height, and how much of the box it is taking right now (`0px`
-     * while no question stands).
+     * The 破棄前確認's row. A stated height rather than the row's own, because the content's height
+     * differs by engine (WebKit 18 / Chromium 18.8 for the same button) and one line is all this row
+     * may ever be (doc-11 §4 折り返さない).
      *
-     * The second one exists because a child that bounds its own height has to subtract this as well —
-     * `Settings` does, so that its 下部操作行 stays on screen (TASK-74 AC #1) rather than being pushed
-     * below the fold by the row above. Without it the dialog grows by this much, and the backdrop
-     * scrolls instead of the body: the two exits go under the window's edge exactly while the user is
-     * being asked a question about them.
-     *
-     * A stated height rather than the row's own: the child's `calc` has to be told a number, and the
-     * content's height differs by engine (WebKit 18 / Chromium 18.8 for the same button). One line is
-     * all this row may ever be (doc-11 §4 折り返さない), so a fixed height loses nothing.
+     * It used to be declared twice — this, and how much of the box the row was taking right now — so
+     * that a child bounding its own height could subtract it. No child does that any more: the box
+     * below bounds itself and lays its rows out as flex items, so the question's row takes its height
+     * from the layout and the region under it gets the rest. That is one number where there were two
+     * that had to agree, which is what left the 下部操作行 under the window's edge exactly while the
+     * user was being asked a question about it (TASK-74 の実測).
      */
     --modal-confirm-row: 2.25rem;
-    --modal-confirm-height: 0px;
-
-    &.confirming {
-      --modal-confirm-height: var(--modal-confirm-row);
-    }
 
     position: relative;
+    display: flex;
+    flex-direction: column;
+    /*
+     * The layer bounds itself, so that what scrolls is `.content` and not the backdrop (doc-11 §11).
+     * The window less what this file puts between this box and the window's edge: the backdrop's
+     * padding on both sides and this box's own border on both. Both are declared right here, so
+     * unlike the child-side `calc` this replaces, there is no second file holding a copy of the
+     * formula. `max-height` sizes the content box (the repository has no `box-sizing` reset), which
+     * is why the border is subtracted rather than left to `border-box`.
+     */
+    max-height: calc(
+      100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2
+    );
     width: min(44rem, 100%);
     border: var(--modal-dialog-border) solid var(--line-strong);
     border-radius: var(--modal-dialog-radius);
@@ -380,8 +393,17 @@
    * The top corners are rounded with the box's, less its border: a square-cornered full-bleed row
    * would show its colour outside the rounded edge.
    */
+  .content {
+    flex: 1;
+    // Without this a flex item refuses to shrink below its content, and the box would grow past the
+    // bound above instead of scrolling here.
+    min-height: 0;
+    overflow-y: auto;
+  }
+
   .confirm {
     box-sizing: border-box;
+    flex: none;
     display: flex;
     align-items: center;
     gap: 0.4rem;
