@@ -1104,10 +1104,11 @@ pub fn ledger_list(app: AppHandle) -> Result<LedgerResponse, CommandError> {
     Ok(load_ledger(&ConfigFiles::resolve(&app)?)?.into())
 }
 
-/// Where the ledger file is (doc-3 §2.1). Shown by the 台帳管理画面 rather than kept internal: the
-/// registration lives in Atlas's own app-config dir and in no project's Backlog root, and a screen
-/// that names the file is how the user can see that — and hand-edit it, which doc-3 §2.2 keeps as a
-/// supported route. Resolving the path reads nothing, so this takes no lifecycle lock.
+/// Where the ledger file is (doc-3 §2.1). Shown rather than kept internal because doc-3 §2.2 keeps
+/// hand-editing a supported route, and a route to a file nothing names is one the user cannot take.
+/// The one place that says it is the 設定モーダル's ファイルの場所 区画 (doc-3 §2.1); the 登録モーダル
+/// said it until TASK-136, which is the screen that *writes* the ledger and not the one whose reader
+/// needs the path. Resolving the path reads nothing, so this takes no lifecycle lock.
 #[tauri::command(async)]
 pub fn ledger_location(app: AppHandle) -> Result<PathBuf, CommandError> {
     Ok(ConfigFiles::resolve(&app)?.ledger)
@@ -1641,9 +1642,9 @@ fn save_settings(
     Ok(settings::save(&files.settings, settings)?)
 }
 
-/// Where the settings file is (decision-13). Shown by the 設定画面 for the same reason
-/// [`ledger_location`] is shown by the 台帳管理画面: the file is Atlas's own, hand-editable, and the
-/// user is meant to be able to find it. Resolving the path reads nothing, so this takes no lock.
+/// Where the settings file is (decision-13). Shown for the same reason [`ledger_location`] is, and in
+/// the same 区画 beside it: the file is Atlas's own, hand-editable, and the user is meant to be able to
+/// find it. Resolving the path reads nothing, so this takes no lock.
 #[tauri::command(async)]
 pub fn settings_location(app: AppHandle) -> Result<PathBuf, CommandError> {
     Ok(ConfigFiles::resolve(&app)?.settings)

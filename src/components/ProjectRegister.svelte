@@ -43,8 +43,6 @@
      * component), and one fact must not be two flags.
      */
     submitting: boolean;
-    /** Where the ledger file is (doc-3 §2.1). `null` until it is known. */
-    ledgerPath: string | null;
     onpickDirectory: (title: string) => Promise<string | null>;
     ondefaultSlug: (projectRoot: string) => Promise<string | null>;
     onregister: (request: RegisterRequest) => Promise<LedgerActionResult>;
@@ -61,7 +59,6 @@
     readOnly,
     busy,
     submitting,
-    ledgerPath,
     onpickDirectory,
     ondefaultSlug,
     onregister,
@@ -186,14 +183,10 @@
     <h2>プロジェクトを登録</h2>
   </header>
 
-  <p class="where">
-    台帳ファイル: <code>{ledgerPath ?? "確認中…"}</code>
-    <!-- doc-3 §2.1: the registration is Atlas's own configuration. Stated on screen because the
-         invariant is invisible otherwise — and it is what makes 登録 safe to press. -->
-    <span class="aside">
-      （Atlas 専用の設定ファイルです。いずれの Backlog ルートにも登録情報は書きません）
-    </span>
-  </p>
+  <!-- 台帳ファイルの保存場所はこの層では述べない (doc-3 §2.1): パスを読む必要が生じるのは台帳を手で
+       編集するときで、それを述べるのは 設定モーダル の ファイルの場所 区画 1 つである。ここが刷って
+       いた「いずれの Backlog ルートにも書きません」は doc-3 §2.1 の一文の写しで、doc-11 §8 の
+       設計文の写し に当たる。 -->
 
   {#if readOnly}
     <!-- A reason that applies to the whole screen (doc-11 §5). The 選択… buttons below point at it
@@ -339,16 +332,6 @@
   h2 {
     margin: 0;
     font-size: 0.9rem;
-  }
-
-  .where {
-    margin: 0;
-    font-size: 0.72rem;
-    opacity: 0.85;
-  }
-
-  .aside {
-    opacity: 0.75;
   }
 
   // 読み取り専用縮退 (doc-3 §2.2) is not one of decision-6's 印の族 — nothing is degraded about the
