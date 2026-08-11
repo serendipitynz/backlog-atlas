@@ -2701,6 +2701,10 @@
     font-size: 0.78rem;
   }
 
+  // 控えの群 (doc-11 §2.2): ← スイムレーン and このプロジェクトのレーンへ are the two ways off this
+  // screen, side by side with no field between them. 1.4rem rather than the 1.75rem the 区画 below
+  // take — this is the screen's header, the same place タスク詳細 answers at 1.4rem, and the forms
+  // are what the larger step is for.
   .head {
     display: flex;
     flex-wrap: wrap;
@@ -2709,6 +2713,10 @@
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--line);
     background: var(--inset);
+
+    button {
+      height: 1.4rem;
+    }
   }
 
   .breadcrumb {

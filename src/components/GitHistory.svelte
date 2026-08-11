@@ -204,7 +204,10 @@
     gap: 0.5rem;
   }
 
+  // 控えの群 (doc-11 §2.2): 再取得 and 全面表示で開く stand side by side with no field between them,
+  // and this 区画 is drawn inside タスク詳細, so it takes that panel's step.
   button {
+    height: 1.4rem;
     padding: 0 0.35rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;

@@ -2569,10 +2569,17 @@
     }
   }
 
+  // 控えの群 (doc-11 §2.2): the two ways out of a 更新前競合 (doc-9 §5), side by side with no field
+  // between them. The panel's step, like the groups in its heading — neither answer is a 発行 (§11):
+  // one re-reads, the other re-applies what is already typed, and the 保存 that follows is elsewhere.
   .buttons {
     display: flex;
     flex-wrap: wrap;
     gap: 0.3rem;
+
+    button {
+      height: 1.4rem;
+    }
   }
 
   // 控えの群 (doc-11 §2.2): two buttons choosing one mode, with no field among them, so they take a
