@@ -1,0 +1,214 @@
+import { describe, expect, it } from "vitest";
+// `?raw` rather than a filesystem read: this project has no `@types/node`, and the string is what
+// the assertion is about either way.
+import bodyComponent from "../components/Body.svelte?raw";
+import { FIGURE_DRAWN_CLASS } from "./markdown-figure";
+import {
+  BODY_FIGURE_CLASS,
+  BODY_LINK_CLASS,
+  BODY_TASK_CLASS,
+  BODY_TASK_LIST_CLASS,
+  BODY_TASK_MARK_CLASS,
+  bodyLinkTarget,
+  bodyView,
+} from "./markdown";
+
+/** The HTML for a 本文, or a failure if 整形 did not happen — every test here expects the former. */
+function html(source: string): string {
+  const view = bodyView(source);
+  if (view.kind !== "formatted") throw new Error("整形表示 になっていない");
+  return view.html;
+}
+
+describe("整形表示 の記法 (doc-8 §9.2)", () => {
+  it("draws the notations the 台帳 actually uses", () => {
+    // The measured set (decision-25): emphasis, inline code, headings, GFM tables, task lists, fences,
+    // links. Asserted together because what matters is that one pass covers them, not each in isolation.
+    const out = html(
+      [
+        "# 見出し",
+        "",
+        "**強い**と `コード`。",
+        "",
+        "| a | b |",
+        "|---|---|",
+        "| 1 | 2 |",
+        "",
+        "> 引用",
+        "",
+        "```rust",
+        "let x = 1;",
+        "```",
+      ].join("\n"),
+    );
+    expect(out).toContain("<h1>見出し</h1>");
+    expect(out).toContain("<strong>強い</strong>");
+    expect(out).toContain("<code>コード</code>");
+    expect(out).toContain("<table>");
+    expect(out).toContain("<blockquote>");
+    expect(out).toContain('<code class="language-rust">');
+  });
+
+  it("escapes raw HTML instead of letting it become part of the screen", () => {
+    // 実測 2026-08-11: every raw tag in the 台帳's 184 files sits in prose *about* that tag. Escaping is
+    // what keeps `<details>` a word; interpreting it would make a disclosure widget out of a sentence.
+    const out = html("段落の中の <details> と <span>、それに <script>alert(1)</script>。");
+    expect(out).toContain("&lt;details&gt;");
+    expect(out).toContain("&lt;script&gt;");
+    expect(out).not.toContain("<details>");
+    expect(out).not.toContain("<script>");
+  });
+
+  it("shows an image's alt text and never an image", () => {
+    const out = html("![図の説明](./diagram.png) と ![](./nameless.png)");
+    expect(out).toContain("図の説明");
+    expect(out).not.toContain("<img");
+    // Nothing to show for an alt-less image: doc-8 §9.2 puts the alt on screen, and there is none.
+    expect(out).not.toContain("nameless");
+  });
+});
+
+describe("本文リンク (doc-8 §9.3)", () => {
+  it("opens http and https, case-insensitively, and nothing else", () => {
+    for (const openable of ["http://example.com", "https://example.com/a?b=c", "HTTPS://example.com"]) {
+      expect(bodyLinkTarget(openable)).toBe(openable);
+    }
+    for (const inert of [
+      "file:///etc/passwd",
+      "mailto:someone@example.com",
+      "javascript:alert(1)",
+      "./relative.md",
+      "#heading",
+      "example.com",
+      "https://",
+      "httpx://example.com",
+    ]) {
+      expect(bodyLinkTarget(inert)).toBeNull();
+    }
+  });
+
+  it("hands the URL over byte for byte", () => {
+    // The boundary is given this value (decision-25), so a normalised copy would make what the screen
+    // shows and what the OS receives two different strings.
+    const raw = "https://example.com/a%20b?q=1&r=2#frag";
+    expect(bodyLinkTarget(raw)).toBe(raw);
+  });
+
+  it("draws an openable link as a link, with the class the screen listens on", () => {
+    const out = html("[原文](https://example.com/spec) を見る");
+    expect(out).toContain(`class="${BODY_LINK_CLASS}"`);
+    expect(out).toContain('href="https://example.com/spec"');
+    expect(out).toContain("原文");
+  });
+
+  it("leaves the text of a link it will not open, without drawing a link", () => {
+    for (const source of [
+      "[設定ファイル](file:///etc/passwd) を開く",
+      "[連絡](mailto:someone@example.com)",
+      "[罠](javascript:alert(1))",
+      "[隣の文書](./doc-3.md)",
+      "[見出しへ](#section)",
+    ]) {
+      const out = html(source);
+      expect(out).not.toContain("<a ");
+      expect(out).not.toContain("</a>");
+    }
+    // The words survive — that is what dropping the tags rather than the token does.
+    expect(html("[隣の文書](./doc-3.md)")).toContain("隣の文書");
+  });
+
+  it("judges a bare URL by the same rule as a written-out link", () => {
+    // linkify runs after the inline pass, so a rule that only saw authored links would let this through.
+    expect(html("詳しくは https://example.com/x を見る")).toContain(`class="${BODY_LINK_CLASS}"`);
+    expect(html("設定は file:///etc/hosts にある")).not.toContain("<a ");
+  });
+
+  it("keeps a link's own text when several links sit in one paragraph", () => {
+    // The dropped close tag has to be the dropped open tag's, not the next one's.
+    const out = html("[外](https://example.com) と [中](./local.md) と [外2](https://example.org)");
+    expect([...out.matchAll(/<a /g)]).toHaveLength(2);
+    expect([...out.matchAll(/<\/a>/g)]).toHaveLength(2);
+    expect(out).toContain("中");
+  });
+});
+
+describe("タスクリスト (doc-11 §14.4)", () => {
+  it("draws the 状態の印 as the figure ACCEPTANCE CRITERIA uses, not as a checkbox", () => {
+    const out = html("- [x] 済み\n- [ ] 未\n");
+    expect(out).not.toContain("<input");
+    expect(out).toContain(`class="${BODY_TASK_MARK_CLASS}"`);
+    expect(out).toContain('role="img"');
+    expect(out).toContain('aria-label="完了"');
+    expect(out).toContain('aria-label="未完了"');
+    // The same two lucide figures the AC 項目 draws (`square-check` / `square`), so the same state reads
+    // the same way on both surfaces.
+    expect(out).toContain('<rect width="18" height="18" x="3" y="3" rx="2"/>');
+    expect(out).toContain('<path d="m9 12 2 2 4-4"/>');
+  });
+
+  it("marks the list and the items, so the bullet can be dropped from those alone", () => {
+    const out = html("- [x] 済み\n- [ ] 未\n");
+    expect(out).toContain(`class="${BODY_TASK_LIST_CLASS}"`);
+    expect([...out.matchAll(new RegExp(`class="${BODY_TASK_CLASS}"`, "g"))]).toHaveLength(2);
+    // Once on the list, however many items it has.
+    expect([...out.matchAll(new RegExp(`class="${BODY_TASK_LIST_CLASS}"`, "g"))]).toHaveLength(1);
+  });
+
+  it("leaves an ordinary list, and an item that only looks like one, alone", () => {
+    const plain = html("- ふつうの項目\n- もう 1 つ\n");
+    expect(plain).not.toContain(BODY_TASK_LIST_CLASS);
+    expect(plain).not.toContain(BODY_TASK_MARK_CLASS);
+    // A marker that inline parsing already turned into something else is not a task item.
+    expect(html("- [リンク](https://example.com) から始まる項目")).not.toContain(BODY_TASK_MARK_CLASS);
+  });
+});
+
+describe("作図フェンス (doc-8 §9.2, doc-11 §14.5)", () => {
+  it("is a readable code fence, marked for the 作図結果 to replace", () => {
+    const out = html("```mermaid\ngraph TD;\n  A-->B;\n```\n");
+    expect(out).toContain(`<pre class="${BODY_FIGURE_CLASS}">`);
+    // The source is what a reader sees until — or unless — a diagram is drawn over it.
+    expect(out).toContain("graph TD;");
+    expect(out).toContain("A--&gt;B;");
+  });
+
+  it("marks only a fence that names mermaid", () => {
+    expect(html("```mermaid\ngraph TD;\n```\n")).toContain(BODY_FIGURE_CLASS);
+    expect(html("```MERMAID\ngraph TD;\n```\n")).toContain(BODY_FIGURE_CLASS);
+    expect(html("```rust\nlet x = 1;\n```\n")).not.toContain(BODY_FIGURE_CLASS);
+    expect(html("```\ngraph TD;\n```\n")).not.toContain(BODY_FIGURE_CLASS);
+  });
+});
+
+describe("bodyView", () => {
+  it("renders an empty 本文 as nothing rather than failing", () => {
+    expect(bodyView("")).toEqual({ kind: "formatted", html: "" });
+  });
+
+  it("keeps the newlines of a hard-wrapped paragraph inside one paragraph", () => {
+    // Markdown joins soft-wrapped lines; the previous そのまま表示 kept them apart. Stated here because
+    // it is the one visible difference a reader of an existing 本文 meets first.
+    const out = html("1 行目\n2 行目\n");
+    expect([...out.matchAll(/<p>/g)]).toHaveLength(1);
+  });
+});
+
+describe("整形表示 の見え方 (doc-11 §14)", () => {
+  it("styles every class the pipeline emits", () => {
+    // A stylesheet cannot read these constants, so this is what holds the two spellings together: a
+    // renamed class with no rule behind it would draw an unstyled 本文 and pass every test above.
+    for (const emitted of [
+      BODY_LINK_CLASS,
+      BODY_TASK_LIST_CLASS,
+      BODY_TASK_CLASS,
+      BODY_TASK_MARK_CLASS,
+      FIGURE_DRAWN_CLASS,
+    ]) {
+      expect(bodyComponent).toContain(`:global(`);
+      expect(bodyComponent).toContain(emitted);
+    }
+    // 作図フェンス is styled by the `pre` rule rather than by its own, so its class needs no selector —
+    // what it does need is to keep being a `<pre>`, which `markdown.test.ts` asserts above.
+    expect(bodyView("```mermaid\ngraph TD;\n```\n")).toMatchObject({ kind: "formatted" });
+  });
+});

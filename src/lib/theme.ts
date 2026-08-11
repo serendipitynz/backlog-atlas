@@ -90,3 +90,21 @@ export function themeLabel(name: string): string | null {
 export function themeAttribute(chosen: string | null): string | null {
   return chosen !== null && isRecorded(chosen) ? chosen : null;
 }
+
+/**
+ * The 明暗 in effect, given what `data-theme` carries and whether the OS asks for dark.
+ *
+ * Written as a function over both inputs rather than read from the DOM, so the rule can be asserted
+ * without a document — and so it can be read beside `app.scss`, whose behaviour it mirrors exactly:
+ * a recorded name selects that theme's ground, and **anything else** (no attribute at all, or a name
+ * this build does not record) lands on the media query. The second case is not a fallback bolted on
+ * here; it is what the stylesheet already does, because `:root[data-theme=…]` matches nothing for a
+ * name it has no block for.
+ *
+ * The caller is 作図結果 (doc-11 §14.5): mermaid paints its own colours and needs to be told which
+ * ground it is painting on, and this is the one thing about a theme that is not a CSS variable.
+ */
+export function themeScheme(attribute: string | null, prefersDark: boolean): ThemeScheme {
+  const recorded = attribute === null ? undefined : RECORDED_THEMES.find((t) => t.id === attribute);
+  return recorded?.scheme ?? (prefersDark ? "dark" : "light");
+}
