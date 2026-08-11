@@ -1,10 +1,10 @@
 ---
 id: TASK-142
 title: 文書・マイルストーン・タスクの本文を Markdown として描く
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-11 08:43'
+updated_date: '2026-08-11 11:03'
 labels:
   - ui
   - 'kind:feature'
