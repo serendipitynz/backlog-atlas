@@ -2581,40 +2581,43 @@
     {#if createOpen === "document"}
       <div class="modal-form">
         <h2>文書を作成</h2>
-        <div class="row">
-          <label class="field">
-            <span class="label">title（必須）</span>
-            <input
-              type="text"
-              value={docInput.title}
-              oninput={(event) => (docInput.title = event.currentTarget.value)}
-            />
-          </label>
-          <label class="field">
-            <span class="label">type</span>
-            <select
-              value={docInput.docType}
-              onchange={(event) => (docInput.docType = event.currentTarget.value)}
-            >
-              <option value="">—（CLI の既定）</option>
-              {#each DOC_TYPES as value (value)}
-                <option {value}>{value}</option>
-              {/each}
-            </select>
-          </label>
-          <label class="field">
-            <span class="label">path</span>
-            <input
-              type="text"
-              placeholder="docs 配下の下位パス（任意）"
-              value={docInput.path}
-              oninput={(event) => (docInput.path = event.currentTarget.value)}
-            />
-          </label>
-        </div>
-        <!-- 本文の欄をここに出さないことについては何も述べない (doc-11 §8): 画面が欄を見せていない
-             ものについて、なぜ無いかを述べない、が本則である。作成した文書へ本文を入れる先は
-             文書ペインの編集セッションで、そこには欄がある。 -->
+        <!-- 欄は 1 欄ずつ縦に積む (doc-10 §1): 作成モーダルの「同じ型」に欄の積み方が入るので、
+             マイルストーン側と並び方が違う形はもう取れない。横 1 行だったのは §1 が積み方を
+             覆っていなかった間のことで、実装の逸脱ではない。 -->
+        <label class="field">
+          <span class="label">title（必須）</span>
+          <input
+            type="text"
+            value={docInput.title}
+            oninput={(event) => (docInput.title = event.currentTarget.value)}
+          />
+        </label>
+        <label class="field">
+          <span class="label">type</span>
+          <select
+            value={docInput.docType}
+            onchange={(event) => (docInput.docType = event.currentTarget.value)}
+          >
+            <option value="">—（CLI の既定）</option>
+            {#each DOC_TYPES as value (value)}
+              <option {value}>{value}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">path</span>
+          <input
+            type="text"
+            placeholder="docs 配下の下位パス（任意）"
+            value={docInput.path}
+            oninput={(event) => (docInput.path = event.currentTarget.value)}
+          />
+        </label>
+        <!-- 本文の欄をここに出さないことについては何も述べない (doc-10 §5, doc-11 §8): 画面が欄を
+             見せていないものについて、なぜ無いかを述べない、が本則である。代替経路の案内 にも
+             当たらない — この層は `doc create` が受け取る 3 項目を全部出しており、欄の不在を
+             作っていない (§7 の 注記モーダル と分かれるのはそこである)。作成した文書へ本文を
+             入れる先は文書ペインの編集セッションで、そこには欄がある。 -->
         <!-- No 下部操作行 (doc-11 §7): 「文書を作成」 writes but does not leave the layer, so there is
              only one way out and nothing for a second wording to tell apart. What the × does with
              what is typed here is said by the 破棄前確認 instead. **The pinned 発行の行 below is not one**
