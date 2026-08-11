@@ -1,10 +1,10 @@
 ---
 id: TASK-147
 title: スイムレーンの折畳みが、プロジェクト詳細画面へ移ると失われるのを直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-11 11:19'
-updated_date: '2026-08-11 11:49'
+updated_date: '2026-08-11 12:14'
 labels:
   - ui
   - 'kind:bug'
