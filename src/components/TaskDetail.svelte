@@ -1322,11 +1322,7 @@
 {/snippet}
 
 {#snippet acSection()}
-  <DetailSection
-    title="Acceptance Criteria"
-    section="ac" {layout}
-    count={`${ac.checked} / ${ac.total}`}
-  >
+  <DetailSection title="Acceptance Criteria" section="ac" {layout} progress={ac}>
     {#if session === null}
       {#if ac.total === 0}
         <p class="neutral">なし</p>
