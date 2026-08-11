@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ICONS, drawnShape, type IconShape } from "./lucide";
+import {
+  ICONS,
+  ICON_SVG_ATTRS,
+  drawnShape,
+  iconMarkup,
+  type IconName,
+  type IconShape,
+} from "./lucide";
 
 // `drawnShape`'s exhaustive `switch` holds one axis — element *kinds* — and the module says so: a kind
 // added to `IconShape` leaves the switch non-exhaustive and the build stops. It holds nothing about the
@@ -51,5 +58,48 @@ describe("drawnShape", () => {
       rx: "2",
     });
     expect(drawnShape(ICONS["clipboard-check"][2]).attrs).toEqual({ d: "m9 14 2 2 4-4" });
+  });
+});
+
+// `iconMarkup` is the second drawer of the same figures (doc-11 §14.4): the 整形表示 pipeline builds an
+// HTML string, so it cannot mount `Icon.svelte`. What has to hold is that the two draw the *same* thing
+// and that the string form is safe to embed — the function escapes nothing, on the stated grounds that
+// every value is this module's own literal, and that ground is what these tests keep true.
+describe("iconMarkup", () => {
+  it("draws every shape of every icon, in lucide's element order", () => {
+    for (const [name, shapes] of Object.entries(ICONS)) {
+      const markup = iconMarkup(name as IconName);
+      const tags = [...markup.matchAll(/<(path|rect|circle)\b/g)].map((match) => match[1]);
+      expect(tags).toEqual(shapes.map((shape) => shape.shape));
+      for (const shape of shapes) {
+        for (const [attr, value] of Object.entries(drawnShape(shape).attrs)) {
+          expect(markup).toContain(`${attr}="${value}"`);
+        }
+      }
+    }
+  });
+
+  it("carries the same frame the component puts on the element", () => {
+    const markup = iconMarkup("square");
+    for (const [attr, value] of Object.entries(ICON_SVG_ATTRS)) {
+      expect(markup).toContain(`${attr}="${value}"`);
+    }
+    // 族を持たない状態の印 (doc-11 §2.4): the name is the wrapper's, so the figure itself is decorative.
+    expect(markup).toContain('aria-hidden="true"');
+  });
+
+  it("has no attribute value that could end an attribute or open a tag", () => {
+    const values = [
+      ...Object.values(ICON_SVG_ATTRS),
+      ...Object.values(ICONS)
+        .flat()
+        .flatMap((shape) => Object.values(drawnShape(shape).attrs))
+        .map(String),
+    ];
+    // This is the claim `iconMarkup` makes instead of escaping. A coordinate that grew a `"` would end
+    // its attribute; one with `<` or `&` would be markup rather than geometry.
+    for (const value of values) {
+      expect(value).not.toMatch(/["<>&]/);
+    }
   });
 });
