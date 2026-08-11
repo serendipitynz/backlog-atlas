@@ -1190,7 +1190,10 @@ describe("本文リンク (doc-8 §9.3)", () => {
    */
   it("押すと、その URL が境界へ渡る", async () => {
     const host = await openDetail();
-    const link = only(host, `.body-block a.${BODY_LINK_CLASS}`);
+    const link = only(host, `.body-block .${BODY_LINK_CLASS}`);
+    // No href to follow (doc-8 §9.3): the press is the only way this opens, and the engine has no path
+    // of its own — which is what 目視 2026-08-11 required after the context menu took the window away.
+    expect(link.getAttribute("href")).toBeNull();
     click(link);
     await settled();
 
@@ -1199,11 +1202,29 @@ describe("本文リンク (doc-8 §9.3)", () => {
     expect(host.querySelector('.band[data-band="notice"]')).toBeNull();
   });
 
+  /**
+   * doc-8 §9.3: Enter opens it too. Dropping the `href` took the engine's own keyboard activation with
+   * it, so this is wiring rather than a default — and a link a keyboard cannot reach is one this screen
+   * offers to some readers only.
+   */
+  it("Enter でも同じ URL が境界へ渡る", async () => {
+    const host = await openDetail();
+    const link = only(host, `.body-block .${BODY_LINK_CLASS}`);
+    expect(link.getAttribute("tabindex")).toBe("0");
+    expect(link.getAttribute("role")).toBe("link");
+    press(link, "Enter");
+    await settled();
+
+    expect(madeTo("body_link_open").map((call) => call.args[0])).toEqual([
+      "https://example.test/spec",
+    ]);
+  });
+
   /** doc-8 §9.3: what is not opened is not drawn as a link, so there is nothing to press. */
   it("開かない相手はリンクにならず、境界も呼ばれない", async () => {
     const host = await openDetail();
     // One link only: `./doc-3.md` stays as text.
-    expect(host.querySelectorAll(`.body-block a.${BODY_LINK_CLASS}`)).toHaveLength(1);
+    expect(host.querySelectorAll(`.body-block .${BODY_LINK_CLASS}`)).toHaveLength(1);
     expect(only(host, ".body-block").textContent).toContain("隣");
 
     // Pressing it does nothing: it is text inside the 本文, not a control. Pressing the block itself
@@ -1222,7 +1243,7 @@ describe("本文リンク (doc-8 §9.3)", () => {
     answers.bodyLink = () =>
       Promise.reject({ kind: "bodyLinkFailed", detail: "xdg-open で開けません: not found" });
     const host = await openDetail();
-    click(only(host, `.body-block a.${BODY_LINK_CLASS}`));
+    click(only(host, `.body-block .${BODY_LINK_CLASS}`));
     await settled();
 
     const band = host.querySelector('.band[data-band="notice"]');

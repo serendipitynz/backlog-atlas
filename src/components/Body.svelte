@@ -11,7 +11,12 @@
   // imported by `App.svelte` alone), and the reason it matters here is that the failure belongs to
   // ⑤ 通知 (doc-11 §4), which is the shell's.
   import { onDestroy } from "svelte";
-  import { BODY_LINK_CLASS, bodyLinkTarget, bodyView } from "../lib/markdown";
+  import {
+    BODY_LINK_CLASS,
+    BODY_LINK_URL_ATTRIBUTE,
+    bodyLinkTarget,
+    bodyView,
+  } from "../lib/markdown";
   import { currentScheme, drawFigures, onSchemeChange } from "../lib/markdown-figure";
   import type { ThemeScheme } from "../lib/theme";
 
@@ -48,33 +53,62 @@
   });
 
   /**
+   * The 本文リンク a press or key landed on, or `null` (doc-8 §9.3).
+   *
+   * Read from `data-body-link` rather than from an `href`, which these elements deliberately do not
+   * carry: an `href` is what makes the engine treat one as a link, and then every way the engine has of
+   * following a link takes the window with it. 目視 2026-08-11 found the context menu's「リンクを開く」
+   * doing that, with no back control to return by.
+   */
+  function pressedLink(target: EventTarget | null): string | null {
+    if (!(target instanceof Element)) {
+      return null;
+    }
+    const element = target.closest(`.${BODY_LINK_CLASS}`);
+    if (element === null) {
+      return null;
+    }
+    // Classified again here rather than trusted: the attribute is written by `markdown.ts`, and this is
+    // the second of the two checks doc-8 §9.3 asks for (the boundary's is the gate).
+    return bodyLinkTarget(element.getAttribute(BODY_LINK_URL_ATTRIBUTE) ?? "");
+  }
+
+  /**
    * A press inside the 本文, delegated (doc-8 §9.3).
    *
    * Bound imperatively rather than in the markup: the listener belongs to the block as a *delegation
    * point*, not to an interactive element, and writing `onclick` on a `<div>` would be claiming the div
-   * is one. What is interactive is each `<a>` inside — natively focusable, and Enter on a focused link
-   * arrives here as a `click`.
+   * is one.
    *
-   * `auxclick` as well as `click`, because a middle press is a separate event: caught, it opens the link
-   * like any other press; uncaught, it is one of the ways a webview navigates away from Atlas — which is
-   * the thing doc-8 §9.3 exists to prevent.
+   * `auxclick` as well as `click` because a middle press is a separate event, and both are
+   * `preventDefault`ed before anything else — with no `href` there is nothing to navigate to, and the
+   * call costs nothing if a future change puts one back.
    */
   function press(event: MouseEvent): void {
-    const target = event.target;
-    if (!(target instanceof Element)) {
-      return;
-    }
-    const anchor = target.closest(`a.${BODY_LINK_CLASS}`);
-    if (anchor === null) {
-      return;
-    }
-    // Before the classification, not after: a link that reaches here must not navigate this webview even
-    // if the href turns out to be one the screen would not have drawn.
-    event.preventDefault();
-    const url = bodyLinkTarget(anchor.getAttribute("href") ?? "");
+    const url = pressedLink(event.target);
     if (url === null) {
       return;
     }
+    event.preventDefault();
+    onopenlink(url);
+  }
+
+  /**
+   * Enter on a focused 本文リンク (doc-8 §9.3).
+   *
+   * Needed because these elements are not anchors as far as the engine is concerned: `role="link"` and
+   * `tabindex` give a screen reader the name and the tab stop back, but neither turns Enter into a
+   * click. Space is deliberately not handled — it activates a button, and this is a link.
+   */
+  function key(event: KeyboardEvent): void {
+    if (event.key !== "Enter") {
+      return;
+    }
+    const url = pressedLink(event.target);
+    if (url === null) {
+      return;
+    }
+    event.preventDefault();
     onopenlink(url);
   }
 
@@ -85,9 +119,11 @@
     }
     root.addEventListener("click", press);
     root.addEventListener("auxclick", press);
+    root.addEventListener("keydown", key);
     return () => {
       root.removeEventListener("click", press);
       root.removeEventListener("auxclick", press);
+      root.removeEventListener("keydown", key);
     };
   });
 </script>
@@ -184,10 +220,19 @@
 
     // 本文リンク (doc-11 §14.3): only the ones the screen opens are drawn as links at all, so the colour
     // and the underline are not a state — they are the whole of what a link looks like here.
-    :global(a.body-link) {
+    //
+    // Selected by class rather than by `a[href]`: these carry no `href` (doc-8 §9.3), which is also why
+    // the focus ring has to be asked for — the engine does not treat them as links, so it gives them
+    // none of a link's behaviour, only what is written here.
+    :global(.body-link) {
       color: var(--info);
       text-decoration: underline;
       cursor: pointer;
+    }
+
+    :global(.body-link:focus-visible) {
+      outline: 2px solid var(--sel);
+      outline-offset: 1px;
     }
 
     // コード (doc-11 §14.2). The ground stays the block's; the 罫線 is what separates it.

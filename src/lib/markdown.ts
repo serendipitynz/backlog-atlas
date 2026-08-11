@@ -12,7 +12,7 @@
  * |---|---|---|
  * | doc-8 §9 整形表示 | [`bodyView`] with `kind: "formatted"` | the 本文 as HTML, ready for `{@html}` |
  * | doc-8 §9 そのまま表示 | [`bodyView`] with `kind: "verbatim"` | the caller keeps printing the string as text |
- * | doc-8 §9.3 本文リンク | [`BODY_LINK_CLASS`] + [`bodyLinkTarget`] | an `<a>` in the output, and the URL it may hand over |
+ * | doc-8 §9.3 本文リンク | [`BODY_LINK_CLASS`] + [`BODY_LINK_URL_ATTRIBUTE`] | the pressable element in the output, and the URL it carries without an `href` |
  * | doc-8 §9.2 作図フェンス | [`BODY_FIGURE_CLASS`] | the ```mermaid block, still readable as a code fence until a 作図結果 replaces it |
  * | doc-11 §14.4 タスクリスト の印 | [`BODY_TASK_MARK_CLASS`] | the `square-check`/`square` figure standing for a `- [x]` |
  *
@@ -31,8 +31,17 @@ import MarkdownIt from "markdown-it";
 import type { MarkdownIt as Renderer, StateCore, Token } from "markdown-it";
 import { iconMarkup } from "./icons/lucide";
 
-/** Class on an `<a>` the screen may open (doc-8 §9.3). Also how `Body.svelte` finds them. */
+/** Class on a 本文リンク the screen may open (doc-8 §9.3). Also how `Body.svelte` finds them. */
 export const BODY_LINK_CLASS = "body-link";
+
+/**
+ * Where a 本文リンク keeps its URL, since it carries no `href` (doc-8 §9.3).
+ *
+ * An `href` is what makes the engine treat the element as a link, and every way the engine has of
+ * following one leaves Atlas — the context menu's own「リンクを開く」most visibly (目視 2026-08-11).
+ * The URL therefore travels in an attribute the engine does not act on.
+ */
+export const BODY_LINK_URL_ATTRIBUTE = "data-body-link";
 
 /** Class on a 作図フェンス's `<pre>` (doc-8 §9.2, doc-11 §14.5). */
 export const BODY_FIGURE_CLASS = "body-figure";
@@ -101,8 +110,23 @@ function bodyLinks(state: StateCore): boolean {
         if (target === null) {
           continue;
         }
-        // The href is left exactly as the 本文 wrote it: decision-25 hands the boundary that value, and
-        // a normalised copy would make what the screen shows and what the OS gets two different strings.
+        // **The `href` is removed and the URL moves to `data-body-link`.** doc-8 §9.3: a real `href` is
+        // what makes the webview treat this as a link, and every one of the webview's own ways of
+        // following a link then leaves Atlas — 目視 2026-08-11 found the context menu's「リンクを開く」
+        // doing exactly that, and the window has no back control to return with. Removing it takes the
+        // whole class away rather than the one path: no context-menu entry, no drag target, no
+        // middle-click navigation, because there is no link for the engine to see. The press still works
+        // — `Body.svelte` reads this attribute — and the value is still the one the 本文 wrote, byte for
+        // byte, because that is what the boundary is handed.
+        child.attrSet("data-body-link", target);
+        child.attrs = (child.attrs ?? []).filter(([name]) => name !== "href");
+        // Focusable and announced as a link without being one the engine will follow: `role` gives the
+        // name its meaning back, and `tabindex` restores what dropping the `href` took away.
+        child.attrSet("role", "link");
+        child.attrSet("tabindex", "0");
+        // The URL a reader can no longer hover-copy from the engine. `title` rather than visible text so
+        // the prose reads as prose; this is not doc-11 §5's 保留理由 — nothing here is withheld.
+        child.attrSet("title", target);
         child.attrJoin("class", BODY_LINK_CLASS);
         kept.push(child);
         continue;

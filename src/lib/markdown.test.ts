@@ -6,6 +6,7 @@ import { FIGURE_DRAWN_CLASS } from "./markdown-figure";
 import {
   BODY_FIGURE_CLASS,
   BODY_LINK_CLASS,
+  BODY_LINK_URL_ATTRIBUTE,
   BODY_TASK_CLASS,
   BODY_TASK_MARK_CLASS,
   bodyLinkTarget,
@@ -95,11 +96,37 @@ describe("本文リンク (doc-8 §9.3)", () => {
     expect(bodyLinkTarget(raw)).toBe(raw);
   });
 
-  it("draws an openable link as a link, with the class the screen listens on", () => {
+  it("draws an openable link with no href, and the URL in an attribute the engine ignores", () => {
     const out = html("[原文](https://example.com/spec) を見る");
     expect(out).toContain(`class="${BODY_LINK_CLASS}"`);
-    expect(out).toContain('href="https://example.com/spec"');
+    expect(out).toContain(`${BODY_LINK_URL_ATTRIBUTE}="https://example.com/spec"`);
     expect(out).toContain("原文");
+    // **No href.** It is what makes the engine treat this as a link, and then every way the engine has of
+    // following one takes the window with it — 目視 2026-08-11 found the context menu's「リンクを開く」
+    // leaving Atlas with no back control to return by (doc-8 §9.3).
+    expect(out).not.toContain("href=");
+    // Announced and reachable all the same: the engine gives a non-anchor neither, so both are asked for.
+    expect(out).toContain('role="link"');
+    expect(out).toContain('tabindex="0"');
+    // The URL a reader can no longer copy from the engine's own menu.
+    expect(out).toContain('title="https://example.com/spec"');
+  });
+
+  it("puts no href anywhere in a 本文, whatever it contains", () => {
+    // The rule, not the one case: a single `href` anywhere in the output is a link the engine will
+    // follow, and the whole point of dropping them is that no path through the engine can navigate.
+    const out = html(
+      [
+        "[書いたリンク](https://example.com/a) と 裸の https://example.com/b、",
+        "それに [開かない相手](./local.md) と ![画像](./x.png)。",
+        "",
+        "| 表の中 | [リンク](https://example.com/c) |",
+        "|---|---|",
+        "| a | b |",
+      ].join("\n"),
+    );
+    expect(out).not.toContain("href=");
+    expect([...out.matchAll(new RegExp(BODY_LINK_URL_ATTRIBUTE, "g"))]).toHaveLength(3);
   });
 
   it("leaves the text of a link it will not open, without drawing a link", () => {
@@ -120,7 +147,9 @@ describe("本文リンク (doc-8 §9.3)", () => {
 
   it("judges a bare URL by the same rule as a written-out link", () => {
     // linkify runs after the inline pass, so a rule that only saw authored links would let this through.
-    expect(html("詳しくは https://example.com/x を見る")).toContain(`class="${BODY_LINK_CLASS}"`);
+    const linkified = html("詳しくは https://example.com/x を見る");
+    expect(linkified).toContain(`class="${BODY_LINK_CLASS}"`);
+    expect(linkified).not.toContain("href=");
     expect(html("設定は file:///etc/hosts にある")).not.toContain("<a ");
   });
 
