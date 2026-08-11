@@ -2375,8 +2375,12 @@
       text-overflow: ellipsis;
     }
 
+    // 控えの群 (doc-11 §2.2): the 破棄前確認's two answers stand side by side with no field between
+    // them, and the band's own 閉じる joins them, so the row takes a step — 1.4rem, the one the bar
+    // below it takes, since the band sits over the screen rather than being a form.
     button {
       flex: none;
+      height: 1.4rem;
       padding: 0 0.4rem;
       border: 1px solid var(--line-strong);
       border-radius: 4px;
@@ -2514,10 +2518,16 @@
     }
 
     // 発行の行ではない (doc-11 §11 は入力を持つ発行の話): 2 つの答えなので、順は問いの側の規則に従う。
+    // 控えの群 (doc-11 §2.2): the 実行前確認's two answers. This layer is a 被せ層 like the 作成モーダル,
+    // so it takes the same step those do.
     .answers {
       display: flex;
       gap: 0.4rem;
       margin-top: 0.6rem;
+
+      button {
+        height: 1.75rem;
+      }
     }
 
     button {

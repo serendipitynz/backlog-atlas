@@ -3568,6 +3568,9 @@
     font-size: 0.74rem;
   }
 
+  // 破棄前確認 (doc-10 §5・§6): the question above the two columns. Its two answers are a 控えの群
+  // (doc-11 §2.2) — side by side, one object, no field between them — so they take this screen's step
+  // like the fields they are asked about.
   .confirm {
     display: flex;
     flex-wrap: wrap;
@@ -3576,6 +3579,10 @@
     padding: 0.4rem;
     background: color-mix(in srgb, var(--info) 12%, transparent);
     font-size: 0.74rem;
+
+    button {
+      height: 1.75rem;
+    }
   }
 
   .ok {

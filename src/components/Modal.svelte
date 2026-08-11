@@ -426,8 +426,12 @@
       text-overflow: ellipsis;
     }
 
+    // 控えの群 (doc-11 §2.2): the two answers to the 破棄前確認 stand side by side with no field
+    // between them. 1.4rem rather than the 1.75rem the layers below take: this row is the 帯 the
+    // question is drawn in (doc-11 §7), and `--modal-confirm-row` caps its height at one line.
     button {
       flex: none;
+      height: 1.4rem;
       padding: 0 0.4rem;
       border: 1px solid var(--line-strong);
       // カード・ボタン 4px (doc-11 §2.2).
