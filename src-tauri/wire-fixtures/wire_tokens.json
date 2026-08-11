@@ -38,7 +38,8 @@
     "unknownTaskFile",
     "editorUnavailable",
     "editorLaunchFailed",
-    "historyCancelled"
+    "historyCancelled",
+    "bodyLinkFailed"
   ],
   "CommitSearch": [
     "searched",

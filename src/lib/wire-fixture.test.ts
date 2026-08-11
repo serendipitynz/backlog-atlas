@@ -354,6 +354,7 @@ const ERROR_KINDS = unionValues<CommandError["kind"]>()(
   "editorUnavailable",
   "editorLaunchFailed",
   "historyCancelled",
+  "bodyLinkFailed",
 );
 const REFUSAL_REASONS = unionValues<LedgerRefusal["reason"]>()(
   "readOnly",

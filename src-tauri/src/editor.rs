@@ -1,5 +1,12 @@
 //! 外部エディタ経路 — launching the user's own editor on a task's management file (doc-8 §7,
-//! implements TASK-37). The one module that starts a program Atlas does not control the output of.
+//! implements TASK-37) — and 既定ブラウザ起動, handing one URL from a 本文 to the OS (doc-8 §9.3,
+//! TASK-142). The one module that starts a program Atlas does not control the output of.
+//!
+//! **Two routes, one seam.** They share [`Launcher`] and the platform's association launcher
+//! ([`association_launcher_of`]) because that is the same OS call in both cases; they are separate
+//! entry points because **the value handed over comes from somewhere else**. §7 hands over a path
+//! Atlas resolved from its own read model; §9.3 hands over a URL the user wrote in a 本文. That
+//! difference is why only the second one checks its input ([`browser_url`]).
 //!
 //! ## Referent table (doc term → identifier here)
 //!
@@ -8,6 +15,9 @@
 //! | term | here | is |
 //! |---|---|---|
 //! | doc-8 §7 外部エディタ経路 | this module + [`open`] | handing one management file to the user's editor; the write is the editor's, never Atlas's |
+//! | doc-8 §9.3 既定ブラウザ起動 | [`open_url`] | handing one `http`/`https` URL to whatever the OS registered for the scheme |
+//! | doc-8 §9.3 の scheme 検査 | [`browser_url`] | the boundary's own check that a URL is one this route may open — not the screen's |
+//! | 開けなかった（本文リンク） | [`BrowserError`] | the URL was refused, or the OS call ran and opened nothing |
 //! | doc-8 §7 起動指定 | [`EditorCommand`] | the program to start and the arguments that precede the file path |
 //! | doc-8 §7 起動指定の解決順 | [`resolve`] / [`EditorSource`] | which of アプリ設定 → `$VISUAL` → `$EDITOR` supplied the 起動指定 in effect |
 //! | doc-8 §7 `$EDITOR` 起動 | [`LaunchMethod::Configured`] / [`ConfiguredEditor`] | the 起動指定 that resolution picked, with the source it came from |
@@ -46,8 +56,10 @@
 //! [`tests::no_platform_hands_a_managed_path_to_a_command_interpreter`].
 
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// Which of doc-8 §7's two launch methods to use. Deserialized from the frontend: the UI offers the
 /// methods [`EditorReadiness`] reports and names the one it is asking for, so the choice is the
@@ -205,12 +217,34 @@ pub trait Launcher {
     /// here would hang the caller for as long as the user keeps the file open.
     fn spawn(&self, program: &str, args: &[String]) -> std::io::Result<()>;
 
-    /// Hand `file` to the application the OS associates with it, without starting a child process
+    /// Hand `target` to the application the OS associates with it, without starting a child process
     /// (Windows `ShellExecuteW`). On the same trait as [`spawn`] rather than behind a `cfg`, so that
     /// one seam still covers every way this module reaches the OS and a fake can be asked which of the
     /// two a plan chose — the Windows branch cannot be compiled on this project's developer machine,
     /// so "the association method must not go through `spawn`" has to be assertable from any host.
-    fn shell_execute(&self, file: &Path) -> std::io::Result<()>;
+    ///
+    /// `&OsStr` rather than `&Path`, because `lpFile` takes both of the things this module hands over:
+    /// a management file's path (doc-8 §7) and a 本文リンク's URL (doc-8 §9.3). Typing it as a path
+    /// would make the URL case a lie, and typing it as `&str` would force a lossy conversion on the
+    /// path case — a managed file name is not guaranteed to be UTF-8.
+    fn shell_execute(&self, target: &OsStr) -> std::io::Result<()>;
+
+    /// Start `program` with `args`, watch it for a moment, and say whether it failed in that time:
+    /// `Ok(None)` when it is still running or exited successfully, `Ok(Some(detail))` when it exited
+    /// unsuccessfully. `Err` is a program that could not be started at all.
+    ///
+    /// **Only 既定ブラウザ起動 uses this** (doc-8 §9.3). The file route must not: an editor session
+    /// outlasts the command that started it, which is what [`spawn`] exists to allow. A browser
+    /// launcher is the opposite — it hands the URL over and exits — so its exit code is the only thing
+    /// that distinguishes "the browser has it" from "nothing is registered for this scheme", and
+    /// without it a press on a 本文リンク can report success while no window ever appears
+    /// (`xdg-open` exits 3 when it finds no handler and 4 when the handler failed; `open` exits 1).
+    ///
+    /// **Nothing is killed, and the watch is not a deadline.** `xdg-open` may exec its handler and stay
+    /// in the process tree until the browser closes, so a bound that killed the child could close the
+    /// user's browser — a far worse outcome than an unreported failure. A helper still running when the
+    /// watch ends has therefore done its job as far as this can tell, and is reaped on a thread.
+    fn spawn_observed(&self, program: &str, args: &[String]) -> std::io::Result<Option<String>>;
 }
 
 /// [`Launcher`] over the real OS.
@@ -238,20 +272,21 @@ impl Launcher for SystemLauncher {
         Ok(())
     }
 
-    /// `ShellExecuteW` on the path (doc-8 §7 OS の関連付け起動 on Windows, TASK-44 AC #1/#3).
+    /// `ShellExecuteW` on the target (doc-8 §7 OS の関連付け起動 on Windows, TASK-44 AC #1/#3; doc-8
+    /// §9.3 既定ブラウザ起動 with a URL).
     ///
-    /// The path is one `lpFile` parameter — a counted wide string, not a token in a command line — so
+    /// The target is one `lpFile` parameter — a counted wide string, not a token in a command line — so
     /// the `&`, `^` and `%…%` a managed file name may contain reach the shell as *characters of a file
     /// name*. That is the entire reason this is not `cmd /c start`: an interpreter re-parses its command
     /// tail, and `Command::args` guarantees argv boundaries *to* a child, not *through* one.
     #[cfg(target_os = "windows")]
-    fn shell_execute(&self, file: &Path) -> std::io::Result<()> {
+    fn shell_execute(&self, target: &OsStr) -> std::io::Result<()> {
         use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::UI::Shell::ShellExecuteW;
         use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
         // NUL-terminated, because `lpFile` is a C string. `encode_wide` does not add one.
-        let path: Vec<u16> = file.as_os_str().encode_wide().chain(Some(0)).collect();
+        let path: Vec<u16> = target.encode_wide().chain(Some(0)).collect();
 
         // ShellExecuteW resolves the verb through COM, so the thread needs an initialized apartment
         // before the call and must give it back after — see `ComApartment`. Held across the call and
@@ -287,12 +322,54 @@ impl Launcher for SystemLauncher {
     /// no launch on another platform reaches this. Reported rather than `panic!`ed: an unreachable state
     /// is still better surfaced to the user than made to abort the app.
     #[cfg(not(target_os = "windows"))]
-    fn shell_execute(&self, _file: &Path) -> std::io::Result<()> {
+    fn shell_execute(&self, _target: &OsStr) -> std::io::Result<()> {
         Err(std::io::Error::other(
             "ShellExecuteW はこのプラットフォームにありません",
         ))
     }
+
+    fn spawn_observed(&self, program: &str, args: &[String]) -> std::io::Result<Option<String>> {
+        let mut child = Command::new(program)
+            .args(args)
+            // Same reasoning as `spawn`: Atlas's stdio is not a terminal this child may use.
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let until = Instant::now() + BROWSER_OBSERVATION;
+        loop {
+            match child.try_wait()? {
+                Some(status) if status.success() => return Ok(None),
+                Some(status) => return Ok(Some(status.to_string())),
+                None => {}
+            }
+            if Instant::now() >= until {
+                // Reaped rather than killed or waited on — see the trait's note: killing it could take
+                // the browser with it, and waiting would hang the command for as long as the browser is
+                // open. Without the reap the child stays a zombie until Atlas exits.
+                std::thread::spawn(move || {
+                    let mut child = child;
+                    let _ = child.wait();
+                });
+                return Ok(None);
+            }
+            std::thread::sleep(BROWSER_POLL);
+        }
+    }
 }
+
+/// How long a 既定ブラウザ起動 watches its helper before treating the URL as handed on (doc-8 §9.3).
+///
+/// The failures this can observe are immediate — a launcher that finds no handler for the scheme exits
+/// straight away — so the window only has to outlast process start-up, not the browser. It is not a
+/// deadline: nothing is killed when it elapses (see [`Launcher::spawn_observed`]). The cost of the
+/// window is that the command it serves takes this long to answer in the failing case, which is why it
+/// is well under a second and a half rather than the tens of seconds a real deadline would take.
+const BROWSER_OBSERVATION: Duration = Duration::from_millis(1200);
+
+/// How often the watch above looks. Short enough that the ordinary case — a helper that exits at once —
+/// is not made to wait for a poll interval it did not need.
+const BROWSER_POLL: Duration = Duration::from_millis(20);
 
 /// `RPC_E_CHANGED_MODE` — the thread already has an apartment, of the other concurrency model.
 ///
@@ -529,12 +606,19 @@ impl Platform {
 /// associates with the extension. Two shapes, because they are not two flavours of the same call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AssociationLauncher {
-    /// A program the path is passed to as its own argv element (`open`, `xdg-open`).
-    Program {
-        program: &'static str,
-        /// Arguments that precede the path.
-        leading: &'static [&'static str],
-    },
+    /// A program the target is passed to as its own argv element (`open`, `xdg-open`), and the only
+    /// argv element: **nothing precedes it.**
+    ///
+    /// It used to pass `--` to `xdg-open`, on the reasoning that an end-of-options marker keeps a path
+    /// beginning with `-` from being read as an option. **That was measured and found false** (2026-08-11,
+    /// released xdg-utils v1.2.1 / v1.1.3): those versions have no `--` arm at all, so `--` itself falls
+    /// into `-*) exit_failure_syntax "unexpected option"` and **every ordinary path and URL failed** —
+    /// while a path beginning with `-` is refused by the same branch whether or not `--` precedes it, so
+    /// the guard never existed either. (An arm for `--` exists only on the upstream development branch.)
+    /// Nothing here needs one regardless: every target this module hands over is an absolute path from
+    /// the read layer or a URL [`browser_url`] has required to start with `http`, and neither begins
+    /// with `-`. [`tests::no_association_launch_passes_an_option_shaped_argument`] holds that.
+    Program { program: &'static str },
     /// Win32 `ShellExecuteW`: not a program, so there is no command tail at all — the path is one
     /// wide-string parameter to one call.
     ShellExecute,
@@ -559,24 +643,20 @@ impl AssociationLauncher {
 /// deciding — silently inheriting another platform's launcher is the failure this shape rules out.
 const fn association_launcher_of(platform: Platform) -> AssociationLauncher {
     match platform {
-        // `open` takes the path as its own argument; no `--` is needed because `open` reads a leading
-        // `-` as a path once any option has been consumed, and there are no options here.
-        Platform::MacOs => AssociationLauncher::Program {
-            program: "open",
-            leading: &[],
-        },
+        // `open` takes the target as its own argument, with no option before it.
+        Platform::MacOs => AssociationLauncher::Program { program: "open" },
         // `ShellExecuteW`, never `cmd /c start`. `cmd.exe` re-parses its command tail, so a managed file
         // named `a&calc.md` — the scanner accepts any `.md` under the managed directories, whatever
         // wrote it — would run `calc`. `Command::args` guarantees argv boundaries to a child, not
         // through one, so the guarantee ends the moment the child is an interpreter. `ShellExecuteW`
         // has no command line for the name's characters to be read as syntax (decision-15).
         Platform::Windows => AssociationLauncher::ShellExecute,
-        // `xdg-open` is the freedesktop.org entry point. `--` keeps a path that begins with `-` from
-        // being read as an option; a system without `xdg-open` fails at spawn with the program named,
-        // which is the honest report rather than a silent no-op.
+        // `xdg-open` is the freedesktop.org entry point, and it is handed the target alone — see
+        // [`AssociationLauncher::Program`] for the measurement that removed the `--` this used to pass.
+        // A system without `xdg-open` fails at spawn with the program named, which is the honest report
+        // rather than a silent no-op.
         Platform::Freedesktop => AssociationLauncher::Program {
             program: "xdg-open",
-            leading: &["--"],
         },
     }
 }
@@ -596,6 +676,130 @@ enum OsCall {
 struct Planned {
     launch: EditorLaunch,
     call: OsCall,
+}
+
+/// How this platform's association launcher hands one target over: the program and its argument array,
+/// or the `ShellExecuteW` call that has neither.
+///
+/// Extracted from [`planned`] so both routes work it out once. The 外部エディタ経路 wraps the answer in
+/// an [`EditorLaunch`] because doc-8 §7 has the panel state 起動した事実; 既定ブラウザ起動 reports
+/// nothing on success (doc-11 §4: no band for a success the screen already shows) and uses the program
+/// only to name what failed.
+struct AssociationCall {
+    program: String,
+    args: Vec<String>,
+    call: OsCall,
+}
+
+fn association_call(platform: Platform, target: String) -> AssociationCall {
+    match association_launcher_of(platform) {
+        AssociationLauncher::Program { program } => AssociationCall {
+            program: program.to_string(),
+            args: vec![target],
+            call: OsCall::Spawn,
+        },
+        AssociationLauncher::ShellExecute => AssociationCall {
+            program: SHELL_EXECUTE_NAME.to_string(),
+            // One element, because `lpFile` is the whole input.
+            args: vec![target],
+            call: OsCall::ShellExecute,
+        },
+    }
+}
+
+/// Why a 既定ブラウザ起動 did not happen (doc-8 §9.3).
+///
+/// Two causes, one type: a URL this route may not open, and an OS call that ran and opened nothing.
+/// **Not two typed variants at the command boundary** — the screen does the same thing with either
+/// (⑤ 通知 with the detail, doc-11 §4), and this boundary types a failure only where the screen has to
+/// act differently on it (see `CommandError`). The distinction lives in the message.
+#[derive(Debug)]
+pub enum BrowserError {
+    /// The URL is not one 既定ブラウザ起動 may open. Reaching this means the screen offered a link it
+    /// should not have: doc-8 §9.3 has the screen draw only `http`/`https` as links, and this check is
+    /// the boundary's own — the second of the two, not the only one.
+    Refused { detail: String },
+    /// The OS call ran and did not open anything.
+    LaunchFailed { program: String, detail: String },
+}
+
+impl std::fmt::Display for BrowserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BrowserError::Refused { detail } => write!(f, "{detail}"),
+            BrowserError::LaunchFailed { program, detail } => {
+                write!(f, "{program} で開けません: {detail}")
+            }
+        }
+    }
+}
+
+/// The URL a 既定ブラウザ起動 may be given, or why it may not (doc-8 §9.3 の scheme 検査).
+///
+/// Two conditions, and both are about what the OS is handed rather than about what a URL means:
+///
+/// - **`http://` or `https://`, ASCII-case-insensitively.** Everything else — `file:`, `mailto:`,
+///   `javascript:`, a relative path — is a target this route does not open. Checking the scheme also
+///   settles the argv question the launchers raise: a value starting with `http` cannot be read as an
+///   option by `open` or `xdg-open`.
+/// - **No ASCII control characters.** RFC 3986 cannot express one un-escaped, so a URL carrying one
+///   was never a URL; letting it through would hand the OS something other than what the screen drew.
+///
+/// Nothing else is validated. This is not a URL parser — it decides what may be handed over, and the
+/// value handed over is the value the 本文 wrote (doc-8 §9.3), byte for byte.
+pub fn browser_url(raw: &str) -> Result<&str, BrowserError> {
+    let scheme_ok = ["http://", "https://"]
+        .iter()
+        .any(|scheme| raw.len() > scheme.len() && raw[..scheme.len()].eq_ignore_ascii_case(scheme));
+    if !scheme_ok {
+        return Err(BrowserError::Refused {
+            detail: "http:// と https:// のリンクだけを開きます".to_string(),
+        });
+    }
+    if raw.chars().any(|c| c.is_ascii_control()) {
+        return Err(BrowserError::Refused {
+            detail: "URL に制御文字が入っています".to_string(),
+        });
+    }
+    Ok(raw)
+}
+
+/// Hand `url` to whatever the OS registered for its scheme (doc-8 §9.3 既定ブラウザ起動).
+///
+/// A separate entry point from [`open_association`] rather than that one with a `&Path`: the value here
+/// is the one input this module does not resolve itself, so the check ([`browser_url`]) has to be on
+/// the way in, and a `Path` typed around a URL is where that difference would stop being visible.
+///
+/// Returns nothing on success. doc-11 §4 keeps a success the screen already shows off the 上部帯, and
+/// the screen shows this one by the browser coming forward.
+pub fn open_url(launcher: &dyn Launcher, url: &str) -> Result<(), BrowserError> {
+    open_url_on(Platform::current(), launcher, url)
+}
+
+/// [`open_url`] for a named platform, so which OS call a URL reaches is asserted from any host — the
+/// same reason [`open_on`] takes one.
+fn open_url_on(platform: Platform, launcher: &dyn Launcher, url: &str) -> Result<(), BrowserError> {
+    let url = browser_url(url)?;
+    let AssociationCall {
+        program,
+        args,
+        call,
+    } = association_call(platform, url.to_string());
+    // The spawn side is *observed* rather than fired and forgotten (see [`Launcher::spawn_observed`]):
+    // this is the one launch whose helper exits, so its exit code is available and is the only report
+    // there is. `ShellExecuteW` already answers — above 32 means the launch started (decision-15).
+    let observed = match call {
+        OsCall::Spawn => launcher.spawn_observed(&program, &args),
+        OsCall::ShellExecute => launcher.shell_execute(OsStr::new(url)).map(|()| None),
+    };
+    match observed {
+        Ok(None) => Ok(()),
+        Ok(Some(detail)) => Err(BrowserError::LaunchFailed { program, detail }),
+        Err(error) => Err(BrowserError::LaunchFailed {
+            program,
+            detail: error.to_string(),
+        }),
+    }
 }
 
 /// What a launch would do, without doing it (doc-8 §7). Separate from [`open`] so the decision — which
@@ -648,29 +852,21 @@ fn planned(
         }
         // Infallible: every platform has an association launcher, so this method no longer has an
         // "unavailable on this platform" outcome to report (TASK-44 AC #4).
-        LaunchMethod::Association => Ok(match association_launcher_of(platform) {
-            AssociationLauncher::Program { program, leading } => {
-                let mut args: Vec<String> = leading.iter().map(|a| a.to_string()).collect();
-                args.push(path);
-                Planned {
-                    launch: EditorLaunch {
-                        method,
-                        program: program.to_string(),
-                        args,
-                    },
-                    call: OsCall::Spawn,
-                }
-            }
-            AssociationLauncher::ShellExecute => Planned {
+        LaunchMethod::Association => {
+            let AssociationCall {
+                program,
+                args,
+                call,
+            } = association_call(platform, path);
+            Ok(Planned {
                 launch: EditorLaunch {
                     method,
-                    program: SHELL_EXECUTE_NAME.to_string(),
-                    // One element and no leading arguments, because `lpFile` is the whole input.
-                    args: vec![path],
+                    program,
+                    args,
                 },
-                call: OsCall::ShellExecute,
-            },
-        }),
+                call,
+            })
+        }
     }
 }
 
@@ -732,7 +928,7 @@ fn open_on(
     let Planned { launch, call } = planned(platform, settings, env, method, file)?;
     match call {
         OsCall::Spawn => launcher.spawn(&launch.program, &launch.args),
-        OsCall::ShellExecute => launcher.shell_execute(file),
+        OsCall::ShellExecute => launcher.shell_execute(file.as_os_str()),
     }
     .map_err(|error| EditorError::LaunchFailed {
         method,
@@ -769,10 +965,13 @@ mod tests {
     #[derive(Default)]
     struct FakeLauncher {
         spawns: RefCell<Vec<(String, Vec<String>)>>,
-        /// The paths handed to `ShellExecuteW`. Recorded apart from `spawns` because the distinction is
+        /// The targets handed to `ShellExecuteW`. Recorded apart from `spawns` because the distinction is
         /// the whole of TASK-44: a path that reached a *spawn* on Windows reached a command line.
-        shell_executes: RefCell<Vec<std::path::PathBuf>>,
+        shell_executes: RefCell<Vec<std::ffi::OsString>>,
         fail: Option<std::io::ErrorKind>,
+        /// What a `spawn_observed` launch reports: `None` is "launched" (still running or exited 0),
+        /// `Some(detail)` is a helper that ran and failed — `xdg-open` finding no handler, say.
+        exited: Option<String>,
     }
 
     impl Launcher for FakeLauncher {
@@ -786,11 +985,29 @@ mod tests {
             }
         }
 
-        fn shell_execute(&self, file: &Path) -> std::io::Result<()> {
-            self.shell_executes.borrow_mut().push(file.to_path_buf());
+        fn shell_execute(&self, target: &OsStr) -> std::io::Result<()> {
+            self.shell_executes.borrow_mut().push(target.to_os_string());
             match self.fail {
                 Some(kind) => Err(std::io::Error::new(kind, "no such file")),
                 None => Ok(()),
+            }
+        }
+
+        /// Recorded in `spawns` like an ordinary spawn, because what the URL route has to be asserted on
+        /// is the same thing: which program, and the target as one argv element. What this adds is the
+        /// verdict, which `exited` chooses — a launcher that ran and reported a failure is the case
+        /// `spawn` cannot express at all.
+        fn spawn_observed(
+            &self,
+            program: &str,
+            args: &[String],
+        ) -> std::io::Result<Option<String>> {
+            self.spawns
+                .borrow_mut()
+                .push((program.to_string(), args.to_vec()));
+            match self.fail {
+                Some(kind) => Err(std::io::Error::new(kind, "no such file")),
+                None => Ok(self.exited.clone()),
             }
         }
     }
@@ -977,6 +1194,169 @@ mod tests {
         }
     }
 
+    /// doc-8 §9.3 の scheme 検査: what the boundary will and will not hand to the OS. The refusals are
+    /// the point — the screen already draws only `http`/`https` as links, so every value here is one
+    /// that only reaches this function if the two disagree.
+    #[test]
+    fn only_http_and_https_reach_the_browser() {
+        for allowed in [
+            "http://example.com",
+            "https://example.com/a?b=c#d",
+            // Case is the scheme's, not the checker's: RFC 3986 makes it case-insensitive.
+            "HTTPS://example.com",
+            "HtTp://example.com",
+        ] {
+            assert_eq!(browser_url(allowed).expect("allowed"), allowed);
+        }
+        for refused in [
+            "file:///etc/passwd",
+            "mailto:someone@example.com",
+            "javascript:alert(1)",
+            "vbscript:msgbox",
+            "data:text/html,<script>",
+            "./relative.md",
+            "#heading",
+            "example.com",
+            // The scheme and nothing else: there is no target to open, and `open --` style values are
+            // exactly what the length check keeps out.
+            "https://",
+            "http://",
+            // A scheme that merely starts the same way.
+            "httpx://example.com",
+        ] {
+            assert!(
+                browser_url(refused).is_err(),
+                "{refused} is not a URL this route opens"
+            );
+        }
+    }
+
+    /// A control character cannot appear in a URL un-escaped (RFC 3986), so one that carries it was never
+    /// the value the screen drew. Kept as its own test because the reason differs from the scheme's: this
+    /// is about what reaches the OS, not about which scheme is allowed.
+    #[test]
+    fn a_url_carrying_a_control_character_is_refused() {
+        for refused in [
+            "https://example.com/\n",
+            "https://example.com/\rHost: x",
+            "https://example.com/\u{0}",
+            "https://exa\tmple.com",
+        ] {
+            assert!(
+                browser_url(refused).is_err(),
+                "{refused:?} carries a control character"
+            );
+        }
+    }
+
+    /// doc-8 §9.3: the URL reaches the platform's association launcher as one argv element — the same
+    /// call the 外部エディタ経路 uses, with the value coming from the other side.
+    #[test]
+    fn each_platform_hands_the_url_to_its_association_launcher() {
+        const URL: &str = "https://example.com/a?b=1&c=2";
+
+        let mac = FakeLauncher::default();
+        open_url_on(Platform::MacOs, &mac, URL).expect("launched");
+        assert_eq!(
+            mac.spawns.borrow().as_slice(),
+            &[("open".to_string(), vec![URL.to_string()])]
+        );
+        assert!(mac.shell_executes.borrow().is_empty());
+
+        let linux = FakeLauncher::default();
+        open_url_on(Platform::Freedesktop, &linux, URL).expect("launched");
+        assert_eq!(
+            linux.spawns.borrow().as_slice(),
+            &[("xdg-open".to_string(), vec![URL.to_string()])],
+            "the URL alone: released xdg-open refuses any argument before it, `--` included"
+        );
+
+        let windows = FakeLauncher::default();
+        open_url_on(Platform::Windows, &windows, URL).expect("launched");
+        assert!(
+            windows.spawns.borrow().is_empty(),
+            "a spawn means a command line exists, which is what this call avoids"
+        );
+        assert_eq!(
+            windows.shell_executes.borrow().as_slice(),
+            &[std::ffi::OsString::from(URL)],
+            "the URL reaches lpFile as one value, `&` included"
+        );
+    }
+
+    /// The check is on the way *in*: a refused URL must not reach the OS at all. Without this, moving the
+    /// check after the launch would still return an error and every other test here would pass.
+    #[test]
+    fn a_refused_url_never_reaches_the_launcher() {
+        for platform in Platform::ALL {
+            let launcher = FakeLauncher::default();
+            let error = open_url_on(platform, &launcher, "javascript:alert(1)")
+                .expect_err("refused before any OS call");
+            assert!(matches!(error, BrowserError::Refused { .. }));
+            assert!(launcher.spawns.borrow().is_empty(), "{platform:?}");
+            assert!(launcher.shell_executes.borrow().is_empty(), "{platform:?}");
+        }
+    }
+
+    /// doc-8 §9.3: a helper that **ran and failed** is reported. This is the case a fire-and-forget spawn
+    /// cannot express at all — `xdg-open` exits 3 when nothing is registered for the scheme, and without
+    /// observing that exit the press would report success while no window ever appeared.
+    #[test]
+    fn a_browser_helper_that_exits_with_a_failure_is_reported() {
+        let launcher = FakeLauncher {
+            exited: Some("exit status: 3".to_string()),
+            ..FakeLauncher::default()
+        };
+        let error = open_url_on(Platform::Freedesktop, &launcher, "https://example.com")
+            .expect_err("the helper reported a failure");
+        match &error {
+            BrowserError::LaunchFailed { program, detail } => {
+                assert_eq!(program, "xdg-open");
+                assert!(detail.contains('3'), "{detail}");
+            }
+            other => panic!("expected a launch failure, got {other:?}"),
+        }
+    }
+
+    /// The other half of that pair: **the file route is deliberately not observed** (doc-8 §7). An editor
+    /// session outlasts the command that started it, so a launcher whose helper would report a failure
+    /// still counts as launched here — routing the file case through the observed path instead would
+    /// hang on, or fail, every long-lived editor.
+    #[test]
+    fn the_file_route_does_not_observe_its_launch() {
+        let launcher = FakeLauncher {
+            exited: Some("exit status: 3".to_string()),
+            ..FakeLauncher::default()
+        };
+        open_on(
+            Platform::Freedesktop,
+            None,
+            &FakeEnv::default(),
+            &launcher,
+            LaunchMethod::Association,
+            Path::new("/roots/backlog/tasks/task-1.md"),
+        )
+        .expect("an editor launch is not judged by an exit code");
+    }
+
+    /// A failed 既定ブラウザ起動 names the program it tried, so ⑤ 通知 can say what did not open
+    /// (doc-11 §4). The message is the whole of what the screen gets — this route has no typed variants
+    /// to branch on.
+    #[test]
+    fn a_failed_browser_launch_names_the_program() {
+        let launcher = FakeLauncher {
+            fail: Some(std::io::ErrorKind::NotFound),
+            ..FakeLauncher::default()
+        };
+        let error = open_url_on(Platform::Freedesktop, &launcher, "https://example.com")
+            .expect_err("the launcher failed");
+        match &error {
+            BrowserError::LaunchFailed { program, .. } => assert_eq!(program, "xdg-open"),
+            other => panic!("expected a launch failure, got {other:?}"),
+        }
+        assert!(error.to_string().contains("xdg-open"));
+    }
+
     /// TASK-44 AC #1/#3, as far as a non-Windows host can assert it: Windows' association launch goes to
     /// `ShellExecuteW` with the path as its single parameter, and **never** to `spawn`. The metacharacters
     /// are in the fixture because they are the reason the method could not be shipped through `cmd`; here
@@ -1003,7 +1383,7 @@ mod tests {
         );
         assert_eq!(
             launcher.shell_executes.borrow().as_slice(),
-            &[file.to_path_buf()],
+            &[file.as_os_str().to_os_string()],
             "the path reaches ShellExecuteW as one value, metacharacters and spaces included"
         );
         assert_eq!(launch.program, SHELL_EXECUTE_NAME);
@@ -1017,12 +1397,17 @@ mod tests {
     /// The other side of the same table: where the launcher *is* a program, the launch stays a spawn with
     /// the path as its own argv element — so AC #1 did not turn the platforms that were already correct
     /// into shell-executes.
+    ///
+    /// **The path is the only argv element** (2026-08-11): this test asserted a leading `--` for
+    /// `xdg-open` until released xdg-utils was read and found to reject it (see
+    /// [`AssociationLauncher::Program`]), which meant every Linux association launch had been failing
+    /// with a syntax error rather than opening anything.
     #[test]
     fn the_program_launchers_still_spawn_with_the_path_as_one_element() {
         let env = FakeEnv::default();
-        for (platform, program, leading) in [
-            (Platform::MacOs, "open", Vec::new()),
-            (Platform::Freedesktop, "xdg-open", vec!["--".to_string()]),
+        for (platform, program) in [
+            (Platform::MacOs, "open"),
+            (Platform::Freedesktop, "xdg-open"),
         ] {
             let launcher = FakeLauncher::default();
             open_on(
@@ -1035,13 +1420,51 @@ mod tests {
             )
             .expect("launched");
             assert!(launcher.shell_executes.borrow().is_empty());
-            let mut expected = leading;
-            expected.push("/roots/my backlog/tasks/task-1 - a&b.md".to_string());
             assert_eq!(
                 launcher.spawns.borrow().as_slice(),
-                &[(program.to_string(), expected)],
+                &[(
+                    program.to_string(),
+                    vec!["/roots/my backlog/tasks/task-1 - a&b.md".to_string()]
+                )],
                 "{platform:?}"
             );
+        }
+    }
+
+    /// **No association launch passes an argument that a launcher would read as an option.**
+    ///
+    /// This is the rule the `--` removal leaves behind, and it is asserted over both routes and every
+    /// platform rather than over the one line that changed: released `xdg-open` refuses *any* argument
+    /// beginning with `-` — `--` included — so an argv element of that shape is a launch that fails with
+    /// a syntax error instead of opening something. Re-introducing a "guard" argument fails here.
+    #[test]
+    fn no_association_launch_passes_an_option_shaped_argument() {
+        let env = FakeEnv::default();
+        for platform in Platform::ALL {
+            let file = FakeLauncher::default();
+            open_on(
+                platform,
+                None,
+                &env,
+                &file,
+                LaunchMethod::Association,
+                Path::new("/roots/backlog/tasks/task-1.md"),
+            )
+            .expect("launched");
+            let url = FakeLauncher::default();
+            open_url_on(platform, &url, "https://example.com/a").expect("launched");
+
+            for (route, launcher) in [("file", &file), ("url", &url)] {
+                for (program, args) in launcher.spawns.borrow().iter() {
+                    for arg in args {
+                        assert!(
+                            !arg.starts_with('-'),
+                            "{platform:?} {route}: {program} was passed {arg:?}, which a launcher \
+                             reads as an option rather than as what to open"
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -1215,6 +1638,66 @@ mod tests {
         let (program, args): (&str, Vec<String>) =
             ("cmd", vec!["/c".to_string(), "exit".to_string()]);
         SystemLauncher.spawn(program, &args).expect("spawned");
+    }
+
+    /// The part [`FakeLauncher`] cannot cover for 既定ブラウザ起動: [`SystemLauncher::spawn_observed`]
+    /// really watching a helper, and really reporting the code it exited with.
+    ///
+    /// **Without this, the polling could be replaced by `Ok(None)` and every other test would pass** —
+    /// the fake decides its own verdict, so it says nothing about whether the real launcher ever looks.
+    /// Two directions are asserted against real short-lived programs: one that fails is reported, and
+    /// one that succeeds is not.
+    #[test]
+    fn the_system_launcher_reports_a_helper_that_exited_with_a_failure() {
+        #[cfg(unix)]
+        let (failing, args): (&str, Vec<String>) = ("false", Vec::new());
+        #[cfg(windows)]
+        let (failing, args): (&str, Vec<String>) =
+            ("cmd", vec!["/c".to_string(), "exit 3".to_string()]);
+        let detail = SystemLauncher
+            .spawn_observed(failing, &args)
+            .expect("the program started")
+            .expect("a helper that exits with a failure is reported");
+        // The status as the OS reported it — the sentence ⑤ 通知 shows is built from this (doc-11 §4).
+        assert!(!detail.is_empty(), "{detail}");
+
+        #[cfg(unix)]
+        let (succeeding, args): (&str, Vec<String>) = ("true", Vec::new());
+        #[cfg(windows)]
+        let (succeeding, args): (&str, Vec<String>) =
+            ("cmd", vec!["/c".to_string(), "exit 0".to_string()]);
+        assert_eq!(
+            SystemLauncher
+                .spawn_observed(succeeding, &args)
+                .expect("the program started"),
+            None,
+            "a helper that exits successfully is a launch, not a failure"
+        );
+    }
+
+    /// The other half of [`Launcher::spawn_observed`]'s contract: **a helper still running when the watch
+    /// ends is a launch, and is not killed.** `xdg-open` may stay in the process tree until the browser
+    /// closes, so a bound that killed it could close the user's browser.
+    ///
+    /// Asserted against a program that outlives the window by far, so the margin is not a timing guess —
+    /// and the call must also *return* in about the window's length rather than waiting the program out.
+    #[cfg(unix)]
+    #[test]
+    fn a_helper_still_running_when_the_watch_ends_counts_as_launched() {
+        let started = Instant::now();
+        let observed = SystemLauncher
+            .spawn_observed("sleep", &["30".to_string()])
+            .expect("spawned");
+        let elapsed = started.elapsed();
+        assert_eq!(observed, None, "still running is not a failure");
+        assert!(
+            elapsed >= BROWSER_OBSERVATION,
+            "the watch ran: {elapsed:?} < {BROWSER_OBSERVATION:?}"
+        );
+        assert!(
+            elapsed < BROWSER_OBSERVATION + Duration::from_secs(2),
+            "the watch is a window, not a wait for the program: {elapsed:?}"
+        );
     }
 
     /// AC #2 / doc-8 §7 書き戻し: the launch does not wait for the editor. An editor session lasts as

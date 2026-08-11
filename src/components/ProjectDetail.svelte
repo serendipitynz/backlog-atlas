@@ -17,6 +17,7 @@
   // form state and callbacks. Text inputs bind to local state and are never rewritten while the user
   // is typing — the same IME rule the other screens follow.
   import { tick, untrack } from "svelte";
+  import Body from "./Body.svelte";
   import Editor from "./Editor.svelte";
   import Modal from "./Modal.svelte";
   import Icon from "../lib/icons/Icon.svelte";
@@ -142,6 +143,11 @@
     onremove: (slug: string) => Promise<LedgerActionResult>;
     /** Issue one 更新操作 (doc-5 §3, doc-9 §4). The re-read belongs to the shell. */
     onissue: (slug: string, action: UpdateOperation[]) => Promise<IssueOutcome>;
+    /**
+     * A 本文リンク in the 文書 の本文 or the マイルストーン の説明 was pressed (doc-8 §9.3, which doc-10
+     * §5/§6 draw from). The shell issues 既定ブラウザ起動 and owns where a failure goes (⑤ 通知).
+     */
+    onopenlink: (url: string) => void;
     /** True while this screen holds 未保存入力 — what makes leaving it ask first. */
     ondirty: (dirty: boolean) => void;
     /**
@@ -170,6 +176,7 @@
     onreadGitRemote,
     onremove,
     onissue,
+    onopenlink,
     ondirty,
     onoverlay,
     onback,
@@ -1961,7 +1968,7 @@
                     {#if (document.body ?? "") === ""}
                       <p class="neutral">本文はありません。</p>
                     {:else}
-                      <pre class="read-body">{document.body}</pre>
+                      <div class="read-body-slot"><Body source={document.body ?? ""} {onopenlink} /></div>
                     {/if}
                   </div>
                 {:else}
@@ -2386,7 +2393,7 @@
                     {#if (milestone.description ?? "") === ""}
                       <p class="neutral">説明はありません。</p>
                     {:else}
-                      <pre class="read-body">{milestone.description}</pre>
+                      <div class="read-body-slot"><Body source={milestone.description ?? ""} {onopenlink} /></div>
                     {/if}
                   </div>
                 {:else}
@@ -3375,25 +3382,12 @@
     }
   }
 
-  // What 閲覧 shows as prose: the 文書's 本文 (doc-10 §5) and the マイルストーン's 説明 (§6), each as
-  // the string was read. `pre-wrap` keeps the newlines the file has and wraps the long lines instead
-  // of scrolling the pane sideways — the treatment `TaskDetail.svelte` gives Description, for the
-  // same reason (nothing here formats Markdown). The 48rem is doc-8 §2.1's, borrowed rather than
-  // decided again: it was measured for a prose block in a column that takes the remaining width,
-  // which is what both of these are (doc-10 §5, TASK-113). Named `read-body` and not `body`: this
-  // component already wears `.body` on the frame that holds the 区画ナビ and panel.
-  .read-body {
-    margin: 0.5rem 0 0;
-    max-width: var(--prose-max-width);
-    padding: 0.4rem 0.5rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    background: var(--inset);
-    font-family: inherit;
-    font-size: 0.74rem;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
+
+  // 整形表示 (doc-8 §9) is drawn by a shared component, so what this screen keeps is only the gap to the
+  // 閲覧ヘッダ above it — the 0.5rem the old `.read-body` carried in its own margin (doc-11 §2.2 の余白段階).
+  // The block's own margin is not this screen's to set now that the block is shared.
+  .read-body-slot {
+    margin-top: 0.5rem;
   }
 
   // 不整合印 (decision-22, decision-24) on a 文書カード / マイルストーンカード. A 印グリフ: the family

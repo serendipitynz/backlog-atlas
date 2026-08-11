@@ -115,6 +115,12 @@ export const answers = {
   /** Answers `project_watch_start`. Rejecting here is how 継続検出停止 is produced. */
   watchStart: (_slug: string): Promise<void> => Promise.resolve(),
   /**
+   * Answers `body_link_open` (doc-8 §9.3). A replaceable function rather than a flag, because the
+   * failure a test needs is a rejection *value* — the ⑤ 通知 quotes the boundary's sentence, so a
+   * bare `true` could not stand in for it.
+   */
+  bodyLink: (_url: string): Promise<void> => Promise.resolve(),
+  /**
    * Makes the `project-reloaded` subscription fail. A flag rather than a replaceable function,
    * because each test file spreads `commandFakes` into its `vi.mock` once — the function references
    * are copied then, so a later reassignment would not be seen.
@@ -324,6 +330,11 @@ export const commandFakes = {
     record("task_file_open", [slug, sourcePath, method], () =>
       Promise.resolve({ method, program: "open", args: [sourcePath] }),
     ),
+
+  /** 既定ブラウザ起動 (doc-8 §9.3). Resolves to nothing, like the command: this fake has no browser to
+   *  bring forward, and the call itself — with the URL it was given — is what a test reads back. */
+  bodyLinkOpen: (url: string): Promise<void> =>
+    record("body_link_open", [url], () => answers.bodyLink(url)),
 
   updateApply: (slug: string, action: UpdateOperation[]): Promise<UpdateResult> =>
     record("update_apply", [slug, action], () => answers.update(slug, action)),

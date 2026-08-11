@@ -23,6 +23,7 @@ vi.mock("./lib/commands", async (importOriginal) => {
 
 import App from "./App.svelte";
 import { byLabel, byText, cleanup, click, fill, only, press, render } from "./lib/render";
+import { BODY_LINK_CLASS } from "./lib/markdown";
 import {
   answers,
   deferred,
@@ -1164,6 +1165,124 @@ describe("プロジェクト詳細が自分で上げる被せ層", () => {
 
 // -------------------------------------------------------------------------------------------------
 
+describe("本文リンク (doc-8 §9.3)", () => {
+  /** A task whose Description carries one openable link and one the screen must not offer. */
+  const LINKED = taskView({
+    id: "TASK-1",
+    title: "最初の題",
+    status: "In Progress",
+    column: "inProgress",
+    ordinal: 1000,
+    description: "原文は [ここ](https://example.test/spec) と [隣](./doc-3.md) にある。",
+  });
+
+  async function openDetail(): Promise<HTMLElement> {
+    const host = await startWith([loaded("atlas", [LINKED])]);
+    click(only(host, "button.card"));
+    await settled();
+    return host;
+  }
+
+  /**
+   * That a press reaches the boundary. No pure function can hold this: `markdown.ts` decides only which
+   * links are drawn as links, and the wiring that turns a press into `body_link_open` is spread across
+   * `Body.svelte`, `TaskDetail.svelte` and `App.svelte` — no single screen owns it.
+   */
+  it("押すと、その URL が境界へ渡る", async () => {
+    const host = await openDetail();
+    const link = only(host, `.body-block .${BODY_LINK_CLASS}`);
+    // No href to follow (doc-8 §9.3): the press is the only way this opens, and the engine has no path
+    // of its own — which is what 目視 2026-08-11 required after the context menu took the window away.
+    expect(link.getAttribute("href")).toBeNull();
+    click(link);
+    await settled();
+
+    expect(madeTo("body_link_open").map((call) => call.args[0])).toEqual(["https://example.test/spec"]);
+    // Nothing is shown on success (doc-11 §4): the browser coming forward is the result.
+    expect(host.querySelector('.band[data-band="notice"]')).toBeNull();
+  });
+
+  /**
+   * doc-8 §9.3: the middle button opens it, and the secondary one does not.
+   *
+   * `auxclick` fires for every non-primary button, so a handler that took them all would launch the
+   * browser out from under the right-click a reader makes to open the context menu — the very interaction
+   * 目視 was performing when it found the navigation defect. `render.ts`'s `click` cannot express a
+   * button (it calls `HTMLElement.click()`), so the event is dispatched here.
+   */
+  it("中ボタンは開き、右ボタンは開かない", async () => {
+    const host = await openDetail();
+    const link = only(host, `.body-block .${BODY_LINK_CLASS}`);
+
+    const aux = (button: number): void => {
+      link.dispatchEvent(new MouseEvent("auxclick", { button, bubbles: true, cancelable: true }));
+      flushSync();
+    };
+
+    aux(2);
+    await settled();
+    expect(madeTo("body_link_open")).toEqual([]);
+
+    aux(1);
+    await settled();
+    expect(madeTo("body_link_open").map((call) => call.args[0])).toEqual([
+      "https://example.test/spec",
+    ]);
+  });
+
+  /**
+   * doc-8 §9.3: Enter opens it too. Dropping the `href` took the engine's own keyboard activation with
+   * it, so this is wiring rather than a default — and a link a keyboard cannot reach is one this screen
+   * offers to some readers only.
+   */
+  it("Enter でも同じ URL が境界へ渡る", async () => {
+    const host = await openDetail();
+    const link = only(host, `.body-block .${BODY_LINK_CLASS}`);
+    expect(link.getAttribute("tabindex")).toBe("0");
+    expect(link.getAttribute("role")).toBe("link");
+    press(link, "Enter");
+    await settled();
+
+    expect(madeTo("body_link_open").map((call) => call.args[0])).toEqual([
+      "https://example.test/spec",
+    ]);
+  });
+
+  /** doc-8 §9.3: what is not opened is not drawn as a link, so there is nothing to press. */
+  it("開かない相手はリンクにならず、境界も呼ばれない", async () => {
+    const host = await openDetail();
+    // One link only: `./doc-3.md` stays as text.
+    expect(host.querySelectorAll(`.body-block .${BODY_LINK_CLASS}`)).toHaveLength(1);
+    expect(only(host, ".body-block").textContent).toContain("隣");
+
+    // Pressing it does nothing: it is text inside the 本文, not a control. Pressing the block itself
+    // is what "pressed somewhere that is not a link" means — the path where `closest` finds nothing.
+    click(only(host, ".body-block"));
+    await settled();
+    expect(madeTo("body_link_open")).toEqual([]);
+  });
+
+  /**
+   * That a failure lands in ⑤ 通知 (doc-11 §4). **This press has no 控えの隣 to put a result line in**,
+   * which is the whole reason: `Body.svelte` never sees the failure and `band.ts` does not know which
+   * press produced a sentence — only the caller can hold this.
+   */
+  it("開けなければ ⑤ 通知 に出る", async () => {
+    answers.bodyLink = () =>
+      Promise.reject({ kind: "bodyLinkFailed", detail: "xdg-open で開けません: not found" });
+    const host = await openDetail();
+    click(only(host, `.body-block .${BODY_LINK_CLASS}`));
+    await settled();
+
+    const band = host.querySelector('.band[data-band="notice"]');
+    expect(band?.textContent).toContain("リンクを開けませんでした");
+    expect(band?.textContent).toContain("xdg-open");
+    // No result line inside the 本文: the file's content and Atlas's report about it do not share
+    // one block.
+    expect(only(host, ".body-block").textContent).not.toContain("開けませんでした");
+  });
+});
+
 describe("プロジェクト詳細の離脱", () => {
   /** Open プロジェクト詳細 and type into the 登録解除 confirmation, which is 未保存入力 (doc-8 §6.3). */
   async function withUnsavedProjectInput(): Promise<HTMLElement> {
@@ -1237,8 +1356,10 @@ describe("プロジェクト詳細の離脱", () => {
     await settled();
 
     // 閲覧 is what opened: the body is on screen, and the 編集セッション is not — its 出口
-    //「編集を閉じる」 exists only while one is open.
-    expect(only(host, "pre.read-body").textContent).toBe(DOCUMENT.body);
+    //「編集を閉じる」 exists only while one is open. Read through the 整形表示 block since TASK-142
+    // (doc-8 §9): the text is the same, and `toContain` rather than equality because 整形 decides the
+    // markup around it — what this test is about is that the 本文 is on screen at all.
+    expect(only(host, ".body-block").textContent).toContain("本文の 1 行目");
     expect(byText(host, ".view-head button", "編集")).not.toBeNull();
     expect([...host.querySelectorAll("button")].some((b) => b.textContent === "編集を閉じる")).toBe(
       false,
@@ -1271,9 +1392,10 @@ describe("プロジェクト詳細の離脱", () => {
     click(only(host, "button.card"));
     await settled();
 
-    // 閲覧 is what opened: the description is stated as text, and the 編集セッション is not open —
-    // its input box and its 出口「編集を閉じる」 exist only while one is.
-    expect(only(host, "pre.read-body").textContent).toBe(MILESTONE.description);
+    // 閲覧 is what opened: the description is on screen, and the 編集セッション is not open — its input
+    // box and its 出口「編集を閉じる」 exist only while one is. Read through the 整形表示 block since
+    // TASK-142 (doc-8 §9, which doc-10 §6 draws from).
+    expect(only(host, ".body-block").textContent).toContain(MILESTONE.description);
     expect(byText(host, ".view-head button", "編集")).not.toBeNull();
     expect(host.querySelector("textarea")).toBeNull();
     expect([...host.querySelectorAll("button")].some((b) => b.textContent === "編集を閉じる")).toBe(

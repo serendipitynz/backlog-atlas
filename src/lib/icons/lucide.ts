@@ -32,6 +32,8 @@
  * |---|---|---|
  * | doc-11 §2.4 アイコン | [`IconName`] + [`ICONS`] | one lucide figure, as its drawn elements |
  * | doc-11 §2.4 の寸法・線幅 | [`ICON_VIEWBOX`] + [`ICON_STROKE_WIDTH`] | the frame the copied coordinates are in, and the stroke lucide draws them with |
+ * | doc-11 §2.4 の `<svg>` の約束 | [`ICON_SVG_ATTRS`] | the frame, stroke and joins both drawers put on the element |
+ * | doc-11 §14.4 タスクリスト の印 | [`iconMarkup`] | the same figure as markup, for the 整形表示 pipeline that builds an HTML string |
  *
  * Nothing here reads the DOM or the theme: the colour is `currentColor` and the size is `1em`, both
  * decided by [`Icon.svelte`], so an icon needs no token of its own (decision-12 stays as it is).
@@ -106,6 +108,25 @@ export const ICON_VIEWBOX = "0 0 24 24";
  * drawing rather than the same one smaller.
  */
 export const ICON_STROKE_WIDTH = 2;
+
+/**
+ * The attributes every icon's `<svg>` carries — the frame, the stroke and the joins that make the
+ * copied coordinates draw as lucide draws them.
+ *
+ * Here rather than written into [`Icon.svelte`], because that component is no longer the only thing
+ * that draws one: [`iconMarkup`] serialises the same figure for the 整形表示 pipeline (doc-11 §14.4),
+ * and two spellings of this agreement is exactly what the component's own header warns about — the
+ * second one could disagree. `aria-hidden` is *not* here: it belongs to how a caller uses the figure
+ * (doc-11 §2.4 puts the name on the control), and the two callers wrap it differently.
+ */
+export const ICON_SVG_ATTRS: Record<string, string> = {
+  viewBox: ICON_VIEWBOX,
+  fill: "none",
+  stroke: "currentColor",
+  "stroke-width": String(ICON_STROKE_WIDTH),
+  "stroke-linecap": "round",
+  "stroke-linejoin": "round",
+};
 
 /** One shape as the SVG element that draws it: the tag, and the attributes that carry its geometry. */
 export interface DrawnShape {
@@ -301,3 +322,33 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
   ],
   square: [{ shape: "rect", width: "18", height: "18", x: "3", y: "3", rx: "2" }],
 };
+
+/**
+ * One icon's figure as SVG markup, for the caller that cannot mount [`Icon.svelte`]: the 整形表示
+ * pipeline builds an HTML string, and doc-11 §14.4 has the タスクリスト の印 drawn by the same figures
+ * ACCEPTANCE CRITERIA uses — so the figure has to come from [`ICONS`] rather than be written again.
+ *
+ * `aria-hidden` is set here because every caller of this form wants it: the string is embedded inside a
+ * wrapper that carries the name (doc-11 §2.4), exactly as the component's callers do.
+ *
+ * **Nothing here escapes anything, and nothing here needs to.** Every value comes from [`ICONS`] and
+ * [`ICON_SVG_ATTRS`] — this module's own literals, never a caller's argument, never file content — and
+ * [`tests`] holds that: `every_shape_attribute_is_safe_in_markup` fails if a coordinate ever grows a
+ * character that would end an attribute. A generic escaper here would suggest that untrusted values
+ * reach this function, and none do.
+ */
+export function iconMarkup(name: IconName): string {
+  const frame = Object.entries(ICON_SVG_ATTRS)
+    .map(([attr, value]) => `${attr}="${value}"`)
+    .join(" ");
+  const shapes = ICONS[name]
+    .map((shape) => {
+      const drawn = drawnShape(shape);
+      const attrs = Object.entries(drawn.attrs)
+        .map(([attr, value]) => `${attr}="${value}"`)
+        .join(" ");
+      return `<${drawn.tag} ${attrs}/>`;
+    })
+    .join("");
+  return `<svg ${frame} aria-hidden="true">${shapes}</svg>`;
+}

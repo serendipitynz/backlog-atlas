@@ -248,6 +248,18 @@ export function taskFileOpen(
 }
 
 /**
+ * Open one 本文リンク with whatever the OS registered for its scheme (doc-8 §9.3 既定ブラウザ起動).
+ *
+ * The URL is the only value this frontend hands to a launch — every other one echoes a path the
+ * boundary itself produced — so the boundary checks the scheme rather than trusting the classification
+ * the screen already made (doc-8 §9.3). Nothing comes back on success: the browser coming forward is
+ * the result, and doc-11 §4 keeps that off the 上部帯.
+ */
+export function bodyLinkOpen(url: string): Promise<void> {
+  return invoke<void>("body_link_open", { url });
+}
+
+/**
  * Issue one screen action (doc-5 §3, doc-9 §4). The boundary derives each operation's target from
  * its own read model and runs the 更新前競合検出 before launching anything, so a `conflict` result
  * means the CLI never ran — the caller keeps its 未保存入力 and chooses a path (doc-9 §5).

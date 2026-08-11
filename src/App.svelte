@@ -40,6 +40,7 @@
     settingsLocationOpen,
     settingsRead,
     settingsSave,
+    bodyLinkOpen,
     taskFileOpen,
     taskHistoryRead,
     taskHistoryCancel,
@@ -1680,6 +1681,27 @@
     }
   }
 
+  /**
+   * Open one 本文リンク (doc-8 §9.3 既定ブラウザ起動).
+   *
+   * **The failure goes to ⑤ 通知** (doc-11 §4). A 本文リンク is pressed inside prose, so it has no
+   * 控えの隣 to put a result line in — and putting one inside the 本文ブロック would mix the file's content
+   * with Atlas's report about it. **A success says nothing**: the browser coming forward is the result,
+   * and doc-11 §4 keeps a success the screen already shows off the 上部帯.
+   *
+   * The URL is not re-checked here. The screen classified it (`bodyLinkTarget`) and the boundary checks
+   * it again (`editor::browser_url`, doc-8 §9.3); a third copy of the rule in the shell would be one more
+   * place for the three to disagree.
+   */
+  async function openBodyLink(url: string): Promise<void> {
+    notice = null;
+    try {
+      await bodyLinkOpen(url);
+    } catch (error) {
+      notice = commandErrorDetail(asCommandError(error));
+    }
+  }
+
   /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
   const historyLoader = createHistoryLoader({
     read: taskHistoryRead,
@@ -2163,6 +2185,7 @@
           onreadGitRemote={readGitRemote}
           onremove={removeProject}
           onissue={issue}
+          onopenlink={openBodyLink}
           ondirty={(dirty) => (projectDirty = dirty)}
           onoverlay={detailOverlay}
           onback={() => leaveProject(false)}
@@ -2254,6 +2277,7 @@
       {editorReadiness}
       watchStopped={selectedWatchStopped}
       onreread={() => rereadRow(view.task.project)}
+      onopenlink={openBodyLink}
       conflict={selectedConflict}
       onconflict={noteConflict}
       onapply={apply}

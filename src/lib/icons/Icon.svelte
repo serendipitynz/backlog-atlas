@@ -12,7 +12,7 @@
   // for an アイコンのみのボタン, the 帯 or 区画 for an 操作に属さないアイコン (doc-11 §2.4) — which is
   // the knob that already exists. An icon with a size prop of its own is a second knob that can
   // disagree with the text beside it.
-  import { ICONS, ICON_STROKE_WIDTH, ICON_VIEWBOX, drawnShape, type IconName } from "./lucide";
+  import { ICONS, ICON_SVG_ATTRS, drawnShape, type IconName } from "./lucide";
 
   interface Props {
     name: IconName;
@@ -23,15 +23,11 @@
 
 <!-- Unkeyed: the figure of one icon is a fixed list that never reorders, and a key derived from the
      shape would be the very thing `header.ts` warns about (a key made from data that can repeat). -->
-<svg
-  viewBox={ICON_VIEWBOX}
-  fill="none"
-  stroke="currentColor"
-  stroke-width={ICON_STROKE_WIDTH}
-  stroke-linecap="round"
-  stroke-linejoin="round"
-  aria-hidden="true"
->
+<!-- The frame comes from `lucide.ts` rather than being written here: `iconMarkup` draws the same figures
+     for the 整形表示 pipeline (doc-11 §14.4), and this agreement spelled twice is the disagreement the
+     comment above warns about. `aria-hidden` stays here, because it is about how *this* drawer's callers
+     use the figure (doc-11 §2.4). -->
+<svg {...ICON_SVG_ATTRS} aria-hidden="true">
   <!-- Every shape is drawn by whatever `drawnShape` names, so no kind can be silently skipped here —
        the exhaustiveness lives in that function, where the compiler holds it (see `lucide.ts`). Inside
        an `<svg>` the element is created in the SVG namespace, which is what makes this a real `<path>`. -->
