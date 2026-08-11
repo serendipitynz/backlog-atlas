@@ -856,7 +856,9 @@
          見出しは固定されているので、伸びた分だけ本文の高さを奪うことになる。 -->
     <div class="line title-line">
       {#if session === null}
-        <h2>{task.title ?? "（title 不明）"}</h2>
+        <!-- 2 行を超える title は末尾を落とす (doc-11 §13)。全体は `title` が持つ — 落ちるのは
+             描かれる字だけで、値は編集セッションの欄がそのまま持っている。 -->
+        <h2 title={task.title ?? "（title 不明）"}>{task.title ?? "（title 不明）"}</h2>
       {:else}
         <label class="field">
           <span>title</span>
@@ -1961,16 +1963,31 @@
   .title-line {
     align-items: center;
     gap: 0.5rem;
-    // The items stay on one line (`.line` above), but the title itself may take two — measured at
-    // 40px in a 320px 窓 against 22.86px in a wide one. That is affordable where the row above's
-    // wrapping was not: the 覆われない帯 (doc-11 §13) is held with room to spare at every window the
-    // app can be put in, and this is the one row whose whole job is to say which task is being read.
-    // The earlier note here read "one line in both states (目視 2026-08-04)", which the 2026-08-11
-    // measurement contradicts — the 目視 was done in a wide window.
+    // The items stay on one line (`.line` above), and the title takes at most two — the clamp below
+    // is what makes that true. The earlier note here read "one line in both states (目視 2026-08-04)",
+    // which the 2026-08-11 measurement contradicts: the 目視 was done in a wide window, and in a
+    // narrow one this row grows with the title it is drawing.
 
+    /*
+     * 2 行で止める (doc-11 §13). A title has no length limit — it is whatever the task's frontmatter
+     * says — and this row is inside the 固定帯, so an unbounded one takes the 覆われない帯 with it:
+     * measured at 480 characters the band went to -126.0px in a 640×480 窓 and every control in the
+     * panel became unreachable (2026-08-11, both engines). §13 asks for exactly this — what stands in
+     * a fixed row must not grow with what it is drawing — so the row keeps two lines and the whole
+     * string stays in `title`, the same trade the id line makes one row up.
+     *
+     * `-webkit-line-clamp` rather than a `max-height` in `em`: the clamp counts line boxes, so it
+     * lands on a line boundary in both engines instead of slicing one in half at whatever
+     * `line-height` resolves to.
+     */
     h2 {
+      display: -webkit-box;
       flex: 1;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
       min-width: 0;
+      overflow: hidden;
     }
 
     // Editing: the label sits *beside* its input rather than above it, so the field is one line like
