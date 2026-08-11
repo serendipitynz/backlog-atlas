@@ -1565,6 +1565,116 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
 // -------------------------------------------------------------------------------------------------
 
 /**
+ * 折畳み 2 種の 実行内保持 (doc-7 §5.1, TASK-147).
+ *
+ * 一時状態 means 実行内保持: the value is never written to the settings file or the ledger, and it is
+ * still there when the user comes back to the screen. The two halves of that sentence pull in opposite
+ * directions, and the grid is unmounted on both routes below — so where 列折畳み・行折畳み are held is
+ * what decides it, and only the shell can be asked. `Swimlane.svelte` held them until TASK-147, which
+ * made both routes reset them; the counts and the head class asserted here are the same ones
+ * `swimlane.ts` computes, so what these tests add is the screen change in between.
+ */
+describe("折畳み 2 種は画面を移っても効いたまま", () => {
+  /**
+   * 別ルートのタスク: a second loaded row, so a fold of one row is not a fold of every row — and the
+   * one card still on screen once both folds are on, since a folded row hides its cells and a folded
+   * column narrows its own. That is what the 全面シングルビュー route needs to select.
+   */
+  const OTHER = taskView({
+    id: "TASK-9",
+    project: "kanri",
+    title: "別ルートの題",
+    status: "In Progress",
+    column: "inProgress",
+    ordinal: 1000,
+  });
+
+  const ROW_FOLD = '[aria-label="atlas の行折畳みを行う"]';
+  const COLUMN_FOLD = '[aria-label="To Do 列の列折畳みを行う"]';
+
+  /**
+   * The レーンヘッダ行 of one project. Both rows read as the same project *name* (`fixtures.ts` gives
+   * every root the same `config.yml`), so the slug beside it is what tells them apart — which is also
+   * the key 行折畳み is held under.
+   */
+  function laneHead(host: HTMLElement, slug: string): HTMLElement {
+    const head = [...host.querySelectorAll<HTMLElement>(".lane-head")].find(
+      (candidate) => candidate.querySelector(".slug")?.textContent === slug,
+    );
+    if (head === undefined) throw new Error(`no レーンヘッダ行 for ${slug}`);
+    return head;
+  }
+
+  /** Which rows are drawn folded, by the counts a fold leaves in their header (doc-7 §2.3). */
+  function foldedRows(host: HTMLElement): string[] {
+    return [...host.querySelectorAll<HTMLElement>(".lane-head")]
+      .filter((head) => head.querySelector(".fold-counts") !== null)
+      .map((head) => head.querySelector(".slug")?.textContent ?? "");
+  }
+
+  /** Which columns are drawn folded, by the name each keeps in its 縦帯 (doc-7 §2.2). */
+  function foldedColumns(host: HTMLElement): string[] {
+    return [...host.querySelectorAll<HTMLElement>(".head.folded .label")].map(
+      (label) => label.textContent ?? "",
+    );
+  }
+
+  /** Fold the atlas row and the To Do column, and check that both took. */
+  async function withBothFolds(): Promise<HTMLElement> {
+    const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
+    click(only(host, ROW_FOLD));
+    click(only(host, COLUMN_FOLD));
+    await settled();
+
+    expect(foldedRows(host)).toEqual(["atlas"]);
+    expect(foldedColumns(host)).toEqual(["To Do"]);
+    return host;
+  }
+
+  it("プロジェクト詳細画面へ移って戻っても、畳んだ行と列はそのまま", async () => {
+    const host = await withBothFolds();
+
+    click(only(laneHead(host, "atlas"), "button.project"));
+    await settled();
+    // The grid is down while the other screen is up, which is the whole difficulty: nothing it held
+    // is on screen to be read back.
+    expect(host.querySelector(".lane-head")).toBeNull();
+
+    click(byText(host, "button", "← スイムレーン"));
+    await settled();
+
+    expect(foldedRows(host)).toEqual(["atlas"]);
+    expect(foldedColumns(host)).toEqual(["To Do"]);
+  });
+
+  /**
+   * 全面シングルビュー はスイムレーンを退ける (doc-8 §2.1), so selecting a card unmounts the grid on
+   * this placement alone — the same loss as the screen change above, reached without leaving the
+   * screen. Held separately because the two are different branches of the shell's template: a fix
+   * that lifted the value for one route only would leave this one resetting the fold.
+   */
+  it("全面シングルビューでタスクを開いて閉じても、畳んだ行と列はそのまま", async () => {
+    answers.settings = {
+      ...answers.settings,
+      settings: { ...answers.settings.settings, default_detail_placement: "full" },
+    };
+    const host = await withBothFolds();
+
+    click(byText(host, "button.card .title", "別ルートの題").closest("button.card")!);
+    await settled();
+    expect(host.querySelector(".lane-head")).toBeNull();
+
+    click(only(host, "button.close"));
+    await settled();
+
+    expect(foldedRows(host)).toEqual(["atlas"]);
+    expect(foldedColumns(host)).toEqual(["To Do"]);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+/**
  * 絞り込みが列を消しても画面が更新を受け付け続けること (TASK-119).
  *
  * The bug this holds against was not a filtering bug: 未分類区画 は常設ではない (doc-7 §2.2), so a

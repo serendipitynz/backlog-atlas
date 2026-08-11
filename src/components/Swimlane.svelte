@@ -28,6 +28,14 @@
   interface Props {
     rows: SwimlaneRow[];
     /**
+     * 行折畳み・列折畳み (doc-7 §5.1) の状態. Held by the shell for the same reason as
+     * 列内新規タスク入力 below: this grid is unmounted when プロジェクト詳細画面 is entered and when a task
+     * is opened in 全面シングルビュー, and 一時状態 means 実行内保持 — the fold has to be there on the
+     * return (doc-7 §5.1). Reading them as props keeps that single copy the one the grid draws from.
+     */
+    foldedRows: readonly string[];
+    collapsedColumns: readonly GridColumn[];
+    /**
      * カード情報量 (doc-7 §3, decision-13). One 段 for the whole grid, not per row or per column: it is
      * an アプリ設定, and a grid whose rows carried different 段 would make the cards' heights say
      * something about the row rather than about the task.
@@ -70,6 +78,13 @@
     oncreateTitle: (value: string) => void;
     oncreateStatus: (value: string) => void;
     oncreateSubmit: () => void;
+    /** Ask for this row's 行折畳み to be turned the other way (doc-7 §2.3). */
+    onrowFold: (slug: string) => void;
+    /**
+     * Ask for this column's 列折畳み to be turned the other way (doc-7 §2.2), which is asked only for a
+     * column [`columnFoldable`] allows — the shell checks it again, since it is the rule's holder.
+     */
+    oncolumnFold: (column: GridColumn) => void;
     onselect: (view: TaskView) => void;
     onmove: (slug: string, direction: -1 | 1) => void;
     onretry: (slug: string) => void;
@@ -81,6 +96,8 @@
 
   let {
     rows,
+    foldedRows,
+    collapsedColumns,
     density,
     showStorageMark,
     selectedPath,
@@ -98,6 +115,8 @@
     oncreateTitle,
     oncreateStatus,
     oncreateSubmit,
+    onrowFold,
+    oncolumnFold,
     onselect,
     onmove,
     onretry,
@@ -264,27 +283,6 @@
     rows.some((row) => row.state === "loaded" && row.unmapped.length > 0),
   );
 
-  /**
-   * 列折畳み・行折畳み are 画面の一時状態 (doc-7 §5.1, decision-13): they are never written to the
-   * settings file or the ledger, and nothing outside the grid reads them — the counts a fold keeps
-   * are computed from the rows the shell already passes in — so they live here rather than in the
-   * shell beside 行非表示, which decides which rows the shell hands over at all.
-   */
-  let collapsedColumns = $state<GridColumn[]>([]);
-  let foldedRows = $state<string[]>([]);
-
-  function toggleColumn(column: GridColumn): void {
-    collapsedColumns = collapsedColumns.includes(column)
-      ? collapsedColumns.filter((candidate) => candidate !== column)
-      : [...collapsedColumns, column];
-  }
-
-  function toggleRow(slug: string): void {
-    foldedRows = foldedRows.includes(slug)
-      ? foldedRows.filter((candidate) => candidate !== slug)
-      : [...foldedRows, slug];
-  }
-
   // 列の幅. A folded column is a narrow band; the 未分類 column stays narrower than the four and last
   // (doc-7 §2.2). The band has to hold the column name at 0.7rem, which is what fixes it at 5rem.
   const OPEN_COLUMN = "minmax(13rem, 1fr)";
@@ -355,7 +353,7 @@
             ? COLUMN_UNFOLD_HINT
             : COLUMN_FOLD_HINT
           : LAST_COLUMN_FOLD_BLOCKED_REASON}
-        onclick={() => foldable && toggleColumn(column)}
+        onclick={() => foldable && oncolumnFold(column)}
       >
         <Icon name={folded ? LANE_FIGURE.columnFold.unfold : LANE_FIGURE.columnFold.fold} />
       </button>
@@ -426,7 +424,7 @@
           aria-expanded={!folded}
           aria-label="{row.slug} の行折畳みを{folded ? '解く' : '行う'}"
           title={folded ? ROW_UNFOLD_HINT : ROW_FOLD_HINT}
-          onclick={() => toggleRow(row.slug)}
+          onclick={() => onrowFold(row.slug)}
         >
           <Icon name={folded ? LANE_FIGURE.rowFold.folded : LANE_FIGURE.rowFold.open} />
         </button>
