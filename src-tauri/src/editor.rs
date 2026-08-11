@@ -1640,6 +1640,66 @@ mod tests {
         SystemLauncher.spawn(program, &args).expect("spawned");
     }
 
+    /// The part [`FakeLauncher`] cannot cover for 既定ブラウザ起動: [`SystemLauncher::spawn_observed`]
+    /// really watching a helper, and really reporting the code it exited with.
+    ///
+    /// **Without this, the polling could be replaced by `Ok(None)` and every other test would pass** —
+    /// the fake decides its own verdict, so it says nothing about whether the real launcher ever looks.
+    /// Two directions are asserted against real short-lived programs: one that fails is reported, and
+    /// one that succeeds is not.
+    #[test]
+    fn the_system_launcher_reports_a_helper_that_exited_with_a_failure() {
+        #[cfg(unix)]
+        let (failing, args): (&str, Vec<String>) = ("false", Vec::new());
+        #[cfg(windows)]
+        let (failing, args): (&str, Vec<String>) =
+            ("cmd", vec!["/c".to_string(), "exit 3".to_string()]);
+        let detail = SystemLauncher
+            .spawn_observed(failing, &args)
+            .expect("the program started")
+            .expect("a helper that exits with a failure is reported");
+        // The status as the OS reported it — the sentence ⑤ 通知 shows is built from this (doc-11 §4).
+        assert!(!detail.is_empty(), "{detail}");
+
+        #[cfg(unix)]
+        let (succeeding, args): (&str, Vec<String>) = ("true", Vec::new());
+        #[cfg(windows)]
+        let (succeeding, args): (&str, Vec<String>) =
+            ("cmd", vec!["/c".to_string(), "exit 0".to_string()]);
+        assert_eq!(
+            SystemLauncher
+                .spawn_observed(succeeding, &args)
+                .expect("the program started"),
+            None,
+            "a helper that exits successfully is a launch, not a failure"
+        );
+    }
+
+    /// The other half of [`Launcher::spawn_observed`]'s contract: **a helper still running when the watch
+    /// ends is a launch, and is not killed.** `xdg-open` may stay in the process tree until the browser
+    /// closes, so a bound that killed it could close the user's browser.
+    ///
+    /// Asserted against a program that outlives the window by far, so the margin is not a timing guess —
+    /// and the call must also *return* in about the window's length rather than waiting the program out.
+    #[cfg(unix)]
+    #[test]
+    fn a_helper_still_running_when_the_watch_ends_counts_as_launched() {
+        let started = Instant::now();
+        let observed = SystemLauncher
+            .spawn_observed("sleep", &["30".to_string()])
+            .expect("spawned");
+        let elapsed = started.elapsed();
+        assert_eq!(observed, None, "still running is not a failure");
+        assert!(
+            elapsed >= BROWSER_OBSERVATION,
+            "the watch ran: {elapsed:?} < {BROWSER_OBSERVATION:?}"
+        );
+        assert!(
+            elapsed < BROWSER_OBSERVATION + Duration::from_secs(2),
+            "the watch is a window, not a wait for the program: {elapsed:?}"
+        );
+    }
+
     /// AC #2 / doc-8 §7 書き戻し: the launch does not wait for the editor. An editor session lasts as
     /// long as the user keeps the file open, and the save comes back through doc-9's watch — so a wait
     /// here would freeze the command for the length of the edit. Asserted against a program that stays
