@@ -19,6 +19,7 @@
   // would navigate the app window away from Atlas, and opening an external browser needs a
   // capability this build does not have.
   import { onDestroy, type Snippet } from "svelte";
+  import Body from "./Body.svelte";
   import DetailSection from "./DetailSection.svelte";
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
@@ -177,6 +178,11 @@
     /** Re-read this task's root (doc-8 §7 戻ってきたときに読み直せる; same operation as the row's). */
     onreread: () => void;
     /**
+     * A 本文リンク in one of the 整形表示 区画 was pressed (doc-8 §9.3). The shell issues 既定ブラウザ起動:
+     * this panel calls no command, and the failure's place is ⑤ 通知, which the shell owns (doc-11 §4).
+     */
+    onopenlink: (url: string) => void;
+    /**
      * バージョン不整合 (doc-9) recorded for this task, or `null`. Held by the shell so the mark outlives the
      * panel and reaches the swimlane card (AC #4); the panel reads it back so the two surfaces say
      * the same thing about the same task.
@@ -231,6 +237,7 @@
     editorReadiness,
     watchStopped,
     onreread,
+    onopenlink,
     conflict,
     onconflict,
     onapply,
@@ -1315,7 +1322,7 @@
   <DetailSection title="Description" section="description" {layout}>
     {#if session === null}
       {#if task.description}
-        <pre class="body">{task.description}</pre>
+        <Body source={task.description} {onopenlink} />
       {:else}
         <p class="neutral">なし</p>
       {/if}
@@ -1487,7 +1494,7 @@
   <DetailSection title="実装計画" section="plan" {layout}>
     {#if session === null}
       {#if task.implementationPlan}
-        <pre class="body">{task.implementationPlan}</pre>
+        <Body source={task.implementationPlan} {onopenlink} />
       {:else}
         <p class="neutral">なし</p>
       {/if}
@@ -1506,7 +1513,7 @@
   <DetailSection title="実装ノート" section="notes" {layout}>
     {#if session === null}
       {#if task.implementationNotes}
-        <pre class="body">{task.implementationNotes}</pre>
+        <Body source={task.implementationNotes} {onopenlink} />
       {:else}
         <p class="neutral">なし</p>
       {/if}
