@@ -272,8 +272,10 @@
      * measured). And the two-row cap on `.tokens` below is computed from this: when the cap was
      * derived from a *content* height instead, the 1px borders it left out made two rows 47.2px
      * against a 43.2px cap, and 折り返し 2 行で頭打ち (doc-7 §5.2) clipped its own second row.
-     * Every control here therefore takes `box-sizing: border-box` as well — there is no global
-     * reset, and a border-box height is the only one the cap can be arithmetic on.
+     * The cap can only be arithmetic on a border-box height; app.scss gives every フォーム部品 that
+     * sizing in one place (doc-11 §2.2), so the controls here no longer each declare it. The value is
+     * the middle step of that section's 段階 — this bar sits alongside the content rather than being
+     * the thing the user came to fill in.
      */
     --bar-control: 1.4rem;
     // The gap between two token rows, named for the same reason `--bar-control` is: the cap below
@@ -304,7 +306,6 @@
   }
 
   input[type="search"] {
-    box-sizing: border-box;
     height: var(--bar-control);
     padding: 0 0.3rem;
     border: 1px solid var(--line-strong);
@@ -410,7 +411,6 @@
   }
 
   .control {
-    box-sizing: border-box;
     display: inline-flex;
     height: var(--bar-control);
     gap: 0.3rem;
@@ -481,7 +481,6 @@
     }
 
     select {
-      box-sizing: border-box;
       height: var(--bar-control);
       max-width: 9rem;
       padding: 0 0.16rem;
