@@ -2581,40 +2581,43 @@
     {#if createOpen === "document"}
       <div class="modal-form">
         <h2>文書を作成</h2>
-        <div class="row">
-          <label class="field">
-            <span class="label">title（必須）</span>
-            <input
-              type="text"
-              value={docInput.title}
-              oninput={(event) => (docInput.title = event.currentTarget.value)}
-            />
-          </label>
-          <label class="field">
-            <span class="label">type</span>
-            <select
-              value={docInput.docType}
-              onchange={(event) => (docInput.docType = event.currentTarget.value)}
-            >
-              <option value="">—（CLI の既定）</option>
-              {#each DOC_TYPES as value (value)}
-                <option {value}>{value}</option>
-              {/each}
-            </select>
-          </label>
-          <label class="field">
-            <span class="label">path</span>
-            <input
-              type="text"
-              placeholder="docs 配下の下位パス（任意）"
-              value={docInput.path}
-              oninput={(event) => (docInput.path = event.currentTarget.value)}
-            />
-          </label>
-        </div>
-        <!-- 本文の欄をここに出さないことについては何も述べない (doc-11 §8): 画面が欄を見せていない
-             ものについて、なぜ無いかを述べない、が本則である。作成した文書へ本文を入れる先は
-             文書ペインの編集セッションで、そこには欄がある。 -->
+        <!-- 欄は 1 欄ずつ縦に積む (doc-10 §1): 作成モーダルの「同じ型」に欄の積み方が入るので、
+             マイルストーン側と並び方が違う形はもう取れない。横 1 行だったのは §1 が積み方を
+             覆っていなかった間のことで、実装の逸脱ではない。 -->
+        <label class="field">
+          <span class="label">title（必須）</span>
+          <input
+            type="text"
+            value={docInput.title}
+            oninput={(event) => (docInput.title = event.currentTarget.value)}
+          />
+        </label>
+        <label class="field">
+          <span class="label">type</span>
+          <select
+            value={docInput.docType}
+            onchange={(event) => (docInput.docType = event.currentTarget.value)}
+          >
+            <option value="">—（CLI の既定）</option>
+            {#each DOC_TYPES as value (value)}
+              <option {value}>{value}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">path</span>
+          <input
+            type="text"
+            placeholder="docs 配下の下位パス（任意）"
+            value={docInput.path}
+            oninput={(event) => (docInput.path = event.currentTarget.value)}
+          />
+        </label>
+        <!-- 本文の欄をここに出さないことについては何も述べない (doc-10 §5, doc-11 §8): 画面が欄を
+             見せていないものについて、なぜ無いかを述べない、が本則である。代替経路の案内 にも
+             当たらない — この層は `doc create` が受け取る 3 項目を全部出しており、欄の不在を
+             作っていない (§7 の 注記モーダル と分かれるのはそこである)。作成した文書へ本文を
+             入れる先は文書ペインの編集セッションで、そこには欄がある。 -->
         <!-- No 下部操作行 (doc-11 §7): 「文書を作成」 writes but does not leave the layer, so there is
              only one way out and nothing for a second wording to tell apart. What the × does with
              what is typed here is said by the 破棄前確認 instead. **The pinned 発行の行 below is not one**
@@ -2698,6 +2701,10 @@
     font-size: 0.78rem;
   }
 
+  // 控えの群 (doc-11 §2.2): ← スイムレーン and このプロジェクトのレーンへ are the two ways off this
+  // screen, side by side with no field between them. 1.4rem rather than the 1.75rem the 区画 below
+  // take — this is the screen's header, the same place タスク詳細 answers at 1.4rem, and the forms
+  // are what the larger step is for.
   .head {
     display: flex;
     flex-wrap: wrap;
@@ -2706,6 +2713,10 @@
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--line);
     background: var(--inset);
+
+    button {
+      height: 1.4rem;
+    }
   }
 
   .breadcrumb {
@@ -3044,6 +3055,13 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.25rem;
+
+    // 同じ行に並ぶ押しボタンはフォーム部品である (doc-11 §1・§2.2). The row is `center`, not the flex
+    // default `stretch`, so the buttons do not pick the input's height up on their own — that is what
+    // left 選択… 3.95px shorter than the path beside it (WebKit, 変更前実測).
+    button {
+      height: 1.75rem;
+    }
   }
 
   .value-line {
@@ -3074,8 +3092,16 @@
     color: var(--muted);
   }
 
+  /*
+   * フォーム部品の高さ (doc-11 §2.2). 1.75rem — the largest step, because this screen's 4 区画 and its
+   * 作成モーダル are forms the user is here to fill in, and the step nearest what they already drew.
+   * Stated rather than left to the engine: the padding below is written once for both, and WebKit
+   * ignores it on `select` (computed 0px against Chromium's 4px, measured 2026-08-11), so without a
+   * height the two engines gave the row three different pictures. `box-sizing` comes from app.scss.
+   */
   input[type="text"],
   select {
+    height: 1.75rem;
     padding: 0.25rem 0.35rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
@@ -3226,8 +3252,10 @@
     // 行削除 as an アイコンのみのボタン (doc-11 §2.4, doc-10 §4.2 の逸脱 1 件目). Centred and squared
     // off: the shared `button` padding above is sized for a word, and a figure given it sits in a box
     // wider than it is tall — beside an input and a select, that reads as a third field.
+    // The height is the row's (doc-11 §2.2): this row is `center`, so nothing hands it down.
     .drop {
       display: inline-flex;
+      height: 1.75rem;
       align-items: center;
       padding: 0.15rem 0.3rem;
     }
@@ -3548,6 +3576,9 @@
     font-size: 0.74rem;
   }
 
+  // 破棄前確認 (doc-10 §5・§6): the question above the two columns. Its two answers are a 控えの群
+  // (doc-11 §2.2) — side by side, one object, no field between them — so they take this screen's step
+  // like the fields they are asked about.
   .confirm {
     display: flex;
     flex-wrap: wrap;
@@ -3556,6 +3587,10 @@
     padding: 0.4rem;
     background: color-mix(in srgb, var(--info) 12%, transparent);
     font-size: 0.74rem;
+
+    button {
+      height: 1.75rem;
+    }
   }
 
   .ok {

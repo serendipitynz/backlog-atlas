@@ -228,8 +228,13 @@
     border-radius: 4px;
     background: var(--inset);
 
+    // フォーム部品の高さ (doc-11 §2.2): 1.4rem, not the form step — this is the 簡易版 of the create
+    // form (doc-12 §8.6), drawn inside a レーンセル between cards, and the largest step would make the
+    // two controls the tallest thing in the column. The two sit on separate lines here, so the rule
+    // reaches them through the 入力欄の集まり they belong to rather than through a shared row.
     input,
     select {
+      height: 1.4rem;
       min-width: 0;
       padding: 0.1rem 0.25rem;
       border: 1px solid var(--line-strong);

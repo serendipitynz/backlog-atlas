@@ -345,6 +345,30 @@ $themes: (
   cursor: default;
 }
 
+// フォーム部品の高さ (doc-11 §2.2): a height stated by a component is the control's *outer* height.
+// There is no global box-sizing reset in this repository (TASK-115), so without this a 1px border
+// either side lands outside the stated value and two controls given the same number sit 2px apart.
+//
+// Element selectors rather than a class, for the reason the block above takes them: a call site that
+// states a height must not be able to leave this off. That is how the rule came to be derived three
+// separate times — `FilterBar.svelte`'s `--bar-control`, `Swimlane.svelte`'s `--head-control` and
+// `TaskDetail.svelte`'s `--frame-control` each declared it locally — while four other rows had it
+// nowhere and were left at whatever the engine decided (WebKit ignores an author `padding` on
+// `select` outright: computed 0px against Chromium's 4px, measured 2026-08-11).
+//
+// `textarea` and the checkbox/radio boxes are outside フォーム部品 (doc-11 §1) and take no height from
+// this design; they are included anyway rather than carved out, because a list of exceptions here
+// would be a second place to keep in step with §1. It is not a no-op for them: a control that states
+// `width: 100%` (`Editor.svelte`'s textarea, the menu's rows) had its padding added *outside* that
+// 100% and overflowed its parent by exactly that much, and now fits. Measured across the app in both
+// engines — no control overflows its parent, and none changed height.
+input,
+select,
+textarea,
+button {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   // The ground and its text come from the theme, not from `canvas`/`canvastext` (decision-12): with

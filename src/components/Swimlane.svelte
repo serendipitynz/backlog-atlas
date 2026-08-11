@@ -610,9 +610,10 @@
      * (the same reason `FilterBar.svelte` has `--bar-control`, doc-12 §4.3). 折畳み now draws a figure
      * and its neighbours draw words, and a figure's box is its own 1em — 11.2px against the ~18.8px a
      * .7rem line box gives, measured — so the two would no longer end up the same height on their own.
-     * In `rem`, so the value does not move with the font-size of whichever head the control sits in,
-     * and with `box-sizing: border-box` on the controls, because there is no global reset and a 1px
-     * border either side would otherwise land outside the stated height.
+     * In `rem`, so the value does not move with the font-size of whichever head the control sits in.
+     * The border-box sizing the stated height depends on comes from app.scss now (doc-11 §2.2), so
+     * the controls below no longer declare it each. The value is the smallest step of that section's
+     * 段階 — on this row the 行の識別 is the content and these are what sit beside it.
      */
     --head-control: 1.2rem;
 
@@ -859,7 +860,6 @@
   // taken from a text line, so the figure has to be placed inside it; nothing widens this box (it is
   // `flex: none` in both an open head and a folded one), so there is nothing to centre horizontally.
   .fold {
-    box-sizing: border-box;
     display: inline-flex;
     flex: none;
     align-items: center;
@@ -884,7 +884,6 @@
     // same reason `.fold` is: the height is stated rather than taken from a text line, and a figure is
     // a `display: block` svg that brings no line box to be centred by. The 再読込 label rides along.
     button {
-      box-sizing: border-box;
       display: inline-flex;
       align-items: center;
       justify-content: center;

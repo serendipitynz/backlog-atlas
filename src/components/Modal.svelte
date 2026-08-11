@@ -316,8 +316,9 @@
      * The window less what this file puts between this box and the window's edge: the backdrop's
      * padding on both sides and this box's own border on both. Both are declared right here, so
      * unlike the child-side `calc` this replaces, there is no second file holding a copy of the
-     * formula. `max-height` sizes the content box (the repository has no `box-sizing` reset), which
-     * is why the border is subtracted rather than left to `border-box`.
+     * formula. `max-height` sizes the content box — app.scss's `border-box` rule reaches フォーム部品
+     * only (doc-11 §2.2) and this is the dialog — which is why the border is subtracted here rather
+     * than left to `border-box`.
      */
     max-height: calc(
       100vh - var(--modal-backdrop-inset) * 2 - var(--modal-dialog-border) * 2
@@ -342,7 +343,6 @@
    * are the figure plus the room around it, and nothing here re-states the figure's size.
    */
   .close {
-    box-sizing: border-box;
     position: absolute;
     top: var(--modal-close-inset);
     right: var(--modal-close-inset);
@@ -426,8 +426,12 @@
       text-overflow: ellipsis;
     }
 
+    // 控えの群 (doc-11 §2.2): the two answers to the 破棄前確認 stand side by side with no field
+    // between them. 1.4rem rather than the 1.75rem the layers below take: this row is the 帯 the
+    // question is drawn in (doc-11 §7), and `--modal-confirm-row` caps its height at one line.
     button {
       flex: none;
+      height: 1.4rem;
       padding: 0 0.4rem;
       border: 1px solid var(--line-strong);
       // カード・ボタン 4px (doc-11 §2.2).
