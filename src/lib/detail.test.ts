@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acProgress,
+  acRatio,
   commitCountLine,
   commitList,
   dependencyLinks,
@@ -101,6 +102,19 @@ describe("AC #3 AC の checked 可視化と dependencies の未解決印", () =>
     });
     expect(acProgress(view)).toEqual({ checked: 1, total: 2 });
     expect(acProgress(taskView())).toEqual({ checked: 0, total: 0 });
+  });
+
+  // The value 達成割合のバー (doc-8 §3) draws. Whether the 区画見出し draws the bar or falls back to the
+  // thin 区画境界 turns on this value being there at all, so 0 件 and 0% failing to part here is the two
+  // of them being one bar on screen.
+  it("gives 0 件 no 達成割合 at all, which is not the same as a 達成割合 of 0", () => {
+    expect(acRatio({ checked: 0, total: 0 })).toBeNull();
+    expect(acRatio({ checked: 0, total: 3 })).toBe(0);
+  });
+
+  it("reads the 達成割合 off the two counts", () => {
+    expect(acRatio({ checked: 2, total: 3 })).toBeCloseTo(2 / 3);
+    expect(acRatio({ checked: 3, total: 3 })).toBe(1);
   });
 
   it("links each dependency to its task and marks the ones that resolve to nothing", () => {

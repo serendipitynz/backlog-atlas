@@ -16,6 +16,7 @@
   // `isFold` was `!== "always"` and `startsOpen` was the same test, which is exactly how they came to be
   // one thing in the document.
   import type { Snippet } from "svelte";
+  import { acRatio, type AcProgress } from "../lib/detail";
   import Icon from "../lib/icons/Icon.svelte";
   import {
     DISCLOSURE_ICON,
@@ -41,11 +42,20 @@
      * appears only while folded would vanish exactly when the list it counts is not on screen.
      */
     count?: string | null;
+    /**
+     * 達成数 of a 区画 that carries a 達成割合 (doc-8 §3). Only ACCEPTANCE CRITERIA does (doc-12 §3).
+     *
+     * The 達成数 and the 達成割合のバー come off one prop because they are one value said twice — once
+     * in words, once as a figure. Handed over separately, the number printed and the proportion drawn
+     * can disagree.
+     */
+    progress?: AcProgress | null;
     children: Snippet;
   }
 
-  let { title, section, layout, count = null, children }: Props = $props();
+  let { title, section, layout, count = null, progress = null, children }: Props = $props();
 
+  const ratio = $derived(progress === null ? null : acRatio(progress));
   const disposition = $derived(layout.sections[section]);
   /**
    * 行長上限 を掛ける区画か (doc-8 §2.1). Caps the content only, never the heading: the 区画境界 has
@@ -66,11 +76,23 @@
 <!-- The 区画名 is an `<h3>` in both branches, so which one a placement chose never decides whether the
      区画 has a heading at all: 実装計画 is a heading in 全面 and would stop being one in 併置. A
      `<summary>` may hold one heading element, which is what lets the 折畳み branch keep it. -->
-{#snippet sectionTitle(ruled: boolean)}
-  <h3 class="section-title" class:ruled>
+{#snippet sectionTitle(boundary: boolean)}
+  <!-- A 常設 区画 carries one 区画境界, and it takes one of two forms: the thin rule, or ACCEPTANCE
+       CRITERIA's 達成割合のバー (doc-8 §3). Never both — that would draw one break with two lines. -->
+  <h3 class="section-title" class:ruled={boundary && ratio === null}>
     {title}
     {#if count !== null}
       <span class="count">{count}</span>
+    {/if}
+    {#if progress !== null}
+      <span class="count">{progress.checked} / {progress.total}</span>
+    {/if}
+    {#if boundary && ratio !== null}
+      <!-- 達成割合のバー (doc-8 §3), kept out of the accessibility tree: the 達成数 beside it says the
+           same value in words, and `role="progressbar"` would announce that number twice in one 見出し. -->
+      <span class="progress" aria-hidden="true">
+        <span class="filled" style="width: {ratio * 100}%"></span>
+      </span>
     {/if}
   </h3>
 {/snippet}
@@ -141,6 +163,22 @@
 
     &::-webkit-details-marker {
       display: none;
+    }
+  }
+
+  // 達成割合のバー (doc-8 §3): the 区画境界's other form, so it sits where the rule sits and is the
+  // same single line. .25rem comes off doc-11 §2.2's 余白段階, the track keeps the rule's own `--line`,
+  // and the fill is `--fg` (doc-11 §2.1). No radius — §2.2's four are チップ / カード・ボタン / パネル /
+  // ラベルピル, and a bar is none of them.
+  .progress {
+    flex: 1;
+    height: 0.25rem;
+    background: var(--line);
+
+    .filled {
+      display: block;
+      height: 100%;
+      background: var(--fg);
     }
   }
 

@@ -426,6 +426,17 @@ export function acProgress(view: TaskView): AcProgress {
   return { checked: items.filter((item) => item.checked).length, total: items.length };
 }
 
+/**
+ * 達成割合 (doc-8 §3): the checked count over the total. **It has no value when the total is 0.**
+ *
+ * Not 0 — a task carrying no criteria and a task with none of them done are different things, and the
+ * 区画見出し falls back to the thin 区画境界 when the value is absent. Returning 0 would draw `0 / 0`
+ * and `0 / 3` as the same bar, which is what doc-11 §6 forbids for 正常な不在.
+ */
+export function acRatio(progress: AcProgress): number | null {
+  return progress.total === 0 ? null : progress.checked / progress.total;
+}
+
 function degradeEvents(view: TaskView): DegradeEvent[] {
   return view.task.health.state === "degraded" ? view.task.health.events : [];
 }
