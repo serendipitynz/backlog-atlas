@@ -446,7 +446,11 @@ export type CommandError =
   // 履歴読取の取消 (decision-19): the screen cancelled this read, so there is no answer. Carries only
   // the 読取識別子 — the screen that gets it has already stopped displaying that read, so there is
   // nothing here for it to show.
-  | { kind: "historyCancelled"; read_id: string };
+  | { kind: "historyCancelled"; read_id: string }
+  // 既定ブラウザ起動 (doc-8 §9.3) did not open the 本文リンク: the URL was refused, or the OS call ran
+  // and opened nothing. One variant for both, because the screen does the same thing with either —
+  // ⑤ 通知 with this sentence (doc-11 §4). The program that failed, when there was one, is in `detail`.
+  | { kind: "bodyLinkFailed"; detail: string };
 
 // --- 外部エディタ経路 (doc-8 §7, TASK-37) ----------------------------------------------------
 

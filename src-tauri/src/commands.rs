@@ -370,6 +370,16 @@ pub enum CommandError {
     /// reaches has already stopped displaying that read, so it carries only the 読取識別子 and no
     /// sentence to show.
     HistoryCancelled { read_id: String },
+    /// 既定ブラウザ起動 (doc-8 §9.3) did not open the 本文リンク: the URL was refused, or the OS call ran
+    /// and opened nothing.
+    ///
+    /// **One variant for both causes**, unlike the editor route above. Typing a failure buys the screen
+    /// a different action to take, and there is none here — doc-8 §9.3 draws only `http`/`https` as
+    /// links, so a refusal means the screen and this boundary disagree, which the user can do nothing
+    /// about; both causes reach ⑤ 通知 with their sentence (doc-11 §4). Carrying no `program` either: the
+    /// message names it when there was one (`BrowserError`'s `Display`), and a field that is absent for
+    /// one of two causes would be a `null` the screen has to branch on for no gain.
+    BodyLinkFailed { detail: String },
 }
 
 /// Which ledger operation refusal happened (doc-3 §3.1/§3.3/§4). One variant per refusal
@@ -443,6 +453,14 @@ impl From<LedgerError> for CommandError {
 impl From<SettingsError> for CommandError {
     fn from(error: SettingsError) -> Self {
         CommandError::Settings {
+            detail: error.to_string(),
+        }
+    }
+}
+
+impl From<editor::BrowserError> for CommandError {
+    fn from(error: editor::BrowserError) -> Self {
+        CommandError::BodyLinkFailed {
             detail: error.to_string(),
         }
     }
@@ -1750,6 +1768,26 @@ pub fn task_file_open(
     })
 }
 
+// --- commands: 本文リンク (doc-8 §9.3) ------------------------------------------------------------
+
+/// Open one 本文リンク with whatever the OS registered for its scheme (doc-8 §9.3 既定ブラウザ起動).
+///
+/// **The URL comes from the frontend, and that is what makes this launch unlike every other one here.**
+/// The rest take a value this boundary resolved from its own read model — the註 on
+/// [`settings_location_open`] states that as a property of the path it opens — whereas this one carries
+/// what a user wrote in a 本文. So the scheme check runs *here* ([`editor::browser_url`]) and not only on
+/// the screen: doc-8 §9.3 makes the screen's classification the second of the two, not the only one.
+///
+/// No project or task is named, because none is involved: the value is the whole of the input, and
+/// nothing about which task the 本文 belonged to changes what may be opened.
+///
+/// Returns nothing on success. The browser coming forward is the result, and doc-11 §4 keeps a success
+/// the screen already shows off the 上部帯.
+#[tauri::command(async)]
+pub fn body_link_open(url: String) -> Result<(), CommandError> {
+    Ok(editor::open_url(&SystemLauncher, &url)?)
+}
+
 // --- commands: update path (decision-2, doc-5, AC #2/#4) ----------------------------------------
 
 /// Probe the write-side CLI (doc-5 §3.2, decision-7). Probed on demand rather than cached at startup:
@@ -2264,7 +2302,7 @@ ordinal: 1000\n\
 
         /// The boundary's tests all use `LaunchMethod::Configured`, which is a spawn on every platform;
         /// which OS call the association method takes is `editor`'s decision and is asserted there.
-        fn shell_execute(&self, _file: &Path) -> std::io::Result<()> {
+        fn shell_execute(&self, _target: &std::ffi::OsStr) -> std::io::Result<()> {
             unreachable!("the boundary's tests launch the configured editor, which is a spawn")
         }
     }

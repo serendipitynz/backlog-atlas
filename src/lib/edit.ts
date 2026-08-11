@@ -841,6 +841,12 @@ export function commandErrorDetail(error: CommandError): string {
     // route ever does route one here.
     case "historyCancelled":
       return "Git 履歴の読み取りは画面の側で取り消されました";
+    // 本文リンク (doc-8 §9.3) cannot arise from an edit either — it answers a press on a link inside a
+    // 閲覧 の本文 — and the boundary's sentence already names what did not open (a refused URL, or the
+    // program that failed). Prefixed rather than passed through, so ⑤ 通知 says which press it belongs
+    // to: nothing else on screen changed when the browser failed to come forward.
+    case "bodyLinkFailed":
+      return `リンクを開けませんでした: ${error.detail}`;
   }
 }
 

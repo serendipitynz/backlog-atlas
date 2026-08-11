@@ -1142,6 +1142,7 @@ fn every_command_error() -> Vec<CommandError> {
             detail: blank(),
         },
         CommandError::HistoryCancelled { read_id: blank() },
+        CommandError::BodyLinkFailed { detail: blank() },
     ];
     for value in &all {
         match value {
@@ -1161,7 +1162,8 @@ fn every_command_error() -> Vec<CommandError> {
             | CommandError::UnknownTaskFile { .. }
             | CommandError::EditorUnavailable { .. }
             | CommandError::EditorLaunchFailed { .. }
-            | CommandError::HistoryCancelled { .. } => {}
+            | CommandError::HistoryCancelled { .. }
+            | CommandError::BodyLinkFailed { .. } => {}
         }
     }
     all
