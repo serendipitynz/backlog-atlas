@@ -3383,8 +3383,9 @@
   }
 
 
-  // 整形表示 (doc-8 §9) は共有部品が描くので、この画面が持つのは閲覧ヘッダとの間隔だけである
-  // — 旧 `.read-body` が自分の margin で持っていた 0.5rem がこれ (doc-11 §2.2 の余白段階)。
+  // 整形表示 (doc-8 §9) is drawn by a shared component, so what this screen keeps is only the gap to the
+  // 閲覧ヘッダ above it — the 0.5rem the old `.read-body` carried in its own margin (doc-11 §2.2 の余白段階).
+  // The block's own margin is not this screen's to set now that the block is shared.
   .read-body-slot {
     margin-top: 0.5rem;
   }

@@ -1184,9 +1184,9 @@ describe("本文リンク (doc-8 §9.3)", () => {
   }
 
   /**
-   * 押下が境界まで届くこと。これは純関数では固定できない — `markdown.ts` が決めるのは
-   * 「どれをリンクとして描くか」までで、押下がシェルを通って `body_link_open` になる配線は
-   * `Body.svelte`・`TaskDetail.svelte`・`App.svelte` の 3 つに散っており、どの 1 画面のものでもない。
+   * That a press reaches the boundary. No pure function can hold this: `markdown.ts` decides only which
+   * links are drawn as links, and the wiring that turns a press into `body_link_open` is spread across
+   * `Body.svelte`, `TaskDetail.svelte` and `App.svelte` — no single screen owns it.
    */
   it("押すと、その URL が境界へ渡る", async () => {
     const host = await openDetail();
@@ -1195,28 +1195,28 @@ describe("本文リンク (doc-8 §9.3)", () => {
     await settled();
 
     expect(madeTo("body_link_open").map((call) => call.args[0])).toEqual(["https://example.test/spec"]);
-    // 成功では何も出さない (doc-11 §4): ブラウザが前面に出るのが結果である。
+    // Nothing is shown on success (doc-11 §4): the browser coming forward is the result.
     expect(host.querySelector('.band[data-band="notice"]')).toBeNull();
   });
 
-  /** doc-8 §9.3: 開かないものはリンクとして描かないので、押す相手がそもそも無い。 */
+  /** doc-8 §9.3: what is not opened is not drawn as a link, so there is nothing to press. */
   it("開かない相手はリンクにならず、境界も呼ばれない", async () => {
     const host = await openDetail();
-    // 1 本だけ: `./doc-3.md` は文字のまま残っている。
+    // One link only: `./doc-3.md` stays as text.
     expect(host.querySelectorAll(`.body-block a.${BODY_LINK_CLASS}`)).toHaveLength(1);
     expect(only(host, ".body-block").textContent).toContain("隣");
 
-    // 押しても何も起きない: 本文の中の文字であって控えではない。ブロック自体を押すのが、リンクでない
-    // ところを押したことになる（`closest` が何も見つけない経路）。
+    // Pressing it does nothing: it is text inside the 本文, not a control. Pressing the block itself
+    // is what "pressed somewhere that is not a link" means — the path where `closest` finds nothing.
     click(only(host, ".body-block"));
     await settled();
     expect(madeTo("body_link_open")).toEqual([]);
   });
 
   /**
-   * 失敗の届け先が ⑤ 通知 であること (doc-11 §4)。**控えの隣に結果を置く場所が無い**のがこの押下の
-   * 性質で、`Body.svelte` は失敗を見ないし `band.ts` はどの押下が文を産んだかを知らない — 呼び出し元
-   * からしか固定できない組である。
+   * That a failure lands in ⑤ 通知 (doc-11 §4). **This press has no 控えの隣 to put a result line in**,
+   * which is the whole reason: `Body.svelte` never sees the failure and `band.ts` does not know which
+   * press produced a sentence — only the caller can hold this.
    */
   it("開けなければ ⑤ 通知 に出る", async () => {
     answers.bodyLink = () =>
@@ -1228,7 +1228,8 @@ describe("本文リンク (doc-8 §9.3)", () => {
     const band = host.querySelector('.band[data-band="notice"]');
     expect(band?.textContent).toContain("リンクを開けませんでした");
     expect(band?.textContent).toContain("xdg-open");
-    // 本文の中に結果文を混ぜない: ファイルの内容と Atlas の報せが 1 つのブロックに同居しないこと。
+    // No result line inside the 本文: the file's content and Atlas's report about it do not share
+    // one block.
     expect(only(host, ".body-block").textContent).not.toContain("開けませんでした");
   });
 });

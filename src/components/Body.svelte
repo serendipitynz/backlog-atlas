@@ -204,7 +204,8 @@
       padding: 0.25rem 0.3rem;
       border: 1px solid var(--line);
       border-radius: 3px;
-      // 折り返さず、そのブロックの中で横スクロールする (doc-11 §14.2): a fence's lines carry meaning.
+      // No wrapping; it scrolls inside its own block instead (doc-11 §14.2): a fence's lines carry
+      // meaning, so a break inserted for width would be a break the author did not write.
       overflow-x: auto;
     }
 
