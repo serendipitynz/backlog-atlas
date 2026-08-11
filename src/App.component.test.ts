@@ -1203,6 +1203,34 @@ describe("本文リンク (doc-8 §9.3)", () => {
   });
 
   /**
+   * doc-8 §9.3: the middle button opens it, and the secondary one does not.
+   *
+   * `auxclick` fires for every non-primary button, so a handler that took them all would launch the
+   * browser out from under the right-click a reader makes to open the context menu — the very interaction
+   * 目視 was performing when it found the navigation defect. `render.ts`'s `click` cannot express a
+   * button (it calls `HTMLElement.click()`), so the event is dispatched here.
+   */
+  it("中ボタンは開き、右ボタンは開かない", async () => {
+    const host = await openDetail();
+    const link = only(host, `.body-block .${BODY_LINK_CLASS}`);
+
+    const aux = (button: number): void => {
+      link.dispatchEvent(new MouseEvent("auxclick", { button, bubbles: true, cancelable: true }));
+      flushSync();
+    };
+
+    aux(2);
+    await settled();
+    expect(madeTo("body_link_open")).toEqual([]);
+
+    aux(1);
+    await settled();
+    expect(madeTo("body_link_open").map((call) => call.args[0])).toEqual([
+      "https://example.test/spec",
+    ]);
+  });
+
+  /**
    * doc-8 §9.3: Enter opens it too. Dropping the `href` took the engine's own keyboard activation with
    * it, so this is wiring rather than a default — and a link a keyboard cannot reach is one this screen
    * offers to some readers only.

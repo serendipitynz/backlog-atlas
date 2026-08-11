@@ -36,6 +36,9 @@
   let block = $state<HTMLElement | null>(null);
   let scheme = $state<ThemeScheme>(currentScheme());
 
+  /** `MouseEvent.button` for the middle button — the only non-primary one that activates a 本文リンク. */
+  const MIDDLE_BUTTON = 1;
+
   const unsubscribe = onSchemeChange((next) => (scheme = next));
   onDestroy(unsubscribe);
 
@@ -61,10 +64,7 @@
    * doing that, with no back control to return by.
    */
   function pressedLink(target: EventTarget | null): string | null {
-    if (!(target instanceof Element)) {
-      return null;
-    }
-    const element = target.closest(`.${BODY_LINK_CLASS}`);
+    const element = landedOnLink(target);
     if (element === null) {
       return null;
     }
@@ -74,22 +74,49 @@
   }
 
   /**
+   * The 本文リンク an event landed on, whatever its URL turns out to be.
+   *
+   * Separate from [`pressedLink`] because the two questions have different answers and both are needed:
+   * *this* one decides whether the event belongs to a link at all — and so whether the engine's default
+   * is prevented — while the other decides whether there is a URL to hand over.
+   */
+  function landedOnLink(target: EventTarget | null): Element | null {
+    if (!(target instanceof Element)) {
+      return null;
+    }
+    return target.closest(`.${BODY_LINK_CLASS}`);
+  }
+
+  /**
    * A press inside the 本文, delegated (doc-8 §9.3).
    *
    * Bound imperatively rather than in the markup: the listener belongs to the block as a *delegation
    * point*, not to an interactive element, and writing `onclick` on a `<div>` would be claiming the div
    * is one.
    *
-   * `auxclick` as well as `click` because a middle press is a separate event, and both are
-   * `preventDefault`ed before anything else — with no `href` there is nothing to navigate to, and the
-   * call costs nothing if a future change puts one back.
+   * `auxclick` as well as `click`, because a middle press is a separate event — **but only the middle
+   * button.** `auxclick` fires for every non-primary button, the secondary one included, and that is the
+   * press a reader makes to open the context menu: activating on it would launch the browser out from
+   * under a right-click, which is the very interaction 目視 was performing when it found the navigation
+   * defect. The primary button arrives as `click` and is not filtered here.
+   *
+   * **The default is prevented for anything that lands on a 本文リンク, before the URL is looked at.**
+   * There is nothing to navigate to today — that is the point of carrying no `href` — so this guards the
+   * *next* change rather than this one: an element that reached here as a link must not act like one even
+   * if its URL turns out to be a value the screen would not have drawn.
    */
   function press(event: MouseEvent): void {
+    if (event.type === "auxclick" && event.button !== MIDDLE_BUTTON) {
+      return;
+    }
+    if (!landedOnLink(event.target)) {
+      return;
+    }
+    event.preventDefault();
     const url = pressedLink(event.target);
     if (url === null) {
       return;
     }
-    event.preventDefault();
     onopenlink(url);
   }
 
@@ -101,14 +128,14 @@
    * click. Space is deliberately not handled — it activates a button, and this is a link.
    */
   function key(event: KeyboardEvent): void {
-    if (event.key !== "Enter") {
+    if (event.key !== "Enter" || landedOnLink(event.target) === null) {
       return;
     }
+    event.preventDefault();
     const url = pressedLink(event.target);
     if (url === null) {
       return;
     }
-    event.preventDefault();
     onopenlink(url);
   }
 
