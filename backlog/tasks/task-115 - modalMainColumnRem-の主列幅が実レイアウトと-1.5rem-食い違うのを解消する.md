@@ -4,11 +4,11 @@ title: modalMainColumnRem の主列幅が実レイアウトと 1.5rem 食い違�
 status: Done
 assignee: []
 created_date: '2026-08-04 10:39'
-updated_date: '2026-08-04 21:32'
+updated_date: '2026-08-11 11:28'
 labels:
   - task-detail
   - ui
-milestone: m-2 v0 公開フェーズ
+milestone: m-2
 dependencies: []
 documentation:
   - backlog/docs/doc-8 - タスク詳細画面-設計（References・PR・Type・Git-履歴）.md
