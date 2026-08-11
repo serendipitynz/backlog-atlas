@@ -357,9 +357,11 @@ $themes: (
 // `select` outright: computed 0px against Chromium's 4px, measured 2026-08-11).
 //
 // `textarea` and the checkbox/radio boxes are outside フォーム部品 (doc-11 §1) and take no height from
-// this design. They are included anyway because border-box costs them nothing — neither states a
-// height, and an auto-sized box lays out the same under either sizing — and because a list of
-// exceptions here would be a second place to keep in step with §1.
+// this design; they are included anyway rather than carved out, because a list of exceptions here
+// would be a second place to keep in step with §1. It is not a no-op for them: a control that states
+// `width: 100%` (`Editor.svelte`'s textarea, the menu's rows) had its padding added *outside* that
+// 100% and overflowed its parent by exactly that much, and now fits. Measured across the app in both
+// engines — no control overflows its parent, and none changed height.
 input,
 select,
 textarea,
