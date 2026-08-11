@@ -1,10 +1,10 @@
 ---
 id: TASK-140
 title: ACCEPTANCE CRITERIA 区画に達成割合のバーを足す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-09 05:02'
-updated_date: '2026-08-11 00:28'
+updated_date: '2026-08-11 00:36'
 labels:
   - ui
   - 'kind:feature'
