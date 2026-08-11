@@ -1853,7 +1853,8 @@
   // numbers come from `lib/placement.ts` through the custom properties above, so the width the
   // test checks and the width the browser lays out are the same numbers.
   //
-  // This `width` is a *content* box — the repository has no global `box-sizing` reset — so it is the
+  // This `width` is a *content* box — app.scss's `border-box` rule reaches フォーム部品 only, and this
+  // is a panel (doc-11 §2.2); the repository has no reset beyond that — so it is the
   // box the two columns divide, and the padding and border below are laid outside it. `placement.ts`
   // states its geometry in those terms for that reason (TASK-115).
   .detail[data-placement="modal"] {
@@ -2094,7 +2095,6 @@
   }
 
   .step {
-    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2118,7 +2118,6 @@
 
   // 横断タスクID のコピー (doc-8 §2.2): アイコンのみのボタン sitting against the id it copies.
   .copy {
-    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2170,7 +2169,6 @@
   }
 
   .switch {
-    box-sizing: border-box;
     position: relative;
     display: flex;
     align-items: center;
@@ -2215,10 +2213,9 @@
   }
 
   .close {
-    // `border-box` because the height is written with a border and padding in play, and this file has
-    // no global reset to fold them in (doc-12 §4.3). `inline-flex` centres the word in that height —
-    // the switches beside it centre a figure the same way.
-    box-sizing: border-box;
+    // The height is written with a border and padding in play; app.scss folds them in for every
+    // フォーム部品 (doc-11 §2.2), so this rule states only the placement. `inline-flex` centres the
+    // word in that height — the switches beside it centre a figure the same way.
     display: inline-flex;
     align-items: center;
     height: var(--frame-control);
@@ -2594,8 +2591,17 @@
     }
   }
 
+  /*
+   * フォーム部品の高さ (doc-11 §2.2). 1.4rem — the same step `--frame-control` above already takes, so
+   * the panel answers the question once: the title input sits in the 固定 band beside those controls,
+   * and the 編集セッション's fields sit under it in a panel that is 30rem wide in 併置サイドバー. The
+   * largest step belongs to the screens that are a form and nothing else (doc-10 §1 の作成モーダル).
+   * Stated rather than left to the engine: the three `select`s in the 属性表 drew at 18px in WebKit
+   * and 25px in Chromium against a 24.52px input, from this one declaration (変更前実測 2026-08-11).
+   */
   input[type="text"],
   select {
+    height: 1.4rem;
     padding: 0.15rem 0.3rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;

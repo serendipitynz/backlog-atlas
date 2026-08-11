@@ -367,6 +367,19 @@
     color: var(--muted);
   }
 
+  /*
+   * フォーム部品の高さ (doc-11 §2.2). 1.4rem for every control this layer holds — the same step the
+   * 絞り込み帯 takes, because this popover is that bar's own 共通部品 (doc-12 §4.1) and hangs off it.
+   * The 値一覧 rows are not フォーム部品 (doc-11 §1): they are a list of values, not a control beside
+   * an input, and giving them a form's height would make the list read as a column of fields.
+   */
+  input[type="search"],
+  input[type="date"],
+  input[type="number"],
+  select {
+    height: 1.4rem;
+  }
+
   input[type="search"] {
     padding: 0.15rem 0.35rem;
     border: 1px solid var(--line-strong);
@@ -511,7 +524,6 @@
   // put the same day in two different places.
   input[type="date"],
   input[type="number"] {
-    box-sizing: border-box;
     padding: 0.16rem 0.25rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
@@ -550,7 +562,6 @@
     }
 
     select {
-      box-sizing: border-box;
       padding: 0.16rem 0.16rem;
       border: 1px solid var(--line-strong);
       border-radius: 4px;
@@ -560,7 +571,10 @@
       font-size: 0.65rem;
     }
 
+    // 同じ行に並ぶ押しボタンはフォーム部品である (doc-11 §1・§2.2). This row is `center`, so it hands
+    // nothing down: 加える stood 2.19px taller than the `select` beside it (WebKit, 変更前実測).
     .plain {
+      height: 1.4rem;
       margin-left: auto;
       font-size: 0.65rem;
     }
