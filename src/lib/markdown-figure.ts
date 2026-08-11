@@ -66,6 +66,12 @@ function initialise(mermaid: Mermaid, scheme: ThemeScheme): void {
     theme: scheme === "dark" ? "dark" : "default",
     // The 作図結果 is bounded by the 本文ブロック (doc-11 §14.5); the width it may take is the block's.
     flowchart: { useMaxWidth: true },
+    // A diagram mermaid cannot parse must leave **nothing** behind. Without this, `render` inserts an
+    // error diagram into a container of its own under `document.body` and rejects — so the fence stays
+    // (which is what doc-11 §14.5 wants) but a stray element accumulates outside the 本文 on every
+    // retry and every theme change. Suppressing that rendering is what makes the rejection the only
+    // outcome, and the fence the only thing the reader is left with.
+    suppressErrorRendering: true,
   });
 }
 
@@ -99,7 +105,9 @@ function sourceOf(element: HTMLElement): string {
  * which is the case for every 本文 in a 台帳 that uses no diagrams (measured: 0 of 184 files).
  */
 export async function drawFigures(root: ParentNode, scheme: ThemeScheme): Promise<void> {
-  if (pending(root, scheme).length === 0) return;
+  if (pending(root, scheme).length === 0) {
+    return;
+  }
 
   const generation = (generations.get(root) ?? 0) + 1;
   generations.set(root, generation);
@@ -112,16 +120,24 @@ export async function drawFigures(root: ParentNode, scheme: ThemeScheme): Promis
     // have drawn the diagram is what failed to arrive.
     return;
   }
-  if (generations.get(root) !== generation) return;
+  if (generations.get(root) !== generation) {
+    return;
+  }
   initialise(mermaid, scheme);
 
   // Re-read rather than reusing the list from the guard above: the `await` gave the panel a chance to
   // replace the whole 本文, and an element from before it may no longer be in the document.
   for (const element of pending(root, scheme)) {
-    if (generations.get(root) !== generation) return;
-    if (!element.isConnected) continue;
+    if (generations.get(root) !== generation) {
+      return;
+    }
+    if (!element.isConnected) {
+      continue;
+    }
     const source = sourceOf(element);
-    if (source === "") continue;
+    if (source === "") {
+      continue;
+    }
 
     let svg: string;
     try {
@@ -132,7 +148,9 @@ export async function drawFigures(root: ParentNode, scheme: ThemeScheme): Promis
       // doc-11 §14.5 asks for and the only thing that tells the author *what* did not draw.
       continue;
     }
-    if (generations.get(root) !== generation || !element.isConnected) continue;
+    if (generations.get(root) !== generation || !element.isConnected) {
+      continue;
+    }
 
     const drawn = element.ownerDocument.createElement("div");
     drawn.className = FIGURE_DRAWN_CLASS;

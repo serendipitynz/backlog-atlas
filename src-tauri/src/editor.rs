@@ -59,6 +59,7 @@ use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// Which of doc-8 §7's two launch methods to use. Deserialized from the frontend: the UI offers the
 /// methods [`EditorReadiness`] reports and names the one it is asking for, so the choice is the
@@ -227,6 +228,23 @@ pub trait Launcher {
     /// would make the URL case a lie, and typing it as `&str` would force a lossy conversion on the
     /// path case — a managed file name is not guaranteed to be UTF-8.
     fn shell_execute(&self, target: &OsStr) -> std::io::Result<()>;
+
+    /// Start `program` with `args`, watch it for a moment, and say whether it failed in that time:
+    /// `Ok(None)` when it is still running or exited successfully, `Ok(Some(detail))` when it exited
+    /// unsuccessfully. `Err` is a program that could not be started at all.
+    ///
+    /// **Only 既定ブラウザ起動 uses this** (doc-8 §9.3). The file route must not: an editor session
+    /// outlasts the command that started it, which is what [`spawn`] exists to allow. A browser
+    /// launcher is the opposite — it hands the URL over and exits — so its exit code is the only thing
+    /// that distinguishes "the browser has it" from "nothing is registered for this scheme", and
+    /// without it a press on a 本文リンク can report success while no window ever appears
+    /// (`xdg-open` exits 3 when it finds no handler and 4 when the handler failed; `open` exits 1).
+    ///
+    /// **Nothing is killed, and the watch is not a deadline.** `xdg-open` may exec its handler and stay
+    /// in the process tree until the browser closes, so a bound that killed the child could close the
+    /// user's browser — a far worse outcome than an unreported failure. A helper still running when the
+    /// watch ends has therefore done its job as far as this can tell, and is reaped on a thread.
+    fn spawn_observed(&self, program: &str, args: &[String]) -> std::io::Result<Option<String>>;
 }
 
 /// [`Launcher`] over the real OS.
@@ -309,7 +327,49 @@ impl Launcher for SystemLauncher {
             "ShellExecuteW はこのプラットフォームにありません",
         ))
     }
+
+    fn spawn_observed(&self, program: &str, args: &[String]) -> std::io::Result<Option<String>> {
+        let mut child = Command::new(program)
+            .args(args)
+            // Same reasoning as `spawn`: Atlas's stdio is not a terminal this child may use.
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let until = Instant::now() + BROWSER_OBSERVATION;
+        loop {
+            match child.try_wait()? {
+                Some(status) if status.success() => return Ok(None),
+                Some(status) => return Ok(Some(status.to_string())),
+                None => {}
+            }
+            if Instant::now() >= until {
+                // Reaped rather than killed or waited on — see the trait's note: killing it could take
+                // the browser with it, and waiting would hang the command for as long as the browser is
+                // open. Without the reap the child stays a zombie until Atlas exits.
+                std::thread::spawn(move || {
+                    let mut child = child;
+                    let _ = child.wait();
+                });
+                return Ok(None);
+            }
+            std::thread::sleep(BROWSER_POLL);
+        }
+    }
 }
+
+/// How long a 既定ブラウザ起動 watches its helper before treating the URL as handed on (doc-8 §9.3).
+///
+/// The failures this can observe are immediate — a launcher that finds no handler for the scheme exits
+/// straight away — so the window only has to outlast process start-up, not the browser. It is not a
+/// deadline: nothing is killed when it elapses (see [`Launcher::spawn_observed`]). The cost of the
+/// window is that the command it serves takes this long to answer in the failing case, which is why it
+/// is well under a second and a half rather than the tens of seconds a real deadline would take.
+const BROWSER_OBSERVATION: Duration = Duration::from_millis(1200);
+
+/// How often the watch above looks. Short enough that the ordinary case — a helper that exits at once —
+/// is not made to wait for a poll interval it did not need.
+const BROWSER_POLL: Duration = Duration::from_millis(20);
 
 /// `RPC_E_CHANGED_MODE` — the thread already has an apartment, of the other concurrency model.
 ///
@@ -546,12 +606,19 @@ impl Platform {
 /// associates with the extension. Two shapes, because they are not two flavours of the same call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AssociationLauncher {
-    /// A program the path is passed to as its own argv element (`open`, `xdg-open`).
-    Program {
-        program: &'static str,
-        /// Arguments that precede the path.
-        leading: &'static [&'static str],
-    },
+    /// A program the target is passed to as its own argv element (`open`, `xdg-open`), and the only
+    /// argv element: **nothing precedes it.**
+    ///
+    /// It used to pass `--` to `xdg-open`, on the reasoning that an end-of-options marker keeps a path
+    /// beginning with `-` from being read as an option. **That was measured and found false** (2026-08-11,
+    /// released xdg-utils v1.2.1 / v1.1.3): those versions have no `--` arm at all, so `--` itself falls
+    /// into `-*) exit_failure_syntax "unexpected option"` and **every ordinary path and URL failed** —
+    /// while a path beginning with `-` is refused by the same branch whether or not `--` precedes it, so
+    /// the guard never existed either. (An arm for `--` exists only on the upstream development branch.)
+    /// Nothing here needs one regardless: every target this module hands over is an absolute path from
+    /// the read layer or a URL [`browser_url`] has required to start with `http`, and neither begins
+    /// with `-`. [`tests::no_association_launch_passes_an_option_shaped_argument`] holds that.
+    Program { program: &'static str },
     /// Win32 `ShellExecuteW`: not a program, so there is no command tail at all — the path is one
     /// wide-string parameter to one call.
     ShellExecute,
@@ -576,24 +643,20 @@ impl AssociationLauncher {
 /// deciding — silently inheriting another platform's launcher is the failure this shape rules out.
 const fn association_launcher_of(platform: Platform) -> AssociationLauncher {
     match platform {
-        // `open` takes the path as its own argument; no `--` is needed because `open` reads a leading
-        // `-` as a path once any option has been consumed, and there are no options here.
-        Platform::MacOs => AssociationLauncher::Program {
-            program: "open",
-            leading: &[],
-        },
+        // `open` takes the target as its own argument, with no option before it.
+        Platform::MacOs => AssociationLauncher::Program { program: "open" },
         // `ShellExecuteW`, never `cmd /c start`. `cmd.exe` re-parses its command tail, so a managed file
         // named `a&calc.md` — the scanner accepts any `.md` under the managed directories, whatever
         // wrote it — would run `calc`. `Command::args` guarantees argv boundaries to a child, not
         // through one, so the guarantee ends the moment the child is an interpreter. `ShellExecuteW`
         // has no command line for the name's characters to be read as syntax (decision-15).
         Platform::Windows => AssociationLauncher::ShellExecute,
-        // `xdg-open` is the freedesktop.org entry point. `--` keeps a path that begins with `-` from
-        // being read as an option; a system without `xdg-open` fails at spawn with the program named,
-        // which is the honest report rather than a silent no-op.
+        // `xdg-open` is the freedesktop.org entry point, and it is handed the target alone — see
+        // [`AssociationLauncher::Program`] for the measurement that removed the `--` this used to pass.
+        // A system without `xdg-open` fails at spawn with the program named, which is the honest report
+        // rather than a silent no-op.
         Platform::Freedesktop => AssociationLauncher::Program {
             program: "xdg-open",
-            leading: &["--"],
         },
     }
 }
@@ -630,18 +693,14 @@ struct AssociationCall {
 
 fn association_call(platform: Platform, target: String) -> AssociationCall {
     match association_launcher_of(platform) {
-        AssociationLauncher::Program { program, leading } => {
-            let mut args: Vec<String> = leading.iter().map(|a| a.to_string()).collect();
-            args.push(target);
-            AssociationCall {
-                program: program.to_string(),
-                args,
-                call: OsCall::Spawn,
-            }
-        }
+        AssociationLauncher::Program { program } => AssociationCall {
+            program: program.to_string(),
+            args: vec![target],
+            call: OsCall::Spawn,
+        },
         AssociationLauncher::ShellExecute => AssociationCall {
             program: SHELL_EXECUTE_NAME.to_string(),
-            // One element and no leading arguments, because `lpFile` is the whole input.
+            // One element, because `lpFile` is the whole input.
             args: vec![target],
             call: OsCall::ShellExecute,
         },
@@ -726,14 +785,21 @@ fn open_url_on(platform: Platform, launcher: &dyn Launcher, url: &str) -> Result
         args,
         call,
     } = association_call(platform, url.to_string());
-    match call {
-        OsCall::Spawn => launcher.spawn(&program, &args),
-        OsCall::ShellExecute => launcher.shell_execute(OsStr::new(url)),
+    // The spawn side is *observed* rather than fired and forgotten (see [`Launcher::spawn_observed`]):
+    // this is the one launch whose helper exits, so its exit code is available and is the only report
+    // there is. `ShellExecuteW` already answers — above 32 means the launch started (decision-15).
+    let observed = match call {
+        OsCall::Spawn => launcher.spawn_observed(&program, &args),
+        OsCall::ShellExecute => launcher.shell_execute(OsStr::new(url)).map(|()| None),
+    };
+    match observed {
+        Ok(None) => Ok(()),
+        Ok(Some(detail)) => Err(BrowserError::LaunchFailed { program, detail }),
+        Err(error) => Err(BrowserError::LaunchFailed {
+            program,
+            detail: error.to_string(),
+        }),
     }
-    .map_err(|error| BrowserError::LaunchFailed {
-        program,
-        detail: error.to_string(),
-    })
 }
 
 /// What a launch would do, without doing it (doc-8 §7). Separate from [`open`] so the decision — which
@@ -903,6 +969,9 @@ mod tests {
         /// the whole of TASK-44: a path that reached a *spawn* on Windows reached a command line.
         shell_executes: RefCell<Vec<std::ffi::OsString>>,
         fail: Option<std::io::ErrorKind>,
+        /// What a `spawn_observed` launch reports: `None` is "launched" (still running or exited 0),
+        /// `Some(detail)` is a helper that ran and failed — `xdg-open` finding no handler, say.
+        exited: Option<String>,
     }
 
     impl Launcher for FakeLauncher {
@@ -921,6 +990,24 @@ mod tests {
             match self.fail {
                 Some(kind) => Err(std::io::Error::new(kind, "no such file")),
                 None => Ok(()),
+            }
+        }
+
+        /// Recorded in `spawns` like an ordinary spawn, because what the URL route has to be asserted on
+        /// is the same thing: which program, and the target as one argv element. What this adds is the
+        /// verdict, which `exited` chooses — a launcher that ran and reported a failure is the case
+        /// `spawn` cannot express at all.
+        fn spawn_observed(
+            &self,
+            program: &str,
+            args: &[String],
+        ) -> std::io::Result<Option<String>> {
+            self.spawns
+                .borrow_mut()
+                .push((program.to_string(), args.to_vec()));
+            match self.fail {
+                Some(kind) => Err(std::io::Error::new(kind, "no such file")),
+                None => Ok(self.exited.clone()),
             }
         }
     }
@@ -1180,11 +1267,8 @@ mod tests {
         open_url_on(Platform::Freedesktop, &linux, URL).expect("launched");
         assert_eq!(
             linux.spawns.borrow().as_slice(),
-            &[(
-                "xdg-open".to_string(),
-                vec!["--".to_string(), URL.to_string()]
-            )],
-            "the `--` is the same one the file route passes, for the same reason"
+            &[("xdg-open".to_string(), vec![URL.to_string()])],
+            "the URL alone: released xdg-open refuses any argument before it, `--` included"
         );
 
         let windows = FakeLauncher::default();
@@ -1212,6 +1296,47 @@ mod tests {
             assert!(launcher.spawns.borrow().is_empty(), "{platform:?}");
             assert!(launcher.shell_executes.borrow().is_empty(), "{platform:?}");
         }
+    }
+
+    /// doc-8 §9.3: a helper that **ran and failed** is reported. This is the case a fire-and-forget spawn
+    /// cannot express at all — `xdg-open` exits 3 when nothing is registered for the scheme, and without
+    /// observing that exit the press would report success while no window ever appeared.
+    #[test]
+    fn a_browser_helper_that_exits_with_a_failure_is_reported() {
+        let launcher = FakeLauncher {
+            exited: Some("exit status: 3".to_string()),
+            ..FakeLauncher::default()
+        };
+        let error = open_url_on(Platform::Freedesktop, &launcher, "https://example.com")
+            .expect_err("the helper reported a failure");
+        match &error {
+            BrowserError::LaunchFailed { program, detail } => {
+                assert_eq!(program, "xdg-open");
+                assert!(detail.contains('3'), "{detail}");
+            }
+            other => panic!("expected a launch failure, got {other:?}"),
+        }
+    }
+
+    /// The other half of that pair: **the file route is deliberately not observed** (doc-8 §7). An editor
+    /// session outlasts the command that started it, so a launcher whose helper would report a failure
+    /// still counts as launched here — routing the file case through the observed path instead would
+    /// hang on, or fail, every long-lived editor.
+    #[test]
+    fn the_file_route_does_not_observe_its_launch() {
+        let launcher = FakeLauncher {
+            exited: Some("exit status: 3".to_string()),
+            ..FakeLauncher::default()
+        };
+        open_on(
+            Platform::Freedesktop,
+            None,
+            &FakeEnv::default(),
+            &launcher,
+            LaunchMethod::Association,
+            Path::new("/roots/backlog/tasks/task-1.md"),
+        )
+        .expect("an editor launch is not judged by an exit code");
     }
 
     /// A failed 既定ブラウザ起動 names the program it tried, so ⑤ 通知 can say what did not open
@@ -1272,12 +1397,17 @@ mod tests {
     /// The other side of the same table: where the launcher *is* a program, the launch stays a spawn with
     /// the path as its own argv element — so AC #1 did not turn the platforms that were already correct
     /// into shell-executes.
+    ///
+    /// **The path is the only argv element** (2026-08-11): this test asserted a leading `--` for
+    /// `xdg-open` until released xdg-utils was read and found to reject it (see
+    /// [`AssociationLauncher::Program`]), which meant every Linux association launch had been failing
+    /// with a syntax error rather than opening anything.
     #[test]
     fn the_program_launchers_still_spawn_with_the_path_as_one_element() {
         let env = FakeEnv::default();
-        for (platform, program, leading) in [
-            (Platform::MacOs, "open", Vec::new()),
-            (Platform::Freedesktop, "xdg-open", vec!["--".to_string()]),
+        for (platform, program) in [
+            (Platform::MacOs, "open"),
+            (Platform::Freedesktop, "xdg-open"),
         ] {
             let launcher = FakeLauncher::default();
             open_on(
@@ -1290,13 +1420,51 @@ mod tests {
             )
             .expect("launched");
             assert!(launcher.shell_executes.borrow().is_empty());
-            let mut expected = leading;
-            expected.push("/roots/my backlog/tasks/task-1 - a&b.md".to_string());
             assert_eq!(
                 launcher.spawns.borrow().as_slice(),
-                &[(program.to_string(), expected)],
+                &[(
+                    program.to_string(),
+                    vec!["/roots/my backlog/tasks/task-1 - a&b.md".to_string()]
+                )],
                 "{platform:?}"
             );
+        }
+    }
+
+    /// **No association launch passes an argument that a launcher would read as an option.**
+    ///
+    /// This is the rule the `--` removal leaves behind, and it is asserted over both routes and every
+    /// platform rather than over the one line that changed: released `xdg-open` refuses *any* argument
+    /// beginning with `-` — `--` included — so an argv element of that shape is a launch that fails with
+    /// a syntax error instead of opening something. Re-introducing a "guard" argument fails here.
+    #[test]
+    fn no_association_launch_passes_an_option_shaped_argument() {
+        let env = FakeEnv::default();
+        for platform in Platform::ALL {
+            let file = FakeLauncher::default();
+            open_on(
+                platform,
+                None,
+                &env,
+                &file,
+                LaunchMethod::Association,
+                Path::new("/roots/backlog/tasks/task-1.md"),
+            )
+            .expect("launched");
+            let url = FakeLauncher::default();
+            open_url_on(platform, &url, "https://example.com/a").expect("launched");
+
+            for (route, launcher) in [("file", &file), ("url", &url)] {
+                for (program, args) in launcher.spawns.borrow().iter() {
+                    for arg in args {
+                        assert!(
+                            !arg.starts_with('-'),
+                            "{platform:?} {route}: {program} was passed {arg:?}, which a launcher \
+                             reads as an option rather than as what to open"
+                        );
+                    }
+                }
+            }
         }
     }
 

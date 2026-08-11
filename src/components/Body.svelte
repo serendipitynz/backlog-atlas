@@ -41,7 +41,9 @@
   $effect(() => {
     const root = block;
     const html = view.kind === "formatted" ? view.html : null;
-    if (root === null || html === null) return;
+    if (root === null || html === null) {
+      return;
+    }
     void drawFigures(root, scheme);
   });
 
@@ -59,20 +61,28 @@
    */
   function press(event: MouseEvent): void {
     const target = event.target;
-    if (!(target instanceof Element)) return;
+    if (!(target instanceof Element)) {
+      return;
+    }
     const anchor = target.closest(`a.${BODY_LINK_CLASS}`);
-    if (anchor === null) return;
+    if (anchor === null) {
+      return;
+    }
     // Before the classification, not after: a link that reaches here must not navigate this webview even
     // if the href turns out to be one the screen would not have drawn.
     event.preventDefault();
     const url = bodyLinkTarget(anchor.getAttribute("href") ?? "");
-    if (url === null) return;
+    if (url === null) {
+      return;
+    }
     onopenlink(url);
   }
 
   $effect(() => {
     const root = block;
-    if (root === null) return;
+    if (root === null) {
+      return;
+    }
     root.addEventListener("click", press);
     root.addEventListener("auxclick", press);
     return () => {
@@ -239,20 +249,26 @@
       border-top: 1px solid var(--line);
     }
 
-    // タスクリスト (doc-11 §14.4): the marker is the 印, so the bullet goes.
-    :global(.body-task-list) {
-      padding-left: 0;
+    // タスクリスト (doc-11 §14.4): the 印 replaces the marker **on the item that has one**.
+    //
+    // On the item and not on the list, because a list can hold both kinds: `- [x] done` beside
+    // `- ordinary`. Suppressing the marker on the `<ul>` took the bullet off the ordinary sibling too,
+    // and the indent with it — a list that GFM renders with one bullet and one checkbox came out with
+    // neither. The item also stays a block: `display: flex` on it put a nested list *beside* the item's
+    // own text instead of under it.
+    :global(.body-task) {
       list-style: none;
     }
 
-    :global(.body-task) {
-      display: flex;
-      gap: 0.25rem;
-      align-items: baseline;
+    // Inline-flex, so the 印 sits in the text's flow: the figure inside is `display: block` (doc-11
+    // §2.4's form, as `Icon.svelte` draws it), and a block child in a bare inline span would break the
+    // line. 1em is §2.4's size — the figure follows the text beside it.
+    :global(.body-task-mark) {
+      display: inline-flex;
+      margin-right: 0.25rem;
+      vertical-align: -0.15em;
     }
 
-    // 1em (doc-11 §2.4): the figure follows the text beside it. `iconMarkup` emits no styles of its own,
-    // so the size is stated here — the same two declarations `Icon.svelte` makes for the mounted form.
     :global(.body-task-mark svg) {
       width: 1em;
       height: 1em;

@@ -37,9 +37,6 @@ export const BODY_LINK_CLASS = "body-link";
 /** Class on a 作図フェンス's `<pre>` (doc-8 §9.2, doc-11 §14.5). */
 export const BODY_FIGURE_CLASS = "body-figure";
 
-/** Class on a `<ul>`/`<ol>` that holds `- [ ]` items, so the marker can be dropped from those alone. */
-export const BODY_TASK_LIST_CLASS = "body-task-list";
-
 /** Class on one `- [ ]` item. */
 export const BODY_TASK_CLASS = "body-task";
 
@@ -87,7 +84,9 @@ const TASK_MARKER = /^\[([ \txX])\][ \t]+/;
  */
 function bodyLinks(state: StateCore): boolean {
   for (const token of state.tokens) {
-    if (token.type !== "inline" || token.children === null) continue;
+    if (token.type !== "inline" || token.children === null) {
+      continue;
+    }
     const kept: Token[] = [];
     // One entry per open link, so the matching close is dropped and no other. Links do not nest in
     // CommonMark, but a stack costs nothing and says that out loud.
@@ -99,7 +98,9 @@ function bodyLinks(state: StateCore): boolean {
         // a cast that would also accept the wrong shape.
         const target = bodyLinkTarget(String(child.attrGet("href") ?? ""));
         dropping.push(target === null);
-        if (target === null) continue;
+        if (target === null) {
+          continue;
+        }
         // The href is left exactly as the 本文 wrote it: decision-25 hands the boundary that value, and
         // a normalised copy would make what the screen shows and what the OS gets two different strings.
         child.attrJoin("class", BODY_LINK_CLASS);
@@ -107,7 +108,9 @@ function bodyLinks(state: StateCore): boolean {
         continue;
       }
       if (child.type === "link_close") {
-        if (dropping.pop() === true) continue;
+        if (dropping.pop() === true) {
+          continue;
+        }
         kept.push(child);
         continue;
       }
@@ -121,6 +124,9 @@ function bodyLinks(state: StateCore): boolean {
 /**
  * GFM task lists as 状態の印, not as inputs (doc-11 §14.4).
  *
+ * Only the item is marked. A list can hold a task item and an ordinary one at once, so a class on the
+ * enclosing list would take the marker off both (which it did, until 2026-08-11).
+ *
  * Hand-written rather than a plugin: the rule is this one pass, and every plugin for it emits an
  * `<input type="checkbox" disabled>` — a control that refuses, where doc-11 §14.4 asks for the figure
  * ACCEPTANCE CRITERIA already uses for the same "ticked, not pressable" state (doc-8 §3).
@@ -130,28 +136,26 @@ function bodyLinks(state: StateCore): boolean {
  */
 function bodyTaskLists(state: StateCore): boolean {
   const tokens = state.tokens;
-  // The enclosing list, so the bullet is suppressed on lists that have task items and no others.
-  const lists: Token[] = [];
 
   for (let at = 0; at < tokens.length; at += 1) {
     const token = tokens[at];
-    if (token.type === "bullet_list_open" || token.type === "ordered_list_open") {
-      lists.push(token);
+    if (token.type !== "inline" || at < 2) {
       continue;
     }
-    if (token.type === "bullet_list_close" || token.type === "ordered_list_close") {
-      lists.pop();
+    if (tokens[at - 1].type !== "paragraph_open" || tokens[at - 2].type !== "list_item_open") {
       continue;
     }
-    if (token.type !== "inline" || at < 2) continue;
-    if (tokens[at - 1].type !== "paragraph_open" || tokens[at - 2].type !== "list_item_open") continue;
 
     // Matched on the first child rather than on `inline.content`, so a marker that inline parsing has
     // already turned into something else (a link, emphasis) is left as the author wrote it.
     const first = token.children?.[0];
-    if (first === undefined || first.type !== "text") continue;
+    if (first === undefined || first.type !== "text") {
+      continue;
+    }
     const marker = TASK_MARKER.exec(first.content);
-    if (marker === null) continue;
+    if (marker === null) {
+      continue;
+    }
 
     first.content = first.content.slice(marker[0].length);
     token.content = token.content.slice(marker[0].length);
@@ -166,12 +170,9 @@ function bodyTaskLists(state: StateCore): boolean {
       `${iconMarkup(checked ? "square-check" : "square")}</span>`;
     token.children?.unshift(mark);
 
+    // The class goes on the item alone. Marking the enclosing list as well is what put the marker
+    // suppression on a `<ul>` that can also hold ordinary items (doc-11 §14.4), so nothing needs it.
     tokens[at - 2].attrJoin("class", BODY_TASK_CLASS);
-    const list = lists[lists.length - 1];
-    // `attrJoin` unconditionally would repeat the class once per item.
-    if (list !== undefined && !String(list.attrGet("class") ?? "").includes(BODY_TASK_LIST_CLASS)) {
-      list.attrJoin("class", BODY_TASK_LIST_CLASS);
-    }
   }
   return true;
 }
@@ -185,7 +186,9 @@ function bodyTaskLists(state: StateCore): boolean {
  */
 function figureFence(md: Renderer): void {
   const fence = md.renderer.rules.fence;
-  if (fence === undefined) return;
+  if (fence === undefined) {
+    return;
+  }
   md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     if (token.info.trim().toLowerCase() !== FIGURE_LANGUAGE) {

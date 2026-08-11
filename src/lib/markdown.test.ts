@@ -7,7 +7,6 @@ import {
   BODY_FIGURE_CLASS,
   BODY_LINK_CLASS,
   BODY_TASK_CLASS,
-  BODY_TASK_LIST_CLASS,
   BODY_TASK_MARK_CLASS,
   bodyLinkTarget,
   bodyView,
@@ -16,7 +15,9 @@ import {
 /** The HTML for a 本文, or a failure if 整形 did not happen — every test here expects the former. */
 function html(source: string): string {
   const view = bodyView(source);
-  if (view.kind !== "formatted") throw new Error("整形表示 になっていない");
+  if (view.kind !== "formatted") {
+    throw new Error("整形表示 になっていない");
+  }
   return view.html;
 }
 
@@ -146,17 +147,32 @@ describe("タスクリスト (doc-11 §14.4)", () => {
     expect(out).toContain('<path d="m9 12 2 2 4-4"/>');
   });
 
-  it("marks the list and the items, so the bullet can be dropped from those alone", () => {
+  it("marks the item and nothing above it", () => {
     const out = html("- [x] 済み\n- [ ] 未\n");
-    expect(out).toContain(`class="${BODY_TASK_LIST_CLASS}"`);
     expect([...out.matchAll(new RegExp(`class="${BODY_TASK_CLASS}"`, "g"))]).toHaveLength(2);
-    // Once on the list, however many items it has.
-    expect([...out.matchAll(new RegExp(`class="${BODY_TASK_LIST_CLASS}"`, "g"))]).toHaveLength(1);
+    // **Not the enclosing list.** A class there is what took the marker off an ordinary sibling as well
+    // (doc-11 §14.4), so the `<ul>` must carry nothing.
+    expect(out).toMatch(/<ul>\n/);
+  });
+
+  it("leaves an ordinary item in a mixed list untouched", () => {
+    // The case the list-level class broke: one task item and one plain item in the same list. The plain
+    // one must stay an ordinary `<li>` — with its bullet, which only its lack of a class can preserve.
+    const out = html("- [x] 済み\n- ふつうの項目\n");
+    const items = [...out.matchAll(/<li( class="([^"]*)")?>/g)].map((m) => m[2] ?? "");
+    expect(items).toEqual([BODY_TASK_CLASS, ""]);
+  });
+
+  it("keeps a nested list inside a task item as a block of its own", () => {
+    // `display: flex` on the item put a nested list beside the item's text; the markup that has to hold
+    // for the CSS fix to be possible is that the child list is still a child of the task `<li>`.
+    const out = html("- [x] 親\n  - 子\n");
+    expect(out).toMatch(new RegExp(`<li class="${BODY_TASK_CLASS}">[\\s\\S]*<ul>`));
   });
 
   it("leaves an ordinary list, and an item that only looks like one, alone", () => {
     const plain = html("- ふつうの項目\n- もう 1 つ\n");
-    expect(plain).not.toContain(BODY_TASK_LIST_CLASS);
+    expect(plain).not.toContain(BODY_TASK_CLASS);
     expect(plain).not.toContain(BODY_TASK_MARK_CLASS);
     // A marker that inline parsing already turned into something else is not a task item.
     expect(html("- [リンク](https://example.com) から始まる項目")).not.toContain(BODY_TASK_MARK_CLASS);
@@ -199,7 +215,6 @@ describe("整形表示 の見え方 (doc-11 §14)", () => {
     // renamed class with no rule behind it would draw an unstyled 本文 and pass every test above.
     for (const emitted of [
       BODY_LINK_CLASS,
-      BODY_TASK_LIST_CLASS,
       BODY_TASK_CLASS,
       BODY_TASK_MARK_CLASS,
       FIGURE_DRAWN_CLASS,

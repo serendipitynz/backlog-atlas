@@ -2305,6 +2305,16 @@ ordinal: 1000\n\
         fn shell_execute(&self, _target: &std::ffi::OsStr) -> std::io::Result<()> {
             unreachable!("the boundary's tests launch the configured editor, which is a spawn")
         }
+
+        /// Only 既定ブラウザ起動 observes its launch (doc-8 §9.3), and that command takes no project or
+        /// task — so it needs none of this module's fixtures and is asserted in `editor`'s own tests.
+        fn spawn_observed(
+            &self,
+            _program: &str,
+            _args: &[String],
+        ) -> std::io::Result<Option<String>> {
+            unreachable!("the boundary's tests do not open a 本文リンク")
+        }
     }
 
     #[test]
