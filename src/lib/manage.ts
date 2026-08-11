@@ -131,8 +131,15 @@ const QUOTED_VALUE_LIMIT = 20;
  * without hovering, and a clamped line moves half of it into a tooltip.
  */
 export function commaReason(what: string, value: string): string {
+  // Cut by code point, not by `slice`: a label may hold an astral character (an emoji is one), and
+  // cutting between its two UTF-16 units leaves a lone surrogate that draws as `�` — a character the
+  // reader never typed, in the sentence whose whole job is to name the value they did type. The cut
+  // still lands inside a grapheme cluster (a ZWJ emoji sequence splits into its parts), which is
+  // acceptable where a replacement character is not: the quote is there to identify the value, and a
+  // partial sequence identifies while `�` misreports.
+  const points = [...value];
   const quoted =
-    value.length > QUOTED_VALUE_LIMIT ? `${value.slice(0, QUOTED_VALUE_LIMIT)}…` : value;
+    points.length > QUOTED_VALUE_LIMIT ? `${points.slice(0, QUOTED_VALUE_LIMIT).join("")}…` : value;
   return (
     `${what}に「,」を含められません（1 個のカンマ区切り値として扱われるため、` +
     `「${quoted}」は 2 件に分かれます）`

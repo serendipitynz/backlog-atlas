@@ -169,7 +169,19 @@ describe("buildTaskCreate", () => {
     // Still says *which* label: the head is what distinguishes it from the others.
     expect(reason).toContain("ui,");
     expect(reason).toContain("…");
-    expect(reason.length).toBeLessThan(80);
+    // Counted in code points, which is what the width of the drawn line follows — `length` counts
+    // UTF-16 units, so an all-astral label would double it without drawing any wider.
+    expect([...reason].length).toBeLessThan(80);
+  });
+
+  it("cuts the quoted label between characters, not between the halves of one", () => {
+    // An emoji is one code point in two UTF-16 units. Cutting between them leaves a lone surrogate
+    // that draws as `�` — a character the reader never typed, in the sentence naming what they did.
+    const reason = blockedReason(
+      buildTaskCreate(taskInput({ labels: [`${"a".repeat(19)}😀,tail`] })),
+    );
+    expect(reason).toContain(`${"a".repeat(19)}😀…`);
+    expect(reason).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
   });
 });
 
