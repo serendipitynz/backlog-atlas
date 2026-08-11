@@ -355,9 +355,19 @@
     opacity: 0.7;
   }
 
+  // フォーム部品の高さ (doc-11 §2.2): 1.75rem, the step the 作成モーダル takes — this layer is a form
+  // the user is here to fill in, and one kind of layer should not answer that question two ways.
+  // The 選択… beside each input is a フォーム部品 too (doc-11 §1), and it only matched by accident
+  // before: `stretch` is this row's default, and it stops matching the moment either side states
+  // anything of its own.
   .field {
     display: flex;
     gap: 0.25rem;
+
+    input[type="text"],
+    button {
+      height: 1.75rem;
+    }
 
     input[type="text"] {
       flex: 1;

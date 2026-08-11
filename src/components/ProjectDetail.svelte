@@ -3044,6 +3044,13 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.25rem;
+
+    // 同じ行に並ぶ押しボタンはフォーム部品である (doc-11 §1・§2.2). The row is `center`, not the flex
+    // default `stretch`, so the buttons do not pick the input's height up on their own — that is what
+    // left 選択… 3.95px shorter than the path beside it (WebKit, 変更前実測).
+    button {
+      height: 1.75rem;
+    }
   }
 
   .value-line {
@@ -3074,8 +3081,16 @@
     color: var(--muted);
   }
 
+  /*
+   * フォーム部品の高さ (doc-11 §2.2). 1.75rem — the largest step, because this screen's 4 区画 and its
+   * 作成モーダル are forms the user is here to fill in, and the step nearest what they already drew.
+   * Stated rather than left to the engine: the padding below is written once for both, and WebKit
+   * ignores it on `select` (computed 0px against Chromium's 4px, measured 2026-08-11), so without a
+   * height the two engines gave the row three different pictures. `box-sizing` comes from app.scss.
+   */
   input[type="text"],
   select {
+    height: 1.75rem;
     padding: 0.25rem 0.35rem;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
@@ -3226,8 +3241,10 @@
     // 行削除 as an アイコンのみのボタン (doc-11 §2.4, doc-10 §4.2 の逸脱 1 件目). Centred and squared
     // off: the shared `button` padding above is sized for a word, and a figure given it sits in a box
     // wider than it is tall — beside an input and a select, that reads as a third field.
+    // The height is the row's (doc-11 §2.2): this row is `center`, so nothing hands it down.
     .drop {
       display: inline-flex;
+      height: 1.75rem;
       align-items: center;
       padding: 0.15rem 0.3rem;
     }

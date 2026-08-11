@@ -636,6 +636,35 @@
     align-items: center;
     gap: 0.35rem;
 
+    // フォーム部品の高さ (doc-11 §2.2): 1.75rem, the step the 作成モーダル and the 登録モーダル take —
+    // this layer is a form the user is here to fill in. The `select`s are in it and the `textarea` is
+    // not (doc-11 §1): three of these controls are `select`s whose height was the engine's alone
+    // (18px in WebKit against this form's 23.19px inputs, 変更前実測), while the `textarea` is sized
+    // by its `rows` and has no step to take.
+    input[type="text"],
+    select {
+      height: 1.75rem;
+    }
+
+    /*
+     * The `select`s carried no author styling at all until now, and that is not only a look: **WebKit
+     * refuses an author `height` on a `select` it is still drawing as a native menulist** — measured
+     * 18px here against Chromium's 28px from the one declaration above, while the same declaration on
+     * the other four screens took in both engines. What those screens have and this one lacked is a
+     * frame and a surface. So the frame is what makes the height hold, and it is the inputs' own.
+     * `--inset` rather than the inputs' `transparent`: `transparent` leaves the menulist drawing in
+     * WebKit, and the arrow that tells a `select` from an input goes with the native rendering.
+     */
+    select {
+      padding: 0.15rem 0.3rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 3px;
+      background: var(--inset);
+      color: inherit;
+      font: inherit;
+      font-size: 0.75rem;
+    }
+
     input[type="text"],
     textarea {
       flex: 1;
