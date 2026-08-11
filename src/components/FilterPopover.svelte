@@ -475,12 +475,20 @@
     color: var(--faint);
   }
 
+  // 控えの群 (doc-11 §2.2): 検索を消す and 閉じる stand side by side whenever something is being
+  // searched for, and neither issues anything, so the row is a group rather than a 発行の行 (§11).
+  // The height is stated even though the pair is only sometimes two — a rule that held only while a
+  // search box had text in it would be one nobody could check.
   footer {
     display: flex;
     align-items: center;
     gap: 0.45rem;
     padding-top: 0.25rem;
     border-top: 1px solid var(--line);
+
+    button {
+      height: 1.4rem;
+    }
   }
 
   .selected {

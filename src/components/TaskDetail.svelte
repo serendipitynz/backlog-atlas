@@ -2575,10 +2575,17 @@
     gap: 0.3rem;
   }
 
+  // 控えの群 (doc-11 §2.2): two buttons choosing one mode, with no field among them, so they take a
+  // step like the 前後移動 and 配置切替 groups above — the panel's 1.4rem. Not a 発行の行 (§11): neither
+  // of them issues anything, they pick which shape the 編集 below takes.
   .modes {
     display: flex;
     flex-wrap: wrap;
     gap: 0.3rem;
+
+    button {
+      height: 1.4rem;
+    }
   }
 
   .add-row {
