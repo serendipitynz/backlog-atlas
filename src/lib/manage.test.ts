@@ -159,6 +159,18 @@ describe("buildTaskCreate", () => {
     // labels with nothing reporting it.
     expect(blockedReason(buildTaskCreate(taskInput({ labels: ["ui,auth"] })))).toContain("ui,auth");
   });
+
+  it("bounds the reason, because the label it quotes is typed by the reader", () => {
+    // The sentence is drawn inside a 固定行 whose height doc-11 §13 bounds, and a label has no length
+    // limit — quoting one whole put the row past the band the rule requires (実測 2026-08-11).
+    const long = `ui,${"あ".repeat(600)}`;
+    const reason = blockedReason(buildTaskCreate(taskInput({ labels: [long] })));
+    expect(reason).not.toContain(long);
+    // Still says *which* label: the head is what distinguishes it from the others.
+    expect(reason).toContain("ui,");
+    expect(reason).toContain("…");
+    expect(reason.length).toBeLessThan(80);
+  });
 });
 
 // --- 文書作成 (doc-5 §3 doc create, AC #2) ----------------------------------------------------

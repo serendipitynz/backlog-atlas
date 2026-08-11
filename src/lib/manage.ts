@@ -114,14 +114,28 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
+ * How much of the offending value the reason quotes. The quote is there to say *which* value has the
+ * comma, and a head that long distinguishes it; the whole string would put no bound on the sentence.
+ */
+const QUOTED_VALUE_LIMIT = 20;
+
+/**
  * Why a comma cannot appear in a label or a tag. `task create --labels` and `doc update --tags` take
  * *one* comma-separated value in v1.48.0 (doc-5 §3, `update.rs`), so a value containing a comma would
  * silently become two — the failure mode worth anticipating, since nothing would report it.
+ *
+ * The quoted value is cut because this sentence is drawn inside a 固定行 (doc-11 §11), whose height
+ * doc-11 §13 bounds: a label is typed by the reader and has no length limit, and quoting it whole put
+ * the row at 350.25px of a 367px pane in a 640×480 窓 — under the band the rule requires (measured
+ * 2026-08-11, 600 characters). Cut here rather than clamped in CSS: doc-11 §5 wants the reason legible
+ * without hovering, and a clamped line moves half of it into a tooltip.
  */
 export function commaReason(what: string, value: string): string {
+  const quoted =
+    value.length > QUOTED_VALUE_LIMIT ? `${value.slice(0, QUOTED_VALUE_LIMIT)}…` : value;
   return (
     `${what}に「,」を含められません（1 個のカンマ区切り値として扱われるため、` +
-    `「${value}」は 2 件に分かれます）`
+    `「${quoted}」は 2 件に分かれます）`
   );
 }
 
