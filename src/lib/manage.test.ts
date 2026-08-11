@@ -159,6 +159,30 @@ describe("buildTaskCreate", () => {
     // labels with nothing reporting it.
     expect(blockedReason(buildTaskCreate(taskInput({ labels: ["ui,auth"] })))).toContain("ui,auth");
   });
+
+  it("bounds the reason, because the label it quotes is typed by the reader", () => {
+    // The sentence is drawn inside a 固定行 whose height doc-11 §13 bounds, and a label has no length
+    // limit — quoting one whole put the row past the band the rule requires (実測 2026-08-11).
+    const long = `ui,${"あ".repeat(600)}`;
+    const reason = blockedReason(buildTaskCreate(taskInput({ labels: [long] })));
+    expect(reason).not.toContain(long);
+    // Still says *which* label: the head is what distinguishes it from the others.
+    expect(reason).toContain("ui,");
+    expect(reason).toContain("…");
+    // Counted in code points, which is what the width of the drawn line follows — `length` counts
+    // UTF-16 units, so an all-astral label would double it without drawing any wider.
+    expect([...reason].length).toBeLessThan(80);
+  });
+
+  it("cuts the quoted label between characters, not between the halves of one", () => {
+    // An emoji is one code point in two UTF-16 units. Cutting between them leaves a lone surrogate
+    // that draws as `�` — a character the reader never typed, in the sentence naming what they did.
+    const reason = blockedReason(
+      buildTaskCreate(taskInput({ labels: [`${"a".repeat(19)}😀,tail`] })),
+    );
+    expect(reason).toContain(`${"a".repeat(19)}😀…`);
+    expect(reason).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+  });
 });
 
 // --- 文書作成 (doc-5 §3 doc create, AC #2) ----------------------------------------------------
