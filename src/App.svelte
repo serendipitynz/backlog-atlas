@@ -5,8 +5,11 @@
   //
   // Row order is deliberately *not* screen state: it is the ledger's entry order (doc-3 §2.2),
   // and a reorder is written back through `ledger_update` (doc-7 §5 allows reflecting it
-  // there), so the order the user arranges survives a restart. Row visibility is the opposite —
-  // doc-7 §5 calls it 一時的 — so `hidden` never leaves this component.
+  // there), so the order the user arranges survives a restart. 行非表示 と 折畳み 2 種 are the
+  // opposite — doc-7 §5.1 calls them 一時状態 — and this component is the only one that writes the
+  // three. It holds them rather than the grid because it is the one that stays: 実行内保持
+  // (doc-7 §5.1). The 2 folds reach the grid as props for it to draw from; `hidden` never leaves,
+  // since it decides which rows the grid is handed at all.
   import { onDestroy, onMount, untrack } from "svelte";
   import FilterBar from "./components/FilterBar.svelte";
   import HeaderMenu from "./components/HeaderMenu.svelte";
@@ -110,10 +113,12 @@
     CANONICAL_COLUMN_LABEL,
     DEFAULT_CARD_ORDER,
     buildSwimlane,
+    columnFoldable,
     laneNeighbours,
     swimlaneTotals,
     totalsLabel,
     unreadableDetail,
+    type GridColumn,
   } from "./lib/swimlane";
   import type {
     AppSettings,
@@ -250,7 +255,18 @@
    */
   let settingsDirty = $state(false);
   let loadBySlug = $state<Record<string, ProjectLoad>>({});
+  /**
+   * 行非表示・行折畳み・列折畳み (doc-7 §5.1) の 3 値.
+   *
+   * All three are held here rather than in `Swimlane.svelte`, because 一時状態 in doc-7 §5.1 means
+   * 実行内保持: the grid is unmounted whenever プロジェクト詳細画面 is entered, and again when a task is
+   * opened while 既定の詳細配置 is 全面シングルビュー — a value the grid held would be back at its
+   * initial state on the return, which is not what the user asked the fold for. Nothing outside this
+   * component writes them, and the 2 folds are read only by the grid.
+   */
   let hidden = $state<string[]>([]);
+  let foldedRows = $state<string[]>([]);
+  let collapsedColumns = $state<GridColumn[]>([]);
   let filter = $state<CardFilter>(DEFAULT_FILTER);
   let ledgerReadOnly = $state(false);
   let loading = $state(true);
@@ -1215,6 +1231,7 @@
       const { [slug]: _dropped, ...remaining } = loadBySlug;
       loadBySlug = remaining;
       hidden = hidden.filter((candidate) => candidate !== slug);
+      foldedRows = foldedRows.filter((candidate) => candidate !== slug);
       unwatched = unwatched.filter((candidate) => candidate !== slug);
       conflicts = Object.fromEntries(
         // The key is `JSON.stringify([slug, path])` (`mark.ts`), so the slug is its first element.
@@ -1740,6 +1757,28 @@
       : [...hidden, slug];
   }
 
+  /** 行折畳み (doc-7 §2.3・§5.1) を、レーンヘッダ行の控えが押された行について入れ替える。 */
+  function toggleRowFold(slug: string): void {
+    foldedRows = foldedRows.includes(slug)
+      ? foldedRows.filter((candidate) => candidate !== slug)
+      : [...foldedRows, slug];
+  }
+
+  /**
+   * 列折畳み (doc-7 §2.2・§5.1) を入れ替える。
+   *
+   * 残り 1 列は畳めない (doc-7 §2.2) is checked here and not only where the control draws its refusal:
+   * the rule is about the value, and the value is on this side, so a caller that reached this without
+   * checking would fold the grid shut. The control keeps its own call to the same function because it
+   * has a second job — naming the refusal (doc-11 §5) — which this one does not do.
+   */
+  function toggleColumnFold(column: GridColumn): void {
+    if (!columnFoldable(collapsedColumns, column)) return;
+    collapsedColumns = collapsedColumns.includes(column)
+      ? collapsedColumns.filter((candidate) => candidate !== column)
+      : [...collapsedColumns, column];
+  }
+
   // --- 固定ヘッダ・メニュー・ショートカット (doc-7 §2.1, TASK-56) -------------------------------
 
   /**
@@ -2216,6 +2255,8 @@
              while a task is read. With nothing open there is nothing to give way to. -->
         <Swimlane
           {rows}
+          {foldedRows}
+          {collapsedColumns}
           density={cardDensity}
           {showStorageMark}
           selectedPath={selectedRef?.sourcePath ?? null}
@@ -2233,6 +2274,8 @@
           oncreateTitle={(value) => (laneCreateTitle = value)}
           oncreateStatus={(value) => (laneCreateHeldStatus = value)}
           oncreateSubmit={submitLaneCreate}
+          onrowFold={toggleRowFold}
+          oncolumnFold={toggleColumnFold}
           onselect={open}
           onmove={move}
           onretry={retry}

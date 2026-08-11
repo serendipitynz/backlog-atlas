@@ -4,11 +4,11 @@ title: アプリ窓が Atlas から離れる経路が本文リンク以外に残
 status: To Do
 assignee: []
 created_date: '2026-08-11 10:40'
-updated_date: '2026-08-11 10:40'
+updated_date: '2026-08-11 11:20'
 labels:
   - ui
   - 'kind:research'
-milestone: m-2
+milestone: m-3
 dependencies: []
 priority: high
 ordinal: 142500
