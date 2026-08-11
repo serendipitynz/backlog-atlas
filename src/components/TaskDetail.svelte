@@ -2270,8 +2270,12 @@
    * doc-8 §3 writes them in. The label tracks are `auto` rather than a fixed 5.5rem: with two pairs on
    * a line, a fixed label column spends width the values need, and the labels here are short.
    *
-   * The whole table drops to one pair per line under a narrow box. `--frame-control` is not involved:
-   * these rows carry text only, so the line box is the right thing to size them.
+   * `--frame-control` is not involved: these rows carry text only, so the line box is the right thing
+   * to size them. (An earlier note here said the table "drops to one pair per line under a narrow
+   * box". It does not — the four tracks have no wrapping rule — and what it actually did was push the
+   * panel sideways, measured at 35 / 66 / 84px of horizontal overflow in a 700 / 560 / 480px 窓 during
+   * an 編集セッション, 変更前 2026-08-11. `minmax(0, 1fr)` lets the *track* reach zero; the `select` in
+   * it kept its own `min-width: auto`, so the track could not take the value with it.)
    */
   .facts {
     display: grid;
@@ -2279,6 +2283,11 @@
     gap: 0.15rem 0.5rem;
     margin: 0;
     font-size: 0.74rem;
+
+    // 値は列の幅に従う。値が列を押し広げると、押し広げた分だけパネルが横へスクロールする。
+    select {
+      min-width: 0;
+    }
 
     dt {
       opacity: 0.6;
