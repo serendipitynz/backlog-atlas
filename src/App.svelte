@@ -6,8 +6,10 @@
   // Row order is deliberately *not* screen state: it is the ledger's entry order (doc-3 §2.2),
   // and a reorder is written back through `ledger_update` (doc-7 §5 allows reflecting it
   // there), so the order the user arranges survives a restart. 行非表示 と 折畳み 2 種 are the
-  // opposite — doc-7 §5.1 calls them 一時状態 — so the three never leave this component. They are held
-  // here and not in the grid because this component is the one that stays: 実行内保持 (doc-7 §5.1).
+  // opposite — doc-7 §5.1 calls them 一時状態 — and this component is the only one that writes the
+  // three. It holds them rather than the grid because it is the one that stays: 実行内保持
+  // (doc-7 §5.1). The 2 folds reach the grid as props for it to draw from; `hidden` never leaves,
+  // since it decides which rows the grid is handed at all.
   import { onDestroy, onMount, untrack } from "svelte";
   import FilterBar from "./components/FilterBar.svelte";
   import HeaderMenu from "./components/HeaderMenu.svelte";
