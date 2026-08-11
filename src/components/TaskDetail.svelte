@@ -737,11 +737,13 @@
 <!-- 見出し (doc-8 §3): 常設 in all three placements. -->
 {#snippet heading()}
   <header class="heading">
-    <div class="line">
+    <div class="line id-line">
       <!-- 横断タスクID を併記 (doc-8 §2, doc-3 §5.3): the panel is single-project, but the heading
            still says which project's task this is. A 解析不能 file has no id, so it is named by
            its file — the only stable handle it has (doc-4 §5). -->
-      <span class="identity">{cardIdentity(view)}</span>
+      <!-- 行に収まらない幅では末尾を落とす (doc-8 §2.2 の「1 行に収める」)。落ちるのは描かれる字だけで、
+           全体は `title` が持ち、隣の控えは描かれた字ではなく値そのものをコピーする。 -->
+      <span class="identity" title={cardIdentity(view)}>{cardIdentity(view)}</span>
       <!-- ID コピーは ID の右横 (doc-8 §2.2, TASK-72). アイコンのみのボタン (doc-11 §2.4): the figure
            carries no words, so `aria-label` holds the whole name — and it holds the *operation* name
            only. 成功 is said by the sentence below, which is a live region, rather than by a name that
@@ -867,100 +869,106 @@
       {/if}
       {@render editEntry()}
     </div>
-
-    <dl class="facts">
-      <dt>status</dt>
-      <dd>
-        {#if session !== null}
-          <select
-            aria-label="status"
-            value={session.draft.status}
-            onchange={(event) => edit("status", event.currentTarget.value)}
-          >
-            {#each optionsFor(task.status, snapshot.config.statuses) as option (option.value)}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-        {:else if status === null}
-          <span class="mark" data-kind="inconsistent">status を読めません</span>
-        {:else}
-          <span class="raw">{status.raw}</span>
-          <!-- 正準対応を併記 (AC #1): 未分類 status is stated as such rather than shown blank. -->
-          {#if status.column === null}
-            <span class="mark unmapped">正準列 未分類</span>
-          {:else}
-            <span class="column">正準列: {CANONICAL_COLUMN_LABEL[status.column]}</span>
-          {/if}
-          {#if status.declaration === "undeclared"}
-            <span class="mark unmapped">config.yml 未宣言</span>
-          {:else if status.declaration === "noDeclaredSet"}
-            <span class="mark neutral">config.yml に status 宣言なし</span>
-          {:else if status.declaration === "draft"}
-            <span class="mark neutral">draft の既知 status</span>
-          {/if}
-        {/if}
-      </dd>
-
-      <dt>priority</dt>
-      <!-- priority の値は 優先度色 で書く (decision-23): カードが色で述べていることを、詳細でも同じ
-           色で述べる。札にはしない — 主要属性の値は素の文字で並んでおり、ここだけ札にすると
-           doc-11 §3 のチップの 4 系統に 5 つ目が現れる。3 段のどれでもない値と `—` は色を持たない
-           (`data-priority` が付かない)。編集中は `<select>` がプラットフォームの描画なので、色は
-           閲覧時の値にだけ効く。 -->
-      <dd data-priority={session === null ? priorityStep(task.priority) : null}>
-        {#if session !== null}
-          <select
-            aria-label="priority"
-            value={session.draft.priority}
-            onchange={(event) => edit("priority", event.currentTarget.value)}
-          >
-            {#each optionsFor(task.priority, PRIORITIES) as option (option.value)}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-        {:else}
-          {task.priority ?? "—"}
-        {/if}
-      </dd>
-
-      <dt>保存区分</dt>
-      <dd>
-        {task.storageState === null ? "保存区分不明" : STORAGE_LABEL[task.storageState]}
-      </dd>
-
-      <dt>milestone</dt>
-      <dd>
-        {#if session !== null}
-          <select
-            aria-label="milestone"
-            value={session.draft.milestone}
-            onchange={(event) => edit("milestone", event.currentTarget.value)}
-          >
-            {#each milestoneOptions(snapshot, task.milestone) as option (option.value)}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-        {:else if milestone === null}
-          —
-        {:else}
-          {milestone.id}
-          {#if milestone.title === null}
-            <span class="mark unmapped">未解決</span>
-          {:else}
-            <span class="resolved">{milestone.title}</span>
-          {/if}
-        {/if}
-      </dd>
-
-      <!-- created と updated は別のセル (画面設計案 02 の 3 段目。doc-12 §3). 1 セルに 2 つ収めると
-           `tabular-nums` が桁を揃える相手を持たない — 揃えたい 2 つが同じ列に立って初めて効く。 -->
-      <dt>created</dt>
-      <dd class="date">{task.createdDate ?? "—"}</dd>
-
-      <dt>updated</dt>
-      <dd class="date">{task.updatedDate ?? "—"}</dd>
-    </dl>
   </header>
+
+  <!-- 主要属性の属性表 (doc-8 §3): 見出しの 3 行目でありながら、上の 2 行と違って固定帯の外に立つ。
+       固定行の高さの上限 (doc-11 §13) がこの行を締め出す — 6 つの値は面が狭くなるほど折り返し、
+       実測では 560px 幅の窓で 94.58px、320px で 162.58px を取っていた (WebKit・閲覧)。固定帯が
+       それを背負うと、帯の残りが控え 1 つぶんを切って面の内容が届かなくなる。**この行を固定する
+       理由は doc-8 §3 に書かれていない** — 同節が固定の理由に挙げるのは ID コピー・前後移動・
+       閉じる の 3 つで、いずれも 1 行目の控えである。 -->
+  <dl class="facts">
+    <dt>status</dt>
+    <dd>
+      {#if session !== null}
+        <select
+          aria-label="status"
+          value={session.draft.status}
+          onchange={(event) => edit("status", event.currentTarget.value)}
+        >
+          {#each optionsFor(task.status, snapshot.config.statuses) as option (option.value)}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+      {:else if status === null}
+        <span class="mark" data-kind="inconsistent">status を読めません</span>
+      {:else}
+        <span class="raw">{status.raw}</span>
+        <!-- 正準対応を併記 (AC #1): 未分類 status is stated as such rather than shown blank. -->
+        {#if status.column === null}
+          <span class="mark unmapped">正準列 未分類</span>
+        {:else}
+          <span class="column">正準列: {CANONICAL_COLUMN_LABEL[status.column]}</span>
+        {/if}
+        {#if status.declaration === "undeclared"}
+          <span class="mark unmapped">config.yml 未宣言</span>
+        {:else if status.declaration === "noDeclaredSet"}
+          <span class="mark neutral">config.yml に status 宣言なし</span>
+        {:else if status.declaration === "draft"}
+          <span class="mark neutral">draft の既知 status</span>
+        {/if}
+      {/if}
+    </dd>
+
+    <dt>priority</dt>
+    <!-- priority の値は 優先度色 で書く (decision-23): カードが色で述べていることを、詳細でも同じ
+         色で述べる。札にはしない — 主要属性の値は素の文字で並んでおり、ここだけ札にすると
+         doc-11 §3 のチップの 4 系統に 5 つ目が現れる。3 段のどれでもない値と `—` は色を持たない
+         (`data-priority` が付かない)。編集中は `<select>` がプラットフォームの描画なので、色は
+         閲覧時の値にだけ効く。 -->
+    <dd data-priority={session === null ? priorityStep(task.priority) : null}>
+      {#if session !== null}
+        <select
+          aria-label="priority"
+          value={session.draft.priority}
+          onchange={(event) => edit("priority", event.currentTarget.value)}
+        >
+          {#each optionsFor(task.priority, PRIORITIES) as option (option.value)}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+      {:else}
+        {task.priority ?? "—"}
+      {/if}
+    </dd>
+
+    <dt>保存区分</dt>
+    <dd>
+      {task.storageState === null ? "保存区分不明" : STORAGE_LABEL[task.storageState]}
+    </dd>
+
+    <dt>milestone</dt>
+    <dd>
+      {#if session !== null}
+        <select
+          aria-label="milestone"
+          value={session.draft.milestone}
+          onchange={(event) => edit("milestone", event.currentTarget.value)}
+        >
+          {#each milestoneOptions(snapshot, task.milestone) as option (option.value)}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+      {:else if milestone === null}
+        —
+      {:else}
+        {milestone.id}
+        {#if milestone.title === null}
+          <span class="mark unmapped">未解決</span>
+        {:else}
+          <span class="resolved">{milestone.title}</span>
+        {/if}
+      {/if}
+    </dd>
+
+    <!-- created と updated は別のセル (画面設計案 02 の 3 段目。doc-12 §3). 1 セルに 2 つ収めると
+         `tabular-nums` が桁を揃える相手を持たない — 揃えたい 2 つが同じ列に立って初めて効く。 -->
+    <dt>created</dt>
+    <dd class="date">{task.createdDate ?? "—"}</dd>
+
+    <dt>updated</dt>
+    <dd class="date">{task.updatedDate ?? "—"}</dd>
+  </dl>
 {/snippet}
 
 <!-- 見出しの操作が述べる文 (doc-8 §3, doc-11 §5): drawn *below* the 見出し rather than inside it. Every
@@ -1953,10 +1961,12 @@
   .title-line {
     align-items: center;
     gap: 0.5rem;
-    // The row is one line in both states (目視 2026-08-04). It is part of the 固定 band, so a second
-    // line here is height the body never gets back — and the band would change height on entering an
-    // edit session, which is the one moment the reader is looking at the body.
-    flex-wrap: nowrap;
+    // The items stay on one line (`.line` above), but the title itself may take two — measured at
+    // 40px in a 320px 窓 against 22.86px in a wide one. That is affordable where the row above's
+    // wrapping was not: the 覆われない帯 (doc-11 §13) is held with room to spare at every window the
+    // app can be put in, and this is the one row whose whole job is to say which task is being read.
+    // The earlier note here read "one line in both states (目視 2026-08-04)", which the 2026-08-11
+    // measurement contradicts — the 目視 was done in a wide window.
 
     h2 {
       flex: 1;
@@ -2082,6 +2092,30 @@
     gap: 0.35rem;
   }
 
+  /*
+   * 1 行に収める (doc-8 §2.2) は、収まる幅では守り、収まらない幅では折り返す。**収まらない幅がある** —
+   * この行の控えの群は 253.73px (WebKit) / 257.14px (Chromium) を占め、縮まない。一方 併置サイドバーは
+   * `min(30rem, 45vw)` なので、窓 590px あたりでパネルの内容幅がその数を切る (2026-08-11 実測)。
+   *
+   * `nowrap` で押し通すと、そこから下は**横あふれ**になる (560px 窓で 12 / 16px) か、ID の描画幅が 0 に
+   * なる (600 / 620px 窓で実測) かのどちらかである。後者は doc-8 §2.2 が ID に与えた役目 —— 他所から
+   * このタスクを指し示す唯一の手段 —— を画面から消す。
+   *
+   * だから ID に**下限**を与え、折り返しを許す。**この行が折り返しても 覆われない帯 (doc-11 §13) は
+   * 割れない** — 帯を割っていたのは 3 行目の属性表で、それは固定帯の外へ出た。1 行に収めることは、
+   * それ自体が目的だったのではなく、帯を守るための手段だった。
+   *
+   * `flex: 1 1 0` は「折り返すかどうかは下限で決め、収まったら余りを全部取る」を 1 つの宣言で書く形で
+   * ある: 折り返しの判定が読むのは基準寸法を下限で留めた値なので、行は ID が下限を割るときにだけ
+   * 折り返し、そうでなければ ID が余白を吸って全体が出る。
+   */
+  .id-line {
+    // 控えと印は自分の寸法のまま。縮ませると図形と語が潰れ、doc-11 §2.2 の控えの群の 1 値も崩れる。
+    > :not(.identity) {
+      flex: none;
+    }
+  }
+
   // 前後移動 (doc-8 §2.2): 1 行目の右端、配置切替の手前。`margin-left: auto` はこちらが持ち、
   // `.frame` はその隣に続く — 2 つとも auto を持つと間が開いて 1 つの群に見えなくなる。
   .nav {
@@ -2111,8 +2145,15 @@
   }
 
   .identity {
+    // 下限 4rem は「`atlas:TASK-1` の頭が読める幅」で、`.copy` が同じ行に居られる最小でもある
+    // (実測 64px ＝ 約 6 字 ＋ 省略記号)。0 を許すと、行は収まったまま ID が消える。
+    flex: 1 1 0;
+    min-width: 4rem;
+    overflow: hidden;
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     opacity: 0.75;
   }
 
