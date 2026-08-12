@@ -48,6 +48,7 @@ import {
   type TaskCreateInput,
 } from "./manage";
 import { readinessReason } from "./edit";
+import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import { taskView } from "./fixtures";
 import type { CliReadiness, DocUpdate, Document, Milestone } from "./wire";
 
@@ -91,7 +92,7 @@ function blockedReason(plan: IssuePlan): string {
   return plan.reason;
 }
 
-const READY: CliReadiness = { state: "ready", version: "1.48.0" };
+const READY: CliReadiness = { state: "ready", version: CONFIRMED_CLI_VERSION };
 
 // --- 新規タスク作成 (doc-5 §3 task create・doc-10 §7 作成時に渡す範囲, AC #1) ------------------
 
@@ -537,7 +538,7 @@ describe("buildMilestoneDescribe", () => {
 });
 
 describe("発行の可否", () => {
-  const ready: CliReadiness = { state: "ready", version: "1.48.0" };
+  const ready: CliReadiness = { state: "ready", version: CONFIRMED_CLI_VERSION };
   const plan: IssuePlan = { state: "ready", action: [{ op: "milestoneAdd", name: "m-2" }] };
 
   it("lets a caller hold issuance with its own reason, ahead of the form's state", () => {

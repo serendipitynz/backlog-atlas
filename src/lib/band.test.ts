@@ -9,12 +9,13 @@ import {
   type BandKind,
 } from "./band";
 import { DISCARD_CONFIRM_QUESTION } from "./edit";
+import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import type { CliReadiness } from "./wire";
 
 /** Nothing standing: every band below is raised by naming one input. */
 const QUIET: BandInputs = {
   confirming: false,
-  readiness: { state: "ready", version: "1.48.0" },
+  readiness: { state: "ready", version: CONFIRMED_CLI_VERSION },
   ledgerReadOnly: false,
   unwatchedReason: null,
   notice: null,
@@ -93,8 +94,8 @@ describe("閉じられる帯", () => {
 
 describe("CLI 縮退帯 (②)", () => {
   it("stands down while a supported backlog is present", () => {
-    expect(cliDegradedBand({ state: "ready", version: "1.48.0" })).toBeNull();
-    expect(kinds({ ...QUIET, readiness: { state: "ready", version: "1.48.0" } })).toEqual([]);
+    expect(cliDegradedBand({ state: "ready", version: CONFIRMED_CLI_VERSION })).toBeNull();
+    expect(kinds({ ...QUIET, readiness: { state: "ready", version: CONFIRMED_CLI_VERSION } })).toEqual([]);
   });
 
   it("distinguishes 確認中 from 検出できない, since the two lead to different actions", () => {
@@ -105,9 +106,13 @@ describe("CLI 縮退帯 (②)", () => {
   });
 
   it("names the version range when the CLI is out of it", () => {
-    const unsupported: CliReadiness = { state: "unsupported", version: "1.0.0", minimum: "1.48.0" };
+    const unsupported: CliReadiness = {
+      state: "unsupported",
+      version: "1.0.0",
+      minimum: CONFIRMED_CLI_VERSION,
+    };
     expect(cliDegradedBand(unsupported)).toContain("1.0.0");
-    expect(cliDegradedBand(unsupported)).toContain("1.48.0");
+    expect(cliDegradedBand(unsupported)).toContain(CONFIRMED_CLI_VERSION);
   });
 
   it("stays independent of 台帳読取専用, each naming what the other's failure leaves working", () => {

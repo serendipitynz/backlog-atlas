@@ -33,6 +33,18 @@ const SOURCES: Record<string, string> = import.meta.glob("../**/*.{ts,svelte}", 
 /** `doc-N §X` and `decision-N`. A bare `doc-1` is a Backlog 文書 id and stays legal. */
 const DESIGN_REFERENCE = /doc-\d+\s*§|decision-\d+/;
 
+/**
+ * A `major.minor.patch` spelled out, with or without the `v`. Both forms are forbidden: `CliReadiness`
+ * carries the version bare, so a string built around「1.48.0 の CLI に…」would break decision-27 §2
+ * while a `v`-only pattern passed it. This is **not** `DESIGN_REFERENCE`'s trade — a bare `doc-1` is a
+ * legal Backlog 文書 id and is why that one requires the `§`, whereas no bare version is legal here.
+ *
+ * All three parts are required and the left boundary excludes a word character or dot, so `doc-11 §2.4`
+ * and prose like「2 件目」stay legal. A version arriving through `${…}` interpolation also stays legal —
+ * that is the only way one may reach the screen (decision-27 §2).
+ */
+const SPELLED_VERSION = /(?<![\w.])v?\d+\.\d+\.\d+(?!\w)/;
+
 /** Not screen text: the recorded-payload helpers and every test file. */
 const SKIPPED = /\.test\.|\/fixtures\.ts$|\/fake-boundary\.ts$/;
 
@@ -100,5 +112,39 @@ describe("画面に置く文 (doc-11 §8)", () => {
     ] as const) {
       expect(screenText(source, svelte).some((text) => DESIGN_REFERENCE.test(text))).toBe(false);
     }
+  });
+
+  // --- 版表記 (doc-11 §8 設計文の写し, decision-27 §2) -------------------------------------------
+  //
+  // The second kind decidable from the text alone. Screen text names no 動作確認済み版: the version in
+  // 「v1.48.0 の CLI に空集合化の手段がないため」 pointed at the doc's measurement, not at the user's
+  // situation, and the same sentence is shown while `CliReadiness` is still `null` — so no version can
+  // be named truthfully there. There is **no legal exception** to scan around: the one sentence that
+  // does carry a version (the unsupported CLI 縮退 band) interpolates `readiness.version` and
+  // `readiness.minimum`, so it spells no literal.
+  it("names no 動作確認済み版 anywhere a user reads", () => {
+    const found: string[] = [];
+    for (const path of scanned) {
+      screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
+        if (SPELLED_VERSION.test(line)) found.push(`${path}:${index + 1}: ${line.trim()}`);
+      });
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("finds a version planted in a screen string, with or without the v", () => {
+    const planted = 'export const R = "最後の 1 件は消せません（v1.48.0 の CLI に手段が無いため）";\n';
+    expect(screenText(planted, false).some((line) => SPELLED_VERSION.test(line))).toBe(true);
+    // Bare, as `CliReadiness` carries it — the form a `v`-only pattern would have let through.
+    const bare = 'export const R = "1.48.0 の CLI に空集合化の手段がありません";\n';
+    expect(screenText(bare, false).some((line) => SPELLED_VERSION.test(line))).toBe(true);
+    const markup = "<p>v1.48.0 の改称は id を変えません。</p>\n";
+    expect(screenText(markup, true).some((line) => SPELLED_VERSION.test(line))).toBe(true);
+    // The legal shape stays legal: the difference between two versions, read off the payload.
+    const interpolated = "  return `backlog CLI ${r.version} は範囲外（必要: ${r.minimum} 以上）`;\n";
+    expect(screenText(interpolated, false).some((line) => SPELLED_VERSION.test(line))).toBe(false);
+    // A doc section number is not a version: two parts, and the dot-prefixed part must not match.
+    const section = '<p title="doc-11 §2.4">アイコンのみ</p>\n';
+    expect(screenText(section, true).some((line) => SPELLED_VERSION.test(line))).toBe(false);
   });
 });

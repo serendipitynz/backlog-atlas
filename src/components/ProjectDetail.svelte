@@ -2231,8 +2231,10 @@
                             />
                             <span>参照するタスクも更新する（外すと --no-update-tasks）</span>
                           </label>
+                          <!-- 改称が id を変えないことの測定は doc-9 §4.2.1 にあり、版は画面に出さない
+                               (decision-27). -->
                           <p class="hint">
-                            v1.48.0 の改称は id（{milestone.id}）を変えないため、実際に書き換わるのは
+                            改称は id（{milestone.id}）を変えないため、実際に書き換わるのは
                             milestone 値が id 以外のタスクだけです。
                           </p>
                         {:else if open === "remove"}

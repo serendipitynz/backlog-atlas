@@ -1555,7 +1555,7 @@ task_prefix: \"TASK\"\n";
                 return Ok(CliRun {
                     success: true,
                     code: Some(0),
-                    stdout: "1.48.0".to_string(),
+                    stdout: crate::update::MIN_VERSION.to_string(),
                     stderr: String::new(),
                 });
             }

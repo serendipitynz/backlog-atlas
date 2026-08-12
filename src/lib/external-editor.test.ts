@@ -19,6 +19,7 @@ import {
   needsConfirmation,
 } from "./external-editor";
 import { taskView } from "./fixtures";
+import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import type { EditorReadiness } from "./wire";
 
 const WITH_EDITOR: EditorReadiness = {
@@ -157,7 +158,7 @@ describe("CLI で不能な操作の案内先 (AC #5)", () => {
     for (const storageState of ["draft", "completed", "archive"] as const) {
       const availability = editAvailability(taskView({ storageState }), {
         state: "ready",
-        version: "1.48.0",
+        version: CONFIRMED_CLI_VERSION,
       });
       expect(availability.state).toBe("unavailable");
       if (availability.state !== "unavailable") return;

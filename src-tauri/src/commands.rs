@@ -176,6 +176,12 @@ pub enum ProjectLoad {
 /// Whether the write-side CLI can serve updates at all (doc-5 §5, decision-7). The frontend needs
 /// this before it offers an edit control: without a supported `backlog`, Atlas is read-only, and
 /// that is a normal degraded mode rather than an error to report after an edit fails.
+///
+/// `minimum` rides on `Unsupported` alone. It is there for the one sentence that states the
+/// *difference* between the user's CLI and Atlas's 動作確認済み版; no other screen text names a version
+/// (decision-27). Adding it to `Ready` would offer a value the reasons shown there must not use: those
+/// reasons appear while readiness is `Unavailable` too, which the frontend constructs itself and has no
+/// version to fill in, so they name what the CLI cannot do without dating it.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum CliReadiness {
@@ -1955,11 +1961,15 @@ ordinal: 1000\n\
     impl BacklogCli for FakeCli {
         fn run(&self, _dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
             self.calls.borrow_mut().push(args.to_vec());
-            let stdout = if args == ["--version"] { "1.48.0" } else { "" };
+            let stdout = if args == ["--version"] {
+                update::MIN_VERSION.to_string()
+            } else {
+                String::new()
+            };
             Ok(CliRun {
                 success: true,
                 code: Some(0),
-                stdout: stdout.to_string(),
+                stdout,
                 stderr: String::new(),
             })
         }
@@ -3061,11 +3071,15 @@ labels: []\n\
                     )
                     .map_err(RunError::Spawn)?;
                 }
-                let stdout = if args == ["--version"] { "1.48.0" } else { "" };
+                let stdout = if args == ["--version"] {
+                    update::MIN_VERSION.to_string()
+                } else {
+                    String::new()
+                };
                 Ok(CliRun {
                     success: true,
                     code: Some(0),
-                    stdout: stdout.to_string(),
+                    stdout,
                     stderr: String::new(),
                 })
             }
@@ -3483,7 +3497,7 @@ labels: []\n\
                 return Ok(CliRun {
                     success: true,
                     code: Some(0),
-                    stdout: "1.48.0".to_string(),
+                    stdout: update::MIN_VERSION.to_string(),
                     stderr: String::new(),
                 });
             }

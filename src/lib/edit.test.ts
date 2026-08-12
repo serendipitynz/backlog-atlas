@@ -34,10 +34,11 @@ import {
   type TransitionOffer,
 } from "./edit";
 import { commaReason } from "./comma";
+import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import { snapshot, taskView } from "./fixtures";
 import type { AcceptanceCriterion, CliReadiness, TaskEdit, UpdateOperation } from "./wire";
 
-const READY: CliReadiness = { state: "ready", version: "1.48.0" };
+const READY: CliReadiness = { state: "ready", version: CONFIRMED_CLI_VERSION };
 
 function criteria(...items: [string, boolean][]): AcceptanceCriterion[] {
   return items.map(([text, checked], index) => ({ number: index + 1, text, checked }));
@@ -514,7 +515,7 @@ describe("保存区分別の編集可否 (doc-8 §6.5)", () => {
     const availability = editAvailability(taskView({}), {
       state: "unsupported",
       version: "1.0.0",
-      minimum: "1.48.0",
+      minimum: CONFIRMED_CLI_VERSION,
     });
     expect(availability.state).toBe("unavailable");
   });

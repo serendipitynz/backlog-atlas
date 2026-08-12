@@ -28,6 +28,7 @@ import { statusNotice, saveAvailability, editorArgsText } from "./settings";
 import { buildSwimlane } from "./swimlane";
 import { inconsistencyReasons, isInconsistent } from "./mark";
 import { gitRemoteLine } from "./project-detail";
+import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import type {
   AcceptanceCriterion,
   AppSettings,
@@ -867,10 +868,25 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
     );
   });
 
+  it("動作確認済み版は 2 つの記録が同じ値を持つ (decision-27)", () => {
+    // `confirmed-version.ts` reads the ready recording's `version` as Atlas's 動作確認済み版, which
+    // holds only because `wire_fixtures.rs` builds that sample from `MIN_VERSION`. Here it is pinned
+    // to the *other* recording of the same constant — `minimum`, the field that means the floor — so
+    // rebuilding the ready sample with some higher version fails instead of quietly redefining the
+    // value every test and fake reads.
+    const errors = fixture<CommandError[]>("command_errors.json");
+    const unavailable = errors.find((error) => error.kind === "updatesUnavailable");
+    if (unavailable?.kind !== "updatesUnavailable") throw new Error("no updatesUnavailable recorded");
+    if (unavailable.readiness.state !== "unsupported") {
+      throw new Error("the recorded updatesUnavailable is the unsupported case");
+    }
+    expect(CONFIRMED_CLI_VERSION).toBe(unavailable.readiness.minimum);
+  });
+
   it("CliReadiness と外部エディタ経路", () => {
     sameValueTypes("cli_readiness", fixture<CliReadiness>("cli_readiness.json"), {
       state: "ready",
-      version: "1.48.0",
+      version: CONFIRMED_CLI_VERSION,
     } satisfies CliReadiness);
     sameValueTypes("editor_readiness", fixture<EditorReadiness>("editor_readiness.json"), {
       configured: { source: "appSettings", program: "code", args: ["-w"] },
@@ -894,7 +910,10 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
         reason: { reason: "invalidStatusAlias", key: "Doing", value: "nope" },
         detail: "d",
       },
-      { kind: "updatesUnavailable", readiness: { state: "unsupported", version: "1.20.0", minimum: "1.48.0" } },
+      {
+        kind: "updatesUnavailable",
+        readiness: { state: "unsupported", version: "1.20.0", minimum: CONFIRMED_CLI_VERSION },
+      },
       { kind: "taskNotFound", slug: "atlas", task_id: "TASK-99" },
       { kind: "unknownTaskFile", slug: "atlas", path: "/elsewhere/evil.md" },
       { kind: "historyCancelled", read_id: "3f2a1c-7" },

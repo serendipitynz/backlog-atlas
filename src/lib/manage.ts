@@ -544,12 +544,13 @@ export const MILESTONE_REASSIGN_TARGET_IS_SELF_REASON =
   "付け替え先が削除するマイルストーン自身です";
 
 /**
- * v1.48.0 の削除はファイルを消さない (doc-9 §4.2.1 実測): the milestone file moves to
- * `archive/milestones/`. Stated beside the control because "削除" otherwise reads as an unlink, and
- * doc-10 §6 asks the screen to keep the CLI's word while saying what actually happens.
+ * 削除はファイルを消さない (doc-9 §4.2.1 実測): the milestone file moves to `archive/milestones/`.
+ * Stated beside the control because "削除" otherwise reads as an unlink, and doc-10 §6 asks the screen
+ * to keep the CLI's word while saying what actually happens. **The version measured stays in doc-9
+ * §4.2.1 and off the screen** (decision-27).
  */
 export const MILESTONE_REMOVE_MOVES_THE_FILE =
-  "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します（v1.48.0 実測）";
+  "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します（実測）";
 
 /** `keep` leaves referencing tasks pointing at a milestone that is no longer in the root. */
 export const MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES =
