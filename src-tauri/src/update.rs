@@ -61,8 +61,8 @@ use std::time::Duration;
 /// the CLI itself rejects an option (surfaced here as an ordinary CLI failure, doc-5 §5).
 pub const MIN_VERSION: Version = Version {
     major: 1,
-    minor: 48,
-    patch: 0,
+    minor: 49,
+    patch: 3,
 };
 
 /// A `major.minor.patch` version, ordered field-major so `>=` is semver comparison.
@@ -2045,6 +2045,38 @@ mod tests {
             CliStatus::Unsupported { version } => assert_eq!(version, "1.46.0"),
             other => panic!("expected Unsupported, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn the_boundary_sits_exactly_at_the_confirmed_floor() {
+        // Both sides are derived from `MIN_VERSION` rather than spelled (decision-27 §1), so raising
+        // the floor moves this boundary with it. A spelled pair would keep guarding the *old* floor
+        // and still pass — and a version that used to be supported is precisely what needs a guard
+        // once the floor moves past it (TASK-152: v1.48.0 was supported before this raise).
+        let below = if MIN_VERSION.patch > 0 {
+            Version {
+                patch: MIN_VERSION.patch - 1,
+                ..MIN_VERSION
+            }
+        } else {
+            Version {
+                minor: MIN_VERSION
+                    .minor
+                    .checked_sub(1)
+                    .expect("a floor with minor 0 and patch 0 has no version below it"),
+                patch: u32::MAX,
+                ..MIN_VERSION
+            }
+        };
+        let mut older = FakeCli::supported();
+        older.version = below.to_string();
+        match probe(&older) {
+            CliStatus::Unsupported { version } => assert_eq!(version, below.to_string()),
+            other => panic!("expected Unsupported for {below}, got {other:?}"),
+        }
+
+        let at_floor = FakeCli::supported();
+        assert!(matches!(probe(&at_floor), CliStatus::Supported(_)));
     }
 
     #[test]
