@@ -11,6 +11,7 @@
 //! running app; the command layer in `lib.rs` resolves the on-disk ledger path via
 //! `app_config_dir()` and calls into here.
 
+use crate::external::ExternalProgram;
 use crate::interpret::status::StatusColumn;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -224,7 +225,11 @@ impl Ledger {
     /// Register a project (doc-3 §4.1). Resolves the Backlog root, verifies it, derives or
     /// validates the slug and checks uniqueness, detects the Git remote, then appends.
     /// Touches nothing under the target project.
-    pub fn register(&mut self, req: &RegisterRequest) -> Result<ProjectEntry, LedgerError> {
+    pub fn register(
+        &mut self,
+        git: &ExternalProgram,
+        req: &RegisterRequest,
+    ) -> Result<ProjectEntry, LedgerError> {
         // Step 2: resolve + verify the Backlog root.
         let backlog_root = req
             .backlog_root
@@ -257,7 +262,7 @@ impl Ledger {
         }
 
         // Step 4: Git remote detection (§3.2).
-        let git_remote_present = detect_git_remote(&req.project_root);
+        let git_remote_present = detect_git_remote(git, &req.project_root);
 
         // Step 5: append. status_aliases default empty (§3.3).
         let entry = ProjectEntry {
@@ -284,7 +289,11 @@ impl Ledger {
 
     /// Update an entry (doc-3 §4.3, AC #4/#5/#6). slug is the immutable selector. Validates
     /// everything before mutating so a rejected request leaves the ledger unchanged.
-    pub fn update(&mut self, req: &UpdateRequest) -> Result<ProjectEntry, LedgerError> {
+    pub fn update(
+        &mut self,
+        git: &ExternalProgram,
+        req: &UpdateRequest,
+    ) -> Result<ProjectEntry, LedgerError> {
         let idx = self
             .projects
             .iter()
@@ -348,7 +357,7 @@ impl Ledger {
                 entry.status_aliases = aliases.clone();
             }
             if req.redetect_git_remote {
-                entry.git_remote_present = detect_git_remote(&entry.project_root);
+                entry.git_remote_present = detect_git_remote(git, &entry.project_root);
             }
         }
 
@@ -656,10 +665,16 @@ fn verify_backlog_root(backlog_root: &Path) -> Result<(), LedgerError> {
 
 /// Whether the Git repo at `project_root` has at least one configured remote (doc-3 §3.2).
 /// Uses a fixed subcommand and argument array (never a shell string). A non-repo, or a
-/// missing `git`, counts as no remote. The commit/PR resolution that consumes this value is
-/// designed separately in TASK-10; here we only record the boolean.
-fn detect_git_remote(project_root: &Path) -> bool {
-    let output = std::process::Command::new("git")
+/// `git` that cannot be launched, counts as no remote. The commit/PR resolution that consumes this
+/// value is designed separately in TASK-10; here we only record the boolean.
+///
+/// Which `git` is launched is the caller's (decision-29 外部コマンド解決の順序), not this module's:
+/// the ledger holds no アプリ設定 (decision-13 keeps the two files apart), and a bare `Command::new`
+/// here is exactly what TASK-156 found — under a GUI-inherited PATH it silently recorded every
+/// project as remote-less, taking doc-6 §6 関連解決 down with it and telling no one.
+fn detect_git_remote(git: &ExternalProgram, project_root: &Path) -> bool {
+    let output = git
+        .command()
         .arg("-C")
         .arg(project_root)
         .arg("remote")
@@ -771,11 +786,14 @@ mod tests {
 
     fn register(ledger: &mut Ledger, project_root: PathBuf, slug: Option<&str>) -> ProjectEntry {
         ledger
-            .register(&RegisterRequest {
-                project_root,
-                backlog_root: None,
-                slug: slug.map(str::to_string),
-            })
+            .register(
+                &ExternalProgram::git(None),
+                &RegisterRequest {
+                    project_root,
+                    backlog_root: None,
+                    slug: slug.map(str::to_string),
+                },
+            )
             .expect("register should succeed")
     }
 
@@ -840,11 +858,14 @@ mod tests {
 
         let mut ledger = Ledger::empty();
         let err = ledger
-            .register(&RegisterRequest {
-                project_root,
-                backlog_root: None,
-                slug: None,
-            })
+            .register(
+                &ExternalProgram::git(None),
+                &RegisterRequest {
+                    project_root,
+                    backlog_root: None,
+                    slug: None,
+                },
+            )
             .unwrap_err();
         assert!(matches!(err, LedgerError::BacklogRootInvalid(_)));
     }
@@ -863,11 +884,14 @@ mod tests {
             Some("shared"),
         );
         let err = ledger
-            .register(&RegisterRequest {
-                project_root: second.parent().unwrap().to_path_buf(),
-                backlog_root: None,
-                slug: Some("shared".into()),
-            })
+            .register(
+                &ExternalProgram::git(None),
+                &RegisterRequest {
+                    project_root: second.parent().unwrap().to_path_buf(),
+                    backlog_root: None,
+                    slug: Some("shared".into()),
+                },
+            )
             .unwrap_err();
         assert!(matches!(err, LedgerError::DuplicateSlug(_)));
     }
@@ -880,11 +904,14 @@ mod tests {
 
         let mut ledger = Ledger::empty();
         let err = ledger
-            .register(&RegisterRequest {
-                project_root,
-                backlog_root: None,
-                slug: Some("Bad Slug".into()),
-            })
+            .register(
+                &ExternalProgram::git(None),
+                &RegisterRequest {
+                    project_root,
+                    backlog_root: None,
+                    slug: Some("Bad Slug".into()),
+                },
+            )
             .unwrap_err();
         assert!(matches!(err, LedgerError::InvalidSlug(_)));
     }
@@ -918,11 +945,14 @@ mod tests {
         register(&mut ledger, project_root.clone(), Some("first"));
         // Same root, different slug — must be rejected so one task source is not read twice.
         let err = ledger
-            .register(&RegisterRequest {
-                project_root,
-                backlog_root: None,
-                slug: Some("second".into()),
-            })
+            .register(
+                &ExternalProgram::git(None),
+                &RegisterRequest {
+                    project_root,
+                    backlog_root: None,
+                    slug: Some("second".into()),
+                },
+            )
             .unwrap_err();
         assert!(matches!(err, LedgerError::DuplicateRoot(_)));
         assert_eq!(ledger.projects.len(), 1);
@@ -943,14 +973,17 @@ mod tests {
         let mut aliases = BTreeMap::new();
         aliases.insert("Doing".to_string(), "In Progress".to_string());
         let updated = ledger
-            .update(&UpdateRequest {
-                slug: "proj".into(),
-                project_root: None,
-                backlog_root: Some(other_backlog.clone()),
-                redetect_git_remote: false,
-                status_aliases: Some(aliases),
-                new_index: None,
-            })
+            .update(
+                &ExternalProgram::git(None),
+                &UpdateRequest {
+                    slug: "proj".into(),
+                    project_root: None,
+                    backlog_root: Some(other_backlog.clone()),
+                    redetect_git_remote: false,
+                    status_aliases: Some(aliases),
+                    new_index: None,
+                },
+            )
             .unwrap();
         assert_eq!(updated.backlog_root, other_backlog);
         assert_eq!(updated.status_aliases.get("Doing").unwrap(), "In Progress");
@@ -968,14 +1001,17 @@ mod tests {
         let mut aliases = BTreeMap::new();
         aliases.insert("Weird".to_string(), "Nonsense".to_string());
         let err = ledger
-            .update(&UpdateRequest {
-                slug: "proj".into(),
-                project_root: None,
-                backlog_root: None,
-                redetect_git_remote: false,
-                status_aliases: Some(aliases),
-                new_index: None,
-            })
+            .update(
+                &ExternalProgram::git(None),
+                &UpdateRequest {
+                    slug: "proj".into(),
+                    project_root: None,
+                    backlog_root: None,
+                    redetect_git_remote: false,
+                    status_aliases: Some(aliases),
+                    new_index: None,
+                },
+            )
             .unwrap_err();
         assert!(matches!(err, LedgerError::InvalidStatusAlias { .. }));
     }
@@ -993,14 +1029,17 @@ mod tests {
         register(&mut ledger, project_root, Some("proj"));
 
         let updated = ledger
-            .update(&UpdateRequest {
-                slug: "proj".into(),
-                project_root: Some(moved_root.clone()),
-                backlog_root: None, // move default: <new root>/backlog
-                redetect_git_remote: false,
-                status_aliases: None,
-                new_index: None,
-            })
+            .update(
+                &ExternalProgram::git(None),
+                &UpdateRequest {
+                    slug: "proj".into(),
+                    project_root: Some(moved_root.clone()),
+                    backlog_root: None, // move default: <new root>/backlog
+                    redetect_git_remote: false,
+                    status_aliases: None,
+                    new_index: None,
+                },
+            )
             .unwrap();
         assert_eq!(updated.slug, "proj");
         assert_eq!(updated.project_root, moved_root);
@@ -1024,14 +1063,17 @@ mod tests {
 
         // Moving "a" onto "b"'s root must collide (one entry per root).
         let err = ledger
-            .update(&UpdateRequest {
-                slug: "a".into(),
-                project_root: Some(b_root),
-                backlog_root: None,
-                redetect_git_remote: false,
-                status_aliases: None,
-                new_index: None,
-            })
+            .update(
+                &ExternalProgram::git(None),
+                &UpdateRequest {
+                    slug: "a".into(),
+                    project_root: Some(b_root),
+                    backlog_root: None,
+                    redetect_git_remote: false,
+                    status_aliases: None,
+                    new_index: None,
+                },
+            )
             .unwrap_err();
         assert!(matches!(err, LedgerError::DuplicateRoot(_)));
     }
@@ -1050,14 +1092,17 @@ mod tests {
         }
         // Move "c" to the front.
         ledger
-            .update(&UpdateRequest {
-                slug: "c".into(),
-                project_root: None,
-                backlog_root: None,
-                redetect_git_remote: false,
-                status_aliases: None,
-                new_index: Some(0),
-            })
+            .update(
+                &ExternalProgram::git(None),
+                &UpdateRequest {
+                    slug: "c".into(),
+                    project_root: None,
+                    backlog_root: None,
+                    redetect_git_remote: false,
+                    status_aliases: None,
+                    new_index: Some(0),
+                },
+            )
             .unwrap();
         let order: Vec<&str> = ledger.projects.iter().map(|p| p.slug.as_str()).collect();
         assert_eq!(order, ["c", "a", "b"]);
@@ -1228,14 +1273,17 @@ mod tests {
         aliases.insert("Closed".to_string(), "Done".to_string());
         loaded
             .ledger
-            .update(&UpdateRequest {
-                slug: "proj".into(),
-                project_root: None,
-                backlog_root: None,
-                redetect_git_remote: false,
-                status_aliases: Some(aliases),
-                new_index: None,
-            })
+            .update(
+                &ExternalProgram::git(None),
+                &UpdateRequest {
+                    slug: "proj".into(),
+                    project_root: None,
+                    backlog_root: None,
+                    redetect_git_remote: false,
+                    status_aliases: Some(aliases),
+                    new_index: None,
+                },
+            )
             .unwrap();
         loaded.save(&path).unwrap();
 
@@ -1378,11 +1426,14 @@ mod tests {
         let mut loaded = LoadedLedger::load(&path).unwrap();
         loaded
             .ledger
-            .register(&RegisterRequest {
-                project_root: root.clone(),
-                backlog_root: Some(root.clone()),
-                slug: Some("selfroot".into()),
-            })
+            .register(
+                &ExternalProgram::git(None),
+                &RegisterRequest {
+                    project_root: root.clone(),
+                    backlog_root: Some(root.clone()),
+                    slug: Some("selfroot".into()),
+                },
+            )
             .unwrap();
         loaded.save(&path).unwrap();
 
@@ -1444,7 +1495,10 @@ mod tests {
             .output();
         // Skip if git is unavailable in this environment.
         if init.map(|o| o.status.success()).unwrap_or(false) {
-            assert!(!detect_git_remote(&repo), "fresh repo has no remote");
+            assert!(
+                !detect_git_remote(&ExternalProgram::git(None), &repo),
+                "fresh repo has no remote"
+            );
             let added = std::process::Command::new("git")
                 .arg("-C")
                 .arg(&repo)
@@ -1452,9 +1506,15 @@ mod tests {
                 .output()
                 .unwrap();
             assert!(added.status.success());
-            assert!(detect_git_remote(&repo), "remote should be detected");
+            assert!(
+                detect_git_remote(&ExternalProgram::git(None), &repo),
+                "remote should be detected"
+            );
         }
         // A non-repo path is always false.
-        assert!(!detect_git_remote(&tmp.path.join("nonexistent")));
+        assert!(!detect_git_remote(
+            &ExternalProgram::git(None),
+            &tmp.path.join("nonexistent")
+        ));
     }
 }

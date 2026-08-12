@@ -16,6 +16,12 @@ pub mod domain;
 // user's editor on a management file and writes nothing itself, so it sits beside `update` as its own
 // layer rather than inside it: the write that follows is the user's, and it arrives through `sync`.
 pub mod editor;
+// Public: 外部コマンド解決の順序 (TASK-156 / decision-29). The step every 外部コマンド shares —
+// アプリ設定 の外部コマンド指定 first — held apart from the callers that launch them, because the
+// value it produces is consumed by three layers (`history`, `ledger`, the 設定画面's 解決結果の表示)
+// and none of them owns it. `backlog`'s own three-step order stays in `update`; see this module's
+// comment for why it is not generalized to here.
+pub mod external;
 // Public: the Git・Pull Request 履歴参照系 (TASK-30 / doc-6). A read-only, ledger-aware sibling
 // of the read layer: given a task id and its owning ledger entry it finds commits, extracts PR
 // URLs, and (remote permitting) relates them. Exposed as crate API for the command layer to call.
@@ -99,6 +105,8 @@ pub fn run() {
             commands::task_file_open,
             // 本文リンク (doc-8 §9.3): the same association launcher, with a URL from a 本文.
             commands::body_link_open,
+            // 解決結果の表示 (decision-29): which `git`/`gh` the 設定画面's own panel is reporting on.
+            commands::external_programs_probe,
             // Update path: guarded by the pre-update version check and a probed CLI capability.
             commands::cli_probe,
             commands::update_apply

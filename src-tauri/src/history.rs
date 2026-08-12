@@ -29,12 +29,12 @@
 //! implementation of it: [`PrCommitSource`] takes the cancel handle, so a host kind added later
 //! cannot be plugged in without one.
 
+use crate::external::ExternalProgram;
 use crate::ledger::ProjectEntry;
 use crate::subprocess::{self, Cancel, Stopped};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -224,10 +224,14 @@ const FIELD_SEP: char = '\u{1f}';
 /// is still a repo and yields `Ok(vec![])`. A repository Git found but would not read is neither —
 /// it comes back as [`HistoryError::CommandFailed`], so the screen shows 読取不能 rather than
 /// telling the user their root is not a repository (decision-6).
-pub fn search_commits(project_root: &Path, task_id: &str) -> Result<Vec<Commit>, HistoryError> {
+pub fn search_commits(
+    git: &ExternalProgram,
+    project_root: &Path,
+    task_id: &str,
+) -> Result<Vec<Commit>, HistoryError> {
     // Preflight: 対象不在 and 該当なし are both a `git log` that prints nothing, so the repository
     // has to be established first.
-    match probe_git_repo(project_root)? {
+    match probe_git_repo(git, project_root)? {
         RepoProbe::Repository => {}
         RepoProbe::NoRepository => return Err(HistoryError::NotAGitRepo),
         RepoProbe::Unreadable { detail } => {
@@ -239,7 +243,7 @@ pub fn search_commits(project_root: &Path, task_id: &str) -> Result<Vec<Commit>,
     }
     // An initialized-but-empty repo has no HEAD; `git log` would fail there. Treat "no commits"
     // as an empty result, not a failure — the repo exists (対象は在る), it just has no history.
-    if !has_any_commit(project_root)? {
+    if !has_any_commit(git, project_root)? {
         return Ok(Vec::new());
     }
 
@@ -256,7 +260,7 @@ pub fn search_commits(project_root: &Path, task_id: &str) -> Result<Vec<Commit>,
         "--regexp-ignore-case".to_string(),
         format!("--grep={task_id}"),
     ];
-    let out = run_git(project_root, &args)?;
+    let out = run_git(git, project_root, &args)?;
     if !out.status.success() {
         return Err(HistoryError::CommandFailed {
             args,
@@ -289,7 +293,7 @@ pub fn search_commits(project_root: &Path, task_id: &str) -> Result<Vec<Commit>,
         // the body. To stay correct for body-only mentions we re-run git for the raw body only
         // when the subject does not satisfy the boundary.
         if message_mentions_task_id(summary, task_id)
-            || commit_body_mentions_task_id(project_root, id, task_id)?
+            || commit_body_mentions_task_id(git, project_root, id, task_id)?
         {
             commits.push(Commit {
                 id: id.to_string(),
@@ -327,8 +331,9 @@ const REPO_PROBE_ARGS: [&str; 2] = ["rev-parse", "--git-dir"];
 
 /// Ask Git whether `project_root` is a repository. A spawn failure (git missing) stays a hard
 /// [`HistoryError::GitUnavailable`] — that is about Git, not about this root.
-fn probe_git_repo(project_root: &Path) -> Result<RepoProbe, HistoryError> {
+fn probe_git_repo(git: &ExternalProgram, project_root: &Path) -> Result<RepoProbe, HistoryError> {
     let out = run_git(
+        git,
         project_root,
         &REPO_PROBE_ARGS
             .iter()
@@ -360,8 +365,9 @@ fn classify_repo_probe(stderr: &str) -> RepoProbe {
 
 /// Whether the repo has at least one commit (a resolvable HEAD). Uses `rev-parse --verify HEAD`,
 /// which fails quietly on an empty repo — a locale-independent "has history?" probe.
-fn has_any_commit(project_root: &Path) -> Result<bool, HistoryError> {
+fn has_any_commit(git: &ExternalProgram, project_root: &Path) -> Result<bool, HistoryError> {
     let out = run_git(
+        git,
         project_root,
         &[
             "rev-parse".to_string(),
@@ -377,11 +383,13 @@ fn has_any_commit(project_root: &Path) -> Result<bool, HistoryError> {
 /// when the subject did not satisfy the boundary, so a TASK-ID mentioned only in a commit's body
 /// is still honored (git matched the whole message; we must not drop a body-only match).
 fn commit_body_mentions_task_id(
+    git: &ExternalProgram,
     project_root: &Path,
     commit_id: &str,
     task_id: &str,
 ) -> Result<bool, HistoryError> {
     let out = run_git(
+        git,
         project_root,
         &[
             "log".to_string(),
@@ -490,14 +498,15 @@ fn parse_pull_request(url: &str) -> Option<PullRequestRef> {
 /// read, or when the host is not a kind Atlas recognizes. The remote URL is read with a fixed
 /// argument array (AC #5). SSH (`git@github.com:owner/repo.git`) and HTTPS forms both normalize
 /// to the same `owner`/`repo`.
-pub fn detect_remote_host(entry: &ProjectEntry) -> Option<RemoteHost> {
+pub fn detect_remote_host(git: &ExternalProgram, entry: &ProjectEntry) -> Option<RemoteHost> {
     // git_remote_present is the ledger's recorded fact (doc-3 §3.2); honoring it here is the
     // AC #3 gate and also avoids a Git call when there is provably no remote.
     if !entry.git_remote_present {
         return None;
     }
-    let remote = pick_remote_name(&entry.project_root)?;
+    let remote = pick_remote_name(git, &entry.project_root)?;
     let out = run_git(
+        git,
         &entry.project_root,
         &["remote".to_string(), "get-url".to_string(), remote],
     )
@@ -512,8 +521,8 @@ pub fn detect_remote_host(entry: &ProjectEntry) -> Option<RemoteHost> {
 /// Choose which remote to read: `origin` when present, else the first configured remote. `None`
 /// when the repo has no remotes (or Git is unavailable — treated as "no host" here, since
 /// detection is best-effort and the caller degrades to remote-independent output).
-fn pick_remote_name(project_root: &Path) -> Option<String> {
-    let out = run_git(project_root, &["remote".to_string()]).ok()?;
+fn pick_remote_name(git: &ExternalProgram, project_root: &Path) -> Option<String> {
+    let out = run_git(git, project_root, &["remote".to_string()]).ok()?;
     if !out.status.success() {
         return None;
     }
@@ -540,8 +549,8 @@ fn choose_remote_name(listing: &str) -> Option<String> {
 /// and コミット検索 answer「ここは Git リポジトリか」the same way — including the refusal that is
 /// neither answer. Nothing here is written back: the ledger's boolean moves only through
 /// [`crate::ledger::Ledger::update`].
-pub fn read_git_remote(project_root: &Path) -> GitRemoteRead {
-    match probe_git_repo(project_root) {
+pub fn read_git_remote(git: &ExternalProgram, project_root: &Path) -> GitRemoteRead {
+    match probe_git_repo(git, project_root) {
         Ok(RepoProbe::Repository) => {}
         Ok(RepoProbe::NoRepository) => return GitRemoteRead::NoRepository,
         Ok(RepoProbe::Unreadable { detail }) => return GitRemoteRead::Unreadable { detail },
@@ -551,7 +560,7 @@ pub fn read_git_remote(project_root: &Path) -> GitRemoteRead {
             }
         }
     }
-    let listed = match run_git(project_root, &["remote".to_string()]) {
+    let listed = match run_git(git, project_root, &["remote".to_string()]) {
         Ok(out) => out,
         Err(err) => {
             return GitRemoteRead::Unreadable {
@@ -568,7 +577,7 @@ pub fn read_git_remote(project_root: &Path) -> GitRemoteRead {
         return GitRemoteRead::RemoteAbsent;
     };
     let args = vec!["remote".to_string(), "get-url".to_string(), name.clone()];
-    let out = match run_git(project_root, &args) {
+    let out = match run_git(git, project_root, &args) {
         Ok(out) => out,
         Err(err) => {
             return GitRemoteRead::Unreadable {
@@ -913,7 +922,17 @@ fn sha_relates(a: &str, b: &str) -> bool {
 /// concrete. The dispatch is an exhaustive `match` on the target's kind, so adding a
 /// [`RemoteHostKind`] forces its reference means to be decided rather than silently falling through
 /// to GitHub's.
-pub struct HostReferences;
+pub struct HostReferences {
+    /// The resolved `gh` (decision-29). Held rather than resolved per query, so every Pull Request
+    /// in one 履歴読取 is looked up through the same executable even if アプリ設定 is saved midway.
+    gh: ExternalProgram,
+}
+
+impl HostReferences {
+    pub fn new(gh: ExternalProgram) -> HostReferences {
+        HostReferences { gh }
+    }
+}
 
 impl PrCommitSource for HostReferences {
     fn commits_for_pull_request(
@@ -922,7 +941,7 @@ impl PrCommitSource for HostReferences {
         cancel: &Cancel,
     ) -> Result<Vec<String>, RelationError> {
         match target.host {
-            RemoteHostKind::GitHub => github_pull_request_commits(target, cancel),
+            RemoteHostKind::GitHub => github_pull_request_commits(&self.gh, target, cancel),
         }
     }
 }
@@ -954,6 +973,7 @@ pub const GH_DEADLINE: Duration = Duration::from_secs(30);
 /// dependency; that was false (`Child::try_wait` has been stable since Rust 1.18.0) and decision-18
 /// corrected it.
 fn github_pull_request_commits(
+    gh: &ExternalProgram,
     target: &PullRequestTarget,
     cancel: &Cancel,
 ) -> Result<Vec<String>, RelationError> {
@@ -971,7 +991,7 @@ fn github_pull_request_commits(
         ".[].sha".to_string(),
         format!("repos/{owner}/{repo}/pulls/{}/commits", target.number),
     ];
-    let mut command = Command::new("gh");
+    let mut command = gh.command();
     command
         .args(&args)
         // gh must never stop on a prompt here — there is no terminal to answer it — and its update
@@ -1060,8 +1080,12 @@ const GIT_FAILED: &str = "git の実行に失敗しました";
 /// `LANGUAGE` is cleared as well: GNU gettext consults it ahead of `LC_ALL`. Parsed *stdout* is
 /// unaffected either way — every format this module reads is pinned by `--format` or is a bare
 /// list.
-fn run_git(project_root: &Path, args: &[String]) -> Result<std::process::Output, HistoryError> {
-    Command::new("git")
+fn run_git(
+    git: &ExternalProgram,
+    project_root: &Path,
+    args: &[String],
+) -> Result<std::process::Output, HistoryError> {
+    git.command()
         .arg("-C")
         .arg(project_root)
         .args(args)
@@ -1115,8 +1139,22 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
+    // Fixture setup only: these tests build real repositories to read back. The module under test
+    // no longer names a program — it launches whatever `ExternalProgram` resolved.
+    use std::process::Command;
     use std::sync::atomic::AtomicU64;
     use std::sync::Mutex;
+
+    /// The 外部コマンド these tests read with: unset 外部コマンド指定, i.e. the bare name the OS
+    /// resolves — the same thing every one of them used before decision-29 threaded the program
+    /// through. Named apart from the `git` fixture-runner below, which spawns real repositories.
+    fn git_program() -> ExternalProgram {
+        ExternalProgram::git(None)
+    }
+
+    fn gh_program() -> ExternalProgram {
+        ExternalProgram::gh(None)
+    }
 
     /// The lookups a [`FakeSource`] recorded, in the order it was called.
     fn queried(source: &FakeSource) -> Vec<(RemoteHostKind, String, String, u64)> {
@@ -1495,7 +1533,7 @@ mod tests {
             git_remote_present: false,
             status_aliases: BTreeMap::new(),
         };
-        assert!(detect_remote_host(&entry).is_none());
+        assert!(detect_remote_host(&git_program(), &entry).is_none());
     }
 
     #[test]
@@ -1784,7 +1822,7 @@ mod tests {
             repo: "backlog-atlas".into(),
             number: 28,
         };
-        let shas = HostReferences
+        let shas = HostReferences::new(gh_program())
             .commits_for_pull_request(&target, &never_cancelled())
             .unwrap();
         assert!(!shas.is_empty());
@@ -1861,7 +1899,7 @@ mod tests {
             repo: "r".into(),
             number: 1,
         };
-        let error = HostReferences
+        let error = HostReferences::new(gh_program())
             .commits_for_pull_request(&target, &never_cancelled())
             .unwrap_err();
         assert_eq!(error.reason, LookupFailure::InvalidReference);
@@ -1929,7 +1967,7 @@ mod tests {
     fn search_distinguishes_not_a_repo_from_no_match() {
         let tmp = TempDir::new();
         // 対象不在: a plain directory is not a Git repo.
-        match search_commits(&tmp.path, "TASK-1") {
+        match search_commits(&git_program(), &tmp.path, "TASK-1") {
             Err(HistoryError::NotAGitRepo) => {}
             Err(HistoryError::GitUnavailable(_)) => {} // git missing → skip
             other => panic!("expected NotAGitRepo, got {other:?}"),
@@ -1945,14 +1983,17 @@ mod tests {
             return; // git unavailable
         }
         // Empty repo (no HEAD) is a repo with no history → 該当なし, not an error (doc-6 §6).
-        assert_eq!(search_commits(&repo, "TASK-1").unwrap(), Vec::new());
+        assert_eq!(
+            search_commits(&git_program(), &repo, "TASK-1").unwrap(),
+            Vec::new()
+        );
 
         commit_msg(&repo, "TASK-1 first");
         commit_msg(&repo, "unrelated change");
         commit_msg(&repo, "TASK-12 different task"); // must NOT match a TASK-1 search
         commit_msg(&repo, "close TASK-1 again"); // newest matching
 
-        let found = search_commits(&repo, "TASK-1").unwrap();
+        let found = search_commits(&git_program(), &repo, "TASK-1").unwrap();
         let summaries: Vec<&str> = found.iter().map(|c| c.summary.as_str()).collect();
         // Newest-first, and TASK-12 excluded by the boundary rule (AC #1).
         assert_eq!(summaries, vec!["close TASK-1 again", "TASK-1 first"]);
@@ -1983,7 +2024,7 @@ mod tests {
         // there is *not* this, and has its own test below.
         let plain = tmp.path.join("plain");
         std::fs::create_dir_all(&plain).unwrap();
-        match read_git_remote(&plain) {
+        match read_git_remote(&git_program(), &plain) {
             GitRemoteRead::NoRepository => {}
             GitRemoteRead::Unreadable { .. } => return, // git unavailable → skip the rest
             other => panic!("expected NoRepository, got {other:?}"),
@@ -1996,7 +2037,10 @@ mod tests {
         }
         // Git remote 不在: a repository that has none. This is the case `detect_git_remote`'s
         // boolean cannot tell from the one above, which is why both are checked here.
-        assert_eq!(read_git_remote(&repo), GitRemoteRead::RemoteAbsent);
+        assert_eq!(
+            read_git_remote(&git_program(), &repo),
+            GitRemoteRead::RemoteAbsent
+        );
 
         assert!(git(
             &repo,
@@ -2007,7 +2051,7 @@ mod tests {
             &["remote", "add", "origin", "git@github.com:owner/repo.git"]
         ));
         assert_eq!(
-            read_git_remote(&repo),
+            read_git_remote(&git_program(), &repo),
             GitRemoteRead::Configured {
                 name: "origin".to_string(),
                 url: "git@github.com:owner/repo.git".to_string(),
@@ -2065,7 +2109,7 @@ mod tests {
         }
 
         // A root that is not there is a third thing again, and also not 対象不在.
-        match read_git_remote(&tmp.path.join("gone")) {
+        match read_git_remote(&git_program(), &tmp.path.join("gone")) {
             GitRemoteRead::Unreadable { detail } => assert!(!detail.is_empty()),
             other => panic!("a missing root must be 読取不能, got {other:?}"),
         }
@@ -2095,11 +2139,11 @@ mod tests {
         ));
 
         assert!(matches!(
-            read_git_remote(&repo),
+            read_git_remote(&git_program(), &repo),
             GitRemoteRead::Configured { .. }
         ));
         // The recorded boolean still gates relation resolution (doc-6 §5, AC #3 of TASK-10).
-        assert!(detect_remote_host(&entry).is_none());
+        assert!(detect_remote_host(&git_program(), &entry).is_none());
     }
 
     #[test]
@@ -2112,7 +2156,7 @@ mod tests {
         }
         // TASK-7 appears only in the body, not the subject.
         commit_msg(&repo, "subject line\n\nRefs TASK-7 in the body");
-        let found = search_commits(&repo, "TASK-7").unwrap();
+        let found = search_commits(&git_program(), &repo, "TASK-7").unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].summary, "subject line");
     }

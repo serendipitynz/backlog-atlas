@@ -67,6 +67,7 @@ use crate::editor::{
     self, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod,
     Launcher, SystemEnv, SystemLauncher,
 };
+use crate::external::{self, ExternalProgram, ExternalProgramReport};
 use crate::history::{
     self, Cancelled, Commit, GitRemoteRead, HistoryError, PrCommitSource, PrRelation, RemoteHost,
 };
@@ -1173,7 +1174,8 @@ pub fn ledger_register(
     // it (doc-3 §3.1). A slug that is already taken is refused by the ledger, not by a lock.
     let files = ConfigFiles::resolve(&app)?;
     let write = ledger_write(&state);
-    let (entry, ledger) = mutate_ledger(&files, &write, |ledger| ledger.register(&request))?;
+    let git = ExternalProgram::git(current_settings(&app).git_cli.as_deref());
+    let (entry, ledger) = mutate_ledger(&files, &write, |ledger| ledger.register(&git, &request))?;
     Ok(RegisterResponse { entry, ledger })
 }
 
@@ -1236,11 +1238,12 @@ pub fn ledger_update(
     request: UpdateRequest,
 ) -> Result<LedgerResponse, CommandError> {
     let files = ConfigFiles::resolve(&app)?;
+    let git = ExternalProgram::git(current_settings(&app).git_cli.as_deref());
     let (response, detached) = with_project(&state, &request.slug, |project| {
         let write = ledger_write(&state);
         let (moved, response) = mutate_ledger(&files, &write, |ledger| {
             let before = entry_roots(ledger, &request.slug);
-            let after = ledger.update(&request)?;
+            let after = ledger.update(&git, &request)?;
             Ok(before != Some((after.project_root, after.backlog_root)))
         })?;
         let detached = if moved {
@@ -1272,7 +1275,8 @@ pub fn git_remote_read(app: AppHandle, slug: String) -> Result<GitRemoteRead, Co
         .into_iter()
         .find(|entry| entry.slug == slug)
         .ok_or(CommandError::UnknownProject { slug })?;
-    Ok(crate::history::read_git_remote(&entry.project_root))
+    let git = ExternalProgram::git(current_settings(&app).git_cli.as_deref());
+    Ok(crate::history::read_git_remote(&git, &entry.project_root))
 }
 
 /// Build a cross-task-id `<slug>:<TASK-ID>` for display (doc-3 §5.1). Validates the slug against the
@@ -1440,6 +1444,7 @@ pub fn project_watch_stop(state: State<'_, AtlasState>, slug: String) {
 /// the ones not yet started, and this returns [`Cancelled`] rather than a partial answer: the caller
 /// that cancelled is by definition no longer displaying one.
 pub fn read_history(
+    git: &ExternalProgram,
     entry: &ProjectEntry,
     task_id: &str,
     references: &[String],
@@ -1450,13 +1455,13 @@ pub fn read_history(
     // References-derived PR 区画 — must survive a root that is not a Git repository (decision-6,
     // doc-8 §5).
     let commits = CommitSearch::of(
-        history::search_commits(&entry.project_root, task_id),
+        history::search_commits(git, &entry.project_root, task_id),
         &entry.project_root,
     );
     // The same 抽出規則 the interpretation applies (doc-6 §4, defined once in `history`), re-run here
     // rather than carried over: this command is keyed on a TASK-ID and needs the URLs of *that* task.
     let pull_requests = history::extract_pull_requests(references);
-    let remote = history::detect_remote_host(entry);
+    let remote = history::detect_remote_host(git, entry);
     // Relation resolution intersects a PR's commit set with *this task's* commits (doc-6 §6), so a
     // commit search that did not produce a list leaves the intersection undefined rather than empty.
     // Resolving against a stand-in empty slice would spend a network lookup to report "no shared
@@ -1503,11 +1508,15 @@ pub fn task_history_read(
         let references = project.state.task_references(&entry, &task_id)?;
         Ok::<_, CommandError>((entry, references))
     })?;
+    // Both 外部コマンド are resolved once, from the settings as they stand when the read starts —
+    // one read must not launch two different executables because a save landed halfway through it.
+    let settings = current_settings(&app);
     read_history(
+        &ExternalProgram::git(settings.git_cli.as_deref()),
         &entry,
         &task_id,
         &references,
-        &history::HostReferences,
+        &history::HostReferences::new(ExternalProgram::gh(settings.gh_cli.as_deref())),
         &cancel,
     )
     .map_err(|Cancelled| CommandError::HistoryCancelled { read_id })
@@ -1807,6 +1816,24 @@ pub fn body_link_open(url: String) -> Result<(), CommandError> {
 pub fn cli_probe(app: AppHandle) -> CliReadiness {
     let settings = current_settings(&app);
     update::probe(&SystemBacklog::resolve(settings.backlog_cli.as_deref())).into()
+}
+
+/// 解決結果の表示 (decision-29): what each 外部コマンド resolves to right now, and whether it starts.
+///
+/// `backlog` is deliberately not here. Its readiness is [`cli_probe`]'s, and that one answers a
+/// different question — whether the version meets `MIN_VERSION` (decision-7) — which no other
+/// 外部コマンド has. Reporting it twice would put two answers about one program on one screen, and
+/// they would disagree the moment a supported-but-old CLI launched fine.
+///
+/// The two probes run in sequence, not in parallel: each is bounded, two of them are at most ten
+/// seconds, and a thread pair to save five would be the only concurrency in this boundary.
+#[tauri::command(async)]
+pub fn external_programs_probe(app: AppHandle) -> Vec<ExternalProgramReport> {
+    let settings = current_settings(&app);
+    vec![
+        external::probe(&ExternalProgram::git(settings.git_cli.as_deref())),
+        external::probe(&ExternalProgram::gh(settings.gh_cli.as_deref())),
+    ]
 }
 
 /// Run one screen action against a project (doc-5 §5, doc-9 §4). `action` is a sequence of 更新操作
@@ -3195,8 +3222,15 @@ labels: []\n\
             references,
             vec!["https://github.com/o/r/pull/5".to_string()]
         );
-        let history = read_history(&entry, "TASK-1", &references, &NeverCalled, &Cancel::new())
-            .expect("nothing cancelled this read");
+        let history = read_history(
+            &ExternalProgram::git(None),
+            &entry,
+            "TASK-1",
+            &references,
+            &NeverCalled,
+            &Cancel::new(),
+        )
+        .expect("nothing cancelled this read");
         assert!(history.remote.is_none());
         assert!(history.relations.is_empty());
         let json = serde_json::to_value(&history).unwrap();
@@ -3440,17 +3474,20 @@ labels: []\n\
         // An alias-only update leaves both roots where they were.
         let before = entry_roots(&ledger, "atlas");
         let updated = ledger
-            .update(&UpdateRequest {
-                slug: "atlas".to_string(),
-                project_root: None,
-                backlog_root: None,
-                redetect_git_remote: false,
-                status_aliases: Some(BTreeMap::from([(
-                    "Doing".to_string(),
-                    "In Progress".to_string(),
-                )])),
-                new_index: None,
-            })
+            .update(
+                &ExternalProgram::git(None),
+                &UpdateRequest {
+                    slug: "atlas".to_string(),
+                    project_root: None,
+                    backlog_root: None,
+                    redetect_git_remote: false,
+                    status_aliases: Some(BTreeMap::from([(
+                        "Doing".to_string(),
+                        "In Progress".to_string(),
+                    )])),
+                    new_index: None,
+                },
+            )
             .unwrap();
         assert_eq!(
             before,
@@ -3461,14 +3498,17 @@ labels: []\n\
         // A move changes both roots — project_root explicitly, backlog_root by defaulting under it.
         let before = entry_roots(&ledger, "atlas");
         let updated = ledger
-            .update(&UpdateRequest {
-                slug: "atlas".to_string(),
-                project_root: Some(to.path.clone()),
-                backlog_root: None,
-                redetect_git_remote: false,
-                status_aliases: None,
-                new_index: None,
-            })
+            .update(
+                &ExternalProgram::git(None),
+                &UpdateRequest {
+                    slug: "atlas".to_string(),
+                    project_root: Some(to.path.clone()),
+                    backlog_root: None,
+                    redetect_git_remote: false,
+                    status_aliases: None,
+                    new_index: None,
+                },
+            )
             .unwrap();
         assert_ne!(
             before,
