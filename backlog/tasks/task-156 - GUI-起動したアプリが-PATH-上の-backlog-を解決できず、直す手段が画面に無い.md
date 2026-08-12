@@ -4,7 +4,7 @@ title: GUI 起動したアプリが PATH 上の backlog を解決できず、直
 status: In Progress
 assignee: []
 created_date: '2026-08-12 21:46'
-updated_date: '2026-08-12 22:44'
+updated_date: '2026-08-12 23:59'
 labels:
   - release
   - 'kind:bug'
@@ -88,4 +88,45 @@ decision-16 が避けた「シェルを経由する」性質に隣接し、外�
 - 同じ PATH に `/usr/bin`（`git`）と `/opt/homebrew/bin`（`gh`）は**入っている**。ただし
   このマシンの launchd PATH は customize 済みなので、`git`・`gh` が届いたのは偶然である。
   素の macOS の既定値は未実測のまま（AC #2 が残る）。
+
+## 実機確認（2026-08-13、ユーザー）
+
+**Windows: 確認済み。**アプリは動作し、外部コマンド区画は Backlog CLI ☑ / Git ☑ /
+**GitHub CLI ⚠️（未解決・不整合の族の色）**を示した。**未解決の描き方が実機で確認できた**のは
+`gh` 未導入の環境だったためで、macOS 側では `backlog` を一時的にリネームして同じ状態を作った。
+
+**同じ画面で「起動できる／版が要件未満」が同時に出た。**上部帯が
+`backlog CLI 1.48.0 は動作確認範囲外です（必要: 1.49.3 以上）。作成・更新は発行できません` を
+出しているとき、外部コマンド区画の Backlog CLI は ☑ だった。**decision-29 が「この表示が答えるのは
+起動したか、縮退帯が答えるのは最低バージョン要件を満たすか であり、食い違いではなく 2 つの真である」
+と書いた場面が、そのまま実機で出たことになる。**当初「1 つのプログラムについて 2 つの答えを同じ画面へ
+出すと食い違う」として `backlog` を区画から外していた判断は、これで二重に否定された。
+
+**Linux（WSL Ubuntu 24）: 未実測。**`pnpm tauri dev` が GTK の初期化で panic して起動しない
+（`Failed to initialize gtk backend!` / `gtk::rt::init`）。**これは Atlas の欠陥ではなく表示先が
+無いことを指す**ので、WSLg が有効かどうかの問題である。**したがって Linux の GUI 起動時の PATH 継承は
+測れていない。**
+
+**そもそも WSL は素の Ubuntu デスクトップの代理にならない**（起動前から述べていた懸念）。
+WSL には GDM のようなログインマネージャも通常のデスクトップセッションも無く、ランチャー起動時の
+PATH の出どころが実機と同じとは限らない。**TASK-75 が預けた `xdg-open` の確認も同様で**、WSL では
+`xdg-open` が `wslview` 経由で Windows のエクスプローラを開く構成が多く、Linux のファイルマネージャが
+開くかどうかの答えにならない。
+
+**decision-16 順序 2 が実機で働いていることを、初めて直接観測した**（2026-08-13、Windows）。
+Backlog CLI 行の `?` が出どころを `npm の配置から解決` とし、実行ファイルを
+`C:\Users\<user>\AppData\Local\fnm_multishells\<PID>_<時刻>\node_modules\backlog.md\node_modules\backlog.md-windows-x64\backlog.exe`
+と示した。**TASK-60 の 2026-08-01 の実機確認は「縮退帯が消え、編集が管理ファイルへ届いた」
+という結果からの確認で、どの段が解決したかは見えていなかった。**観測できるようになったのは
+解決結果の表示（decision-29）ができたためで、当たった候補（shim の隣の `node_modules` ×
+`backlog.md` の下に入れ子）は decision-16 の Consequences に記録した。
+**同時に、この環境の PATH に `backlog.exe` が無いことも裏付けられた** — 在れば順序 2 は使われない。
+
+**TASK-75 が預けた確認のうち Windows 分をここで引き取った**（2026-08-13）。設定画面の 場所を開く で
+エクスプローラが実際に開くことを Windows 実機で確認し、TASK-75 の Implementation Notes へ記録した。
+**Linux 分（`xdg-open`）は残る。**
+
+**AC #2 の Linux 分は Ubuntu VM で測ると決まった**（2026-08-13、ユーザーの判断。案 A）。
+WSL の結果を実測として記録する案（案 C）と、未実測のまま閉じて別タスクへ切り出す案（案 B）は
+採らない。**したがって本タスクは Ubuntu VM での実測待ちであり、それまで PR を作らない。**
 <!-- SECTION:NOTES:END -->
