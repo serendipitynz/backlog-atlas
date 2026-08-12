@@ -3,12 +3,14 @@ id: doc-4
 title: Backlog ルートのドメインモデルと読み取り層 設計
 type: specification
 created_date: '2026-07-21 09:36'
-updated_date: '2026-08-06 21:08'
+updated_date: '2026-08-12 06:50'
 ---
 # Backlog ルートのドメインモデルと読み取り層 設計
 
 TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書で導入する語は初出に定義を置く。
 前提は decision-1（Tauri/Rust）・decision-2（読み取りは Backlog 管理ファイルの直接解析、更新は Backlog CLI へ委譲、cross-branch は現在 checkout 限定）。
+
+**実測基準版**: 本書が「実測」と述べる記述は Backlog CLI v1.48.0 で確かめたものである（decision-7 の最低バージョン要件、decision-27）。個々の記述は版を名乗らない — 名乗るのは、2 つ以上の版の違いそのものを述べる版差記録だけである。最低バージョン要件が上がったら、本行の版と本書の実測記述を併せて測り直す。
 
 ## 1. 用語
 
@@ -16,7 +18,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - **読み取り層** … Backlog 管理ファイルを解析してドメインモデルを構築する読み取り専用の処理層。書き込みは含まない。
 - **kind ラベル** … frontmatter の labels のうち `kind:` 接頭辞を持つ要素（TASK-8）。
 - **通常ラベル** … labels のうち kind ラベル以外の要素。
-- **type フィールド** … Backlog CLI v1.48.0 の `--type` が frontmatter へ書く単一のスカラー値 `type:`（decision-20、TASK-110）。labels と並ぶ位置に書かれ、並びではなく 1 値しか持てない。
+- **type フィールド** … Backlog CLI の `--type` が frontmatter へ書く単一のスカラー値 `type:`（decision-20、TASK-110）。labels と並ぶ位置に書かれ、並びではなく 1 値しか持てない。
 - **Type 導出元** … Atlas が Type 値を取り出す元になる frontmatter 上の場所（decision-20）。kind ラベルと type フィールドの 2 つ。
 - **Type** … Type 導出元から導出し、通常ラベルと分離して表示する分類値（doc-2、導出規則は decision-5 と decision-20）。
 - **タスク保存区分** … タスクファイルの走査元ディレクトリ（tasks / drafts / completed / archive）から決まる保管状態の分類（active / draft / completed / archive）。frontmatter の status（作業状態）とは独立の軸で、ファイルの置き場所だけで決まる（3.4）。
@@ -62,7 +64,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 ### 3.2 設定・マイルストーン・文書
 
-- **設定（config）**: `config.yml` から status 定義・task_prefix・ディレクトリ構成等を写す。読み取り層全体の解決基点であり、タスク解析より先に構築する。config.yml に Backlog の版情報は無い（v1.48.0 の `config.yml`・`backlog config list` に版欄は無く、status 定義・task_prefix・date_format 等のみ、実測）。版に依存しない読み取りは 4 章による。
+- **設定（config）**: `config.yml` から status 定義・task_prefix・ディレクトリ構成等を写す。読み取り層全体の解決基点であり、タスク解析より先に構築する。config.yml に Backlog の版情報は無い（`config.yml`・`backlog config list` に版欄は無く、status 定義・task_prefix・date_format 等のみ、実測）。版に依存しない読み取りは 4 章による。
 - **マイルストーン**: `milestones/m-N` の frontmatter（id・title）と本文（Description）を写す。タスクの milestone 参照の解決先。
 - **文書**: `docs/doc-N` の frontmatter（id・title・type・tags・日付）と本文を写す。タスクの documentation 参照の解決先。
 - **意思決定**: `decisions/decision-N` の frontmatter（id・title・status・date）と本文を写す。タスクの references 値のうち `decision-N` の形を取るものの解決先。
@@ -71,7 +73,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 - **必須項目は id・title の 2 つ**である。タスクの status に当たる必須項目はこの 3 種に無い。欠くとその 1 件は解析不能（5 章）となり、写せなかったファイルとして残る。
 - **3 種とも所在（source_path）と health を持つ**。所在は写せなかったファイルと不整合な 1 件がどのファイルのことかを言うために要り、health は任意項目だけが写せなかったことを述べるために要る（decision-24）。health の値はタスクのそれと同一の型である。
-- **マイルストーンには任意 frontmatter 項目が無い**（v1.48.0 の `milestone add` は id と title だけを書く、実測）。したがってマイルストーンの想定外スキーマは本文側の存在時構造検査だけから生じ、その判定は 4 章の SECTION 対の開閉を行う関数が担う。閉じない `SECTION:DESCRIPTION` 対がその実例で、放置すると decision-21 の直接書き込み操作が拒む形の説明が理由なしで画面に出る。**説明の本文範囲そのものは decision-21 の共有関数から取り続ける** — 範囲を 2 度求めると、読める範囲と書ける範囲が離れうる。
+- **マイルストーンには任意 frontmatter 項目が無い**（`milestone add` は id と title だけを書く、実測）。したがってマイルストーンの想定外スキーマは本文側の存在時構造検査だけから生じ、その判定は 4 章の SECTION 対の開閉を行う関数が担う。閉じない `SECTION:DESCRIPTION` 対がその実例で、放置すると decision-21 の直接書き込み操作が拒む形の説明が理由なしで画面に出る。**説明の本文範囲そのものは decision-21 の共有関数から取り続ける** — 範囲を 2 度求めると、読める範囲と書ける範囲が離れうる。
 
 ### 3.3 Type 候補を集め、通常ラベルと分離する境界
 
@@ -92,7 +94,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | archive/tasks/ | archive | アーカイブ済みタスク。id・status は保持。 |
 | archive/drafts/ | archive | アーカイブ済み下書き。id は `DRAFT-N`、status はアーカイブ前を保持。 |
 
-- v1.48.0 実測では、`archive/` は `tasks` / `drafts` / `milestones` へネストし、タスクは `archive/tasks` と `archive/drafts` に置かれる（`archive/` 直下にタスクファイルは無い）。`archive/milestones` はアーカイブ済みマイルストーンであり、タスクとして扱わない（§3.2）。走査は `archive/` を平坦にではなく、この実構造で辿る。
+- 実測では、`archive/` は `tasks` / `drafts` / `milestones` へネストし、タスクは `archive/tasks` と `archive/drafts` に置かれる（`archive/` 直下にタスクファイルは無い）。`archive/milestones` はアーカイブ済みマイルストーンであり、タスクとして扱わない（§3.2）。走査は `archive/` を平坦にではなく、この実構造で辿る。
 - draft は `drafts/`（保存区分 draft）と `archive/drafts/`（保存区分 archive）の両方に在りうる。id はいずれも `DRAFT-N`。status は一律 `Draft` ではなく、`draft create` 直後は `Draft`、`task demote` 由来や archive 済みは遷移前の status（例 `To Do`）を保持する（遷移の詳細は doc-5 の 3.3）。保存区分（ファイルの置き場所）と status（作業状態）は別軸である。
 - `Draft` は `config.yml` の `statuses` に含まれないことがあるが、draft が正規に取りうる既知の status であり、未知 status として不整合表示（5 章の想定外スキーマ）へ落とさない。status 正規化（TASK-7）は `Draft` を既知値として扱う。
 - 保存区分は status（作業状態）とは独立の軸である。status が Done のタスクでも、tasks/ に在れば active、completed/ に在れば completed になる。両者を混同しないことがこの区分を持たせる目的で、混同すると完了整理済み・アーカイブ・draft のタスクが通常の進捗表示へ混入する（doc-7）。
@@ -111,7 +113,7 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
   - **任意フィールド**（implementationPlan／implementationNotes・milestone・priority・assignee・dependencies・references・acceptanceCriteria・type など、3.1 で任意・0 個以上とした項目）: 不在は正常であり、不整合の契機にしない。存在すれば写す。frontmatter `type` は decision-20 で既知フィールドになった項目で、それ以前は上の「未知フィールドは保持または無視」に落ちていた。
   - **存在時構造検査項目**（SECTION 対（`BEGIN`／`END`）の開閉、AC ブロック内の `#N` 番号列、frontmatter の YAML 妥当性など）: 存在する場合にのみ構造の妥当性を検査し、不在は正常として扱う。構造が壊れているとき（対が閉じない・番号列が読めない・YAML が読めない等）だけ不整合表示へ落とす。
   この分類により、生成元の版が不明・混在でも判別できた範囲で読め、任意項目の不在で正常なタスク（例: PLAN／NOTES を持たないタスク）を不整合表示へ落とさない。想定するフィールド/SECTION 集合は、各項目がこの 3 分類のどれかを併せて明記する。
-- **サポート範囲**: 動作確認した版は書き込み CLI の版に対して固定する（現行 v1.48.0 を含む、decision-2）。これは更新（doc-5 の操作写像・オプション名の検査）の基準であり、生成元の版を縛るものではない。読み取り側のサポート範囲は、上記スキーマ能力検査が扱えるフィールド/SECTION 集合として定める。
+- **サポート範囲**: 動作確認した版は書き込み CLI の版に対して固定する（現行の値は decision-7 の最低バージョン要件が持つ。decision-2）。これは更新（doc-5 の操作写像・オプション名の検査）の基準であり、生成元の版を縛るものではない。読み取り側のサポート範囲は、上記スキーマ能力検査が扱えるフィールド/SECTION 集合として定める。
 
 ## 5. 解析エラー・欠損時の扱い
 
