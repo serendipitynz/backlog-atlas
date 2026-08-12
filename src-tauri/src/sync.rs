@@ -1623,7 +1623,7 @@ task_prefix: \"TASK\"\n";
 
     // --- 直接書き込み操作 (doc-5 §1, decision-21, TASK-65 AC #4/#5/#6) --------------------------
 
-    /// A milestone file in the shape v1.49.3's `milestone add -d` writes (measured 2026-08-06),
+    /// A milestone file in the shape v1.49.3's `milestone add -d` writes (measured 2026-08-12),
     /// with a second `##` section after the description so "only 説明の本文範囲 is replaced" has
     /// something on both sides of it to be true about.
     const MILESTONE_FILE: &str =

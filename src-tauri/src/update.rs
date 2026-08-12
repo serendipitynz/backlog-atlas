@@ -256,7 +256,7 @@ pub enum UpdateOperation {
 ///
 /// Narrower than what the CLI accepts, by product judgment rather than by capability: v1.49.3's
 /// `task create` also takes `-a`/`--plan`/`--notes`/`--ref`/`--depends-on` and stores every one of
-/// them in the created file (measured 2026-07-29, doc-5 §3). What Atlas passes here is what
+/// them in the created file (measured 2026-08-12 on v1.49.3, doc-5 §3). What Atlas passes here is what
 /// identifies and classifies a task at the moment it is created; plan・notes・references・
 /// dependencies accrue while the work runs and are edited through [`TaskEdit`] (doc-8 §6), so
 /// offering them at create time would only move the same input earlier. assignee is the one
@@ -2053,19 +2053,28 @@ mod tests {
         // the floor moves this boundary with it. A spelled pair would keep guarding the *old* floor
         // and still pass — and a version that used to be supported is precisely what needs a guard
         // once the floor moves past it (TASK-152: v1.48.0 was supported before this raise).
+        // Borrow from the next place up, so a floor like `2.0.0` yields `1.MAX.MAX` rather than
+        // panicking on a `0 - 1`: backlog.md is already publishing 1.50.x, so a major bump is a
+        // reachable future for this constant and not a case worth calling impossible.
         let below = if MIN_VERSION.patch > 0 {
             Version {
                 patch: MIN_VERSION.patch - 1,
                 ..MIN_VERSION
             }
-        } else {
+        } else if MIN_VERSION.minor > 0 {
             Version {
-                minor: MIN_VERSION
-                    .minor
-                    .checked_sub(1)
-                    .expect("a floor with minor 0 and patch 0 has no version below it"),
+                minor: MIN_VERSION.minor - 1,
                 patch: u32::MAX,
                 ..MIN_VERSION
+            }
+        } else {
+            Version {
+                major: MIN_VERSION
+                    .major
+                    .checked_sub(1)
+                    .expect("0.0.0 is the lowest version there is, so no floor sits below it"),
+                minor: u32::MAX,
+                patch: u32::MAX,
             }
         };
         let mut older = FakeCli::supported();
@@ -2851,7 +2860,7 @@ mod tests {
 
     // --- 直接書き込み操作 (doc-5 §1/§3, decision-21) ------------------------------------------
 
-    /// The shape v1.49.3's `milestone add -d` writes (measured 2026-08-06), with a section after
+    /// The shape v1.49.3's `milestone add -d` writes (measured 2026-08-12), with a section after
     /// the description so the replacement has something on both sides of it.
     const MILESTONE: &str =
         "---\nid: m-1\ntitle: \"P\"\n---\n\n## Description\n\nold\n\n## Notes\n\nkept\n";

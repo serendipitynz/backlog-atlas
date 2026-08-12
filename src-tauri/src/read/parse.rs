@@ -183,7 +183,7 @@ pub struct Body {
 /// failing.
 ///
 /// Both opening forms are accepted because the reader accepts both: v1.49.3's `milestone add`
-/// writes the plain heading (measured 2026-08-06), while task files use the SECTION pair, and a
+/// writes the plain heading (measured 2026-08-12), while task files use the SECTION pair, and a
 /// milestone file hand-edited into the other shape still reads. **Which one opened the range is
 /// returned with it**, because the write is narrower than the read: decision-21 admits only the
 /// shape the CLI itself writes, so the writer refuses a [`DescriptionOpener::Section`] range while

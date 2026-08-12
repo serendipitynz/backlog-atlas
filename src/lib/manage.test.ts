@@ -531,7 +531,8 @@ describe("buildMilestoneDescribe", () => {
 
   it("states a reason that is true of v1.49.3 (doc-10 §1)", () => {
     // Not "the CLI cannot do it": `milestone add -d` writes a heading-bearing description without
-    // complaint (measured 2026-08-06). The reason is about the round trip, and says so.
+    // complaint (measured 2026-08-12, with a description carrying `#` and `##` headings). The
+    // reason is about the round trip, and says so.
     expect(MILESTONE_DESCRIPTION_HEADING_REASON).not.toContain("CLI");
     expect(MILESTONE_DESCRIPTION_HEADING_REASON).toContain("##");
   });
@@ -572,7 +573,7 @@ describe("新規タスクの注記", () => {
     // 代替経路の案内 (doc-11 §8): the note carries a route and nothing else. TASK-123 dropped the
     // per-field reasons, so the assertion is that they did not come back — a reason here would be
     // the thing the 目視 called ノイズ, and「CLI に無い」would be false besides (v1.49.3's
-    // `task create` does accept all five, measured 2026-07-29).
+    // `task create` does accept all five, measured 2026-08-12).
     expect(TASK_CREATE_NOTE).toContain("作成後");
     expect(TASK_CREATE_NOTE).toContain("タスクの編集");
     expect(TASK_CREATE_NOTE).not.toContain("CLI");

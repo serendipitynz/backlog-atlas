@@ -581,7 +581,7 @@ fn identity(
 /// description the screen displays but cannot save back.
 ///
 /// v1.49.3's `milestone add` writes a plain `## Description` heading rather than a SECTION pair
-/// (measured 2026-08-06); the span function accepts either, as this did. The **read** accepts both
+/// (measured 2026-08-12); the span function accepts either, as this did. The **read** accepts both
 /// shapes; only the write is restricted to the heading (decision-21), and the opener the span
 /// carries is what tells them apart there.
 fn description_text(body: &str) -> Option<String> {

@@ -422,7 +422,10 @@ export const EMPTY_DEPENDENCIES_REASON =
  *   first and third, not the first and then the third of what is left.
  * - `--check-ac` / `--uncheck-ac` index the list **after** the removals: on `#1 one / #2 two /
  *   #3 three`, `--remove-ac 1 --check-ac 2` checks `three`, and on a two-item list the same pair
- *   exits 1 with "Acceptance criterion #2 not found".
+ *   exits 1 with a message opening "Acceptance criterion #2 not found" (v1.49.3 continues it with
+ *   the available indexes; only the opening is quoted, because the rest is wording and the failure
+ *   is what this note is about — doc-8 §6.5 records that a not-found wording did change between
+ *   v1.48.0 and v1.49.3 elsewhere).
  * - `--ac` appends, so an addition never shifts the indices a check resolves against.
  *
  * The draft holds baseline numbers throughout, because that is what the user pointed at. Passing

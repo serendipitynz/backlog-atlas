@@ -55,10 +55,16 @@ pub const KNOWN_TYPES: [&str; 10] = [
     "research",
     "writing",
     "maintenance",
-    // Backlog CLI v1.49.3's `--type` vocabulary, less `bug`/`feature` which are already above
-    // (2026-08-02 measured: the CLI rejects anything outside its seven and `config.yml` cannot
-    // widen it). `task` reads oddly beside Atlas's own "task", but it is the CLI's word, not a
-    // name Atlas chose, so it is not reworded (decision-20).
+    // Backlog CLI v1.49.3's *default* `--type` vocabulary, less `bug`/`feature` which are already
+    // above (measured 2026-08-12 on v1.49.3: `--type` outside the configured set exits 1, and
+    // `config.yml`'s `types:` widens that set — a value added there is then accepted). The
+    // 2026-08-02 note this replaces asserted the opposite, that `config.yml` could not widen it;
+    // **that was already false on v1.48.0** (measured on both), so this is a correction and not a
+    // version difference. It changes no behaviour here: membership only picks a display treatment
+    // and never gates a value, so a configured type outside this list shows with the 未知 Type mark
+    // (decision-20) — which is what the module doc above already says the list is for.
+    // `task` reads oddly beside Atlas's own "task", but it is the CLI's word, not a name Atlas
+    // chose, so it is not reworded (decision-20).
     "enhancement",
     "task",
     "chore",

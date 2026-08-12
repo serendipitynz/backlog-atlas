@@ -122,7 +122,7 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
  *
  * Narrower than what the CLI accepts, and narrowed by product judgment rather than by capability:
  * v1.49.3's `task create` also takes `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` and stores
- * them in the created file (doc-5 §3, 2026-07-29 実測). The form holds what identifies and
+ * them in the created file (doc-5 §3、2026-08-12 に v1.49.3 で実測). The form holds what identifies and
  * classifies a task at the moment it is created; plan・notes・references・dependencies accrue while
  * the work runs and are edited from タスク詳細 (doc-8 §6), so a field here would only move the same
  * input earlier. assignee is the one omission with no create-time substitute, and is closed on the
@@ -609,7 +609,7 @@ export function buildMilestoneArchive(milestone: Milestone): IssuePlan {
  * the round trip it appears to make.
  *
  * The reason is **not** "the CLI cannot do it" — v1.49.3's `milestone add -d` writes such a
- * description without complaint (measured 2026-08-06). doc-10 §1 asks that a stated reason be a
+ * description without complaint (measured 2026-08-12). doc-10 §1 asks that a stated reason be a
  * true one.
  */
 export const MILESTONE_DESCRIPTION_HEADING_REASON =

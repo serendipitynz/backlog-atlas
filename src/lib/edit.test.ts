@@ -269,7 +269,7 @@ describe("AC 項目単位操作の番号を削除後の並びへ写す", () => {
 
   it("項目が 2 件のときも範囲外にならない", () => {
     // 素の番号だと --remove-ac 1 --check-ac 2 になり、CLI は
-    // "Acceptance criterion #2 not found" で終了コード 1（実測）。
+    // "Acceptance criterion #2 not found" で始まる文で終了コード 1（2026-08-12 に v1.49.3 で実測）。
     const two = taskView({ acceptanceCriteria: criteria(["one", false], ["two", false]) });
     let session = toggleAcRemoval(startSession(two), 1);
     session = toggleAcCheck(session, 2);

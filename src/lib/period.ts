@@ -22,10 +22,13 @@
  * and refusing to apply it would not make the screen zone-independent; it would only make it read
  * every timestamp in a zone nobody is in.
  *
- * **Measured, not assumed** (2026-08-10, TASK-133): Backlog CLI v1.49.3 writes `created_date` /
- * `updated_date` in **UTC**. A task created while the machine's clock read `2026-08-10 10:46`
- * (NZST, UTC+12) came out carrying `'2026-08-09 22:46'`. Reading such a value as local wall clock
- * would put a task updated a minute ago outside 「今日」 by twelve hours.
+ * **Measured, not assumed**: Backlog CLI v1.49.3 writes `created_date` / `updated_date` in **UTC**
+ * (measured 2026-08-12 on v1.49.3, TASK-152: a clock reading `2026-08-12 22:37` NZST produced
+ * `'2026-08-12 10:37'`). The observation that established this was made on v1.48.0
+ * (2026-08-10, TASK-133: `2026-08-10 10:46` NZST → `'2026-08-09 22:46'`) and is kept because it is
+ * where the rule came from; the version this note asserts about is the one above it.
+ * Reading such a value as local wall clock would put a task updated a minute ago outside 「今日」
+ * by twelve hours.
  */
 
 /**
