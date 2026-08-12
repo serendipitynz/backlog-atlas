@@ -1,10 +1,10 @@
 ---
 id: TASK-154
 title: 最低バージョン要件の版表記を単一出所へ寄せ、実測の出所はリテラルのまま残す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-12 02:52'
-updated_date: '2026-08-12 07:45'
+updated_date: '2026-08-12 08:02'
 labels:
   - 'kind:chore'
 milestone: m-2
