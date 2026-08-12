@@ -1,10 +1,10 @@
 ---
 id: TASK-99
 title: Backlog CLI の sidecar 同梱を決める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-12 03:01'
+updated_date: '2026-08-12 03:47'
 labels:
   - release
   - decision
