@@ -1,10 +1,10 @@
 ---
 id: TASK-98
 title: tauri.conf.json の CSP を有効化する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-12 21:00'
+updated_date: '2026-08-12 21:56'
 labels:
   - release
   - security
@@ -24,7 +24,7 @@ app.security.csp が null である。現在のコードから危険な HTML 挿
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 app.security.csp に明示的な値が入っている
-- [ ] #2 有効化後に全画面が動作し、コンソールに CSP 違反が出ない
+- [x] #2 有効化後に全画面が動作し、コンソールに CSP 違反が出ない
 - [x] #3 選んだ CSP の各ディレクティブの理由が記録されている
 - [x] #4 将来 iframe・Worker・外部オリジンの読み込みなどを足す場合に、CSP のどの行を緩める必要があるかが書かれている
 <!-- AC:END -->
@@ -44,11 +44,27 @@ app.security.csp が null である。現在のコードから危険な HTML 挿
 - **`setAttribute("style", …)` は止まり、`style.cssText` と `style.setProperty` は止まらない** (`probe-attr.mjs`、両エンジン)。画面の `--prose-max-width` が `'unsafe-inline'` 無しでも効き続けるのはこのためで、Svelte が属性ではなく CSSOM 経由で入れている。
 - **`style-src-attr 'none'` は使えない** (PR #106 の 1R [P2] を測って却下。`probe-attr-none.mjs`)。両エンジンとも directive は効くが、**mermaid が SVG へ書き出す `style` 属性まで止まる** — 作図 1 つで違反 105 (WK) / 183 (Cr)、25 要素の宣言 53 個が 0 個しか適用されず、ラベルが `table-cell`→`block`・`nowrap`→`normal`、図が 204×278 → 464×632 になる。decision-28 §5。
 
+## 実機での確認 (2026-08-13、ユーザーが実施。AC #2)
+
+`pnpm tauri build --debug` のビルドを macOS で、**2 回に分けて**確認した。**どちらの回も CSP 違反も `IPC custom protocol failed` も出ていない。**
+
+1. **`bundle/macos/Backlog Atlas.app`** — スイムレーン・タスク詳細・プロジェクト詳細・設定の 4 画面。
+2. **`open src-tauri/target/debug/backlog-atlas`**（素の実行ファイル）— **作図結果と編集セッション**。1 回目は CLI 縮退で `編集` が無効になり到達できなかった (その縮退は TASK-156)。
+
+**ハーネスで測れなかった 3 つが、これで全部閉じた。**
+
+- **`connect-src` の IPC 宛先**。台帳 213/254 件・4/4 プロジェクトが描かれており、その値は `workspace_open` の応答が IPC を通って届いた結果である。外れていれば要求が拒否され、CSP 違反と Tauri のフォールバック警告の両方が出る。
+- **実機 WKWebView での 作図結果**。色付きで描画された。
+- **実機での Ace 昇格**。編集セッションが動作した。
+
+**`'unsafe-inline'` が要るとハーネスが言った 2 つは、実機でも要って、実機でも効いている。**
+
+**測っていないものは下の節から 1 つ減った** — 実機の webview は通った。残るのは作図の種類 (flowchart 1 種のみ) と、`pnpm tauri dev` に CSP が当たらないことである。
+
 ## 測っていないもの
 
 - **IPC の `connect-src`**。ハーネスの偽 IPC は同じ束の中の関数なので `fetch` を通らない。根拠は tauri 2.11.5 の実装 (`scripts/ipc-protocol.js` の `fetch(convertFileSrc(cmd, 'ipc'))`、`scripts/core.js` の宛先の組み立て) と `tauri-utils-2.9.3/src/config.rs:2741` の設定例。**間違っていても画面は動く** (`window.ipc.postMessage` へ自動で落ちる) ので、気づく手は `csp.rs` の試験とビルドしたアプリの console しかない。
 - **作図の種類**。測ったのは flowchart 1 種だけで、sequence・gantt・architecture 等は測っていない。
-- **実機の webview**。playwright のエンジンは同系であって同一ではない。
 - **`pnpm tauri dev` に CSP は当たらない** (`build.devUrl` があると文書は Vite が配り、`manager/mod.rs` の `get_asset`／`csp()` を通らない)。dev で違反が出ないことは何の根拠にもならないので、目視の依頼もビルド後のアプリに対して行う。
 
 ## AC #4 の文言を直した
