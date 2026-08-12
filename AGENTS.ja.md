@@ -74,6 +74,15 @@
   承認しないまま残す。`@parcel/watcher` は sass 自身の watch モードにしか要らず、esbuild
   はプラットフォーム別バイナリを optional dependency で解決するため、いずれの script
   なしでもビルド・テスト・`svelte-check` は通る。
+- **`src-tauri/icons/` のファイルはすべて `src-tauri/app-icon.png` から生成する。**
+  個別のファイルを手で編集しない。元画像を変えて
+  `pnpm tauri icon src-tauri/app-icon.png` を実行し直し、併せて書き出される `android/`・
+  `ios/` を削除する。このアプリはモバイル標的を持たず、ビルドのどこもそれらを読まない。
+  パスは必ず書く。既定の入力 `./app-icon.png` は `tauri.conf.json` ではなく作業ディレクトリ
+  からの相対なので、リポジトリ直下での引数なし `pnpm tauri icon` は失敗する。17 個の出力の
+  うち 16 個はバイト単位で再現するが、`icon.icns` は再現しない。要素の書き出し順が実行ごとに
+  変わるためで、要素の集合・各要素の内容・総バイト数は同じである。再実行後に
+  `icon.icns` だけが差分に出たときは、変更なしとして扱う。
 
 ## テスト
 
