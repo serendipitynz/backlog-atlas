@@ -17,6 +17,7 @@ import {
   externallyChanged,
   failureDetail,
   isDirty,
+  lastRemovalReason,
   milestoneOptions,
   optionsFor,
   rebaseOnto,
@@ -130,6 +131,18 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
     });
   });
 
+  it("空だったタスクへ足した 1 件は、戻せば保存対象でなくなる", () => {
+    // 最後の 1 件の削除を差し控える理由は「CLI に空集合化の手段が無い」だが、読み取り時点で空
+    // だった一覧にはその制約が掛からない — 戻すと触れた項目でなくなり `-a` を送らないため。
+    // 差し控えると、打ち間違いを取り消す手段がセッションの破棄しか無くなる。
+    const view = taskView({ assignee: [] });
+    let session = setField(startSession(view), "assignee", ["alcie"]);
+    expect(isDirty(session)).toBe(true);
+    session = setField(session, "assignee", []);
+    expect(isDirty(session)).toBe(false);
+    expect(buildSave(session).state).toBe("nothingToSave");
+  });
+
   it("再読込結果の assignee が送った集合と違えば事後通知に載る", () => {
     expect(divergence({ assignee: ["@takkyun"] }, taskView({ assignee: ["@takkyun"] }))).toEqual([]);
     // 並びは CLI の書き方に属するので集合で比べる（他の全置換と同じ）。
@@ -137,6 +150,21 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
     expect(
       divergence({ assignee: ["@takkyun"] }, taskView({ assignee: ["@takkyun", "@someone"] })),
     ).toEqual(["assignee"]);
+  });
+});
+
+describe("最後の 1 件の削除を差し控える条件 (doc-8 §6)", () => {
+  it("読み取り時点で空だった一覧では差し控えない", () => {
+    expect(lastRemovalReason([], EMPTY_ASSIGNEE_REASON)).toBeNull();
+    expect(lastRemovalReason([], EMPTY_REFERENCES_REASON)).toBeNull();
+    expect(lastRemovalReason([], EMPTY_DEPENDENCIES_REASON)).toBeNull();
+  });
+
+  it("読み取り時点で 1 件以上あった一覧では、その理由を述べて差し控える", () => {
+    expect(lastRemovalReason(["@takkyun"], EMPTY_ASSIGNEE_REASON)).toBe(EMPTY_ASSIGNEE_REASON);
+    expect(lastRemovalReason(["TASK-2"], EMPTY_DEPENDENCIES_REASON)).toBe(
+      EMPTY_DEPENDENCIES_REASON,
+    );
   });
 });
 

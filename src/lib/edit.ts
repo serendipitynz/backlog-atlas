@@ -456,6 +456,20 @@ export function canRemoveLast(values: readonly string[]): boolean {
 }
 
 /**
+ * Why the last entry of a 非空全置換 field may not be removed — or `null` when it may.
+ *
+ * The withholding only holds where emptying would be *issued*. A list the baseline already had
+ * empty is not one of those: entries added in this session can be taken back down to nothing, the
+ * field stops being 触れた項目 (doc-9 §5 (ii)), and no option is sent — so the CLI's missing
+ * 空集合化 constrains nothing, and stating it as the reason would be false. Without this the
+ * panel traps a mistyped entry on a task that had none: 削除 disabled, and the only ways out are
+ * saving the typo or discarding the whole session.
+ */
+export function lastRemovalReason(baseline: readonly string[], reason: string): string | null {
+  return baseline.length === 0 ? null : reason;
+}
+
+/**
  * Turn the session into the 更新操作 doc-5 §3 maps it to. Every facet fits one `task edit`, which is
  * doc-5 §3's "まとめられる範囲でまとめる" — and it keeps the action single-invocation, so a failure
  * cannot leave a partial application the panel would have to reconcile (doc-5 §5 部分適用).

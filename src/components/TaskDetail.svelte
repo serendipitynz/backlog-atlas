@@ -53,6 +53,7 @@
     editAvailability,
     externallyChanged,
     isDirty,
+    lastRemovalReason,
     milestoneOptions,
     optionsFor,
     rebaseOnto,
@@ -698,18 +699,18 @@
   draft: string,
   setDraft: (value: string) => void,
   placeholder: string,
-  lastRemovalReason: string | null,
+  withheldReason: string | null,
 )}
   <ul class="list-edit">
     {#each values as value, index (index)}
-      {@const removable = lastRemovalReason === null || canRemoveLast(values)}
+      {@const removable = withheldReason === null || canRemoveLast(values)}
       <li>
         <span class="url">{value}</span>
         <button
           type="button"
           class="mini"
           disabled={!removable}
-          title={removable ? "削除" : (lastRemovalReason ?? "")}
+          title={removable ? "削除" : (withheldReason ?? "")}
           onclick={() => apply(values.filter((_, at) => at !== index))}
         >
           削除
@@ -717,8 +718,8 @@
       </li>
     {/each}
   </ul>
-  {#if lastRemovalReason !== null && values.length === 1}
-    <p class="hint">{lastRemovalReason}</p>
+  {#if withheldReason !== null && values.length === 1}
+    <p class="hint">{withheldReason}</p>
   {/if}
   <div class="add-row">
     <input
@@ -1284,7 +1285,7 @@
         newAssignee,
         (value) => (newAssignee = value),
         "追加する assignee",
-        EMPTY_ASSIGNEE_REASON,
+        lastRemovalReason(task.assignee, EMPTY_ASSIGNEE_REASON),
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
@@ -1582,7 +1583,7 @@
         newDependency,
         (value) => (newDependency = value),
         "TASK-ID",
-        EMPTY_DEPENDENCIES_REASON,
+        lastRemovalReason(task.dependencies, EMPTY_DEPENDENCIES_REASON),
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
@@ -1654,7 +1655,7 @@
         newReference,
         (value) => (newReference = value),
         "URL",
-        EMPTY_REFERENCES_REASON,
+        lastRemovalReason(task.references, EMPTY_REFERENCES_REASON),
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
