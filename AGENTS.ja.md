@@ -70,6 +70,13 @@
   いずれも `pnpm-lock.yaml` の隣に二つ目の lock ファイルを書いてしまう。
 - Rust 側は従来のコマンドを `src-tauri/` で実行する (`cargo test`、`cargo fmt`、
   `cargo clippy`)。
+- **Linux でビルドするなら Ubuntu 24.04 以降を使う。** Linux では WebView が cargo の依存では
+  なくシステムのライブラリであり、どれが要るかは lock から決まる。`webkit2gtk` クレートは
+  webkit2gtk-4.1 を、`soup3` は libsoup-3.0 を束ねている。24.04 は両方を持つが、20.04・22.04 は
+  持たず、ビルドは `pkg-config` の段階で `glib-2.0` が見つからないと言って止まる。**この
+  エラーは WebKit にも Ubuntu の版にも触れない**ので、ディストリを替えるのではなくパッケージを
+  1 つずつ入れる方向へ誘導してしまう。導入する開発パッケージの一覧は README の
+  「ソースからのビルド」にあり、そこにしか置かない (一覧の置き場を 1 つに保つため)。
 - `pnpm install` は `@parcel/watcher` と `esbuild` を build script 未承認として報告する。
   承認しないまま残す。`@parcel/watcher` は sass 自身の watch モードにしか要らず、esbuild
   はプラットフォーム別バイナリを optional dependency で解決するため、いずれの script

@@ -61,6 +61,20 @@ nodenv は alias plugin なしにメジャーのみの指定を解決しない�
 あり、Corepack がこれを読む。Node が要るのはビルド時だけである。出荷物は Vite の出力を
 内包した Tauri バイナリであり、Node は入らない。
 
+Linux では WebView が cargo の依存ではなくシステムのライブラリなので、ビルドにはその開発
+ヘッダも要る。どれが要るかは lock から決まり、`webkit2gtk` クレートが webkit2gtk-4.1 を、
+`soup3` が libsoup-3.0 を束ねている。**Ubuntu 24.04 以降**は両方を持つ。この project を
+ビルドしているのもその版である。Ubuntu 20.04・22.04 は持たず、ビルドは `pkg-config` の段階で
+`glib-2.0` が見つからないと言って止まる。このエラーは WebKit にもディストリの版にも触れないので、
+「Ubuntu が違う」ではなく「パッケージが 1 つ足りない」ように読めてしまう。
+
+```sh
+sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+  pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+ビルド自体はどの OS でも同じである:
+
 ```sh
 pnpm install
 pnpm test            # Vitest

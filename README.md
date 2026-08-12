@@ -65,6 +65,21 @@ Node 24 however that tool expects. pnpm is pinned in `package.json`'s `packageMa
 field, which Corepack reads. Node is a build-time requirement only — the shipped
 artifact is a Tauri binary with the Vite output inside it, and it carries no Node.
 
+On Linux the WebView is a system library rather than a cargo dependency, so building
+also needs its development headers, and which ones follows from the lockfile: the
+`webkit2gtk` crate binds webkit2gtk-4.1 and `soup3` binds libsoup-3.0. **Ubuntu 24.04 or
+newer** carries both — it is what this project has been built on. Ubuntu 20.04 and 22.04
+do not, and a build there stops in `pkg-config` reporting that `glib-2.0` was not found;
+the error names neither WebKit nor the distribution version, so it reads as a missing
+package rather than as the wrong Ubuntu.
+
+```sh
+sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+  pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+The build itself is the same on every platform:
+
 ```sh
 pnpm install
 pnpm test            # Vitest

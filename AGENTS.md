@@ -76,6 +76,14 @@ Move the state through Backlog CLI calls, like every other task update.
   second lockfile beside `pnpm-lock.yaml`.
 - The Rust side keeps its own commands, run from `src-tauri/`: `cargo test`,
   `cargo fmt`, `cargo clippy`.
+- **Building on Linux needs Ubuntu 24.04 or newer.** The WebView is a system library
+  there, not a cargo dependency, and which one follows from the lockfile: the
+  `webkit2gtk` crate binds webkit2gtk-4.1 and `soup3` binds libsoup-3.0. 24.04 carries
+  both; 20.04 and 22.04 do not, and a build on them stops early in `pkg-config` saying
+  `glib-2.0` was not found — an error that names neither WebKit nor the Ubuntu version,
+  so it invites installing packages one at a time instead of changing the distribution.
+  The development packages to install are listed in README's "Building from source",
+  and only there, so the list has one home.
 - `pnpm install` reports `@parcel/watcher` and `esbuild` as ignored build scripts.
   Leave them unapproved: sass needs `@parcel/watcher` only for its own watch mode,
   esbuild resolves its platform binary through an optional dependency instead, and the
