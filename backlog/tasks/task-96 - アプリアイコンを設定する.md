@@ -1,10 +1,10 @@
 ---
 id: TASK-96
 title: アプリアイコンを設定する
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-01 00:38'
+updated_date: '2026-08-12 00:02'
 labels:
   - release
   - 'kind:chore'
@@ -23,7 +23,7 @@ src-tauri/icons が Tauri の既定素材のままである。Backlog Atlas の�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 元画像（1024x1024 以上）がリポジトリにある
-- [ ] #2 src-tauri/icons の全ファイルが元画像から生成されており、既定素材が残っていない
+- [x] #1 元画像（1024x1024 以上）がリポジトリにある
+- [x] #2 src-tauri/icons の全ファイルが元画像から生成されており、既定素材が残っていない
 - [ ] #3 macOS・Windows・Linux の 3 環境でビルドしたバンドルにアイコンが反映されている
 <!-- AC:END -->
