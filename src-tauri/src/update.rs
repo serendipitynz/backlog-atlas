@@ -33,8 +33,8 @@
 //!   version at or above the confirmed [`MIN_VERSION`] yields a [`CliCapability`]. [`run`] takes that
 //!   capability by reference, so an update is unreachable without a supported CLI — a missing or
 //!   too-old CLI degrades Atlas to read-only by construction, not by a flag a caller might forget.
-//!   Operations v1.48.0 cannot perform (emptying references, emptying dependencies, clearing an
-//!   assignee) are unrepresentable or refused *before* any process starts. The 直接書き込み操作 is
+//!   Operations v1.48.0 cannot perform (emptying references, emptying dependencies, emptying the
+//!   assignee list) are unrepresentable or refused *before* any process starts. The 直接書き込み操作 is
 //!   gated the same way even though it starts no process: a root Atlas cannot update through the
 //!   CLI at all is not one where a single operation should still write.
 
@@ -290,13 +290,14 @@ pub struct TaskEdit {
     pub status: Option<String>,
     pub priority: Option<String>,
     pub milestone: Option<String>,
-    /// `--assignee` (doc-5 §3). One value rather than a set, and the whole GUI route for assignee
-    /// (TASK-57): v1.48.0 takes a single assignee — a repeated `-a` keeps only the last, a
-    /// comma-separated value lands as one literal entry, and the write replaces the whole
-    /// frontmatter list however many entries it had (measured 2026-07-29). `Some(blank)` is refused
-    /// — `-a ""` exits 0 without clearing (measured), the same silent-no-op as `--ref ""`, so
-    /// unassigning is not a capability the CLI offers ([`RejectReason::EmptyAssignee`]).
-    pub assignee: Option<String>,
+    /// `--assignee` sets the whole assignee set (doc-5 §3), and is the whole GUI route for assignee
+    /// (TASK-57). `task edit -a` reads its value as a comma-separated set and replaces the
+    /// frontmatter list with it, however many entries either side had (measured 2026-08-12 on
+    /// v1.48.0; `task create -a` does *not* split, which is what doc-5 §3 recorded for both until
+    /// TASK-151 measured them apart). `None` leaves it untouched; `Some(empty)` is refused — `-a ""`
+    /// exits 0 without clearing (measured), the same silent-no-op as `--ref ""`, so emptying the
+    /// list is not a capability the CLI offers ([`RejectReason::EmptyAssignee`]).
+    pub assignee: Option<Vec<String>>,
     pub plan: Option<String>,
     pub notes: NoteEdit,
     pub add_labels: Vec<String>,
@@ -545,9 +546,9 @@ pub enum RejectReason {
     /// same silent-no-op as `--ref ""`, so clearing all dependencies is not offered — refused rather
     /// than reported as a success (doc-5 §5 縮退).
     EmptyDependencies,
-    /// `assignee` was `Some(blank)`. `-a ""` exits 0 without clearing (measured), the same
-    /// silent-no-op as `--ref ""`, so unassigning is not offered — refused rather than reported as
-    /// a success (doc-5 §5 縮退).
+    /// `assignee` was `Some(empty)`. `-a ""` exits 0 without clearing (measured), and so does a
+    /// value whose parse is empty, so emptying the list is not offered — refused rather than
+    /// reported as a success (doc-5 §5 縮退).
     EmptyAssignee,
     /// A `task edit` that would set no field. `task edit` with only a taskId changes nothing, so it
     /// is refused instead of launched (doc-5 §5).
@@ -576,7 +577,7 @@ impl std::fmt::Display for RejectReason {
             ),
             RejectReason::EmptyAssignee => write!(
                 f,
-                "assignee cannot be cleared through the CLI (v1.48.0); pass a non-blank assignee"
+                "assignee cannot be cleared through the CLI (v1.48.0); keep at least one assignee"
             ),
             RejectReason::NothingToEdit => write!(f, "task edit was requested with no field to change"),
             RejectReason::NothingToUpdate => {
@@ -715,13 +716,15 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
         .opt_if("--plan", &edit.plan);
 
     if let Some(assignee) = &edit.assignee {
-        // 解除は不可 (measured): `-a ""` exits 0 without clearing, so a blank value is refused
-        // rather than reported as a success (doc-5 §5 縮退, same trap as `--ref ""`). Whitespace is
-        // refused with it — the CLI would write it as the assignee, and could not then clear it.
-        if assignee.trim().is_empty() {
+        // 空集合でのクリアは不可 (measured): `-a ""` exits 0 without clearing, so an empty set is
+        // refused rather than reported as a success (doc-5 §5 縮退, same trap as `--ref ""`).
+        // Blank members are refused with it: the CLI drops them when it splits the value, so a set
+        // that is blank throughout would reach the CLI as the empty value it exits 0 on.
+        if assignee.iter().all(|one| one.trim().is_empty()) {
             return Err(RejectReason::EmptyAssignee);
         }
-        inv = inv.opt("--assignee", assignee.clone());
+        // `-a` sets the whole set from one comma-separated value, as `--depends-on` does.
+        inv = inv.opt("--assignee", assignee.join(","));
     }
 
     inv = match &edit.notes {
@@ -2546,15 +2549,16 @@ mod tests {
     }
 
     #[test]
-    fn task_edit_sets_the_assignee_as_one_value() {
-        // The GUI route for assignee is the edit side (TASK-57): one value, since a repeated `-a`
-        // keeps only the last and a comma-separated value becomes one literal entry (measured).
+    fn task_edit_sets_the_whole_assignee_set_in_one_comma_separated_value() {
+        // The GUI route for assignee is the edit side (TASK-57), where `-a` reads its value as a
+        // comma-separated set and replaces the list with it (measured). Repeating the flag would
+        // keep only the last value, so the set goes in one argument as `--depends-on` does.
         let cli = FakeCli::supported();
         run_one(
             UpdateOperation::TaskEdit {
                 task_id: "TASK-1".to_string(),
                 edit: TaskEdit {
-                    assignee: Some("@takkyun".to_string()),
+                    assignee: Some(vec!["@takkyun".to_string(), "@someone".to_string()]),
                     ..Default::default()
                 },
             },
@@ -2563,21 +2567,32 @@ mod tests {
         .unwrap();
         assert_eq!(
             cli.calls(),
-            vec![vec!["task", "edit", "TASK-1", "--assignee", "@takkyun"]]
+            vec![vec![
+                "task",
+                "edit",
+                "TASK-1",
+                "--assignee",
+                "@takkyun,@someone"
+            ]]
         );
     }
 
     #[test]
-    fn a_blank_assignee_is_refused_rather_than_silently_ignored() {
+    fn an_empty_assignee_set_is_refused_rather_than_silently_ignored() {
         // `-a ""` exits 0 without clearing (measured), so issuing it would report an unassignment
-        // that never happened. Whitespace is refused with it — the CLI would write it verbatim.
+        // that never happened. A set that is blank throughout is refused with it: `-a` drops blank
+        // members when it splits, so `" , "` reaches the CLI as the value it exits 0 on.
         let cli = FakeCli::supported();
-        for blank in ["", "   "] {
+        for empty in [
+            vec![],
+            vec!["".to_string()],
+            vec![" ".to_string(), "".to_string()],
+        ] {
             let err = run_one(
                 UpdateOperation::TaskEdit {
                     task_id: "TASK-1".to_string(),
                     edit: TaskEdit {
-                        assignee: Some(blank.to_string()),
+                        assignee: Some(empty),
                         ..Default::default()
                     },
                 },
@@ -2656,7 +2671,7 @@ mod tests {
                     status: Some("Done".to_string()),
                     priority: Some("low".to_string()),
                     milestone: Some("m-1".to_string()),
-                    assignee: Some("@takkyun".to_string()),
+                    assignee: Some(vec!["@takkyun".to_string()]),
                     plan: Some("p".to_string()),
                     notes: NoteEdit::Set("n".to_string()),
                     add_labels: vec!["a".to_string()],
