@@ -19,6 +19,7 @@ import type {
   AppSettings,
   CliReadiness,
   EditorLaunch,
+  ExternalProgramReport,
   EditorReadiness,
   GitRemoteRead,
   LaunchMethod,
@@ -93,6 +94,22 @@ function emptyLedger(): LedgerResponse {
  */
 export const answers = {
   cli: { state: "ready", version: CONFIRMED_CLI_VERSION } as CliReadiness,
+  /** 解決結果の表示 (decision-29). Both 外部コマンド resolve and launch, which is the state a test that
+   *  is not about them should not have to arrange. */
+  externalPrograms: [
+    {
+      name: "git",
+      program: "git",
+      source: "onPath",
+      outcome: { state: "launched", report: "git version 2.51.0" },
+    },
+    {
+      name: "gh",
+      program: "gh",
+      source: "onPath",
+      outcome: { state: "launched", report: "gh version 2.97.0" },
+    },
+  ] as ExternalProgramReport[],
   editor: { configured: null, association: "open" } as EditorReadiness,
   ledger: emptyLedger(),
   ledgerPath: "/config/ledger.toml",
@@ -177,6 +194,20 @@ export function reset(): void {
   calls.length = 0;
   listeners.length = 0;
   answers.cli = { state: "ready", version: CONFIRMED_CLI_VERSION };
+  answers.externalPrograms = [
+    {
+      name: "git",
+      program: "git",
+      source: "onPath",
+      outcome: { state: "launched", report: "git version 2.51.0" },
+    },
+    {
+      name: "gh",
+      program: "gh",
+      source: "onPath",
+      outcome: { state: "launched", report: "gh version 2.97.0" },
+    },
+  ];
   answers.editor = { configured: null, association: "open" };
   answers.ledger = emptyLedger();
   answers.ledgerPath = "/config/ledger.toml";
@@ -323,6 +354,9 @@ export const commandFakes = {
 
   cliProbe: (): Promise<CliReadiness> =>
     record("cli_probe", [], () => Promise.resolve(answers.cli)),
+
+  externalProgramsProbe: (): Promise<ExternalProgramReport[]> =>
+    record("external_programs_probe", [], () => Promise.resolve(answers.externalPrograms)),
 
   editorProbe: (): Promise<EditorReadiness> =>
     record("editor_probe", [], () => Promise.resolve(answers.editor)),

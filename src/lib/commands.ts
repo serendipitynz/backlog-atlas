@@ -18,6 +18,7 @@ import type {
   CliReadiness,
   CommandError,
   EditorLaunch,
+  ExternalProgramReport,
   EditorReadiness,
   GitRemoteRead,
   LaunchMethod,
@@ -223,6 +224,17 @@ export function settingsLocationOpen(): Promise<EditorLaunch> {
  */
 export function cliProbe(): Promise<CliReadiness> {
   return invoke<CliReadiness>("cli_probe");
+}
+
+/**
+ * 解決結果の表示 (decision-29): which `git` and `gh` Atlas would launch, and whether they start.
+ *
+ * Read when the 設定画面 opens rather than at startup: it spawns two processes to fill one panel, and
+ * every other screen gets on without the answer. Re-read after a save, so the panel reports the
+ * 外部コマンド指定 just written rather than the one it replaced.
+ */
+export function externalProgramsProbe(): Promise<ExternalProgramReport[]> {
+  return invoke<ExternalProgramReport[]>("external_programs_probe");
 }
 
 /**

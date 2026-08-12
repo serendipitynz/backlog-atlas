@@ -3,6 +3,7 @@ import {
   CARD_DENSITY_LABEL,
   CARD_DENSITY_NOTE,
   STORAGE_SELECTIONS,
+  commandPathOf,
   editorArgsText,
   editorCommandOf,
   emptyStorageWarning,
@@ -252,21 +253,44 @@ describe("フォームの外からの書き手（既定の詳細配置・既定�
     expect(mergeDraft(DEFAULTS, draft, { ...DEFAULTS, schema_version: 2 }).schema_version).toBe(2);
   });
 
-  it("keeps a hand-edited backlog_cli when the form saves some other field", () => {
+  it("keeps every hand-edited 外部コマンド指定 when the form saves some other field", () => {
     // 保存 serializes this return value as the whole file, so a field this merge omits is deleted
-    // from disk. `backlog_cli` has no control on the form (doc-5 §4 順序 1 is hand-edited only), which
-    // is precisely why dropping it would go unnoticed until updates degraded again.
-    const withCli: AppSettings = { ...DEFAULTS, backlog_cli: "/opt/backlog/backlog" };
-    const draft: AppSettings = { ...withCli, card_density: "l" };
-    const merged = mergeDraft(withCli, draft, withCli);
+    // from disk. All three are checked rather than one: they were added in two separate changes
+    // (decision-16, then decision-29), and a fourth appended without a `pick` would be silently
+    // deleted on the next save of any unrelated item.
+    const configured: AppSettings = {
+      ...DEFAULTS,
+      backlog_cli: "/opt/backlog/backlog",
+      git_cli: "/opt/git/bin/git",
+      gh_cli: "/opt/gh/bin/gh",
+    };
+    const draft: AppSettings = { ...configured, card_density: "l" };
+    const merged = mergeDraft(configured, draft, configured);
     expect(merged.backlog_cli).toBe("/opt/backlog/backlog");
+    expect(merged.git_cli).toBe("/opt/git/bin/git");
+    expect(merged.gh_cli).toBe("/opt/gh/bin/gh");
     expect(merged.card_density).toBe("l");
     // And absent rather than present-and-undefined when there is none, like external_editor.
-    expect("backlog_cli" in mergeDraft(DEFAULTS, { ...DEFAULTS }, DEFAULTS)).toBe(false);
+    const none = mergeDraft(DEFAULTS, { ...DEFAULTS }, DEFAULTS);
+    for (const field of ["backlog_cli", "git_cli", "gh_cli"] as const) {
+      expect(field in none, field).toBe(false);
+    }
   });
 
-  it("counts a backlog_cli difference as dirty", () => {
-    // Without it in `normalize`, an incoming change to the field would read as "nothing to save".
+  it("counts every 外部コマンド指定 difference as dirty", () => {
+    // Without them in `normalize`, an incoming change to the field would read as "nothing to save".
     expect(isDirty(DEFAULTS, { ...DEFAULTS, backlog_cli: "/opt/backlog/backlog" })).toBe(true);
+    expect(isDirty(DEFAULTS, { ...DEFAULTS, git_cli: "/opt/git/bin/git" })).toBe(true);
+    expect(isDirty(DEFAULTS, { ...DEFAULTS, gh_cli: "/opt/gh/bin/gh" })).toBe(true);
+  });
+
+  it("reads a blank 外部コマンド指定 as unset rather than as a path", () => {
+    // The field is text, so "cleared" arrives as an empty or whitespace-only string. Stored, it would
+    // be handed to `Command::new` and fail every launch — the one outcome emptying the field cannot
+    // have meant. The Rust side drops a blank too (`ExternalProgram::new`), for a hand-edited file.
+    for (const blank of ["", " ", "\t", "  \n "]) {
+      expect(commandPathOf(blank), JSON.stringify(blank)).toBeUndefined();
+    }
+    expect(commandPathOf("  /opt/git/bin/git  ")).toBe("/opt/git/bin/git");
   });
 });

@@ -399,6 +399,30 @@ export type CliReadiness =
   | { state: "unsupported"; version: string; minimum: string };
 
 /**
+ * 解決結果の出どころ (decision-29): which step of the 外部コマンド解決の順序 produced the program in
+ * use. `configured` and `onPath` can name the same path — a user may have typed exactly what PATH
+ * would have found — so this is what tells the two apart, not the `program` string.
+ */
+export type ExternalProgramSource = "configured" | "onPath";
+
+/** Whether the resolved 外部コマンド started (decision-29 解決結果の表示). */
+export type ProbeOutcome =
+  | { state: "launched"; report: string }
+  | { state: "failed"; detail: string };
+
+/**
+ * One row of the 解決結果の表示 (decision-29): a 外部コマンド, what it resolved to, and whether that
+ * program starts. `backlog` is not among them — its readiness is `CliReadiness`, which answers the
+ * additional question of whether the version is supported.
+ */
+export interface ExternalProgramReport {
+  name: string;
+  program: string;
+  source: ExternalProgramSource;
+  outcome: ProbeOutcome;
+}
+
+/**
  * Every failure the boundary returns. Field names are snake_case inside the variants because
  * that is what the Rust side emits — serde's container `rename_all` renames the variants
  * (`taskNotFound`), not their fields (`task_id`). Mirrored as-is rather than "corrected"
@@ -724,6 +748,14 @@ export interface AppSettings {
    * case: the automatic resolution covers an npm install on all three platforms.
    */
   backlog_cli?: string;
+  /**
+   * 外部コマンド指定 for `git` (decision-29): the executable doc-6 §3/§5 and doc-3 §3.2 launch.
+   * Absent when unset, like `backlog_cli`, and read under the same rule — used as written, with no
+   * existence check and no fallback.
+   */
+  git_cli?: string;
+  /** 外部コマンド指定 for `gh` (decision-29): the executable doc-6 §6 の GitHub 参照手段 launches. */
+  gh_cli?: string;
   /** 外部エディタ指定 (doc-8 §7). Absent — not `null` — when unset: the key is skipped in the file. */
   external_editor?: EditorCommand;
 }

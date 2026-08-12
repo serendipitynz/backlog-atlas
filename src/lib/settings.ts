@@ -12,6 +12,8 @@
  * | decision-13 既定値で動いている旨 | [`statusNotice`] | why these values are the defaults, in one sentence the screen shows (AC #6) |
  * | decision-13 未知の上位版は上書きしない | [`saveAvailability`] | whether 保存 may be pressed, and the reason when it may not |
  * | doc-8 §7 外部エディタ指定 | [`editorCommandOf`] / [`editorArgsText`] | the 起動指定 as two form fields ↔ one `EditorCommand` |
+ * | decision-29 外部コマンド指定 | [`EXTERNAL_COMMANDS`] + [`commandPathOf`] | the three executables the form can name, and one field ↔ one optional path |
+ * | decision-29 解決結果の表示 | [`programSourceLabel`] / [`probeSummary`] | what the panel says about the program actually in use |
  * | decision-12 表示テーマ | `theme.ts` の `RECORDED_THEMES` | the colour sets this build has; named there, defined in `app.scss` |
  * | doc-7 §5.2 既定の保存区分 | [`STORAGE_SELECTION_LABEL`] + [`toggleStorage`] | which 保存区分 the filter starts with |
  * | doc-8 §2.2 既定の詳細配置・doc-7 §5.4 既定の並び順（フォームの外から書かれる項目） | [`mergeDraft`] | how a value stored elsewhere lands in an open form without taking its input |
@@ -30,6 +32,8 @@ import type {
   CardDensity,
   CommandError,
   DetailPlacement,
+  ExternalProgramSource,
+  ProbeOutcome,
   EditorCommand,
   SettingsStatus,
   StorageSelection,
@@ -137,6 +141,68 @@ export function editorCommandOf(program: string, argsText: string): EditorComman
       .map((line) => line.trim())
       .filter((line) => line !== ""),
   };
+}
+
+/**
+ * One 外部コマンド指定 as the file holds it (decision-29): a trimmed absolute path, or `undefined` to
+ * clear the item so the key is skipped. Trimming is the form's, not the resolution's — decision-29
+ * uses a configured path as written, and this only decides what the field means by "empty". A path
+ * that is nothing but whitespace names no program, and storing it would spend every launch on a
+ * spawn error the user could not see the cause of.
+ */
+export function commandPathOf(text: string): string | undefined {
+  const trimmed = text.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+/**
+ * The 外部コマンド the form can name, in the order the 区画 lists them (decision-29).
+ *
+ * `backlog` is first because it is the one whose absence stops an operation the user asked for; the
+ * other two degrade quietly, which is why they are here at all (TASK-156). The `field` is the
+ * `AppSettings` key *and* the `settings.toml` key — doc-3 §2.2's hand-editing rule means the name in
+ * the file is the name a user reads about.
+ */
+export const EXTERNAL_COMMANDS = [
+  {
+    field: "backlog_cli",
+    name: "backlog",
+    label: "Backlog CLI",
+    note: "作成・更新の発行に使います。指定が無いときは PATH から探します。",
+  },
+  {
+    field: "git_cli",
+    name: "git",
+    label: "Git",
+    note: "コミット検索と Git remote の判別に使います。解決できないと、履歴が出ないだけでなく、登録済みプロジェクトが remote 無しとして記録されます。",
+  },
+  {
+    field: "gh_cli",
+    name: "gh",
+    label: "GitHub CLI",
+    note: "Pull Request とコミットの関連解決に使います。解決できないと関連解決だけが落ちます。",
+  },
+] as const satisfies readonly {
+  field: "backlog_cli" | "git_cli" | "gh_cli";
+  name: string;
+  label: string;
+  note: string;
+}[];
+
+/** 解決結果の出どころ (decision-29) in the panel's words. */
+export function programSourceLabel(source: ExternalProgramSource): string {
+  return source === "configured" ? "この画面の指定" : "PATH からの解決";
+}
+
+/**
+ * One 解決結果の表示 row as a sentence (decision-29). The failure keeps the boundary's own detail:
+ * it is the only text that distinguishes "not installed" from "installed where this process cannot
+ * see it", which is the whole distinction TASK-156 was raised about.
+ */
+export function probeSummary(outcome: ProbeOutcome): string {
+  return outcome.state === "launched"
+    ? outcome.report
+    : `起動できません（${outcome.detail}）`;
 }
 
 /**
@@ -317,13 +383,19 @@ export function mergeDraft(
       next.watch_external_changes,
     ),
   };
-  // Both optional fields are carried the same way, and `backlog_cli` has to be even though no control
-  // on this form can touch it: the form save serializes this return value as the *whole* file, so a
-  // field left out here is deleted from disk. It is hand-edited only (doc-5 §4 順序 1), which makes it
-  // exactly the value a user would not think to re-enter after changing a theme.
-  const cli = pick(draft.backlog_cli, baseline.backlog_cli, next.backlog_cli);
+  // Every optional field is carried the same way, and each has to be: the form save serializes this
+  // return value as the *whole* file, so a field left out here is deleted from disk. The three
+  // 外部コマンド指定 now have controls (decision-29), but they stay in this list — the merge is what
+  // keeps a value the user is not looking at, and which fields have a control is not what decides
+  // whether a value survives a save.
+  //
   // Absent rather than `undefined`-valued: the key is skipped in the file when there is no value.
+  const cli = pick(draft.backlog_cli, baseline.backlog_cli, next.backlog_cli);
   if (cli !== undefined) merged.backlog_cli = cli;
+  const git = pick(draft.git_cli, baseline.git_cli, next.git_cli);
+  if (git !== undefined) merged.git_cli = git;
+  const gh = pick(draft.gh_cli, baseline.gh_cli, next.gh_cli);
+  if (gh !== undefined) merged.gh_cli = gh;
   const editor = pick(draft.external_editor, baseline.external_editor, next.external_editor);
   if (editor !== undefined) merged.external_editor = editor;
   return merged;
@@ -354,6 +426,8 @@ function normalize(settings: AppSettings): unknown {
     settings.default_card_order,
     settings.watch_external_changes,
     settings.backlog_cli ?? null,
+    settings.git_cli ?? null,
+    settings.gh_cli ?? null,
     settings.external_editor ?? null,
   ];
 }
