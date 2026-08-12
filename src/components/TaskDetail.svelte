@@ -1285,7 +1285,7 @@
         newAssignee,
         (value) => (newAssignee = value),
         "追加する assignee",
-        lastRemovalReason(task.assignee, EMPTY_ASSIGNEE_REASON),
+        lastRemovalReason(session.baseline.task.assignee, EMPTY_ASSIGNEE_REASON),
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
@@ -1583,7 +1583,7 @@
         newDependency,
         (value) => (newDependency = value),
         "TASK-ID",
-        lastRemovalReason(task.dependencies, EMPTY_DEPENDENCIES_REASON),
+        lastRemovalReason(session.baseline.task.dependencies, EMPTY_DEPENDENCIES_REASON),
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
@@ -1655,7 +1655,7 @@
         newReference,
         (value) => (newReference = value),
         "URL",
-        lastRemovalReason(task.references, EMPTY_REFERENCES_REASON),
+        lastRemovalReason(session.baseline.task.references, EMPTY_REFERENCES_REASON),
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}

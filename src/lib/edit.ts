@@ -464,6 +464,11 @@ export function canRemoveLast(values: readonly string[]): boolean {
  * 空集合化 constrains nothing, and stating it as the reason would be false. Without this the
  * panel traps a mistyped entry on a task that had none: 削除 disabled, and the only ways out are
  * saving the typo or discarding the whole session.
+ *
+ * `baseline` is the session's own read, never the latest one on screen: [`changed`] judges the
+ * draft against the baseline (doc-8 §6.4 keeps 未保存入力 on the read it was made against), so for
+ * the length of an 外部変更 window a gate fed the newer read would offer a removal whose save is
+ * then refused with this very sentence.
  */
 export function lastRemovalReason(baseline: readonly string[], reason: string): string | null {
   return baseline.length === 0 ? null : reason;
