@@ -1,10 +1,10 @@
 ---
 id: TASK-152
 title: 最低バージョン要件を v1.49.3 へ引き上げ、実測基準版を 1 つに戻す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-12 02:47'
-updated_date: '2026-08-12 11:11'
+updated_date: '2026-08-12 11:53'
 labels:
   - 'kind:chore'
 milestone: m-2
