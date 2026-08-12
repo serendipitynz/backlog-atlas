@@ -853,7 +853,7 @@
     // 更新前競合 keeps it, which is what lets the user reload and retry the same input.
     // The whole 編集セッション closes, not just this operation (doc-10 §6, TASK-121) — for the reason
     // §5 gives about 文書更新: after a success the state the input was formed against no longer
-    // exists. 改称 keeps the id (v1.48.0 does not change it, doc-9 §4.2.1) so the selection stands
+    // exists. 改称 keeps the id (v1.49.3 does not change it, doc-9 §4.2.1) so the selection stands
     // and the pane lands on 閲覧; 削除・アーカイブ take the milestone out of the re-read, which the
     // effect below turns into a dropped selection, on every read rather than only here.
     if (outcome?.state === "applied") await discardMilestoneEdit();

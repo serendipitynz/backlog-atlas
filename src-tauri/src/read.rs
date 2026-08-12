@@ -48,7 +48,7 @@ use std::path::{Path, PathBuf};
 const DRAFT_ID_PREFIX: &str = "DRAFT";
 
 /// Fallback task prefix when `config.yml` omits `task_prefix`. Matches the Backlog CLI's own
-/// default (measured on v1.48.0); a missing optional key must not make the root unreadable.
+/// default (measured on v1.49.3); a missing optional key must not make the root unreadable.
 const DEFAULT_TASK_PREFIX: &str = "TASK";
 
 /// ルート読取不能 (doc-4 §5): the root as a whole cannot be read, so no model exists for it.
@@ -349,7 +349,7 @@ fn parse_task(path: &Path, text: &str, slug: &str, dir: ScanDir, config: &Config
 /// in `tasks/` would enter the active-only default swimlane as an ordinary task (doc-7).
 ///
 /// Prefix matching is case-insensitive. `backlog init --defaults` writes `task_prefix: "task"`
-/// while the ids it then generates are `TASK-N` (measured on v1.48.0), so a case-sensitive
+/// while the ids it then generates are `TASK-N` (measured on v1.49.3), so a case-sensitive
 /// comparison would degrade every task in a default-initialized root.
 fn check_task_id(id: &str, dir: ScanDir, config: &Config, events: &mut Vec<DegradeEvent>) {
     let is_draft = is_prefixed_number(id, DRAFT_ID_PREFIX);
@@ -418,7 +418,7 @@ fn read_milestones(
             continue;
         };
         // A milestone has no optional *frontmatter* field — `milestone add` writes id and title
-        // and nothing else (measured on v1.48.0) — so its only 存在時構造検査 is the body's, and
+        // and nothing else (measured on v1.49.3) — so its only 存在時構造検査 is the body's, and
         // `parse_body` is where doc-4 §4 makes that verdict (see `parse::description_span`).
         // What it catches here is a `SECTION:DESCRIPTION` pair that never closes: the range then
         // runs to the end of the file, and decision-21's writer refuses that shape, so without
@@ -580,8 +580,8 @@ fn identity(
 /// 操作 writes that same range: two scans could drift, and the drift would show up as a
 /// description the screen displays but cannot save back.
 ///
-/// v1.48.0's `milestone add` writes a plain `## Description` heading rather than a SECTION pair
-/// (measured 2026-08-06); the span function accepts either, as this did. The **read** accepts both
+/// v1.49.3's `milestone add` writes a plain `## Description` heading rather than a SECTION pair
+/// (measured 2026-08-12); the span function accepts either, as this did. The **read** accepts both
 /// shapes; only the write is restricted to the heading (decision-21), and the opener the span
 /// carries is what tells them apart there.
 fn description_text(body: &str) -> Option<String> {
@@ -887,7 +887,7 @@ date_format: yyyy-mm-dd\n";
         }
     }
 
-    /// A task file as Backlog v1.48.0 writes one.
+    /// A task file as Backlog v1.49.3 writes one.
     fn task_file(id: &str, status: &str) -> String {
         format!(
             "---\n\
@@ -1350,7 +1350,7 @@ ordinal: 1000\n\
 
     #[test]
     fn a_task_outside_the_recognized_locations_keeps_an_indeterminate_storage_state() {
-        // A flat archive/*.md — not produced by v1.48.0, but reads must not depend on the
+        // A flat archive/*.md — not produced by v1.49.3, but reads must not depend on the
         // generating version (doc-4 §4), and guessing a storage state would leak the file into
         // the active-only default swimlane (§3.4 last bullet).
         let source = MemorySource::new().file(
@@ -1787,7 +1787,7 @@ updated_date: '2026-07-22 12:25'\n\
     #[test]
     fn the_task_prefix_is_matched_case_insensitively() {
         // `backlog init --defaults` writes task_prefix: "task" while generating TASK-N ids
-        // (measured on v1.48.0); a case-sensitive check would degrade every task in such a root.
+        // (measured on v1.49.3); a case-sensitive check would degrade every task in such a root.
         let mut source = MemorySource::new();
         source.config = Some("statuses: [\"To Do\"]\ntask_prefix: \"task\"\n".to_string());
         let source = source.file(

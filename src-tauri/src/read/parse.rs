@@ -182,8 +182,8 @@ pub struct Body {
 /// the string on screen and the string that can be saved would come apart without anything
 /// failing.
 ///
-/// Both opening forms are accepted because the reader accepts both: v1.48.0's `milestone add`
-/// writes the plain heading (measured 2026-08-06), while task files use the SECTION pair, and a
+/// Both opening forms are accepted because the reader accepts both: v1.49.3's `milestone add`
+/// writes the plain heading (measured 2026-08-12), while task files use the SECTION pair, and a
 /// milestone file hand-edited into the other shape still reads. **Which one opened the range is
 /// returned with it**, because the write is narrower than the read: decision-21 admits only the
 /// shape the CLI itself writes, so the writer refuses a [`DescriptionOpener::Section`] range while
@@ -242,11 +242,11 @@ pub struct DescriptionRange {
 }
 
 /// What a Description was opened by. A value rather than a bool so the two shapes are named where
-/// they are decided about: only [`DescriptionOpener::Heading`] is a shape v1.48.0's `milestone add`
+/// they are decided about: only [`DescriptionOpener::Heading`] is a shape v1.49.3's `milestone add`
 /// writes, and only that one may be written back into (decision-21's first condition).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DescriptionOpener {
-    /// `## Description` — what `milestone add -d` writes (measured 2026-08-06).
+    /// `## Description` — what `milestone add -d` writes (measured 2026-08-12).
     Heading,
     /// A `SECTION:DESCRIPTION` marker pair — a task file's shape, reachable in a milestone file
     /// only by hand-editing.
@@ -701,7 +701,7 @@ notes body
 
     #[test]
     fn the_description_span_runs_from_the_heading_to_the_next_one() {
-        // The shape `milestone add -d` writes (measured 2026-08-06): a plain heading, no SECTION.
+        // The shape `milestone add -d` writes (measured 2026-08-12): a plain heading, no SECTION.
         let body = "\n## Description\n\nfirst\nsecond\n\n## Notes\n\nkept\n";
         assert_eq!(described(body), Some("\nfirst\nsecond\n\n"));
     }

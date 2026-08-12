@@ -39,7 +39,7 @@ resident per project.
 
 ## Requirements
 
-Atlas needs the **Backlog CLI (`backlog.md`) at v1.48.0 or newer** on your `PATH`. It is
+Atlas needs the **Backlog CLI (`backlog.md`) at v1.49.3 or newer** on your `PATH`. It is
 not bundled with Atlas — the reasoning is in decision-26 — so install it yourself:
 
 ```sh
@@ -51,7 +51,7 @@ fixed: a newer CLI is used as-is.
 
 **Atlas still starts without it.** Reading does not go through the CLI at all — Atlas
 parses each project's Backlog.md files directly (decision-2) — so with no `backlog` on
-`PATH`, or one below v1.48.0, Atlas opens read-only: every screen renders, and the
+`PATH`, or one below v1.49.3, Atlas opens read-only: every screen renders, and the
 operations that would write are held back with the reason stated where the control is.
 Installing the CLI and restarting turns them on.
 

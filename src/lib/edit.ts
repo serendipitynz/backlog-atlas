@@ -34,7 +34,7 @@
  * - **Touched, not merely different** (doc-9 §5 (ii)). A field the user did not touch is never
  *   sent, so re-applying a draft onto a newer read cannot revert someone else's change.
  * - **The CLI's limits are anticipated, not discovered** (doc-8 §6, AC #6). Emptying references or
- *   dependencies, and every operation v1.48.0 lacks, are withheld here rather than issued and
+ *   dependencies, and every operation v1.49.3 lacks, are withheld here rather than issued and
  *   refused by the adapter.
  * - **A withheld operation says why** (doc-5 §5). Nothing is silently missing: either it is offered,
  *   or it carries the reason it is not.
@@ -69,7 +69,7 @@ export interface AcDelta {
 /**
  * The AC edit in progress. The two modes are kept apart all the way to the wire because doc-5
  * §3/§3.1 require it: 全体差し替え is a composite that must not be confused with the per-item
- * operations. v1.48.0's single-option `--acceptance-criteria` does replace the whole set, but it
+ * operations. v1.49.3's single-option `--acceptance-criteria` does replace the whole set, but it
  * refuses to run beside `--check-ac` (実測), so it cannot carry the checked state the composite
  * does. Per-item text editing does not exist at all, which is why `delta` has no text field for an
  * existing item.
@@ -401,7 +401,7 @@ export const EMPTY_REFERENCES_REASON =
   `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
- * Why the last assignee cannot be removed. `-a ""` exits 0 without clearing in v1.48.0 (実測), and
+ * Why the last assignee cannot be removed. `-a ""` exits 0 without clearing in v1.49.3 (実測), and
  * so does a value whose parse is empty — `-a ","` and `-a " "` both return 0 and leave the list as
  * it was — so an empty set is withheld rather than issued as an unassignment that would be reported
  * as a success and not happen (doc-5 §3.1, the same silent-no-op as `--ref ""`).
@@ -416,13 +416,16 @@ export const EMPTY_DEPENDENCIES_REASON =
 
 /**
  * Renumber a per-item AC edit for the CLI (doc-5 §3). One `task edit` resolves its AC options in
- * two different frames, measured on v1.48.0:
+ * two different frames, measured on v1.49.3:
  *
  * - `--remove-ac` indexes the criteria **as read** — `--remove-ac 1 --remove-ac 3` removes the
  *   first and third, not the first and then the third of what is left.
  * - `--check-ac` / `--uncheck-ac` index the list **after** the removals: on `#1 one / #2 two /
  *   #3 three`, `--remove-ac 1 --check-ac 2` checks `three`, and on a two-item list the same pair
- *   exits 1 with "Acceptance criterion #2 not found".
+ *   exits 1 with a message opening "Acceptance criterion #2 not found" (v1.49.3 continues it with
+ *   the available indexes; only the opening is quoted, because the rest is wording and the failure
+ *   is what this note is about — doc-8 §6.5 records that a not-found wording did change between
+ *   v1.48.0 and v1.49.3 elsewhere).
  * - `--ac` appends, so an addition never shifts the indices a check resolves against.
  *
  * The draft holds baseline numbers throughout, because that is what the user pointed at. Passing
@@ -455,7 +458,7 @@ export const EMPTY_TITLE_REASON =
 
 /**
  * Whether one more removal is allowed from a 非空全置換 field (doc-5 §3.1). The last element stays:
- * `--ref ""` / `--depends-on ""` exit 0 without clearing in v1.48.0, so an "empty it" control would
+ * `--ref ""` / `--depends-on ""` exit 0 without clearing in v1.49.3, so an "empty it" control would
  * promise something the CLI silently declines to do.
  */
 export function canRemoveLast(values: readonly string[]): boolean {
@@ -997,7 +1000,7 @@ export interface TransitionOffer {
 
 /**
  * The transitions a 保存区分 has, or why it has none. `none` is 提示しない (AC #6): completed and
- * archive have no reverse operation in v1.48.0, so no control is drawn for one.
+ * archive have no reverse operation in v1.49.3, so no control is drawn for one.
  */
 export type TransitionOffers =
   | { state: "offered"; offers: TransitionOffer[] }
@@ -1115,7 +1118,7 @@ const TASK_ARCHIVE_EFFECT = "元に戻せません";
 const TASK_COMPLETE_EFFECT = "status が Done のときのみ実行可能です。元に戻せません";
 
 /**
- * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — v1.48.0 has no way back to the state before
+ * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — v1.49.3 has no way back to the state before
  * the press for any of them (the measurement is in doc-8 §6.5), so there is no line to draw inside
  * the five.
  *
@@ -1164,13 +1167,13 @@ const TRANSITION_CONFIRM_PROCEED: Record<TransitionKind, string> = {
 
 // --- 選択肢 (doc-5 §3 の値域) --------------------------------------------------------------
 
-/** `--priority` の値域 (v1.48.0 `task edit --help`). Clearing one is not offered — no CLI option. */
+/** `--priority` の値域 (v1.49.3 `task edit --help`). Clearing one is not offered — no CLI option. */
 export const PRIORITIES = ["high", "medium", "low"] as const;
 
 /**
  * The values a select may offer for a field the CLI can set but not unset. "未設定" is offered only
  * while the field *is* unset, where choosing it changes nothing: offering it on a set field would
- * be a clear operation v1.48.0 does not have (AC #6 — not presented rather than refused later).
+ * be a clear operation v1.49.3 does not have (AC #6 — not presented rather than refused later).
  */
 export interface SelectOption {
   value: string;

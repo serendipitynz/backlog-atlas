@@ -538,7 +538,7 @@ export type AcEdit =
  * The combinable `task edit` facets (doc-5 §3). An absent key leaves that facet untouched; the
  * adapter refuses an edit that sets nothing. `assignee` / `references` / `dependencies` are
  * 非空全置換 — the value is the whole new set, and an empty array is refused rather than silently
- * ignored, which is what `-a ""` / `--ref ""` / `--depends-on ""` do in v1.48.0 (doc-5 §3.1).
+ * ignored, which is what `-a ""` / `--ref ""` / `--depends-on ""` do in v1.49.3 (doc-5 §3.1).
  */
 export interface TaskEdit {
   title?: string;

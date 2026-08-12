@@ -37,7 +37,7 @@ Atlas プロセスは一つだけ起動し、登録された全 Backlog ルー�
 
 ## 導入要件
 
-Atlas は **Backlog CLI (`backlog.md`) の v1.48.0 以上**を `PATH` 上に必要とする。Atlas には
+Atlas は **Backlog CLI (`backlog.md`) の v1.49.3 以上**を `PATH` 上に必要とする。Atlas には
 同梱していない (根拠は decision-26) ので、利用者が導入する。
 
 ```sh
@@ -47,7 +47,7 @@ npm install -g backlog.md
 版は起動時に `backlog --version` で検査する。上限は固定していないので、新しい版はそのまま使う。
 
 **CLI が無くても Atlas は起動する。**読み取りは CLI を通らず、各プロジェクトの Backlog.md を
-直接解析する (decision-2)。したがって `PATH` 上に `backlog` が無い場合も、v1.48.0 未満の場合も、
+直接解析する (decision-2)。したがって `PATH` 上に `backlog` が無い場合も、v1.49.3 未満の場合も、
 読み取り専用で立ち上がる — 画面はすべて描かれ、書き込みを伴う操作だけが、理由を控えの所で
 述べたうえで保留される。CLI を導入して起動し直せば有効になる。
 
