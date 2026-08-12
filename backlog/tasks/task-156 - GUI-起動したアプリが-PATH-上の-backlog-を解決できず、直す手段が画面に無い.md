@@ -1,10 +1,10 @@
 ---
 id: TASK-156
 title: GUI 起動したアプリが PATH 上の backlog を解決できず、直す手段が画面に無い
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-12 21:46'
-updated_date: '2026-08-12 21:50'
+updated_date: '2026-08-12 22:44'
 labels:
   - release
   - 'kind:bug'
@@ -49,8 +49,43 @@ ordinal: 149700
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 macOS で Finder / Dock から起動したアプリが、README の手順で導入された backlog を解決できる。解決できない場合は、利用者が画面から到達できる手段を持つ
+- [x] #1 macOS で Finder / Dock から起動したアプリが、README の手順で導入された backlog を解決できる。解決できない場合は、利用者が画面から到達できる手段を持つ
 - [ ] #2 Windows・Linux で GUI 起動したときに CLI を解決できるかどうかが、実機の実測として記録されている
-- [ ] #3 README の導入要件が、GUI 起動でも成り立つ記述になっている
-- [ ] #4 decision-16（実行ファイル解決の順序）と decision-26（PATH 上 backlog の前提）のどちらを改訂したか、または改訂不要と判断した理由が記録されている
+- [x] #3 README の導入要件が、GUI 起動でも成り立つ記述になっている
+- [x] #4 decision-16（実行ファイル解決の順序）と decision-26（PATH 上 backlog の前提）のどちらを改訂したか、または改訂不要と判断した理由が記録されている
+- [x] #5 設定画面から backlog・git・gh の実行ファイルを指定でき、その指定が実際の起動に使われる（decision-29 の外部コマンド指定）
+- [x] #6 設定画面が、外部コマンドごとに現に解決されている実行ファイル・その出どころ・起動できるかどうかを示す（decision-29 の解決結果の表示）
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+対策を決めた（2026-08-13、ユーザーの判断）。**sidecar 同梱は採らず、外部エディタと同じ形で
+各外部コマンドを GUI から指定できるようにする。** decision-29 が判断を持つ。
+
+sidecar を採らなかった理由（AC #4）:
+
+- 欠陥の範囲と対策の範囲が合わない。名前だけで起動している外部コマンドは 4 つあり（`backlog`・
+  `git`・`gh`・外部エディタ）、同梱で塞がるのは 1 つだけである。`gh` は認証状態が利用者の設定に
+  あるため同梱で代替できない。
+- decision-26 の理由 3（版の整合）は本件で悪化する。当の利用者は現に `backlog` を導入して
+  いるので、「2 つの CLI が同じルートを触る」が仮定でなく確定になる。
+- decision-16 が用意していた回復手段（順序 1 段目のアプリ設定）が、設定画面に無いだけだった。
+  出さない理由だった TASK-61〜79・75 は消化済みで、保留の根拠が消えていた。
+
+**decision-26 は据え置くが、その理由 2 は訂正した。**「同梱は解けていない摩擦を解かない」は
+シェル側 PATH 前提だけを見て書かれており、GUI 起動でプロセス側 PATH 前提が破れる事実の前では
+維持できない。訂正は decision-26 の Context に、判断は decision-29 に置いた。
+
+**起動時の PATH 回復は採らなかった**（ユーザーの判断）。4 つを一度に直せる唯一の手だが、
+decision-16 が避けた「シェルを経由する」性質に隣接し、外部コマンド指定と違って利用者から
+見えないため。見える指定手段を先に置く。
+
+実測（このマシン、macOS、2026-08-13）:
+
+- GUI 継承 PATH（`launchctl getenv PATH`）は 11 ディレクトリ。`backlog` の実体がある fnm の
+  multishell ディレクトリを含まない。
+- 同じ PATH に `/usr/bin`（`git`）と `/opt/homebrew/bin`（`gh`）は**入っている**。ただし
+  このマシンの launchd PATH は customize 済みなので、`git`・`gh` が届いたのは偶然である。
+  素の macOS の既定値は未実測のまま（AC #2 が残る）。
+<!-- SECTION:NOTES:END -->
