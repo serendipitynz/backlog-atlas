@@ -122,7 +122,7 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
  *
  * Narrower than what the CLI accepts, and narrowed by product judgment rather than by capability:
  * v1.49.3's `task create` also takes `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` and stores
- * them in the created file (doc-5 §3、2026-08-12 に v1.49.3 で実測). The form holds what identifies and
+ * them in the created file (doc-5 §3, measured 2026-08-12 on v1.49.3). The form holds what identifies and
  * classifies a task at the moment it is created; plan・notes・references・dependencies accrue while
  * the work runs and are edited from タスク詳細 (doc-8 §6), so a field here would only move the same
  * input earlier. assignee is the one omission with no create-time substitute, and is closed on the
@@ -714,7 +714,7 @@ export const TASK_CREATE_NOTE = "以下の内容は作成後、タスクの編�
  *
  * Names only. The flags they map to (`-a`・`--plan`・`--notes`・`--ref`・`--depends-on`) were shown
  * until TASK-123 so that the absence could not read as「CLI に無い」— the CLI does accept them
- * (doc-5 §3, measured 2026-07-29). With the reasons gone there is no false explanation left to guard
+ * (doc-5 §3, measured 2026-08-12). With the reasons gone there is no false explanation left to guard
  * against, and a flag name is doc-11 §8's 発行手段の記述 with nothing exempting it any more.
  */
 export const TASK_CREATE_LATER_FIELDS: readonly string[] = [

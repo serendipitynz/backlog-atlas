@@ -246,7 +246,7 @@ pub struct DescriptionRange {
 /// writes, and only that one may be written back into (decision-21's first condition).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DescriptionOpener {
-    /// `## Description` — what `milestone add -d` writes (measured 2026-08-06).
+    /// `## Description` — what `milestone add -d` writes (measured 2026-08-12).
     Heading,
     /// A `SECTION:DESCRIPTION` marker pair — a task file's shape, reachable in a milestone file
     /// only by hand-editing.
@@ -701,7 +701,7 @@ notes body
 
     #[test]
     fn the_description_span_runs_from_the_heading_to_the_next_one() {
-        // The shape `milestone add -d` writes (measured 2026-08-06): a plain heading, no SECTION.
+        // The shape `milestone add -d` writes (measured 2026-08-12): a plain heading, no SECTION.
         let body = "\n## Description\n\nfirst\nsecond\n\n## Notes\n\nkept\n";
         assert_eq!(described(body), Some("\nfirst\nsecond\n\n"));
     }
