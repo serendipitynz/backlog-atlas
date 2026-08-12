@@ -1,10 +1,10 @@
 ---
 id: TASK-154
 title: 最低バージョン要件の版表記を単一出所へ寄せ、実測の出所はリテラルのまま残す
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-08-12 02:52'
-updated_date: '2026-08-12 03:18'
+updated_date: '2026-08-12 07:05'
 labels:
   - 'kind:chore'
 milestone: m-2
@@ -21,9 +21,25 @@ ordinal: 146200
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 版比較の値・画面文字列・試験の入力値が MIN_VERSION を単一出所とし、フロントエンドと試験のソースからリテラルの版表記が消えている（src-tauri/wire-fixtures/ の記録は生成物なので対象外。手で編集せず ATLAS_RECORD_WIRE_FIXTURES=1 cargo test の再記録で追随する）
-- [ ] #2 画面に出る版表記が、利用者の CLI の版ではなく Atlas の動作確認済み版を指している
-- [ ] #3 doc ごとに実測基準版を 1 回宣言する形になり、本文の繰り返しが落ちている
-- [ ] #4 実測の出所を述べる註がリテラルのまま残っていること、および生成物の記録を対象外とすることの理由が doc か decision に書かれている
-- [ ] #5 引き上げ時に触る箇所が数え直され、TASK-152 の作業量として記録されている
+- [x] #1 版比較の値・試験の入力値・fixture の入力値が update.rs の MIN_VERSION を単一出所とし、フロントエンドと試験のソースからリテラルの版表記が消えている（src-tauri/wire-fixtures/ の記録は生成物なので対象外。手で編集せず ATLAS_RECORD_WIRE_FIXTURES=1 cargo test の再記録で追随する）
+- [x] #2 画面に出る文が版表記を持つのは、利用者の CLI の版と動作確認済み版の差そのものを述べる 1 文だけであり、その文は CliReadiness の項目を読む（利用者の CLI の版を動作確認済み版として出す経路が無い）
+- [x] #3 doc ごとに実測基準版を 1 回宣言する形になり、本文の繰り返しが落ちている
+- [x] #4 実測の出所を述べる註がリテラルのまま残っていること、および生成物の記録を対象外とすることの理由が doc か decision に書かれている
+- [x] #5 引き上げ時に触る箇所が数え直され、TASK-152 の作業量として記録されている
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+**決定は decision-27**（2026-08-12。doc-11 §8 と AGENTS の「動作確認済み版の書き方」節が受け皿）。語と指示対象は `_sandbox/handoff/referent-table/referent-table-task-154.md` 第 1 版で本文より先に固定した。
+
+**数え直し（AC #5）**: 着手時 189 箇所・45 ファイル（起票時の 184 は行数と出現数を混ぜた値で、内訳も docs とコードで各 1 ずれていた）。作業後 122 箇所・39 ファイル。**引き上げで触るのは 170 → 100 箇所・39 → 30 ファイル。**TASK-152 の Description と AC へ内訳ごと記録した。
+
+**AC #1・#2 は着手後に文言を直した。** 起票時は「画面文字列が MIN_VERSION を単一出所とする」（＝画面に版を残し、wire の ready に minimum を載せて運ぶ）前提で書かれていたが、着手して**フロントエンドが版を無条件に持てる出所は無い**ことが分かった — CliReadiness が null（probe 未応答）と unavailable（App.svelte が自前で組む）のとき版を載せられず、draft・completed/archive の読み取り専用理由とマイルストーンの 2 つの hint はその状態でも画面に出る。そこでユーザーに 2 案を提示し、**画面文字列から版表記を全部落とす**方を確定した（2026-08-12）。根拠は 2026-08-11 の目視（状態遷移の確認質問から版番号を落とした判断。版番号は「利用者がその瞬間に訊いていないことに答える」）と 2026-08-08 の TASK-123（項目別理由を ノイズ として落とした）で、新しい例外ではなく既存の 2 つの判断の一般化である。この結果 wire の変更は不要になり、CliReadiness の minimum は unsupported のままである。
+
+**同じセッションで確定した 3 点**（いずれもユーザー確認済み）: ①decisions は集約対象にしない（日付つきの過去の測定であり、書き換えると過去の判断の根拠を改竄する。要件の写し 2 箇所だけ参照へ）②根拠の置き場は新しい decision（decision-7 は値を持ち、decision-27 は表記を持つ）③コードの実測註 89 相当はリテラル維持（ファイル単位の宣言へ畳めば触るファイルは 20 前後まで減るが、1 行の書き換えが 10 個の事実を再実測済みに見せるので採らない）。
+
+**新しい仕掛け**: `src/lib/confirmed-version.ts`（記録から動作確認済み版を読む試験・fake 用モジュール。アプリは import しない — build 後の bundle に版文字列が 0 件であることを確認した）と、`screen-text.test.ts` の「画面に出る文が版を名乗らない」検査（doc-11 §8 の 2 つ目のテキストだけで判定できる種別）。前者の読みは `wire-fixture.test.ts` が command_errors.json のminimum と突き合わせて固定する。
+
+**検証**: cargo test 394 passed / cargo fmt / cargo clippy 無警告 / pnpm test 847 passed / svelte-check 0 errors / pnpm run build 成功。TASK-150 の兆候が 4 例目（1 回目だけ markdown-figure.component.test.ts が timeout、environment 29.39 秒。再実行で 845/845）。
+<!-- SECTION:NOTES:END -->
