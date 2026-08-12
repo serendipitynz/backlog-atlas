@@ -22,7 +22,7 @@
  * and refusing to apply it would not make the screen zone-independent; it would only make it read
  * every timestamp in a zone nobody is in.
  *
- * **Measured, not assumed** (2026-08-10, TASK-133): Backlog CLI v1.48.0 writes `created_date` /
+ * **Measured, not assumed** (2026-08-10, TASK-133): Backlog CLI v1.49.3 writes `created_date` /
  * `updated_date` in **UTC**. A task created while the machine's clock read `2026-08-10 10:46`
  * (NZST, UTC+12) came out carrying `'2026-08-09 22:46'`. Reading such a value as local wall clock
  * would put a task updated a minute ago outside 「今日」 by twelve hours.
@@ -70,7 +70,7 @@ export function usableCount(count: number): boolean {
  * repository's own `backlog/tasks/` holds nine tasks whose `updated_date` is a bare `2026-07-22`
  * alongside the timestamped ones the current CLI writes.
  *
- * Seconds are allowed even though v1.48.0 writes none, because a value carrying them still names one
+ * Seconds are allowed even though v1.49.3 writes none, because a value carrying them still names one
  * instant unambiguously and the cost of refusing it is a card silently vanishing while the 期間 is on.
  * Anything else — an ISO `T` separator, a trailing `Z`, an explicit `+09:00` — is 解析できない rather
  * than guessed at: a written offset would contradict the 基準時間帯 this module applies, and

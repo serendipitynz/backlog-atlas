@@ -122,7 +122,7 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
   });
 
   it("1 件の名前にカンマを含む保存は拒み、2 件に分かれることを理由に述べる", () => {
-    // 編集側の `-a` は値をカンマで分ける（v1.48.0 実測。作成側は分割しない）ので、"dave,erin" を
+    // 編集側の `-a` は値をカンマで分ける（v1.49.3 実測。作成側は分割しない）ので、"dave,erin" を
     // 1 件の assignee として書く手段は無い。発行してから食い違いを知るのではなく保存前に拒む。
     const view = taskView({ assignee: ["dave"] });
     const session = setField(startSession(view), "assignee", ["dave,erin"]);
@@ -246,7 +246,7 @@ describe("AC の項目単位操作と全体差し替えの区別 (doc-5 §3)", (
   });
 });
 
-// v1.48.0 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
+// v1.49.3 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
 // --check-ac / --uncheck-ac は削除後の番号を指す。--ac の追加は末尾に付き番号をずらさない。
 describe("AC 項目単位操作の番号を削除後の並びへ写す", () => {
   const three = taskView({

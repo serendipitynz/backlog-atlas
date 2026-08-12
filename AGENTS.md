@@ -18,7 +18,7 @@ start implementing — resolve the contradiction first.
   the managed Markdown files directly. This rule binds you as an agent without
   exception; the product has one, immediately below.
 - **The product's one exception — a milestone's description** (decision-21).
-  v1.48.0's `milestone` has no `update`/`edit`, so a description can only be set
+  v1.49.3's `milestone` has no `update`/`edit`, so a description can only be set
   at creation, and re-creating the milestone changes its id. Atlas therefore
   writes that one range itself: the bytes from the line after the
   `## Description` heading to the line before the next `##` heading (or the end

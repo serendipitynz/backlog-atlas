@@ -10,7 +10,7 @@
  *
  * **One home is not every site.** Applied at `task create -l`, `doc update --tags` and
  * `task edit -a`; *not* applied at `task edit --add-label` / `--remove-label` or
- * `task edit --depends-on`, which `update.rs` comma-joins the same way and v1.48.0 reads the same
+ * `task edit --depends-on`, which `update.rs` comma-joins the same way and v1.49.3 reads the same
  * way. The label gap is filed as TASK-155; dependencies carry TASK-IDs, whose grammar has no comma.
  */
 

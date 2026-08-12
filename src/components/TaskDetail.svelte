@@ -475,7 +475,7 @@
 
   /**
    * Every 状態遷移 asks first (doc-11 §12 の実行前確認). Not a general habit — none of the five has a way
-   * back to the state before the press in v1.48.0 (the measurement is in doc-8 §6.5), so an
+   * back to the state before the press in v1.49.3 (the measurement is in doc-8 §6.5), so an
    * accidental one cannot be undone from Atlas at all.
    *
    * The question goes to the shell rather than being drawn here, and the act is what the shell hands

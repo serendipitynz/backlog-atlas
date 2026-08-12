@@ -126,7 +126,7 @@ describe("buildTaskCreate", () => {
   });
 
   it("carries nothing outside the create-time range, whatever the CLI would accept", () => {
-    // The range is Atlas's, not v1.48.0's: `task create` also takes `-a`/`--plan`/`--notes`/
+    // The range is Atlas's, not v1.49.3's: `task create` also takes `-a`/`--plan`/`--notes`/
     // `--ref`/`--depends-on` and stores them (doc-5 §3, 実測). Keeping the form narrower is the
     // product judgment stated on `TaskCreateInput`, so this fixes what the operation may carry —
     // it is not a record of a CLI limit.
@@ -156,7 +156,7 @@ describe("buildTaskCreate", () => {
   });
 
   it("refuses a label containing a comma, which the CLI would split in two", () => {
-    // `--labels` takes one comma-separated value in v1.48.0 (doc-5 §3): "a,b" would become two
+    // `--labels` takes one comma-separated value in v1.49.3 (doc-5 §3): "a,b" would become two
     // labels with nothing reporting it.
     expect(blockedReason(buildTaskCreate(taskInput({ labels: ["ui,auth"] })))).toContain("ui,auth");
   });
@@ -356,10 +356,10 @@ const MILESTONE: Milestone = {
 describe("参照タスク集合 (doc-9 §4.2.2)", () => {
   const tasks = [
     taskView({ id: "TASK-1", milestone: "m-1" }),
-    // v1.48.0 matches the title ignoring surrounding space and case, so this one is rewritten too
+    // v1.49.3 matches the title ignoring surrounding space and case, so this one is rewritten too
     // even though the read layer resolves it to nothing (doc-9 §4.2.1).
     taskView({ id: "TASK-2", milestone: "  phase ONE  " }),
-    // The id padded and upper-cased is a reference to v1.48.0 too (doc-9 §4.2.1), so an id compared
+    // The id padded and upper-cased is a reference to v1.49.3 too (doc-9 §4.2.1), so an id compared
     // exactly would leave this one out of the set — and out of what the screen shows.
     taskView({ id: "TASK-3", milestone: "  M-1  " }),
     taskView({ id: "TASK-8", milestone: null }),
@@ -529,7 +529,7 @@ describe("buildMilestoneDescribe", () => {
     expect(buildMilestoneDescribe(described, "# Title\nsee C## for the rest").state).toBe("ready");
   });
 
-  it("states a reason that is true of v1.48.0 (doc-10 §1)", () => {
+  it("states a reason that is true of v1.49.3 (doc-10 §1)", () => {
     // Not "the CLI cannot do it": `milestone add -d` writes a heading-bearing description without
     // complaint (measured 2026-08-06). The reason is about the round trip, and says so.
     expect(MILESTONE_DESCRIPTION_HEADING_REASON).not.toContain("CLI");
@@ -571,7 +571,7 @@ describe("新規タスクの注記", () => {
   it("says where the fields go instead, and never why the form omits them", () => {
     // 代替経路の案内 (doc-11 §8): the note carries a route and nothing else. TASK-123 dropped the
     // per-field reasons, so the assertion is that they did not come back — a reason here would be
-    // the thing the 目視 called ノイズ, and「CLI に無い」would be false besides (v1.48.0's
+    // the thing the 目視 called ノイズ, and「CLI に無い」would be false besides (v1.49.3's
     // `task create` does accept all five, measured 2026-07-29).
     expect(TASK_CREATE_NOTE).toContain("作成後");
     expect(TASK_CREATE_NOTE).toContain("タスクの編集");
@@ -580,7 +580,7 @@ describe("新規タスクの注記", () => {
     expect(TASK_CREATE_NOTE).not.toMatch(/doc-\d|decision-\d/);
   });
 
-  it("names the five fields v1.48.0 accepts and this form has no input for", () => {
+  it("names the five fields v1.49.3 accepts and this form has no input for", () => {
     expect(TASK_CREATE_LATER_FIELDS).toEqual([
       "assignee",
       "実装計画",
