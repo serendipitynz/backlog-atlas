@@ -31,6 +31,7 @@ use crate::domain::{
 use crate::editor::{
     ConfiguredEditor, EditorCommand, EditorLaunch, EditorReadiness, EditorSource, LaunchMethod,
 };
+use crate::external::{ExternalProgramReport, ExternalProgramSource, ProbeOutcome};
 use crate::history::{
     Commit, GitRemoteRead, LookupFailure, PrRelation, RelationOutcome, RemoteHost, RemoteHostKind,
 };
@@ -475,6 +476,24 @@ fn git_remote_read_is_recorded() {
 }
 
 #[test]
+fn external_program_report_is_recorded() {
+    // 解決結果の表示 (decision-29). The sample carries the 外部コマンド指定 case, because that is the
+    // one with a path to get the value type of; `onPath` and the `failed` outcome reach the frontend
+    // through `wire_tokens.json`.
+    recorded(
+        "external_program_report.json",
+        &ExternalProgramReport {
+            name: "git".to_string(),
+            program: "/opt/git/bin/git".to_string(),
+            source: ExternalProgramSource::Configured,
+            outcome: ProbeOutcome::Launched {
+                report: "git version 2.51.0".to_string(),
+            },
+        },
+    );
+}
+
+#[test]
 fn loaded_settings_is_recorded() {
     recorded(
         "loaded_settings.json",
@@ -491,6 +510,8 @@ fn loaded_settings_is_recorded() {
                 default_card_order: CardOrder::UpdatedDesc,
                 watch_external_changes: false,
                 backlog_cli: Some(PathBuf::from("/opt/backlog/backlog")),
+                git_cli: Some(PathBuf::from("/opt/git/bin/git")),
+                gh_cli: Some(PathBuf::from("/opt/gh/bin/gh")),
                 external_editor: Some(EditorCommand {
                     program: "code".to_string(),
                     args: vec!["-w".to_string()],
@@ -778,6 +799,36 @@ fn every_editor_source() -> Vec<EditorSource> {
     for value in &all {
         match value {
             EditorSource::AppSettings | EditorSource::Visual | EditorSource::Editor => {}
+        }
+    }
+    all
+}
+
+fn every_external_program_source() -> Vec<ExternalProgramSource> {
+    let all = vec![
+        ExternalProgramSource::Configured,
+        ExternalProgramSource::OnPath,
+    ];
+    for value in &all {
+        match value {
+            ExternalProgramSource::Configured | ExternalProgramSource::OnPath => {}
+        }
+    }
+    all
+}
+
+fn every_probe_outcome() -> Vec<ProbeOutcome> {
+    let all = vec![
+        ProbeOutcome::Launched {
+            report: String::new(),
+        },
+        ProbeOutcome::Failed {
+            detail: String::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            ProbeOutcome::Launched { .. } | ProbeOutcome::Failed { .. } => {}
         }
     }
     all
@@ -1194,6 +1245,10 @@ fn every_union_token_is_recorded() {
     tokens.insert("LookupFailure", unit_tokens(&every_lookup_failure()));
     tokens.insert("LaunchMethod", unit_tokens(&every_launch_method()));
     tokens.insert("EditorSource", unit_tokens(&every_editor_source()));
+    tokens.insert(
+        "ExternalProgramSource",
+        unit_tokens(&every_external_program_source()),
+    );
     tokens.insert("CardDensity", unit_tokens(&every_card_density()));
     tokens.insert("DetailPlacement", unit_tokens(&every_detail_placement()));
     tokens.insert("CardOrder", unit_tokens(&every_card_order()));
@@ -1217,6 +1272,7 @@ fn every_union_token_is_recorded() {
     );
     tokens.insert("FailureKind", tag_tokens(&every_failure_kind(), "kind"));
     tokens.insert("CliReadiness", tag_tokens(&every_cli_readiness(), "state"));
+    tokens.insert("ProbeOutcome", tag_tokens(&every_probe_outcome(), "state"));
     tokens.insert(
         "SettingsStatus",
         tag_tokens(&every_settings_status(), "state"),

@@ -1,0 +1,9 @@
+{
+  "name": "git",
+  "program": "/opt/git/bin/git",
+  "source": "configured",
+  "outcome": {
+    "state": "launched",
+    "report": "git version 2.51.0"
+  }
+}

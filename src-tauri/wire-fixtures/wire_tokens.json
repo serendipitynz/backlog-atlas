@@ -61,6 +61,10 @@
     "visual",
     "editor"
   ],
+  "ExternalProgramSource": [
+    "configured",
+    "onPath"
+  ],
   "FailureKind": [
     "spawn",
     "nonZero",
@@ -101,6 +105,10 @@
     "milestone",
     "document",
     "decision"
+  ],
+  "ProbeOutcome": [
+    "launched",
+    "failed"
   ],
   "ProjectLoad": [
     "loaded",

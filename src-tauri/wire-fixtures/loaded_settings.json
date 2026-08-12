@@ -1,6 +1,6 @@
 {
   "settings": {
-    "schema_version": 3,
+    "schema_version": 4,
     "theme": "nord",
     "card_density": "l",
     "default_storage_filter": [
@@ -11,6 +11,8 @@
     "default_card_order": "updated_desc",
     "watch_external_changes": false,
     "backlog_cli": "/opt/backlog/backlog",
+    "git_cli": "/opt/git/bin/git",
+    "gh_cli": "/opt/gh/bin/gh",
     "external_editor": {
       "program": "code",
       "args": [
@@ -20,6 +22,6 @@
   },
   "status": {
     "state": "readOnly",
-    "version": 4
+    "version": 5
   }
 }
