@@ -4,10 +4,12 @@ title: v1.50.0 で開いた参照・依存・assignee の空集合化を取り�
 status: To Do
 assignee: []
 created_date: '2026-08-12 02:47'
+updated_date: '2026-08-12 03:11'
 labels:
   - 'kind:research'
 milestone: m-3
-dependencies: []
+dependencies:
+  - TASK-152
 priority: medium
 ordinal: 147700
 ---

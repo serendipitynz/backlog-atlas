@@ -4,10 +4,12 @@ title: 最低バージョン要件を v1.49.3 へ引き上げ、実測基準版�
 status: To Do
 assignee: []
 created_date: '2026-08-12 02:47'
+updated_date: '2026-08-12 03:11'
 labels:
   - 'kind:chore'
 milestone: m-2
-dependencies: []
+dependencies:
+  - TASK-154
 priority: high
 ordinal: 146700
 ---
