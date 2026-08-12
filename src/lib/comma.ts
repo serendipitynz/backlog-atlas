@@ -1,12 +1,17 @@
 /**
  * The one rule for values Atlas passes to a CLI option that reads its value as comma-separated
- * (doc-5 §3): `task create -l`, `doc update --tags`, and `task edit -a`. Each of those takes the
- * whole set as a single argument, so a comma *inside* one member is not expressible — it would
- * silently become two members, and nothing downstream would report it.
+ * (doc-5 §3). Each such option takes the whole set as a single argument, so a comma *inside* one
+ * member is not expressible — it would silently become two members, and nothing downstream would
+ * report it.
  *
  * Held here rather than in the screen module that needed it first: the rule belongs to the 操作写像,
  * and two screens now state it (`manage.ts` for ラベル・タグ, `edit.ts` for assignee). One home keeps
  * the sentence identical wherever it is shown.
+ *
+ * **One home is not every site.** Applied at `task create -l`, `doc update --tags` and
+ * `task edit -a`; *not* applied at `task edit --add-label` / `--remove-label` or
+ * `task edit --depends-on`, which `update.rs` comma-joins the same way and v1.48.0 reads the same
+ * way. The label gap is filed as TASK-155; dependencies carry TASK-IDs, whose grammar has no comma.
  */
 
 /**

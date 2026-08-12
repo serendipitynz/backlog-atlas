@@ -34,9 +34,13 @@
 //!   capability by reference, so an update is unreachable without a supported CLI — a missing or
 //!   too-old CLI degrades Atlas to read-only by construction, not by a flag a caller might forget.
 //!   Operations v1.48.0 cannot perform (emptying references, emptying dependencies, emptying the
-//!   assignee list) are unrepresentable or refused *before* any process starts. The 直接書き込み操作 is
-//!   gated the same way even though it starts no process: a root Atlas cannot update through the
-//!   CLI at all is not one where a single operation should still write.
+//!   assignee list) are unrepresentable or refused *before* any process starts. One class is held
+//!   a layer up instead: a comma inside one member of a comma-joined set (`--assignee`,
+//!   `--labels`, `--add-label`, `--depends-on`) would split into two members, and the frontend
+//!   refuses it before the save is built (`comma.ts`, doc-5 §3 の制約の先取り) rather than this
+//!   module rejecting it — the value is well-formed here, and the webview is the only caller.
+//!   The 直接書き込み操作 is gated the same way even though it starts no process: a root Atlas
+//!   cannot update through the CLI at all is not one where a single operation should still write.
 
 use crate::read::parse::DescriptionOpener;
 use crate::subprocess::{self, Cancel, Stopped};
