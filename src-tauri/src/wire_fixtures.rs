@@ -419,7 +419,7 @@ fn command_errors_are_recorded() {
             CommandError::UpdatesUnavailable {
                 readiness: CliReadiness::Unsupported {
                     version: "1.20.0".to_string(),
-                    minimum: "1.48.0".to_string(),
+                    minimum: crate::update::MIN_VERSION.to_string(),
                 },
             },
             CommandError::TaskNotFound {
@@ -567,8 +567,11 @@ fn reload_event_is_recorded() {
 fn cli_readiness_is_recorded() {
     recorded(
         "cli_readiness.json",
+        // The floor itself rather than some higher version: `src/lib/confirmed-version.ts` reads this
+        // field as Atlas's 動作確認済み版 so no test spells it (decision-27), and a ready CLI sitting
+        // exactly at the floor is the sample that says the least beyond being ready.
         &CliReadiness::Ready {
-            version: "1.48.0".to_string(),
+            version: crate::update::MIN_VERSION.to_string(),
         },
     );
 }

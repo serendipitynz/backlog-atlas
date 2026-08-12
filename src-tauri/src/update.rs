@@ -1808,7 +1808,7 @@ mod tests {
                     return Ok(CliRun {
                         success: true,
                         code: Some(0),
-                        stdout: "1.48.0".to_string(),
+                        stdout: MIN_VERSION.to_string(),
                         stderr: String::new(),
                     });
                 }
@@ -1885,7 +1885,7 @@ mod tests {
     impl FakeCli {
         fn supported() -> Self {
             FakeCli {
-                version: "1.48.0".to_string(),
+                version: MIN_VERSION.to_string(),
                 version_ok: true,
                 spawn_error: false,
                 results: RefCell::new(VecDeque::new()),
@@ -2065,13 +2065,24 @@ mod tests {
 
     #[test]
     fn version_parse_tolerates_decoration() {
-        assert_eq!(Version::parse("1.48.0").unwrap(), MIN_VERSION);
-        assert_eq!(Version::parse("v1.48.0\n").unwrap(), MIN_VERSION);
+        // Round-tripped through `Display` rather than spelled, so the confirmed version lives only in
+        // `MIN_VERSION` (decision-27). The decoration — a leading `v`, a trailing newline — is what
+        // `backlog --version` actually emits, and is the part this test is about.
         assert_eq!(
-            Version::parse("1.48").unwrap(),
+            Version::parse(&MIN_VERSION.to_string()).unwrap(),
+            MIN_VERSION
+        );
+        assert_eq!(
+            Version::parse(&format!("v{MIN_VERSION}\n")).unwrap(),
+            MIN_VERSION
+        );
+        // A version unrelated to MIN_VERSION: the missing-patch rule is the parser's, so tying it to
+        // the floor would make raising the floor look like a change to this rule.
+        assert_eq!(
+            Version::parse("9.4").unwrap(),
             Version {
-                major: 1,
-                minor: 48,
+                major: 9,
+                minor: 4,
                 patch: 0
             }
         );
