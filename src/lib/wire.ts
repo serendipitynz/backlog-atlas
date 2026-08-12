@@ -388,6 +388,11 @@ export interface UpdateRequest {
 
 // --- command results (TASK-33) -------------------------------------------------------------
 
+/**
+ * `minimum` is Atlas's 動作確認済み版 (Rust's `MIN_VERSION`, decision-7) and rides on `unsupported`
+ * alone, because that is the only screen text naming a version: it states the difference between the
+ * user's CLI and Atlas's confirmed one, and both halves have to be there to state it (decision-27).
+ */
 export type CliReadiness =
   | { state: "ready"; version: string }
   | { state: "unavailable"; detail: string }

@@ -37,6 +37,27 @@ start implementing — resolve the contradiction first.
 - On the cross-project screen, use `<project-slug>:<TASK-ID>`. Within a project's
   commits and Pull Requests, use `TASK-N`.
 
+## Confirmed CLI version
+
+Where to write the Backlog CLI version Atlas is confirmed against (decision-27).
+The value itself is decision-7's; these four rules are about its expression.
+
+- **A version used as a value comes from `update.rs`'s `MIN_VERSION`.** Rust tests
+  derive it from that constant; the frontend's tests and fakes read
+  `src/lib/confirmed-version.ts`, which takes it from the recorded
+  `cli_readiness.json`. Never spell the version in a frontend source.
+- **Screen text does not name a version.** The single exception is the sentence
+  whose subject *is* the difference between the user's CLI and the confirmed one
+  (the unsupported CLI 縮退 band), and it reads `CliReadiness`'s own fields. Write
+  "CLI に手段が無い" and leave which version was measured to the doc (doc-11 §8).
+- **A note recording which version a fact was measured on keeps the version
+  spelled out.** Do not point it at a constant, and do not fold a file's notes into
+  one per-file declaration: rewriting each note is what forces the re-measurement,
+  and a constant would generate claims about a version nobody measured.
+- **A doc carrying 実測 statements declares its 実測基準版 once**, right after its
+  前提 paragraph, and its body sentences then name no version. Statements about the
+  difference between two versions keep both — the declaration does not cover them.
+
 ## Git and Pull Request references
 
 - Search Git history for a task ID in the repository of the project that owns the
