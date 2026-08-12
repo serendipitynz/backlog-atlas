@@ -4,7 +4,7 @@ title: 最低バージョン要件を v1.49.3 へ引き上げ、実測基準版�
 status: In Review
 assignee: []
 created_date: '2026-08-12 02:47'
-updated_date: '2026-08-12 10:57'
+updated_date: '2026-08-12 11:11'
 labels:
   - 'kind:chore'
 milestone: m-2
@@ -106,9 +106,16 @@ supported だった版**が Unsupported へ落ちることは固定していな�
 ## 検証
 
 `cargo test` 395 passed / 0 failed / 4 ignored、`cargo fmt --check` clean、`cargo clippy
---all-targets` 警告なし、`pnpm test` 847 passed（32 ファイル、1 回目で通過。TASK-150 の兆候は
-出なかった）、`pnpm run check` 497 ファイル 0 エラー 0 警告。画面文字列に版が戻っていないことは
-`screen-text.test.ts` が版非依存の正規表現で見ており、そこは通っている。
+--all-targets` 警告なし、`pnpm test` 847 passed（32 ファイル）、`pnpm run check` 497 ファイル
+0 エラー 0 警告。画面文字列に版が戻っていないことは `screen-text.test.ts` が版非依存の正規表現で
+見ており、そこは通っている。
+
+**`pnpm test` の内訳（TASK-150 の記録として残す）**: 本セッションでフルスイートを 6 回流し、
+**3 回目に 1 件落ちて他 5 回は 847/847 だった**。1・2 回目は通っているので、**既存 4 例の
+「1 回目だけ」という形には当てはまらない** — この形は兆候の定義に使えない。**落ちた 1 件の名前は
+取り逃した**（出力を `grep` で絞ったため）ので、既存 4 例と同じ `markdown-figure.component.test.ts`
+だったとは言えない。その後 3 回流しても再現しなかった。**次にこれを見た回は、絞る前に全出力を
+ファイルへ落とす**（`pnpm test > log 2>&1`）。TASK-150 自身の記録を広げるのはそのタスクの仕事である。
 
 ## レビュー（Claude Code CLI、bot 名義。2 ラウンド）
 
