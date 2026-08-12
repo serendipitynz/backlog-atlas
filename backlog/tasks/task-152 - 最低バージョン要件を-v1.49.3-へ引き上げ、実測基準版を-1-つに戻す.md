@@ -1,10 +1,10 @@
 ---
 id: TASK-152
 title: 最低バージョン要件を v1.49.3 へ引き上げ、実測基準版を 1 つに戻す
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-08-12 02:47'
-updated_date: '2026-08-12 07:45'
+updated_date: '2026-08-12 10:17'
 labels:
   - 'kind:chore'
 milestone: m-2
@@ -26,11 +26,82 @@ decision-7 の最低バージョン要件を v1.48.0 から v1.49.3 へ引き上
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 decision-7 の最低バージョン要件が v1.49.3 になり、引き上げの理由と、1.50.x を採らなかった理由が書かれている
-- [ ] #2 update.rs の MIN_VERSION が v1.49.3 で、probe が v1.49.3 未満を Unsupported に落とすことが試験で固定されている
-- [ ] #3 7 つの doc（doc-3・4・5・7・8・9・10）の実測基準版の宣言が v1.49.3 になり、その宣言を動かすときに各 doc の実測記述を測り直している（decision-27 §3）
-- [ ] #4 コードと AGENTS の実測註 82 箇所（Rust 48・フロントエンド 32・AGENTS 2）が v1.49.3 で測り直されている。版差記録 13・decisions の実測註 9・付随的な版表記 11 は書き換えていない（decision-27 §4・§5・Context）
-- [ ] #5 README の導入要件が v1.49.3 以上になっている（2 言語とも）
-- [ ] #6 画面に出る文へ版表記を戻していない（decision-27 §2、doc-11 §8）
-- [ ] #7 挙動が変わっていなかった実測註の書き方（範囲表記か据え置きか新版へ動かすか）を判断し、decision-27 §4 へ追記している
+- [x] #1 decision-7 の最低バージョン要件が v1.49.3 になり、引き上げの理由と、1.50.x を採らなかった理由が書かれている
+- [x] #2 update.rs の MIN_VERSION が v1.49.3 で、probe が v1.49.3 未満を Unsupported に落とすことが試験で固定されている
+- [x] #3 7 つの doc（doc-3・4・5・7・8・9・10）の実測基準版の宣言が v1.49.3 になり、その宣言を動かすときに各 doc の実測記述を測り直している（decision-27 §3）
+- [x] #4 コードと AGENTS の実測註 82 箇所（Rust 48・フロントエンド 32・AGENTS 2）が v1.49.3 で測り直されている。版差記録 13・decisions の実測註 9・付随的な版表記 11 は書き換えていない（decision-27 §4・§5・Context）
+- [x] #5 README の導入要件が v1.49.3 以上になっている（2 言語とも）
+- [x] #6 画面に出る文へ版表記を戻していない（decision-27 §2、doc-11 §8）
+- [x] #7 挙動が変わっていなかった実測註の書き方（範囲表記か据え置きか新版へ動かすか）を判断し、decision-27 §4 へ追記している
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## 再実測の方法と結果（2026-08-12）
+
+**両版を並べて測った。** グローバルに v1.49.3 を入れ、v1.48.0 は作業場のローカル導入
+(`npm install backlog.md@1.48.0`) で残し、同じ測定スクリプトを両方の `backlog` に対して流して
+出力を差分比較した。絶対パスと時刻だけを正規化してある。
+
+- **オプションの棚卸し**: Atlas が発行する 13 サブコマンドの `--help` を両版から取り、
+  `update.rs` の `allowed_options` の 34 オプションと突き合わせた。**v1.49.3 に欠落 0 件**。
+  13 サブコマンド全体でのオプション集合の差は **`task edit --append-plan` の追加 1 件だけ**で、
+  削除も改名も無い。Atlas はこれを発行しない。`--clear-ac`・`--clear-labels`・`--clear-milestone`
+  は v1.48.0 にも既にあり、本引き上げで現れたものではない。
+- **挙動の実測**: 使い捨ての Backlog ルートへ同じ操作列を流した。確かめたのは、`--ref ""` /
+  `--depends-on ""` / `-a ""` の沈黙無変更（終了コード 0 で消えない）、`task edit -a` のカンマ分割と
+  `task create -a` の非分割、`--acceptance-criteria` の全置換と `--check-ac` との併用拒否、1 回の
+  `task edit` での `--remove-ac`（読んだままの番号）と `--check-ac`（削除後の番号）、`--labels` の
+  コンマ 1 値、`--add-label` のコンマ形式が全ラベルに効くこと、`doc update --tags ""` がタグを消し
+  `--type ""` は拒否されること、`--content` の本文全置換、`milestone add -d` が `## Description`
+  見出しを書くこと（SECTION 対ではない）、マイルストーンの id・title 両方での参照と前後空白・
+  大文字小文字の無視、rename が id を保つこと、rename の書き換えがアクティブなタスクに限られること
+  （draft・completed・archive はハッシュ不変）、`milestone remove` がファイルを消さず
+  `archive/milestones/` へ移すこと、`milestone` に `update`/`edit` が無いこと、`decision` が
+  `create` だけを持つこと、archive が `tasks`/`drafts`/`milestones` へネストすること、
+  `task_prefix` が小文字でも生成 ID が `TASK-N` であること、`config.yml` と `backlog config list` に
+  版欄が無いこと、日時が UTC で秒を持たないこと、`--priority` と未宣言 status の拒否文面、
+  `task complete` が非 Done で失敗し Done で `completed/` へ移すこと、`task edit` に
+  expected-version 系のオプションが無いこと、`init --defaults` が `In Review` を宣言しないこと。
+- **違いが出たのは 1 点だけだった**: completed タスクへの `task edit` の失敗文面が、v1.48.0 の
+  `Task 4 not found.` から v1.49.3 の `Task not found: TASK-4` へ変わっている。**終了コードは
+  両版 1** で、更新アダプターは成否を終了コードで判定し stderr は理由としてそのまま渡すので
+  （`update.rs` の非ゼロ終了の分岐）、依存箇所は無い。doc-8 §6.5 へ版差記録として書き、文面を
+  1 つのリテラルへ固定しないことを明記した。
+
+## AC #7 の判断（decision-27 §4 へ追記）
+
+**確かめたうえでリテラルを新しい版へ動かす**を採った。却下した 2 案の理由は次のとおりで、
+本文は decision-27 §4 にある。
+
+- **範囲表記は偽になる。** 「v1.48.0 以降」は v1.50.0 が `--ref ""` 等の沈黙無変更を反転させて
+  いるため既に反証済み（TASK-153）。上限を閉じた「v1.48.0〜v1.49.3」にしても、間の v1.49.0・
+  v1.49.1・v1.49.2 は未実測なので、「不可能」と「未測定」の区別が壊れる。
+- **据え置きは decision-27 §5 の線を消す。** decisions の実測註を動かさない根拠は日付つきの
+  歴史だからで、コードの実測註はいまのコードが拒否を行う根拠である。据え置くと両者が同じ
+  振る舞いになり、「確かめて無変更」と「確かめ忘れ」も読み分けられない。
+- **節約が見込まれた費用はリテラル側に無い。** 据え置きでも「変わっていない」と言うには測る
+  必要があるので、再実測の量は 3 案で同じ。動かす案が余分に払うのは打ち直しだけで、それが
+  §4 が求める確認の契機そのものである。
+
+## 触った範囲
+
+**95 箇所・30 ファイル**（TASK-154 の確定値どおり）。内訳は実測註 82（Rust 48・フロントエンド 32・
+AGENTS 2）・doc の実測基準版の宣言 7・`MIN_VERSION` の定義 1・decision-7 の要件本文 1・README 4。
+**触っていない**のは版差記録 13・decisions の実測註 9・付随的な版表記 11 で、書き換え漏れ・
+書き換え過ぎの両方を、除外行を明示した検査つきスクリプトで確認した（82 件ちょうど）。
+`src-tauri/wire-fixtures/` の 2 箇所は `ATLAS_RECORD_WIRE_FIXTURES=1 cargo test` で再記録した。
+
+AC #2 には `the_boundary_sits_exactly_at_the_confirmed_floor` を足した。**床の直下と床そのものを
+`MIN_VERSION` から導いて**両側を固定するので、床を上げると境界も動く。既存の
+`a_too_old_version_is_unsupported` は無関係な 1.46.0 を使っており、v1.48.0 のように**以前は
+supported だった版**が Unsupported へ落ちることは固定していなかった。
+
+## 検証
+
+`cargo test` 395 passed / 0 failed / 4 ignored、`cargo fmt --check` clean、`cargo clippy
+--all-targets` 警告なし、`pnpm test` 847 passed（32 ファイル、1 回目で通過。TASK-150 の兆候は
+出なかった）、`pnpm run check` 497 ファイル 0 エラー 0 警告。画面文字列に版が戻っていないことは
+`screen-text.test.ts` が版非依存の正規表現で見ており、そこは通っている。
+<!-- SECTION:NOTES:END -->
