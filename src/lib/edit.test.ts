@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_ASSIGNEE_REASON,
   EMPTY_DEPENDENCIES_REASON,
   EMPTY_REFERENCES_REASON,
   EMPTY_TITLE_REASON,
@@ -7,7 +8,6 @@ import {
   NOTHING_TO_SAVE_REASON,
   acDeltaDroppedByRebase,
   acRows,
-  assigneeCollapseWarning,
   buildSave,
   canRemoveLast,
   commandErrorDetail,
@@ -17,6 +17,7 @@ import {
   externallyChanged,
   failureDetail,
   isDirty,
+  lastRemovalReason,
   milestoneOptions,
   optionsFor,
   rebaseOnto,
@@ -32,6 +33,7 @@ import {
   type EditSession,
   type TransitionOffer,
 } from "./edit";
+import { commaReason } from "./comma";
 import { snapshot, taskView } from "./fixtures";
 import type { AcceptanceCriterion, CliReadiness, TaskEdit, UpdateOperation } from "./wire";
 
@@ -97,47 +99,72 @@ describe("ラベルの増減", () => {
   });
 });
 
-describe("assignee の設定・付け替え (doc-5 §3, TASK-57)", () => {
-  it("1 件だけを --assignee へ渡し、前後の空白は落とす", () => {
-    const session = setField(startSession(taskView({ assignee: [] })), "assignee", " @takkyun ");
-    expect(editOf(ready(session).action)).toEqual({ assignee: "@takkyun" });
+describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
+  it("既存を含む全集合を --assignee へ渡す", () => {
+    const view = taskView({ assignee: ["@takkyun"] });
+    const session = setField(startSession(view), "assignee", ["@takkyun", "@someone"]);
+    expect(editOf(ready(session).action)).toEqual({ assignee: ["@takkyun", "@someone"] });
   });
 
-  it("空欄は「変更しない」であり、解除としては発行しない", () => {
-    // `-a ""` は終了コード 0 で何も変えない（実測）。解除できたかのように発行しないための規則。
-    const session = setField(startSession(taskView({ assignee: ["@takkyun"] })), "assignee", "  ");
+  it("触れていない assignee は送らないので、複数 assignee はそのまま残る", () => {
+    // doc-9 §5 (ii): title だけの保存は `--assignee` を出さない。
+    const view = taskView({ title: "T", assignee: ["@takkyun", "@someone"] });
+    const titleOnly = setField(startSession(view), "title", "T2");
+    expect(editOf(ready(titleOnly).action)).toEqual({ title: "T2" });
+  });
+
+  it("最後の 1 件は削除できない", () => {
+    // `-a ""` も、区切りだけで解析結果が空になる値も、終了コード 0 で何も変えない（実測）。
+    const session = setField(startSession(taskView({ assignee: ["@takkyun"] })), "assignee", []);
+    expect(buildSave(session)).toEqual({ state: "refused", reason: EMPTY_ASSIGNEE_REASON });
+    expect(canRemoveLast(["@takkyun"])).toBe(false);
+  });
+
+  it("1 件の名前にカンマを含む保存は拒み、2 件に分かれることを理由に述べる", () => {
+    // 編集側の `-a` は値をカンマで分ける（v1.48.0 実測。作成側は分割しない）ので、"dave,erin" を
+    // 1 件の assignee として書く手段は無い。発行してから食い違いを知るのではなく保存前に拒む。
+    const view = taskView({ assignee: ["dave"] });
+    const session = setField(startSession(view), "assignee", ["dave,erin"]);
+    expect(buildSave(session)).toEqual({
+      state: "refused",
+      reason: commaReason("assignee", "dave,erin"),
+    });
+  });
+
+  it("空だったタスクへ足した 1 件は、戻せば保存対象でなくなる", () => {
+    // 最後の 1 件の削除を差し控える理由は「CLI に空集合化の手段が無い」だが、読み取り時点で空
+    // だった一覧にはその制約が掛からない — 戻すと触れた項目でなくなり `-a` を送らないため。
+    // 差し控えると、打ち間違いを取り消す手段がセッションの破棄しか無くなる。
+    const view = taskView({ assignee: [] });
+    let session = setField(startSession(view), "assignee", ["alcie"]);
+    expect(isDirty(session)).toBe(true);
+    session = setField(session, "assignee", []);
     expect(isDirty(session)).toBe(false);
     expect(buildSave(session).state).toBe("nothingToSave");
   });
 
-  it("複数 assignee のタスクは、同じ値に触れただけでも 1 件化として保存対象になる", () => {
-    // 一覧を丸ごと置き換えるため（実測）、先頭と同じ値でも保存すれば 2 件が 1 件になる。
-    const view = taskView({ assignee: ["@takkyun", "@someone"] });
-    const session = setField(startSession(view), "assignee", "@takkyun");
-    expect(isDirty(session)).toBe(true);
-    expect(editOf(ready(session).action)).toEqual({ assignee: "@takkyun" });
-    expect(assigneeCollapseWarning(buildSave(session), view.task.assignee)).toContain("2 件");
-  });
-
-  it("1 件化の警告は、その保存が assignee を送るときだけ出す", () => {
-    // 触れていない項目は送らないため（doc-9 §5 (ii)）、title だけの保存では `--assignee` は
-    // 発行されず一覧は保たれる。起きない 1 件化を警告しない。
-    const view = taskView({ title: "T", assignee: ["@takkyun", "@someone"] });
-    const titleOnly = setField(startSession(view), "title", "T2");
-    expect(editOf(ready(titleOnly).action)).toEqual({ title: "T2" });
-    expect(assigneeCollapseWarning(buildSave(titleOnly), view.task.assignee)).toBeNull();
-
-    // assignee が 1 件のタスクは、送っても 1 件化しない。
-    const single = taskView({ assignee: ["@takkyun"] });
-    const changed = setField(startSession(single), "assignee", "@someone");
-    expect(assigneeCollapseWarning(buildSave(changed), single.task.assignee)).toBeNull();
-  });
-
-  it("再読込結果の assignee が送った 1 件と違えば事後通知に載る", () => {
-    expect(divergence({ assignee: "@takkyun" }, taskView({ assignee: ["@takkyun"] }))).toEqual([]);
+  it("再読込結果の assignee が送った集合と違えば事後通知に載る", () => {
+    expect(divergence({ assignee: ["@takkyun"] }, taskView({ assignee: ["@takkyun"] }))).toEqual([]);
+    // 並びは CLI の書き方に属するので集合で比べる（他の全置換と同じ）。
+    expect(divergence({ assignee: ["a", "b"] }, taskView({ assignee: ["b", "a"] }))).toEqual([]);
     expect(
-      divergence({ assignee: "@takkyun" }, taskView({ assignee: ["@takkyun", "@someone"] })),
+      divergence({ assignee: ["@takkyun"] }, taskView({ assignee: ["@takkyun", "@someone"] })),
     ).toEqual(["assignee"]);
+  });
+});
+
+describe("最後の 1 件の削除を差し控える条件 (doc-8 §6)", () => {
+  it("読み取り時点で空だった一覧では差し控えない", () => {
+    expect(lastRemovalReason([], EMPTY_ASSIGNEE_REASON)).toBeNull();
+    expect(lastRemovalReason([], EMPTY_REFERENCES_REASON)).toBeNull();
+    expect(lastRemovalReason([], EMPTY_DEPENDENCIES_REASON)).toBeNull();
+  });
+
+  it("読み取り時点で 1 件以上あった一覧では、その理由を述べて差し控える", () => {
+    expect(lastRemovalReason(["@takkyun"], EMPTY_ASSIGNEE_REASON)).toBe(EMPTY_ASSIGNEE_REASON);
+    expect(lastRemovalReason(["TASK-2"], EMPTY_DEPENDENCIES_REASON)).toBe(
+      EMPTY_DEPENDENCIES_REASON,
+    );
   });
 });
 

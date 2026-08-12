@@ -531,10 +531,9 @@ export type AcEdit =
 
 /**
  * The combinable `task edit` facets (doc-5 §3). An absent key leaves that facet untouched; the
- * adapter refuses an edit that sets nothing. `references` / `dependencies` are 非空全置換 — the
- * value is the whole new set, and an empty array is refused rather than silently ignored, which
- * is what `--ref ""` / `--depends-on ""` do in v1.48.0 (doc-5 §3.1). `assignee` is a single value,
- * not a list: `-a` takes one, and the write replaces the whole frontmatter list (doc-5 §3, 実測).
+ * adapter refuses an edit that sets nothing. `assignee` / `references` / `dependencies` are
+ * 非空全置換 — the value is the whole new set, and an empty array is refused rather than silently
+ * ignored, which is what `-a ""` / `--ref ""` / `--depends-on ""` do in v1.48.0 (doc-5 §3.1).
  */
 export interface TaskEdit {
   title?: string;
@@ -542,8 +541,8 @@ export interface TaskEdit {
   status?: string;
   priority?: string;
   milestone?: string;
-  /** 担当の設定・付け替え (doc-5 §3). A blank value is refused — the CLI cannot unassign. */
-  assignee?: string;
+  /** 担当の非空全置換 (doc-5 §3). `-a` reads its value as a comma-separated set (実測). */
+  assignee?: string[];
   plan?: string;
   notes?: NoteEdit;
   addLabels?: string[];

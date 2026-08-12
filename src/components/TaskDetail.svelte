@@ -37,8 +37,8 @@
     type HistoryState,
   } from "../lib/detail";
   import {
-    ASSIGNEE_NOT_CLEARABLE,
     DISCARD_CONFIRM_PROCEED,
+    EMPTY_ASSIGNEE_REASON,
     EMPTY_DEPENDENCIES_REASON,
     EMPTY_REFERENCES_REASON,
     FILE_MISSING_REASON,
@@ -46,7 +46,6 @@
     TYPE_NOT_EDITABLE,
     acDeltaDroppedByRebase,
     acRows,
-    assigneeCollapseWarning,
     buildSave,
     canRemoveLast,
     confirmMarkedLabel,
@@ -54,6 +53,7 @@
     editAvailability,
     externallyChanged,
     isDirty,
+    lastRemovalReason,
     milestoneOptions,
     optionsFor,
     rebaseOnto,
@@ -296,6 +296,7 @@
   const TRANSITION_BUSY_REASON = "更新を発行中です。完了するまで次の遷移は始められません。";
   /** Draft text of the "add one" boxes, which are inputs rather than part of the session. */
   let newLabel = $state("");
+  let newAssignee = $state("");
   let newDependency = $state("");
   let newReference = $state("");
   let newCriterion = $state("");
@@ -316,8 +317,6 @@
   /** One decision for the save control's enabled state and its reason (doc-5 §5). */
   let saveGate = $derived(saveAvailability(plan, { fileMissing: missing, busy }));
   let acView = $derived(session === null ? [] : acRows(session));
-  /** Stated before the save that would collapse a multi-assignee list, not for every session. */
-  let assigneeCollapse = $derived(assigneeCollapseWarning(plan, view.task.assignee));
 
   // The session belongs to one file. A different task in the same panel starts from that task's
   // own read rather than inheriting a draft written against another one; the shell asks before
@@ -360,6 +359,7 @@
 
   function clearAddBoxes(): void {
     newLabel = "";
+    newAssignee = "";
     newDependency = "";
     newReference = "";
     newCriterion = "";
@@ -699,18 +699,18 @@
   draft: string,
   setDraft: (value: string) => void,
   placeholder: string,
-  lastRemovalReason: string | null,
+  withheldReason: string | null,
 )}
   <ul class="list-edit">
     {#each values as value, index (index)}
-      {@const removable = lastRemovalReason === null || canRemoveLast(values)}
+      {@const removable = withheldReason === null || canRemoveLast(values)}
       <li>
         <span class="url">{value}</span>
         <button
           type="button"
           class="mini"
           disabled={!removable}
-          title={removable ? "削除" : (lastRemovalReason ?? "")}
+          title={removable ? "削除" : (withheldReason ?? "")}
           onclick={() => apply(values.filter((_, at) => at !== index))}
         >
           削除
@@ -718,8 +718,8 @@
       </li>
     {/each}
   </ul>
-  {#if lastRemovalReason !== null && values.length === 1}
-    <p class="hint">{lastRemovalReason}</p>
+  {#if withheldReason !== null && values.length === 1}
+    <p class="hint">{withheldReason}</p>
   {/if}
   <div class="add-row">
     <input
@@ -1265,7 +1265,11 @@
      別のセルへ割くためで、assignee は編集セッションでだけ書き換える値なので、常に読める必要がある
      見出しの側に要らない。割当表にはこの区画自身の行がある (TASK-73 まで通常ラベルの行を借りていた)。 -->
 {#snippet assigneeSection()}
-  <DetailSection title="assignee" section="assignee" {layout}>
+  <DetailSection
+    title="assignee"
+    section="assignee" {layout}
+    count={`${task.assignee.length} 件`}
+  >
     {#if session === null}
       {#if task.assignee.length === 0}
         <p class="neutral">なし</p>
@@ -1273,18 +1277,17 @@
         <p>{task.assignee.join(", ")}</p>
       {/if}
     {:else}
-      <!-- 担当の設定・付け替えはこの画面で閉じる (doc-5 §3・doc-10 §7, TASK-57). 1 欄 1 値 —
-           `-a` は 1 件しか受け取らず、frontmatter の一覧を丸ごと置き換える. -->
-      <input
-        type="text"
-        aria-label="assignee"
-        value={session.draft.assignee}
-        oninput={(event) => edit("assignee", event.currentTarget.value)}
-      />
-      <p class="hint">{ASSIGNEE_NOT_CLEARABLE}</p>
-      {#if assigneeCollapse !== null}
-        <p class="warn">{assigneeCollapse}</p>
-      {/if}
+      <!-- 担当の設定・付け替えはこの画面で閉じる (doc-5 §3・doc-10 §7, TASK-57). 非空全置換 —
+           編集側の `-a` は値をカンマ区切りの集合として読み、frontmatter の一覧を丸ごと置き換える. -->
+      {@render listEditor(
+        session.draft.assignee,
+        (next) => edit("assignee", next),
+        newAssignee,
+        (value) => (newAssignee = value),
+        "追加する assignee",
+        lastRemovalReason(session.baseline.task.assignee, EMPTY_ASSIGNEE_REASON),
+      )}
+      <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
   </DetailSection>
 {/snippet}
@@ -1580,7 +1583,7 @@
         newDependency,
         (value) => (newDependency = value),
         "TASK-ID",
-        EMPTY_DEPENDENCIES_REASON,
+        lastRemovalReason(session.baseline.task.dependencies, EMPTY_DEPENDENCIES_REASON),
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
@@ -1652,7 +1655,7 @@
         newReference,
         (value) => (newReference = value),
         "URL",
-        EMPTY_REFERENCES_REASON,
+        lastRemovalReason(session.baseline.task.references, EMPTY_REFERENCES_REASON),
       )}
       <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
     {/if}
