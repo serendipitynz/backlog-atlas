@@ -1,3 +1,8 @@
+// Test-only: the parts of `tauri.conf.json`'s CSP that break silently (decision-28). Not a layer —
+// it holds no logic, only the assertions that a later tightening of that one config line cannot
+// pass while the app quietly loses its IPC transport or its drawn styles.
+#[cfg(test)]
+mod csp;
 // Public: the Tauri command boundary (TASK-33) — the one module that knows Tauri exists. Every
 // layer below is a plain Rust API; this is what makes them callable from the frontend, and where
 // the read path (file analysis) and the update path (Backlog CLI) are kept apart at the seam
