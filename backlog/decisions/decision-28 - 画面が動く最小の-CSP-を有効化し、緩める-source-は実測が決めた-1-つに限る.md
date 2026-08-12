@@ -23,9 +23,11 @@ status: accepted
 `rgb(236,236,255)` → `rgb(0,0,0)`）を同じ値で再現し、ハーネスの設定が正しいことを確かめてから測った。
 
 **委譲された選択は成り立たない。編集部品 も同じ source を要求する。** `public/vendor/ace/ace.js` は
-`importCssString` で `<style>` を 7 か所から作り、nonce を受け取る経路を持たない（`ace.js` に `nonce` は
-0 件）。`style-src 'self'` で測ると違反が両エンジンとも 4 件、`.ace_editor` が `relative` から `static` へ
-落ち、行高が 16px から WebKit 17px・Chromium 18px へずれる。**作図結果 の色を捨てても `'unsafe-inline'`
+`importCssString` で `<style>` を作り（識別子の出現 7 のうち 1 つは定義で、呼び出しは 6 か所）、nonce を
+受け取る経路を持たない（`ace.js` に `nonce` は 0 件）。`style-src 'self'` で測ると違反が両エンジンとも
+4 件、`.ace_editor` が `relative` から `static` へ落ち、行高が 16px から WebKit 17px・Chromium 18px へ
+ずれる。編集セッションを開くと `document.styleSheets.length` は 1 から 5 になり、止めると 1 のまま
+である（**増えるのは 4 枚**）。**作図結果 の色を捨てても `'unsafe-inline'`
 は 編集部品 のためになお要る**ので、decision-25 が並べた 2 つ目は選択肢ではない。**Ace は「将来足すもの」
 ではなく decision-8 で既に入っている** — TASK-98 の AC #4 もその前提のまま書かれていた（AC を直し、
 理由は Implementation Notes にある）。
@@ -89,15 +91,40 @@ default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect
 Vite が配り、`manager/mod.rs` の `get_asset`／`csp()` を通らない）ので、dev で動いたことは根拠にならない。
 手順は `_sandbox/csp-check/measure-csp.mjs` にある。
 
-### 4. 黙って戻せる行にだけ試験を置く
+### 4. 全体を試験に置く。黙って戻せない行は 1 つも無い
 
-`src-tauri/src/csp.rs` は 3 つだけを検査する — 値が入っていること、`connect-src` が 経路の source を
-2 つとも持つこと、`style-src` が `'unsafe-inline'` を持つこと。**残り 6 行を検査しないのは、消えれば
-画面が自分で言うからである**（script や default が止まれば窓が空になる）。この 3 つは違う:
-CSP に弾かれた IPC は `window.ipc.postMessage` へ自動で落ちて全コマンドが動き続け、作図結果 は色だけを
-失い、編集部品 は文字を保ったまま配置を失う。**どれも例外を投げない。**
+**この方針に「消えれば画面が自分で言う」行は存在しない。**行を消す操作は常に**緩める**方向であり、
+緩みは何も表に出ない — `object-src 'none'` を落とせば `default-src` へ落ち、`default-src` を落とせば
+fetch 系が何も制限されなくなるが、**画面はどちらでも同じに見える**。`base-uri` と `form-action` に
+至っては落ち先すら無く、書かなければ無制限のまま残る。見えるのは緩和を**外した**ときだけで、それも
+間接的である（作図結果 が色を失い、編集部品 が配置を失い、IPC は `postMessage` へ落ちて動き続ける）。
 
-**値そのものは検査しない。**方針を丸ごと書いた試験は設定の写しであり、設定は既にそれ自身の記録である。
+**したがって残りより優先して検査すべき部分集合は無く、設定の形そのものが契約である。**
+`src-tauri/src/csp.rs` は 9 本の directive とその source を全部持ち、`img-src`・`font-src` が
+**入っていない**ことも検査する。**これは設定の写しだが、写しであることが役目である** — 契約を変える
+操作を必ず試験の変更として通し、その変更が本決定の改訂を促す。行ごとに「何が動かすか」（実測／経路／
+不在）と「失うと何が壊れるか」を持たせてあるので、落ちた試験が指すのは本決定のどの節かまで出る。
+解析には Tauri 自身の `Csp` を通す — 実際にヘッダへ載るのは framework がこの文字列から作ったもので、
+別に書いたパーサは設定と一致したまま framework とだけ食い違いうる。
+
+**14 種類の変異を当てて全部落ちることを確かめた**（`_sandbox/csp-check/mutate.py`）: `null` へ戻す、
+9 本それぞれを落とす、`object-src` を `'self'` へ緩める、`img-src` を足す、空白を 2 つにする。
+
+### 5. `style-src-attr` では閉じられない（実測で却下）
+
+**`'unsafe-inline'` が要るのは `<style>` 要素の側だけなので、属性の側は `style-src-attr 'none'` で
+閉じられるはず** — PR #106 のレビューがそう指摘し、Atlas 自身が属性を使っていない以上、筋は通っている
+（本決定の Context もそう述べている）。**測ると成り立たなかった。**
+
+`style-src-attr 'none'` は両エンジンとも現に効く（`setAttribute("style", …)` が止まる）。ところが
+**mermaid が SVG へ書き出す `style` 属性まで一緒に止まる** — 出力は `innerHTML` で入るので属性は
+パーサを通り、この directive の対象になる。作図 1 つで違反が WebKit 105 件・Chromium 183 件、
+`style` 属性を持つ 25 要素の**宣言 53 個が 0 個しか適用されず**、ラベルが `display: table-cell` から
+`block` へ、`white-space: nowrap` から `normal` へ落ちて、**図が 204×278 から 464×632 へ膨らむ**
+（両エンジン同値）。色は `<style>` 側が持っているので残るが、配置は壊れる。
+
+**したがって属性の側を閉じる道は、作図結果 を捨てる道と同じである。**閉じられるようになるのは、
+作図の実装が SVG を属性なしで書くようになった回だけで、そのときは本節ごと測り直す。
 
 ## Consequences
 
