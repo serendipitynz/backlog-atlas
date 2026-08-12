@@ -4,7 +4,7 @@ title: バージョンタグからのリリースワークフローを作る
 status: To Do
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-12 00:43'
+updated_date: '2026-08-12 01:14'
 labels:
   - release
   - 'kind:chore'
@@ -34,5 +34,5 @@ ordinal: 101000
 - [ ] #5 手動実行でも同じ結果になる
 - [ ] #6 CI が Node の版を直書きせず node-version-file: .node-version を読む
 - [ ] #7 TASK-104 が updater を持つと判断した場合、v0.1.0 のバンドルへ updater の受け皿（署名鍵の参照と更新エンドポイントの設定）が入っており、持たないと判断した場合は入っていない。どちらの分岐を採ったかがワークフローまたは tauri.conf.json のコメントから読める
-- [ ] #8 matrix ビルドが作る 3 OS のバンドルにアプリアイコンが入っていることをワークフロー自身が検査し、欠けていればビルドを落とす（macOS は .app の Contents/Resources/icon.icns、Linux は .deb の hicolor 配下、Windows は実行ファイルまたはインストーラの埋め込みアイコン）。TASK-96 の AC #3 のうち macOS 以外は、この検査が引き取る
+- [ ] #8 matrix ビルドが作る 3 OS のバンドルにアプリアイコンが入っていることをワークフロー自身が検査し、欠けていればビルドを落とす（macOS は .app の Contents/Resources/icon.icns、Linux は .deb の hicolor 配下、Windows は実行ファイルへ埋め込まれた icon.ico のバイト列）。TASK-96 が 2026-08-12 に 3 OS とも実機で確認済みなので、これは回帰防止であって初回確認ではない
 <!-- AC:END -->
