@@ -3,14 +3,14 @@ id: doc-8
 title: タスク詳細画面 設計（References・PR・Type・Git 履歴）
 type: specification
 created_date: '2026-07-21 10:17'
-updated_date: '2026-08-12 06:50'
+updated_date: '2026-08-12 10:00'
 ---
 # タスク詳細画面 設計（References・PR・Type・Git 履歴）
 
 TASK-12 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書で導入する語は初出に定義を置く。
 前提は doc-4（読み取り層・ドメインモデル・References 保持）・doc-5（Backlog 更新アダプター）・doc-6（Git・PR 履歴参照）・decision-5（Type 導出）・decision-13（アプリ設定）。描き方は doc-11 が定める。画面設計案（doc-1 追補で定義。02）を反映する。引用する事実は doc-12 §3 に転記してある。
 
-**実測基準版**: 本書が「実測」と述べる記述は Backlog CLI v1.48.0 で確かめたものである（decision-7 の最低バージョン要件、decision-27）。個々の記述は版を名乗らない — 名乗るのは、2 つ以上の版の違いそのものを述べる版差記録だけである。最低バージョン要件が上がったら、本行の版と本書の実測記述を併せて測り直す。
+**実測基準版**: 本書が「実測」と述べる記述は Backlog CLI v1.49.3 で確かめたものである（decision-7 の最低バージョン要件、decision-27）。個々の記述は版を名乗らない — 名乗るのは、2 つ以上の版の違いそのものを述べる版差記録だけである。最低バージョン要件が上がったら、本行の版と本書の実測記述を併せて測り直す。
 
 ## 1. 用語
 
@@ -213,6 +213,8 @@ doc-7 では active だけでなく draft・completed・archive のカードか�
 - **active**: 本章の通常編集（`task edit` 系）と、状態遷移 `task demote`／`task archive`／`task complete`（いずれも doc-5 の操作写像）。`task archive` は status を問わず実行できるが、`task complete` は status が `Done` のときのみ成功する（非 Done では「is not Done」で失敗、実測）。GUI は `task complete` を Done のタスクに限って能動化し、対象外では理由付きで無効化する。
 - **draft**: `draft promote`／`draft archive` のみ（doc-5 の 3.3）。内容編集は GUI に出さず、必要なら外部エディタ経路（7 章）へ案内する。
 - **completed・archive**: CLI による内容編集は提供しない（`task edit` が not found になるため）。読み取り専用とし、内容を変えたい場合は外部エディタ経路（7 章）へ案内する。
+
+**not found の文面は版で変わる（版差記録）。** v1.48.0 は `Task 4 not found.`、v1.49.3 は `Task not found: TASK-4` を返す（TASK-152 で両版へ同じ操作列を流して比べた。本節の実測のうち、v1.48.0 と v1.49.3 で違いが出たのはこの 1 点だけである）。**本節が契約にしているのは終了コード 1 のほうだけである** — 更新アダプターは成否を終了コードで判定し、stderr は失敗理由としてそのまま画面へ渡す（doc-5 §5）ので、文面に依存する箇所は無い。**したがって上の `Task … not found` を 1 つの文面へ固定しない** — 固定すると、次に版が上がったときに文面の変化が契約の変化に見える。
 
 保存区分ごとに、詳細画面は提供する操作だけを能動化し、提供しない操作は理由が分かる形で無効化する（doc-5 の縮退提示に準ずる。無効化の表し方は doc-11 §5）。編集可否は表示（どの区画を出すか）とは別で、参照系（Type・References・Pull Request・Git 履歴）はどの保存区分でも読み取り表示する。**状態遷移は 5 件とも実行前確認を通る**（doc-11 §12。2026-08-11 に二度押し確定から替えた。TASK-137）。控えの語には `…` を付ける（`draft へ差し戻す…`。同 §12 の ②）。**5 件を「逆操作の無いもの」で絞らないのは、押す前の状態へ戻せるものが 1 件も無いためである**（2026-08-11 に `backlog task --help`・`backlog draft --help` で実測）: どちらのサブコマンド一覧にもアーカイブと完了整理を戻す操作が無く（`task` は create・list・edit・view・archive・complete・demote、`draft` は list・create・archive・promote・view だけ）、`task demote` と `draft promote` は互いの行き先へ戻せるものの id を採番し直すので、押す前の TASK-ID のタスクには戻らない。
 
