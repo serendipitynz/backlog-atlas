@@ -33,6 +33,13 @@ const SOURCES: Record<string, string> = import.meta.glob("../**/*.{ts,svelte}", 
 /** `doc-N §X` and `decision-N`. A bare `doc-1` is a Backlog 文書 id and stays legal. */
 const DESIGN_REFERENCE = /doc-\d+\s*§|decision-\d+/;
 
+/**
+ * A `major.minor.patch` spelled out. Requires all three parts and the `v`, so `doc-11 §2.4`, `-a ""`
+ * and prose like「2 件目」stay legal, and so does a version arriving through `${…}` interpolation —
+ * which is the only way one is allowed on screen (decision-27 §2).
+ */
+const SPELLED_VERSION = /v\d+\.\d+\.\d+/;
+
 /** Not screen text: the recorded-payload helpers and every test file. */
 const SKIPPED = /\.test\.|\/fixtures\.ts$|\/fake-boundary\.ts$/;
 
@@ -100,5 +107,33 @@ describe("画面に置く文 (doc-11 §8)", () => {
     ] as const) {
       expect(screenText(source, svelte).some((text) => DESIGN_REFERENCE.test(text))).toBe(false);
     }
+  });
+
+  // --- 版表記 (doc-11 §8 設計文の写し, decision-27 §2) -------------------------------------------
+  //
+  // The second kind decidable from the text alone. Screen text names no 動作確認済み版: the version in
+  // 「v1.48.0 の CLI に空集合化の手段がないため」 pointed at the doc's measurement, not at the user's
+  // situation, and the same sentence is shown while `CliReadiness` is still `null` — so no version can
+  // be named truthfully there. There is **no legal exception** to scan around: the one sentence that
+  // does carry a version (the unsupported CLI 縮退 band) interpolates `readiness.version` and
+  // `readiness.minimum`, so it spells no literal.
+  it("names no 動作確認済み版 anywhere a user reads", () => {
+    const found: string[] = [];
+    for (const path of scanned) {
+      screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
+        if (SPELLED_VERSION.test(line)) found.push(`${path}:${index + 1}: ${line.trim()}`);
+      });
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("finds a version planted in a screen string", () => {
+    const planted = 'export const R = "最後の 1 件は消せません（v1.48.0 の CLI に手段が無いため）";\n';
+    expect(screenText(planted, false).some((line) => SPELLED_VERSION.test(line))).toBe(true);
+    const markup = "<p>v1.48.0 の改称は id を変えません。</p>\n";
+    expect(screenText(markup, true).some((line) => SPELLED_VERSION.test(line))).toBe(true);
+    // The legal shape stays legal: the difference between two versions, read off the payload.
+    const interpolated = "  return `backlog CLI ${r.version} は範囲外（必要: ${r.minimum} 以上）`;\n";
+    expect(screenText(interpolated, false).some((line) => SPELLED_VERSION.test(line))).toBe(false);
   });
 });

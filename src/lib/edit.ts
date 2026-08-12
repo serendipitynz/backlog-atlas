@@ -389,8 +389,15 @@ export type SavePlan =
  */
 export const EXTERNAL_EDITOR_ROUTE = "この画面下部の「外部エディタで開く」";
 
+/**
+ * **None of the withheld-operation reasons names a version** (decision-27). Which version was
+ * measured is doc-5 §3.1's to hold; on screen it would answer something the user did not ask, and
+ * Atlas cannot name it truthfully anyway — these reasons are reached while `CliReadiness` may still be
+ * `null` or `unavailable`, neither of which carries a version. The one sentence that does name one is
+ * [`readinessReason`]'s unsupported branch, whose subject *is* the difference between two versions.
+ */
 export const EMPTY_REFERENCES_REASON =
-  "References は最後の 1 件を削除できません（v1.48.0 の CLI に空集合化の手段がないため）。" +
+  "References は最後の 1 件を削除できません（CLI に空集合化の手段がないため）。" +
   `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
@@ -400,11 +407,11 @@ export const EMPTY_REFERENCES_REASON =
  * as a success and not happen (doc-5 §3.1, the same silent-no-op as `--ref ""`).
  */
 export const EMPTY_ASSIGNEE_REASON =
-  "assignee は最後の 1 件を削除できません（v1.48.0 の CLI に空集合化の手段がないため）。" +
+  "assignee は最後の 1 件を削除できません（CLI に空集合化の手段がないため）。" +
   `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 export const EMPTY_DEPENDENCIES_REASON =
-  "dependencies は最後の 1 件を削除できません（v1.48.0 の CLI に空集合化の手段がないため）。" +
+  "dependencies は最後の 1 件を削除できません（CLI に空集合化の手段がないため）。" +
   `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
@@ -920,11 +927,11 @@ export function readinessReason(readiness: CliReadiness | null): string | null {
 }
 
 const DRAFT_READ_ONLY =
-  "draft の内容編集は提供しません（v1.48.0 の CLI に draft の内容を編集する手段がないため）。" +
+  "draft の内容編集は提供しません（CLI に draft の内容を編集する手段がないため）。" +
   `編集するにはタスクへ昇格するか、${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 const CLOSED_READ_ONLY =
-  "completed・archive のタスクは、v1.48.0 の CLI が更新を受け付けないため読み取り専用です。" +
+  "completed・archive のタスクは、CLI が更新を受け付けないため読み取り専用です。" +
   `内容を変えるには${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
 
 /**
@@ -1025,7 +1032,7 @@ export function transitionOffers(
     return {
       state: "none",
       reason:
-        "completed・archive から戻す操作は v1.48.0 の CLI にないため提供しません",
+        "completed・archive から戻す操作は CLI にないため提供しません",
     };
   }
 
@@ -1134,6 +1141,9 @@ export function transitionConfirmation(offer: TransitionOffer): IssueConfirmatio
 // the reason goes) — but a version number in a question about *this* press answers something the user did
 // not ask at the moment of asking. 差し戻す・昇格 *can* be taken back, so those two say what is lost
 // instead: the id.
+//
+// **That 目視 is now the general rule, not this record's own exception**: decision-27 §2 generalized it, so
+// no screen text names a version and doc-11 §8 counts one as a 設計文の写し.
 const TRANSITION_CONFIRM_QUESTION: Record<TransitionKind, string> = {
   taskDemote: "このタスクを draft へ差し戻します。id は採番し直されます。",
   taskArchive: "このタスクをアーカイブします。この操作は戻せません。",
