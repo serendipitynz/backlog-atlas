@@ -2,7 +2,7 @@
 //!
 //! A **Type 候補** is one string taken from a **Type 導出元**, before any classifying or folding.
 //! There are two 導出元 (decision-20): the `kind:` labels, and the frontmatter `type` field
-//! Backlog CLI v1.48.0 writes. The read layer collects both into the task's `type` slot, kind
+//! Backlog CLI v1.49.3 writes. The read layer collects both into the task's `type` slot, kind
 //! labels first (doc-4 §3.3); this module applies the rules to what it collected.
 //!
 //! From the kind side the rule is mechanical prefix removal, not a lookup table: the kind
@@ -55,7 +55,7 @@ pub const KNOWN_TYPES: [&str; 10] = [
     "research",
     "writing",
     "maintenance",
-    // Backlog CLI v1.48.0's `--type` vocabulary, less `bug`/`feature` which are already above
+    // Backlog CLI v1.49.3's `--type` vocabulary, less `bug`/`feature` which are already above
     // (2026-08-02 measured: the CLI rejects anything outside its seven and `config.yml` cannot
     // widen it). `task` reads oddly beside Atlas's own "task", but it is the CLI's word, not a
     // name Atlas chose, so it is not reworded (decision-20).

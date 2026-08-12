@@ -33,7 +33,7 @@
 //!   version at or above the confirmed [`MIN_VERSION`] yields a [`CliCapability`]. [`run`] takes that
 //!   capability by reference, so an update is unreachable without a supported CLI — a missing or
 //!   too-old CLI degrades Atlas to read-only by construction, not by a flag a caller might forget.
-//!   Operations v1.48.0 cannot perform (emptying references, emptying dependencies, emptying the
+//!   Operations v1.49.3 cannot perform (emptying references, emptying dependencies, emptying the
 //!   assignee list) are unrepresentable or refused *before* any process starts. One class is held
 //!   a layer up instead: a comma inside one member of a comma-joined set would split into two
 //!   members, and the frontend refuses it before the save is built (`comma.ts`, doc-5 §3 の
@@ -166,7 +166,7 @@ pub fn probe(cli: &dyn BacklogCli) -> CliStatus {
 
 /// One Atlas 更新操作 (doc-5 §1). Each variant maps to exactly one 写像先 — a Backlog CLI
 /// sub-command, or, for the single 直接書き込み操作, Atlas's own write; the mapping is
-/// [`plan_operation`]. Operations v1.48.0 cannot perform are absent by construction: there is no
+/// [`plan_operation`]. Operations v1.49.3 cannot perform are absent by construction: there is no
 /// single-option AC replace (only the composite [`AcEdit::Replace`]), and references cannot be
 /// emptied ([`TaskEdit::references`] is refused when empty) — doc-5 §3.1.
 ///
@@ -225,7 +225,7 @@ pub enum UpdateOperation {
         description: Option<String>,
     },
     /// マイルストーン説明の更新 — the 直接書き込み操作 (doc-5 §1/§3, decision-21). No sub-command:
-    /// v1.48.0's `milestone` has no `update`/`edit`, so this one replaces 説明の本文範囲 of the
+    /// v1.49.3's `milestone` has no `update`/`edit`, so this one replaces 説明の本文範囲 of the
     /// milestone's management file and nothing else.
     ///
     /// `description` is a plain `String` rather than an `Option`, because "no description" is a
@@ -254,7 +254,7 @@ pub enum UpdateOperation {
 
 /// `task create` fields — the range Atlas passes at create time (doc-5 §3, doc-10 §7).
 ///
-/// Narrower than what the CLI accepts, by product judgment rather than by capability: v1.48.0's
+/// Narrower than what the CLI accepts, by product judgment rather than by capability: v1.49.3's
 /// `task create` also takes `-a`/`--plan`/`--notes`/`--ref`/`--depends-on` and stores every one of
 /// them in the created file (measured 2026-07-29, doc-5 §3). What Atlas passes here is what
 /// identifies and classifies a task at the moment it is created; plan・notes・references・
@@ -299,7 +299,7 @@ pub struct TaskEdit {
     /// `--assignee` sets the whole assignee set (doc-5 §3), and is the whole GUI route for assignee
     /// (TASK-57). `task edit -a` reads its value as a comma-separated set and replaces the
     /// frontmatter list with it, however many entries either side had (measured 2026-08-12 on
-    /// v1.48.0; `task create -a` does *not* split, which is what doc-5 §3 recorded for both until
+    /// v1.49.3; `task create -a` does *not* split, which is what doc-5 §3 recorded for both until
     /// TASK-151 measured them apart). `None` leaves it untouched; `Some(empty)` is refused — `-a ""`
     /// exits 0 without clearing (measured), the same silent-no-op as `--ref ""`, so emptying the
     /// list is not a capability the CLI offers ([`RejectReason::EmptyAssignee`]).
@@ -309,12 +309,12 @@ pub struct TaskEdit {
     pub add_labels: Vec<String>,
     pub remove_labels: Vec<String>,
     /// `--depends-on` sets the whole dependency set (doc-5 §3). `None` leaves it untouched;
-    /// `Some(empty)` is refused — `--depends-on ""` exits 0 without clearing anything in v1.48.0
+    /// `Some(empty)` is refused — `--depends-on ""` exits 0 without clearing anything in v1.49.3
     /// (measured), the same silent-no-op trap as `--ref ""`, so clearing all dependencies is not a
     /// capability the CLI offers and must not be reported as a success ([`RejectReason::EmptyDependencies`]).
     pub dependencies: Option<Vec<String>>,
     /// `--ref` full-replaces with a *non-empty* set (doc-5 §3, §3.1). `Some(empty)` is refused —
-    /// v1.48.0 cannot empty references (doc-5 §3.1). `None` leaves references untouched.
+    /// v1.49.3 cannot empty references (doc-5 §3.1). `None` leaves references untouched.
     pub references: Option<Vec<String>>,
     pub ac: AcEdit,
 }
@@ -336,7 +336,7 @@ pub enum NoteEdit {
 /// Acceptance-criteria edit (doc-5 §3). The per-item deltas ([`AcEdit::Delta`]) and the whole-set
 /// replacement ([`AcEdit::Replace`]) are kept apart because doc-5 §3/§3.1 require it: a replace is
 /// the composite of removing every existing index, adding the new items, and checking the completed
-/// ones by their new index — all in one `task edit` call. v1.48.0's single-option
+/// ones by their new index — all in one `task edit` call. v1.49.3's single-option
 /// `--acceptance-criteria` does replace the whole set, but it refuses to run alongside `--ac`,
 /// `--remove-ac`, `--check-ac` or `--uncheck-ac` ("Cannot combine …", measured), so it cannot carry
 /// the checked state of the new items. The composite can, and one call keeps the replace atomic.
@@ -497,7 +497,7 @@ impl Invocation {
     }
 }
 
-/// The option flags each sub-command accepts in the confirmed version (v1.48.0 `--help`, doc-5 §3).
+/// The option flags each sub-command accepts in the confirmed version (v1.49.3 `--help`, doc-5 §3).
 /// This is the single source of truth for AC #5's "未知オプションは起動前に拒否する": every option
 /// [`plan_operation`] emits is checked against this set, so a flag the confirmed version does not
 /// define is refused before any process starts rather than passed to a CLI that may reject it.
@@ -545,7 +545,7 @@ fn allowed_options(command: &[&str]) -> &'static [&'static str] {
 /// [`UpdateFailure`], surfaced to the caller as `Err` from [`run`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum RejectReason {
-    /// `references` was `Some(empty)`. v1.48.0 cannot empty references (doc-5 §3.1); the last one
+    /// `references` was `Some(empty)`. v1.49.3 cannot empty references (doc-5 §3.1); the last one
     /// must be removed through the external-editor path (doc-8), not here.
     EmptyReferences,
     /// `dependencies` was `Some(empty)`. `--depends-on ""` exits 0 without clearing (measured), the
@@ -575,15 +575,15 @@ impl std::fmt::Display for RejectReason {
         match self {
             RejectReason::EmptyReferences => write!(
                 f,
-                "references cannot be emptied through the CLI (v1.48.0); keep at least one reference"
+                "references cannot be emptied through the CLI (v1.49.3); keep at least one reference"
             ),
             RejectReason::EmptyDependencies => write!(
                 f,
-                "dependencies cannot be cleared through the CLI (v1.48.0); keep at least one dependency"
+                "dependencies cannot be cleared through the CLI (v1.49.3); keep at least one dependency"
             ),
             RejectReason::EmptyAssignee => write!(
                 f,
-                "assignee cannot be cleared through the CLI (v1.48.0); keep at least one assignee"
+                "assignee cannot be cleared through the CLI (v1.49.3); keep at least one assignee"
             ),
             RejectReason::NothingToEdit => write!(f, "task edit was requested with no field to change"),
             RejectReason::NothingToUpdate => {
@@ -702,7 +702,7 @@ fn plan_task_create(c: &TaskCreate) -> Invocation {
         .opt_if("--priority", &c.priority)
         .opt_if("--milestone", &c.milestone);
     if !c.labels.is_empty() {
-        // v1.48.0 `task create --labels` takes one comma-separated value (doc-5 §3 create row).
+        // v1.49.3 `task create --labels` takes one comma-separated value (doc-5 §3 create row).
         inv = inv.opt("--labels", c.labels.join(","));
     }
     for ac in &c.acceptance_criteria {
@@ -761,7 +761,7 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
     }
 
     if let Some(refs) = &edit.references {
-        // 参照の全置換は非空集合のみ (doc-5 §3.1): emptying is impossible in v1.48.0.
+        // 参照の全置換は非空集合のみ (doc-5 §3.1): emptying is impossible in v1.49.3.
         if refs.is_empty() {
             return Err(RejectReason::EmptyReferences);
         }
@@ -841,7 +841,7 @@ fn plan_doc_update(doc_id: &str, update: &DocUpdate) -> Result<Invocation, Rejec
         .opt_if("--path", &update.path);
     if let Some(tags) = &update.tags {
         // `opt`, not a skip-if-empty: an empty list joins to `""` and `--tags ""` is タグ全消し
-        // (doc-10 §5), which v1.48.0 performs. Contrast `--ref ""`/`--depends-on ""` below, which
+        // (doc-10 §5), which v1.49.3 performs. Contrast `--ref ""`/`--depends-on ""` below, which
         // exit 0 having cleared nothing and are refused instead.
         inv = inv.opt("--tags", tags.join(","));
     }
@@ -1280,7 +1280,7 @@ pub struct WriteFailure {
 /// A file whose Description is opened any other way is refused rather than written. Two cases, one
 /// reason: a file with no Description at all would have to be given a heading, and a file whose
 /// Description is a `SECTION:DESCRIPTION` pair — a task file's shape, reachable in a milestone only
-/// by hand-editing — would have Atlas writing into a shape v1.48.0's `milestone add` never produces.
+/// by hand-editing — would have Atlas writing into a shape v1.49.3's `milestone add` never produces.
 /// Either is Atlas deciding what a milestone file looks like, which is decision-21's first condition
 /// in reverse: the CLI defines the format, and Atlas writes into the shape the CLI already wrote.
 ///
@@ -2168,7 +2168,7 @@ mod tests {
 
     #[test]
     fn task_create_maps_the_create_time_range_atlas_passes() {
-        // The range is Atlas's, not the CLI's: v1.48.0 `task create` also accepts `-a`/`--plan`/
+        // The range is Atlas's, not the CLI's: v1.49.3 `task create` also accepts `-a`/`--plan`/
         // `--notes`/`--ref`/`--depends-on` (doc-5 §3). Every field this struct can hold reaches the
         // argv; the ones it cannot hold are a product judgment stated on [`TaskCreate`].
         let cli = FakeCli::supported();
@@ -2527,7 +2527,7 @@ mod tests {
             &cli,
         )
         .unwrap();
-        // タグ全消し (doc-10 §5): `--tags ""` does clear them on v1.48.0, unlike the same-shaped
+        // タグ全消し (doc-10 §5): `--tags ""` does clear them on v1.49.3, unlike the same-shaped
         // `--ref ""`/`--depends-on ""` above, which exit 0 having cleared nothing and are therefore
         // refused. An empty tag list is a request, so it is emitted — and it still counts as an
         // option, so this is not rejected as NothingToUpdate.
@@ -2556,7 +2556,7 @@ mod tests {
         );
     }
 
-    // --- AC #5: operations outside v1.48.0's capability are refused before launch ---------------
+    // --- AC #5: operations outside v1.49.3's capability are refused before launch ---------------
 
     #[test]
     fn emptying_references_is_refused_without_launching() {
@@ -2851,7 +2851,7 @@ mod tests {
 
     // --- 直接書き込み操作 (doc-5 §1/§3, decision-21) ------------------------------------------
 
-    /// The shape v1.48.0's `milestone add -d` writes (measured 2026-08-06), with a section after
+    /// The shape v1.49.3's `milestone add -d` writes (measured 2026-08-06), with a section after
     /// the description so the replacement has something on both sides of it.
     const MILESTONE: &str =
         "---\nid: m-1\ntitle: \"P\"\n---\n\n## Description\n\nold\n\n## Notes\n\nkept\n";
