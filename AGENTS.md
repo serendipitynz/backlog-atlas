@@ -82,11 +82,12 @@ Move the state through Backlog CLI calls, like every other task update.
   build, the tests, and `svelte-check` all pass without either script.
 - **Every file in `src-tauri/icons/` is generated from `src-tauri/app-icon.png`.** Do not
   edit one by hand; change the source and re-run
-  `pnpm tauri icon src-tauri/app-icon.png`, then delete the `android/` and `ios/`
-  directories it also writes — this app has no mobile target, and nothing in the build
-  reads them. Name the path: the command's default input is `./app-icon.png` relative to
-  the working directory, not to `tauri.conf.json`, so a bare `pnpm tauri icon` from the
-  repository root fails. Sixteen of the seventeen outputs are byte-reproducible;
+  `pnpm tauri icon src-tauri/app-icon.png`, then delete `src-tauri/icons/android/` and
+  `src-tauri/icons/ios/`, which it also writes — this app has no mobile target, and
+  nothing in the build reads them. Name the input path: it is the one path the command
+  resolves against the working directory rather than against `tauri.conf.json` (the
+  output goes to `icons/` beside the config either way), so a bare `pnpm tauri icon`
+  from the repository root fails. Sixteen of the seventeen outputs are byte-reproducible;
   `icon.icns` is not, because its elements are written in a different order each run
   (same element set, same payloads, constant total size). Treat an `icon.icns`-only diff
   after a re-run as no change.
