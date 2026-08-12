@@ -1,10 +1,10 @@
 ---
 id: TASK-151
 title: assignee 欄のカンマ入力で、保存前に述べた「1 件になる」が成り立たないのを直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-12 02:45'
-updated_date: '2026-08-12 04:47'
+updated_date: '2026-08-12 05:35'
 labels:
   - 'kind:bug'
 milestone: m-2
