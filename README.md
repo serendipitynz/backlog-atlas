@@ -37,6 +37,24 @@ A single Atlas process starts once and reads all registered Backlog roots. Atlas
 does not keep a `backlog browser`, an MCP server, or a separate Atlas process
 resident per project.
 
+## Requirements
+
+Atlas needs the **Backlog CLI (`backlog.md`) at v1.48.0 or newer** on your `PATH`. It is
+not bundled with Atlas — the reasoning is in decision-26 — so install it yourself:
+
+```sh
+npm install -g backlog.md
+```
+
+Atlas checks the version at startup by running `backlog --version`, and no upper bound is
+fixed: a newer CLI is used as-is.
+
+**Atlas still starts without it.** Reading does not go through the CLI at all — Atlas
+parses each project's Backlog.md files directly (decision-2) — so with no `backlog` on
+`PATH`, or one below v1.48.0, Atlas opens read-only: every screen renders, and the
+operations that would write are held back with the reason stated where the control is.
+Installing the CLI and restarting turns them on.
+
 ## Boundaries
 
 Atlas never writes managed Markdown itself. Updates that Atlas originates are
@@ -128,8 +146,8 @@ the three task-detail placements with a persisted default, the project detail sc
 (doc-10), the fixed header with its menu, and the correction of what `task create`
 actually accepts (TASK-57).
 
-Distribution — packaging, and bundling the Backlog CLI as a sidecar — has not
-started.
+Distribution — packaging — has not started. Whether to bundle the Backlog CLI as a
+sidecar is settled: it is not bundled (decision-26).
 
 Key decisions:
 
@@ -144,8 +162,11 @@ Key decisions:
   values shown distinctly (decision-5).
 - Absence and gaps: target-absent, unreadable, and no-match are shown as distinct
   states rather than one blank (decision-6).
-- Backlog CLI: development assumes a `backlog` on the user's PATH; bundling it as a
-  sidecar is deferred to a later distribution decision (decision-7).
+- Backlog CLI: a `backlog` on the user's PATH, both while developing and once
+  distributed (decision-7). It is not bundled as a sidecar: doing so would grow the
+  macOS bundle from 14 MB to 81 MB, and the friction it would remove is already
+  handled — Windows resolution by decision-16, and pre-install use by the read-only
+  start (decision-26).
 - Frontend: Svelte 5 used plainly (no SvelteKit), built with Vite and TypeScript,
   with component-scoped styles (decision-8).
 - Dependency choices: `toml` for the ledger, `serde_yaml_ng` for frontmatter parsing,
@@ -155,8 +176,11 @@ Key decisions:
 - App settings: kept in a file of their own next to the ledger, so the ledger's
   read-only degradation does not take the display defaults with it (decision-13).
 
-Bundling the Backlog CLI as a sidecar is a distribution choice; it does not mean
-Backlog Atlas owns the source of truth for tasks.
+Bundling the Backlog CLI as a sidecar was a distribution choice, not a question of
+ownership; either way the source of truth for tasks stays in each project's Backlog
+root. It is not bundled (decision-26), and decision-7's two remaining triggers — pinning
+a version on the distribution side, and CLI-install friction blocking real use — would
+reopen it.
 
 ## Related planning
 

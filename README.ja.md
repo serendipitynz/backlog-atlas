@@ -35,6 +35,22 @@ Atlas プロセスは一つだけ起動し、登録された全 Backlog ルー�
 プロジェクトごとに `backlog browser`、MCP サーバー、または別の Atlas プロセスを
 常駐起動しない。
 
+## 導入要件
+
+Atlas は **Backlog CLI (`backlog.md`) の v1.48.0 以上**を `PATH` 上に必要とする。Atlas には
+同梱していない (根拠は decision-26) ので、利用者が導入する。
+
+```sh
+npm install -g backlog.md
+```
+
+版は起動時に `backlog --version` で検査する。上限は固定していないので、新しい版はそのまま使う。
+
+**CLI が無くても Atlas は起動する。**読み取りは CLI を通らず、各プロジェクトの Backlog.md を
+直接解析する (decision-2)。したがって `PATH` 上に `backlog` が無い場合も、v1.48.0 未満の場合も、
+読み取り専用で立ち上がる — 画面はすべて描かれ、書き込みを伴う操作だけが、理由を控えの所で
+述べたうえで保留される。CLI を導入して起動し直せば有効になる。
+
 ## 境界
 
 Atlas 自身は管理対象 Markdown へ書き込まない。Atlas が起こす更新は、対象プロジェクトを
@@ -116,7 +132,8 @@ Rust コアは `src-tauri/` で従来のコマンドを使う (`cargo test`、`c
 3 配置と既定の永続、プロジェクト詳細画面 (doc-10)、固定ヘッダとメニュー、および
 `task create` の引数範囲の訂正 (TASK-57)。
 
-配布 (パッケージングと Backlog CLI の sidecar 同梱) は未着手である。
+配布のうちパッケージングは未着手である。Backlog CLI を sidecar 同梱するかどうかは決着して
+おり、同梱しない (decision-26)。
 
 主要な決定:
 
@@ -129,8 +146,10 @@ Rust コアは `src-tauri/` で従来のコマンドを使う (`cargo test`、`c
 - Type: `kind:` 接頭辞の除去で導出し、複数・不在・未知を分けて表示 (decision-5)。
 - 不在・欠損: 対象不在・読取不能・該当なしを一つの空表示に丸めず区別して表示
   (decision-6)。
-- Backlog CLI: 開発は利用者の PATH 上の `backlog` を前提とし、sidecar 同梱は後続の
-  配布判断まで先送りする (decision-7)。
+- Backlog CLI: 開発時も配布後も、利用者の PATH 上の `backlog` を前提とする (decision-7)。
+  sidecar 同梱は採らない — 同梱すると macOS の配布物が 14 MB から 81 MB になる一方、
+  それが取り除く摩擦は既に手当てが済んでいる (Windows での解決は decision-16、導入前の
+  利用は読み取り専用起動)。(decision-26)
 - フロントエンド: Svelte 5 を素で使い (SvelteKit は使わない)、ビルドは Vite +
   TypeScript、スタイルはコンポーネントスコープドとする (decision-8)。
 - 依存の選定: 台帳の読み書きに `toml`、frontmatter 解析に `serde_yaml_ng`、ファイル
@@ -140,8 +159,10 @@ Rust コアは `src-tauri/` で従来のコマンドを使う (`cargo test`、`c
 - アプリ設定: 台帳ファイルとは別の単一ファイルへ持ち、台帳の読み取り専用縮退が表示の
   既定値の保存を巻き込まないようにする (decision-13)。
 
-sidecar 同梱は配布方法の選択であり、Backlog Atlas がタスク正本を所有することを
-意味しない。
+sidecar 同梱は配布方法の選択であって所有の問題ではなく、どちらであってもタスクの正本は
+各プロジェクトの Backlog ルートに残る。同梱は採らない (decision-26)。decision-7 の残る
+2 契機 — 配布側で版を固定したくなること、CLI 導入の摩擦が実利用を妨げること — が生じた
+場合に再検討する。
 
 ## 関連する計画
 
