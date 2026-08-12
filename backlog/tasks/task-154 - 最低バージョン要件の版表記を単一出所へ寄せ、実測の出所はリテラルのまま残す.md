@@ -4,7 +4,7 @@ title: 最低バージョン要件の版表記を単一出所へ寄せ、実測�
 status: In Review
 assignee: []
 created_date: '2026-08-12 02:52'
-updated_date: '2026-08-12 07:05'
+updated_date: '2026-08-12 07:18'
 labels:
   - 'kind:chore'
 milestone: m-2
@@ -21,7 +21,7 @@ ordinal: 146200
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 版比較の値・試験の入力値・fixture の入力値が update.rs の MIN_VERSION を単一出所とし、フロントエンドと試験のソースからリテラルの版表記が消えている（src-tauri/wire-fixtures/ の記録は生成物なので対象外。手で編集せず ATLAS_RECORD_WIRE_FIXTURES=1 cargo test の再記録で追随する）
+- [x] #1 版比較の値・試験の入力値・fixture の入力値が update.rs の MIN_VERSION を単一出所とし、フロントエンドの製品コードと試験の入力値からリテラルの版表記が消えている（実測註は decision-27 §4 のとおりリテラルのまま残る。screen-text.test.ts が検査のために植える見本と、src-tauri/wire-fixtures/ の記録も対象外 — 記録は生成物なので手で編集せず ATLAS_RECORD_WIRE_FIXTURES=1 cargo test の再記録で追随する）
 - [x] #2 画面に出る文が版表記を持つのは、利用者の CLI の版と動作確認済み版の差そのものを述べる 1 文だけであり、その文は CliReadiness の項目を読む（利用者の CLI の版を動作確認済み版として出す経路が無い）
 - [x] #3 doc ごとに実測基準版を 1 回宣言する形になり、本文の繰り返しが落ちている
 - [x] #4 実測の出所を述べる註がリテラルのまま残っていること、および生成物の記録を対象外とすることの理由が doc か decision に書かれている
