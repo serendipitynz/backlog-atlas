@@ -22,6 +22,7 @@
     CARD_DENSITY_NOTE,
     CLOSE_WITHOUT_SAVING_LABEL,
     DETAIL_PLACEMENT_LABEL,
+    EXTERNAL_COMMANDS,
     NO_CHANGES_REASON,
     OPEN_LOCATION_LABEL,
     OPEN_LOCATION_TITLE,
@@ -30,12 +31,15 @@
     STORAGE_SELECTIONS,
     STORAGE_SELECTION_LABEL,
     WATCH_OFF_NOTE,
+    commandPathOf,
     editorArgsText,
     editorCommandOf,
     emptyStorageWarning,
     isDirty,
     mergeDraft,
     openLocationAvailability,
+    probeSummary,
+    programSourceLabel,
     saveAvailability,
     statusNotice,
     toggleStorage,
@@ -50,6 +54,7 @@
     AppSettings,
     CardDensity,
     DetailPlacement,
+    ExternalProgramReport,
     LoadedSettings,
     StorageSelection,
   } from "../lib/wire";
@@ -79,6 +84,16 @@
      * settings' absence is precisely the fact that used to be mistaken for this one.
      */
     directoryPresent: boolean | null;
+    /**
+     * 解決結果の表示 (decision-29): what `git` and `gh` resolved to, and whether they start. `null`
+     * while the probe is in flight, which draws 確認中 rather than an empty panel — unlike the paths
+     * above, this answer *is* retried (after every save), so "not yet" is a real state here.
+     *
+     * `backlog` is not in this list. Its readiness is the 縮退帯's (`CliReadiness`), which answers the
+     * additional question of whether the version is supported; showing it here too would put two
+     * answers about one program on one screen.
+     */
+    programs: ExternalProgramReport[] | null;
     /**
      * Persist the draft. Resolves with the failure's text, or `null` on success.
      *
@@ -131,6 +146,7 @@
     settingsPath,
     ledgerPath,
     directoryPresent,
+    programs,
     onsave,
     onopenLocation,
     saving,
@@ -168,18 +184,15 @@
       }
       // The editor fields are two controls over one field, so they are folded in before the merge and
       // read back out of it — otherwise a half-typed 起動指定 would be lost to an outside write.
-      const current =
-        draft === null
-          ? null
-          : {
-              ...$state.snapshot(draft),
-              external_editor: editorCommandOf(editorProgram, editorArgs),
-            };
+      const current = draft === null ? null : asSaved($state.snapshot(draft));
       const merged = mergeDraft(baseline, current, settings);
       baseline = { ...settings };
       draft = merged;
       editorProgram = merged.external_editor?.program ?? "";
       editorArgs = editorArgsText(merged.external_editor);
+      for (const command of EXTERNAL_COMMANDS) {
+        commandPaths[command.field] = merged[command.field] ?? "";
+      }
       failure = null;
     });
   });
@@ -198,11 +211,7 @@
    * became pressable. Nothing is persisted from here: 保存 is still the only writer (doc-8 §6.3 の
    * 明示保存 と同じ理由).
    */
-  let pending = $derived.by(() =>
-    draft === null
-      ? null
-      : { ...draft, external_editor: editorCommandOf(editorProgram, editorArgs) },
-  );
+  let pending = $derived.by(() => (draft === null ? null : asSaved(draft)));
   let dirty = $derived(
     pending !== null && loaded !== null && isDirty(pending, loaded.settings),
   );
@@ -236,6 +245,37 @@
    */
   let editorProgram = $state("");
   let editorArgs = $state("");
+
+  /**
+   * The three 外部コマンド指定 as text (decision-29). Strings rather than a binding onto the draft:
+   * "unset" is an *absent key* in the file, which an `<input>` cannot hold, and `commandPathOf` is
+   * where that conversion is decided. Seeded by the merge effect above for the same reason the editor
+   * fields are — a second seeding effect would overwrite the merged result with the file's.
+   */
+  let commandPaths = $state<Record<string, string>>(
+    Object.fromEntries(EXTERNAL_COMMANDS.map((command) => [command.field, ""])),
+  );
+
+  /**
+   * A settings value with the fields that live in their own controls folded back in — the 外部エディタ
+   * 指定 and the three 外部コマンド指定. Used both for what would be saved and for what the merge
+   * carries, so a half-typed path cannot be lost to a write from outside this form.
+   */
+  function asSaved(settings: AppSettings): AppSettings {
+    const next: AppSettings = {
+      ...settings,
+      external_editor: editorCommandOf(editorProgram, editorArgs),
+    };
+    for (const command of EXTERNAL_COMMANDS) {
+      const path = commandPathOf(commandPaths[command.field]);
+      if (path === undefined) {
+        delete next[command.field];
+      } else {
+        next[command.field] = path;
+      }
+    }
+    return next;
+  }
 
   /**
    * なぜ押せないか、押せないときだけ (doc-11 §5). Derived as a string rather than left as a boolean so
@@ -438,6 +478,56 @@
           継続検出を使う
         </label>
         <p class="hint">{WATCH_OFF_NOTE}</p>
+      </section>
+
+      <!-- 外部コマンド指定と解決結果の表示 (decision-29, TASK-156). Placed before 外部エディタ指定
+           because that one is the fourth 外部コマンド and reads as a special case of this 区画 — it is
+           the only one taking arguments, which is why it keeps its own.
+
+           The 解決結果 sits under the fields rather than beside each one: the answer is about the
+           process Atlas is running in, not about a value the user typed, and a row per field would
+           suggest the field caused it. TASK-156's case is exactly the one where nothing was typed. -->
+      <section>
+        <h3>外部コマンドの場所</h3>
+        <p class="hint">
+          Atlas が起動する外部コマンドの実行ファイルを指定します。空欄にすると PATH から探します。
+          Finder や Dock から起動したときは、ターミナルの PATH が届かないことがあります。
+        </p>
+        {#each EXTERNAL_COMMANDS as command (command.field)}
+          <label>
+            <span>{command.label}（{command.name}）</span>
+            <input
+              type="text"
+              bind:value={commandPaths[command.field]}
+              placeholder={`/usr/local/bin/${command.name}`}
+            />
+          </label>
+          <p class="hint">{command.note}</p>
+        {/each}
+
+        <div class="resolved">
+          <h4>いま解決されているもの</h4>
+          {#if programs === null}
+            <p class="hint">確認中です。</p>
+          {:else}
+            <dl>
+              {#each programs as report (report.name)}
+                <dt>{report.name}</dt>
+                <dd>
+                  <span class="path">{report.program}</span>
+                  <span class="origin">{programSourceLabel(report.source)}</span>
+                  <span class:failed={report.outcome.state === "failed"}>
+                    {probeSummary(report.outcome)}
+                  </span>
+                </dd>
+              {/each}
+            </dl>
+            <p class="hint">
+              保存すると、指定し直した内容で確認し直します。
+              Backlog CLI の状態は画面上部の帯が示します。
+            </p>
+          {/if}
+        </div>
       </section>
 
       <section>
@@ -775,6 +865,54 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     // The path is one long unbroken token; without this it widens the モーダル rather than wrapping.
     overflow-wrap: anywhere;
+  }
+
+  // 解決結果の表示 (decision-29). Indented and ruled off from the fields above it because it reports
+  // on the process rather than on any one field — see the markup's comment for why it is not a row
+  // per input.
+  .resolved {
+    margin-top: 0.2rem;
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--line);
+
+    h4 {
+      margin: 0 0 0.3rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    dl {
+      margin: 0 0 0.4rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.15rem 0.5rem;
+      font-size: 0.72rem;
+    }
+
+    dt {
+      // コマンド名 は ui-monospace (doc-11 §2.2): it is the program's own name, not prose.
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    dd {
+      margin: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.15rem 0.5rem;
+    }
+
+    .origin {
+      opacity: 0.75;
+    }
+
+    // 起動できない は この画面自身の報告であって 印の族 (decision-6・decision-22) ではないので、
+    // それらの色は使わず、`.warn` と同じ中立の情報色に寄せる。読み飛ばされないだけの差は要るので、
+    // 地色を敷いて他の行と分ける。
+    .failed {
+      padding: 0 0.25rem;
+      border-radius: 3px;
+      background: color-mix(in srgb, var(--info) 16%, transparent);
+    }
   }
 
   // An action's own report, not one of the 印の族 (decision-6): the neutral info hue, as the shell's

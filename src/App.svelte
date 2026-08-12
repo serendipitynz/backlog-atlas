@@ -24,6 +24,7 @@
   import {
     asCommandError,
     cliProbe,
+    externalProgramsProbe,
     editorProbe,
     gitRemoteRead,
     ledgerDefaultSlug,
@@ -129,6 +130,7 @@
     GitRemoteRead,
     LaunchMethod,
     LedgerResponse,
+    ExternalProgramReport,
     LoadedSettings,
     ProjectEntry,
     ProjectLoad,
@@ -220,6 +222,8 @@
    * the first read *does*, and applying them after the fact would start a watch the user turned off.
    */
   let settings = $state<LoadedSettings | null>(null);
+  /** 解決結果の表示 (decision-29). `null` until the 設定画面's own probe answers. */
+  let externalPrograms = $state<ExternalProgramReport[] | null>(null);
   /** Where `settings.toml` is (decision-13), for the 設定画面 to name. `null` while unknown. */
   let settingsPath = $state<string | null>(null);
   /**
@@ -960,7 +964,28 @@
     } catch (error) {
       notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
+    // 外部コマンド解決の順序 starts at the 外部コマンド指定 (decision-29), so this save changes what the
+    // 解決結果の表示 reports — for the same reason the editor is re-probed just above.
+    await refreshExternalPrograms();
     return null;
+  }
+
+  /**
+   * Re-read the 解決結果の表示 (decision-29). Set to `null` first so the 区画 says 確認中 rather than
+   * holding the previous answer beside a 外部コマンド指定 that has already changed — this probe runs
+   * two processes and is the one panel value slow enough for the gap to be visible.
+   *
+   * A failure leaves the panel at 確認中 and states the reason on the 帯. There is no "probe failed"
+   * row: the probe *is* what turns a failure into a row, so a failed probe has nothing to say per
+   * command.
+   */
+  async function refreshExternalPrograms(): Promise<void> {
+    externalPrograms = null;
+    try {
+      externalPrograms = await externalProgramsProbe();
+    } catch (error) {
+      notice = `外部コマンドの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
+    }
   }
 
   /**
@@ -1851,6 +1876,11 @@
       // then 場所を開く holds the previous answer, or says it has not been confirmed on the first open
       // of a run whose startup probe has not returned.
       void refreshSettingsDirectory();
+      // 解決結果の表示 (decision-29). Asked on every open rather than once: it spawns two processes,
+      // so it does not belong in startup, and its answer can change without Atlas doing anything —
+      // the user may have installed the tool since the last look, which is the likeliest reason they
+      // opened this screen at all.
+      void refreshExternalPrograms();
     }
   }
 
@@ -2102,6 +2132,7 @@
         {settingsPath}
         {ledgerPath}
         directoryPresent={settingsDirectory}
+        programs={externalPrograms}
         onsave={saveSettings}
         onopenLocation={openSettingsLocation}
         saving={settingsSaving}
