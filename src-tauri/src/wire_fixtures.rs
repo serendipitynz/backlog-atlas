@@ -807,11 +807,14 @@ fn every_editor_source() -> Vec<EditorSource> {
 fn every_external_program_source() -> Vec<ExternalProgramSource> {
     let all = vec![
         ExternalProgramSource::Configured,
+        ExternalProgramSource::SubPackage,
         ExternalProgramSource::OnPath,
     ];
     for value in &all {
         match value {
-            ExternalProgramSource::Configured | ExternalProgramSource::OnPath => {}
+            ExternalProgramSource::Configured
+            | ExternalProgramSource::SubPackage
+            | ExternalProgramSource::OnPath => {}
         }
     }
     all

@@ -48,9 +48,14 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ExternalProgramSource {
-    /// 順序 1 — アプリ設定 の外部コマンド指定, used as written.
+    /// アプリ設定 の外部コマンド指定, used as written. The first step of every 外部コマンド's order.
     Configured,
-    /// 順序 2 — the bare name, left for the OS to resolve on PATH.
+    /// The プラットフォーム別実行ファイル reached from an npm shim's directory. **`backlog` only**
+    /// (decision-16 順序 2) — nothing else Atlas launches installs through npm. It is in this
+    /// enumeration rather than folded into `OnPath` because the two are different answers to the
+    /// user's question: one says the OS found it, the other says Atlas walked npm's layout to it.
+    SubPackage,
+    /// The bare name, left for the OS to resolve on PATH. The last step of every order.
     OnPath,
 }
 
@@ -165,7 +170,19 @@ const PROBE_DEADLINE: Duration = Duration::from_secs(5);
 /// starts, so the wait is bounded by the same mechanism rather than by a second one written here
 /// (decision-18's reason for that module).
 pub fn probe(command: &ExternalProgram) -> ExternalProgramReport {
-    let mut spawn = command.command();
+    probe_program(command.name(), command.program(), command.source())
+}
+
+/// The same probe against a program some other order resolved — `backlog`'s (doc-5 §4), whose three
+/// steps live in [`crate::update`]. Split out rather than making that order produce an
+/// [`ExternalProgram`]: its middle step has no counterpart here, and a type that could hold it would
+/// be a shape `git` and `gh` can never take.
+pub fn probe_program(
+    name: &str,
+    program: &Path,
+    source: ExternalProgramSource,
+) -> ExternalProgramReport {
+    let mut spawn = Command::new(program);
     spawn.arg("--version");
     // `gh` would otherwise reach the network for its update notice and print it into the output this
     // panel shows — the same two variables doc-6 §6's 照会 sets, for the same reason.
@@ -181,16 +198,16 @@ pub fn probe(command: &ExternalProgram) -> ExternalProgramReport {
         // The errno alone does not say which program was not found, and that is the whole content of
         // the answer here — so the program is named (subprocess::Stopped::Spawn's own contract).
         Err(subprocess::Stopped::Spawn(e)) => ProbeOutcome::Failed {
-            detail: format!("{} を起動できません（{e}）", command.program().display()),
+            detail: format!("{} を起動できません（{e}）", program.display()),
         },
         Err(subprocess::Stopped::Ended { detail }) => ProbeOutcome::Failed {
             detail: detail.unwrap_or_else(|| "応答がありません".to_string()),
         },
     };
     ExternalProgramReport {
-        name: command.name().to_string(),
-        program: command.program().display().to_string(),
-        source: command.source(),
+        name: name.to_string(),
+        program: program.display().to_string(),
+        source,
         outcome,
     }
 }

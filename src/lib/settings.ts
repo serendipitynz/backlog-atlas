@@ -162,47 +162,67 @@ export function commandPathOf(text: string): string | undefined {
  * other two degrade quietly, which is why they are here at all (TASK-156). The `field` is the
  * `AppSettings` key *and* the `settings.toml` key — doc-3 §2.2's hand-editing rule means the name in
  * the file is the name a user reads about.
+ *
+ * `help` is not shown beside the field. It sits behind the row's `?` (doc-11 §8 keeps screen text to
+ * what the screen has to say; a paragraph under every input states three things a user reading the
+ * fourth does not need). The row's own icon already says whether the command resolved, so `help`
+ * carries only what the icon cannot: what Atlas uses this command *for*, and therefore what stops
+ * working when it is not found.
  */
 export const EXTERNAL_COMMANDS = [
   {
     field: "backlog_cli",
     name: "backlog",
     label: "Backlog CLI",
-    note: "作成・更新の発行に使います。指定が無いときは PATH から探します。",
+    help: "作成・更新の発行に使います。解決できないと、発行そのものができません（画面上部に帯が立ちます）。",
   },
   {
     field: "git_cli",
     name: "git",
     label: "Git",
-    note: "コミット検索と Git remote の判別に使います。解決できないと、履歴が出ないだけでなく、登録済みプロジェクトが remote 無しとして記録されます。",
+    help: "コミット検索と Git remote の判別に使います。解決できないと、登録済みプロジェクトが remote 無しとして記録され、Pull Request の関連解決も静かに止まります。",
   },
   {
     field: "gh_cli",
     name: "gh",
     label: "GitHub CLI",
-    note: "Pull Request とコミットの関連解決に使います。解決できないと関連解決だけが落ちます。",
+    help: "Pull Request とコミットの関連解決に使います。解決できないと、その関連解決だけができません。",
   },
 ] as const satisfies readonly {
   field: "backlog_cli" | "git_cli" | "gh_cli";
   name: string;
   label: string;
-  note: string;
+  help: string;
 }[];
 
-/** 解決結果の出どころ (decision-29) in the panel's words. */
+/** 解決結果の出どころ (decision-29) in the panel's words. Shown inside the row's `?`, not beside it. */
 export function programSourceLabel(source: ExternalProgramSource): string {
-  return source === "configured" ? "この画面の指定" : "PATH からの解決";
+  switch (source) {
+    case "configured":
+      return "この画面の指定";
+    case "subPackage":
+      return "npm の配置から解決";
+    case "onPath":
+      return "PATH から解決";
+  }
 }
 
 /**
- * One 解決結果の表示 row as a sentence (decision-29). The failure keeps the boundary's own detail:
- * it is the only text that distinguishes "not installed" from "installed where this process cannot
- * see it", which is the whole distinction TASK-156 was raised about.
+ * One 解決結果 as a sentence, for the row's `?` (decision-29). The failure keeps the boundary's own
+ * detail: it is the only text that distinguishes "not installed" from "installed where this process
+ * cannot see it", which is the distinction TASK-156 was raised about.
  */
 export function probeSummary(outcome: ProbeOutcome): string {
-  return outcome.state === "launched"
-    ? outcome.report
-    : `起動できません（${outcome.detail}）`;
+  return outcome.state === "launched" ? outcome.report : `起動できません（${outcome.detail}）`;
+}
+
+/**
+ * Whether the row's leading 印 says resolved (doc-11 §2.4 の 状態の印). `null` while the probe has
+ * not answered — drawn as neither state rather than as "not resolved", since a probe still running
+ * is not a failure and an icon that guessed would flash the alarm on every open.
+ */
+export function programResolved(outcome: ProbeOutcome | null): boolean | null {
+  return outcome === null ? null : outcome.state === "launched";
 }
 
 /**

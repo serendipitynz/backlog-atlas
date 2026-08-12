@@ -98,6 +98,12 @@ export const answers = {
    *  is not about them should not have to arrange. */
   externalPrograms: [
     {
+      name: "backlog",
+      program: "backlog",
+      source: "onPath",
+      outcome: { state: "launched", report: `Backlog.md v${CONFIRMED_CLI_VERSION}` },
+    },
+    {
       name: "git",
       program: "git",
       source: "onPath",
@@ -195,6 +201,12 @@ export function reset(): void {
   listeners.length = 0;
   answers.cli = { state: "ready", version: CONFIRMED_CLI_VERSION };
   answers.externalPrograms = [
+    {
+      name: "backlog",
+      program: "backlog",
+      source: "onPath",
+      outcome: { state: "launched", report: `Backlog.md v${CONFIRMED_CLI_VERSION}` },
+    },
     {
       name: "git",
       program: "git",

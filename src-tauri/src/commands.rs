@@ -67,7 +67,7 @@ use crate::editor::{
     self, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod,
     Launcher, SystemEnv, SystemLauncher,
 };
-use crate::external::{self, ExternalProgram, ExternalProgramReport};
+use crate::external::{self, ExternalProgram, ExternalProgramReport, ExternalProgramSource};
 use crate::history::{
     self, Cancelled, Commit, GitRemoteRead, HistoryError, PrCommitSource, PrRelation, RemoteHost,
 };
@@ -85,7 +85,8 @@ use crate::sync::{
     FileVersions, FsVersions, GuardError, GuardedUpdate, ReloadReason, SyncState, WatchSession,
 };
 use crate::update::{
-    self, BacklogCli, CliCapability, CliStatus, SystemBacklog, UpdateOperation, UpdateOutcome,
+    self, BacklogCli, CliCapability, CliProgram, CliStatus, SystemBacklog, UpdateOperation,
+    UpdateOutcome,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -1820,17 +1821,34 @@ pub fn cli_probe(app: AppHandle) -> CliReadiness {
 
 /// 解決結果の表示 (decision-29): what each 外部コマンド resolves to right now, and whether it starts.
 ///
-/// `backlog` is deliberately not here. Its readiness is [`cli_probe`]'s, and that one answers a
-/// different question — whether the version meets `MIN_VERSION` (decision-7) — which no other
-/// 外部コマンド has. Reporting it twice would put two answers about one program on one screen, and
-/// they would disagree the moment a supported-but-old CLI launched fine.
+/// **All three, `backlog` included.** The panel answers one question — did this program start — and
+/// it answers it the same way for each. [`cli_probe`] answers a different one that only `backlog`
+/// has: whether the version meets `MIN_VERSION` (decision-7), which is what the 縮退帯 states. The
+/// two never contradict each other because they are not about the same thing: a CLI below the
+/// minimum starts perfectly well, and the panel saying so while the band withholds updates is two
+/// true facts, not two answers.
 ///
-/// The two probes run in sequence, not in parallel: each is bounded, two of them are at most ten
-/// seconds, and a thread pair to save five would be the only concurrency in this boundary.
+/// `backlog`'s row is built from [`SystemBacklog`]'s own resolution rather than from an
+/// [`ExternalProgram`], so the path shown is the one an update would actually run, npm sub-package
+/// step and all (doc-5 §4).
+///
+/// The three probes run in sequence, not in parallel: each is bounded, three of them are at most
+/// fifteen seconds, and a thread per probe would be the only concurrency in this boundary.
 #[tauri::command(async)]
 pub fn external_programs_probe(app: AppHandle) -> Vec<ExternalProgramReport> {
     let settings = current_settings(&app);
+    let backlog = SystemBacklog::resolve(settings.backlog_cli.as_deref());
+    let resolved = backlog.program();
     vec![
+        external::probe_program(
+            "backlog",
+            resolved.program(),
+            match resolved {
+                CliProgram::Configured(_) => ExternalProgramSource::Configured,
+                CliProgram::SubPackage(_) => ExternalProgramSource::SubPackage,
+                CliProgram::OnPath => ExternalProgramSource::OnPath,
+            },
+        ),
         external::probe(&ExternalProgram::git(settings.git_cli.as_deref())),
         external::probe(&ExternalProgram::gh(settings.gh_cli.as_deref())),
     ]

@@ -274,7 +274,11 @@ const REQUIRED_FIELDS = unionValues<RequiredField>()("id", "title", "status");
 const REMOTE_HOST_KINDS = unionValues<RemoteHostKind>()("gitHub");
 const LAUNCH_METHODS = unionValues<LaunchMethod>()("configured", "association");
 const EDITOR_SOURCES = unionValues<EditorSource>()("appSettings", "visual", "editor");
-const EXTERNAL_PROGRAM_SOURCES = unionValues<ExternalProgramSource>()("configured", "onPath");
+const EXTERNAL_PROGRAM_SOURCES = unionValues<ExternalProgramSource>()(
+  "configured",
+  "subPackage",
+  "onPath",
+);
 const CARD_DENSITIES = unionValues<CardDensity>()("s", "m", "l");
 const DETAIL_PLACEMENTS = unionValues<DetailPlacement>()("sidebar", "modal", "full");
 const CARD_ORDERS = unionValues<CardOrder>()(

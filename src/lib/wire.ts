@@ -403,7 +403,7 @@ export type CliReadiness =
  * use. `configured` and `onPath` can name the same path — a user may have typed exactly what PATH
  * would have found — so this is what tells the two apart, not the `program` string.
  */
-export type ExternalProgramSource = "configured" | "onPath";
+export type ExternalProgramSource = "configured" | "subPackage" | "onPath";
 
 /** Whether the resolved 外部コマンド started (decision-29 解決結果の表示). */
 export type ProbeOutcome =
@@ -412,8 +412,8 @@ export type ProbeOutcome =
 
 /**
  * One row of the 解決結果の表示 (decision-29): a 外部コマンド, what it resolved to, and whether that
- * program starts. `backlog` is not among them — its readiness is `CliReadiness`, which answers the
- * additional question of whether the version is supported.
+ * program starts. All three are reported, `backlog` included; `CliReadiness` answers the separate
+ * question of whether its *version* is supported, which only that one has.
  */
 export interface ExternalProgramReport {
   name: string;

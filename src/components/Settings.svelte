@@ -17,6 +17,7 @@
   // — is gone with it (AC #3). It answered a question the screen does not raise: nothing here offers
   // those switches, and the file's rules are decision-13's to state.
   import { untrack } from "svelte";
+  import Icon from "../lib/icons/Icon.svelte";
   import {
     CARD_DENSITY_LABEL,
     CARD_DENSITY_NOTE,
@@ -39,6 +40,7 @@
     mergeDraft,
     openLocationAvailability,
     probeSummary,
+    programResolved,
     programSourceLabel,
     saveAvailability,
     statusNotice,
@@ -255,6 +257,17 @@
   let commandPaths = $state<Record<string, string>>(
     Object.fromEntries(EXTERNAL_COMMANDS.map((command) => [command.field, ""])),
   );
+
+  /**
+   * Which row's `?` is open, or `null`. One at a time: two notes open at once would push the fields
+   * apart twice over, and the question each answers is about one command.
+   */
+  let helpOpen = $state<string | null>(null);
+
+  /** The 解決結果 for one command, or `undefined` while the probe has not answered. */
+  function reportFor(name: string): ExternalProgramReport | undefined {
+    return programs?.find((report) => report.name === name);
+  }
 
   /**
    * A settings value with the fields that live in their own controls folded back in — the 外部エディタ
@@ -480,54 +493,65 @@
         <p class="hint">{WATCH_OFF_NOTE}</p>
       </section>
 
-      <!-- 外部コマンド指定と解決結果の表示 (decision-29, TASK-156). Placed before 外部エディタ指定
-           because that one is the fourth 外部コマンド and reads as a special case of this 区画 — it is
-           the only one taking arguments, which is why it keeps its own.
+      <!-- 外部コマンド (decision-29, TASK-156). One row per command: 状態の印, label, field, `?`.
+           The 印 and the label's colour carry the answer the user came for — did Atlas find this
+           tool — so there is no separate 解決結果 区画 restating it, and no paragraph under each
+           field: what each command is *for* is behind its `?` (doc-11 §8).
 
-           The 解決結果 sits under the fields rather than beside each one: the answer is about the
-           process Atlas is running in, not about a value the user typed, and a row per field would
-           suggest the field caused it. TASK-156's case is exactly the one where nothing was typed. -->
+           Placed before 外部エディタ指定 because that one is the fourth 外部コマンド and reads as a
+           special case of this 区画 — it is the only one taking arguments, which is why it keeps its
+           own. -->
       <section>
-        <h3>外部コマンドの場所</h3>
-        <p class="hint">
-          Atlas が起動する外部コマンドの実行ファイルを指定します。空欄にすると PATH から探します。
-          Finder や Dock から起動したときは、ターミナルの PATH が届かないことがあります。
-        </p>
+        <h3>外部コマンド</h3>
+        <p class="hint">Atlas が利用する外部コマンドのパスを指定します。</p>
         {#each EXTERNAL_COMMANDS as command (command.field)}
-          <label>
-            <span>{command.label}（{command.name}）</span>
-            <input
-              type="text"
-              bind:value={commandPaths[command.field]}
-              placeholder={`/usr/local/bin/${command.name}`}
-            />
-          </label>
-          <p class="hint">{command.note}</p>
+          {@const report = reportFor(command.name)}
+          {@const resolved = programResolved(report?.outcome ?? null)}
+          <div class="command">
+            <!-- 族を持たない状態の印 / 印グリフ (doc-11 §2.4). Not inside a control, so the wrapper
+                 carries `role="img"` and the word — the figure itself is `aria-hidden` and leaves
+                 nothing to read. -->
+            <span
+              class="mark"
+              class:unresolved={resolved === false}
+              role="img"
+              aria-label={resolved === null ? "確認中" : resolved ? "解決済み" : "解決できません"}
+            >
+              {#if resolved === null}
+                <span class="pending" aria-hidden="true">…</span>
+              {:else}
+                <Icon name={resolved ? "square-check" : "triangle-alert"} />
+              {/if}
+            </span>
+            <label class:unresolved={resolved === false}>
+              <span class="name">{command.label}</span>
+              <input type="text" bind:value={commandPaths[command.field]} />
+            </label>
+            <!-- アイコンのみのボタン (doc-11 §2.4): the name is the `aria-label`, and `aria-expanded`
+                 is what says the note below is this button's. -->
+            <button
+              type="button"
+              class="help"
+              aria-label={`${command.label} の説明`}
+              title={`${command.label} の説明`}
+              aria-expanded={helpOpen === command.field}
+              onclick={() => (helpOpen = helpOpen === command.field ? null : command.field)}
+            >
+              <Icon name="circle-question-mark" />
+            </button>
+            {#if helpOpen === command.field}
+              <p class="note" role="note">
+                {command.help}
+                {#if report !== undefined}
+                  <br />
+                  {programSourceLabel(report.source)}: {report.program}
+                  <br />
+                  {probeSummary(report.outcome)}
+                {/if}
+              </p>
+            {/if}
+          </div>
         {/each}
-
-        <div class="resolved">
-          <h4>いま解決されているもの</h4>
-          {#if programs === null}
-            <p class="hint">確認中です。</p>
-          {:else}
-            <dl>
-              {#each programs as report (report.name)}
-                <dt>{report.name}</dt>
-                <dd>
-                  <span class="path">{report.program}</span>
-                  <span class="origin">{programSourceLabel(report.source)}</span>
-                  <span class:failed={report.outcome.state === "failed"}>
-                    {probeSummary(report.outcome)}
-                  </span>
-                </dd>
-              {/each}
-            </dl>
-            <p class="hint">
-              保存すると、指定し直した内容で確認し直します。
-              Backlog CLI の状態は画面上部の帯が示します。
-            </p>
-          {/if}
-        </div>
       </section>
 
       <section>
@@ -867,51 +891,74 @@
     overflow-wrap: anywhere;
   }
 
-  // 解決結果の表示 (decision-29). Indented and ruled off from the fields above it because it reports
-  // on the process rather than on any one field — see the markup's comment for why it is not a row
-  // per input.
-  .resolved {
-    margin-top: 0.2rem;
-    padding-left: 0.6rem;
-    border-left: 2px solid var(--line);
+  // 外部コマンド の 1 行 (decision-29). Grid rather than flex so the three fields line up on their
+  // inputs whatever the label's width — the labels are 3 different lengths and a ragged left edge on
+  // the inputs is what the 区画 would otherwise have.
+  .command {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.3rem;
 
-    h4 {
-      margin: 0 0 0.3rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    dl {
-      margin: 0 0 0.4rem;
+    label {
       display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 0.15rem 0.5rem;
-      font-size: 0.72rem;
-    }
-
-    dt {
-      // コマンド名 は ui-monospace (doc-11 §2.2): it is the program's own name, not prose.
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    }
-
-    dd {
+      grid-template-columns: 7.5rem 1fr;
+      align-items: center;
+      gap: 0.4rem;
       margin: 0;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.15rem 0.5rem;
     }
 
-    .origin {
-      opacity: 0.75;
+    .name {
+      font-size: 0.78rem;
     }
 
-    // 起動できない は この画面自身の報告であって 印の族 (decision-6・decision-22) ではないので、
-    // それらの色は使わず、`.warn` と同じ中立の情報色に寄せる。読み飛ばされないだけの差は要るので、
-    // 地色を敷いて他の行と分ける。
-    .failed {
-      padding: 0 0.25rem;
+    // 解決できない ときだけ色を持つ (doc-11 §2.4 の 印グリフ)。CLI 縮退帯 ② が同じ理由で借りている
+    // 不整合の族の色をそのまま引く (decision-22): 族は色を選ぶ単位であって事象の分類ではなく、
+    // 外部コマンドが起動できないことと管理ファイル 1 件の不整合が同じ対象へ同時に付くことはない。
+    // 面は --panel で、族の色との 3:1 は theme.test.ts が押さえている。
+    .unresolved {
+      color: var(--mark-inconsistent);
+    }
+
+    // 確認中 は解決済みでも未解決でもないので、どちらの印も出さない (doc-11 §6 の 正常な不在 と
+    // 同じ扱い: --faint の 1 文字だけで、警告記号も枠も付けない)。
+    .pending {
+      color: var(--faint);
+    }
+
+    .mark {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+
+    .help {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem;
+      border: 0;
+      border-radius: 4px;
+      background: none;
+      color: var(--muted);
+      font-size: 0.85rem;
+      cursor: pointer;
+
+      &:hover {
+        color: var(--fg);
+      }
+    }
+
+    // 説明は行の全幅を使って下へ開く。絶対配置の浮きにしないのは、モーダルの本文が縦スクロール
+    // するためで、浮かせた層はスクロールでフィールドから離れる。
+    .note {
+      grid-column: 1 / -1;
+      margin: 0 0 0.2rem;
+      padding: 0.3rem 0.4rem;
       border-radius: 3px;
-      background: color-mix(in srgb, var(--info) 16%, transparent);
+      background: var(--inset);
+      font-size: 0.72rem;
+      // パス は ui-monospace (doc-11 §2.2) だが、この文は散文とパスが混じるので地の書体のまま。
+      overflow-wrap: anywhere;
     }
   }
 
