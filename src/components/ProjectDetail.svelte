@@ -132,7 +132,9 @@
     ledgerReadOnly: boolean;
     /** True while one ledger command is in flight (the shell serializes them). */
     ledgerBusy: boolean;
-    /** Whether a supported CLI exists (doc-5 §5); `null` is 確認中. Reaches the other three 区画 only. */
+    /** Whether a supported CLI exists (doc-5 §5); `null` is 確認中. Reaches the 区画 that issue
+     *  (文書・マイルストーン・新規タスク) — not 概要, which does not go through the CLI, and not
+     *  決定事項, which issues nothing at all (doc-10 §8). */
     readiness: CliReadiness | null;
     onpickDirectory: (title: string) => Promise<string | null>;
     onupdate: (request: UpdateRequest) => Promise<LedgerActionResult>;
@@ -188,7 +190,8 @@
   let section = $state<DetailSection>("overview");
 
   let project = $derived(load?.state === "loaded" ? load.project : null);
-  /** ルート読取不能 (doc-10 §8). The 概要区画 still draws; the other three have no list to show. */
+  /** ルート読取不能 (doc-10 §8). The 概要区画 still draws from the 台帳エントリ; every 区画 that reads
+   *  the root has nothing to show. */
   let unreadable = $derived(load?.state === "unreadable" ? load.error : null);
 
   // The 台帳読取専用帯 and CLI 縮退帯 (doc-10 §3) are ③ and ② of the screen-common 上部帯 stack
@@ -902,9 +905,9 @@
   );
 
   /**
-   * 理由行 for whichever document / milestone the pane currently holds (doc-10 §5/§6). Derived once
-   * here rather than at each use, so the ⚠️ on the card and the lines in the pane can never be
-   * built from two different readings of the same file (decision-22 「導出は 1 回」).
+   * 理由行 for whichever document the 文書ペイン currently holds (doc-10 §5). One of these per 区画
+   * with a 一覧列, derived once rather than at each use, so the ⚠️ on the card and the lines in the
+   * pane can never be built from two different readings of the same file (decision-22 「導出は 1 回」).
    *
    * Taken from the **current read**, not from `docSession.baseline`. The baseline is the read the
    * *input* was made against and it deliberately survives a reload (that is how 未保存入力 stays
@@ -1374,9 +1377,11 @@
 {/snippet}
 
 {#snippet listHead(count: string, entry: string, hint: string, onopen: () => void)}
-  <!-- 一覧見出し行 (doc-10 §1, TASK-117). One snippet for both 一覧列 because §1 makes the row a
-       property of the column rather than of either 区画 — written twice, the two would start to
-       differ in exactly the way §1 rules out. What each 区画 supplies is its own wording.
+  <!-- 一覧見出し行 (doc-10 §1, TASK-117). One snippet for the 一覧列 that have a 作成の入口, because
+       §1 makes the row a property of the column rather than of any one 区画 — written out per 区画,
+       they would start to differ in exactly the way §1 rules out. What each 区画 supplies is its own
+       wording. **決定事項区画 does not use this snippet**: it has nothing to add to its list, so §1
+       leaves it the heading alone and this row's second half has no subject there.
 
        The 作成の入口 is never withheld: it issues nothing, and the reason a 作成 cannot be issued
        right now (CLI 縮退, a write in flight) is printed beside the 発行 control inside the layer,
@@ -2118,8 +2123,8 @@
             <div class="columns">
               <div class="list-column">
                 <!-- 一覧見出し行 (doc-10 §1, TASK-117) — the same row as the 文書一覧's, from the
-                     same snippet. §1 puts it on the 一覧列 rather than on either 区画, so the two
-                     cannot come to differ in how a new object is added. -->
+                     same snippet. §1 puts it on the 一覧列 rather than on the 区画, so the two that
+                     can add an object cannot come to differ in how one is added. -->
                 {@render listHead(
                   `マイルストーン ${project.milestones.length} 件`,
                   "新規マイルストーン",
@@ -3177,8 +3182,9 @@
     }
   }
 
-  // カード (doc-10 §5/§6): the whole area is the selection, and the current one is marked the way
-  // the 区画ナビ marks its current entry — one vocabulary for「いま開いているもの」.
+  // カード (doc-10 §5・§6・§10): the whole area is the selection, and the current one is marked the
+  // way the 区画ナビ marks its current entry — one vocabulary for「いま開いているもの」. Worn by the
+  // cards of every 一覧列; what each 区画 puts inside one is its own business.
   .card {
     display: block;
     width: 100%;
@@ -3231,11 +3237,12 @@
     font-size: 0.66rem;
   }
 
-  // 文書ペイン (doc-10 §5) / マイルストーンペイン (§6): 非選択時 の 1 行, 閲覧 while something is
-  // selected, and the 編集セッション once 編集 is pressed. Two names in the doc because they open
-  // different objects, one rule here because the column is the same shape — and since TASK-121 the
-  // same three states as well. Its first block starts at the columns' top: the pane has no heading
-  // of its own, so an inherited margin here reads as a hole (目視反映).
+  // The pane beside a 一覧列 — 文書ペイン (doc-10 §5), マイルストーンペイン (§6), 決定事項ペイン
+  // (§10). A name each in the doc because they open different objects, one rule here because the
+  // column is the same shape. **The states are not the same in all three**: 非選択時 の 1 行 and 閲覧
+  // everywhere, plus a 編集セッション in the two that can issue — 決定事項 has no way to open one, so
+  // there the column has two states rather than three. Its first block starts at the columns' top:
+  // the pane has no heading of its own, so an inherited margin here reads as a hole (目視反映).
   .pane {
     flex: 1;
     min-width: 0;

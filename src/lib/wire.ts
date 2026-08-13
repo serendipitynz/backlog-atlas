@@ -216,7 +216,7 @@ export interface ProjectSnapshot {
   documents: Document[];
   decisions: Decision[];
   /** 写せなかったファイル across all three non-task kinds, in scan order (decision-24). Each 区画
-   *  filters it to its own kind and draws it below its cards (doc-10 §5/§6). */
+   *  filters it to its own kind and draws it below its cards (doc-10 §5・§6・§10). */
   unmappedFiles: UnmappedFile[];
   /** 列の作成時 status 候補, one entry per canonical column (doc-7 §4.1). */
   createStatusCandidates: ColumnCreateStatuses[];
