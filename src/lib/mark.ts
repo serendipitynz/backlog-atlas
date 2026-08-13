@@ -181,13 +181,19 @@ export function unmappedFileReason(file: UnmappedFile): string {
   ).join(" / ");
 }
 
-/** What a file is called in a 理由行. Not a family name — the noun of the thing that failed. */
-export type ManagedFileNoun = "タスク" | "マイルストーン" | "文書" | "意思決定";
+/**
+ * What a file is called in a 理由行. Not a family name — the noun of the thing that failed.
+ *
+ * `decision` reads 決定事項, not doc-4 §1's 意思決定 (TASK-118). These nouns are printed for the
+ * user, so they take the 画面に出る語; the read layer and the design documents keep 意思決定 for the
+ * same object. The other three nouns are unaffected because their two words coincide.
+ */
+export type ManagedFileNoun = "タスク" | "マイルストーン" | "文書" | "決定事項";
 
 const MANAGED_FILE_NOUN: Record<UnmappedFile["kind"], ManagedFileNoun> = {
   milestone: "マイルストーン",
   document: "文書",
-  decision: "意思決定",
+  decision: "決定事項",
 };
 
 /** The one event→line mapping every 理由行 goes through (decision-22 「導出は 1 回」). */
