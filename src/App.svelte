@@ -224,6 +224,23 @@
   let settings = $state<LoadedSettings | null>(null);
   /** 解決結果の表示 (decision-29). `null` until the 設定画面's own probe answers. */
   let externalPrograms = $state<ExternalProgramReport[] | null>(null);
+  /**
+   * Which detached refresh is current, so a slow one cannot overwrite a newer one's answer.
+   *
+   * The refreshes are detached (see `saveSettings`), so two can be in flight: save the `backlog` path,
+   * reopen 設定, save the `git` path — which is the panel's own workflow, one command at a time. Each
+   * launch is bounded at 5 s and the CLI's at 30 s (doc-5 §5), so the second can easily finish first,
+   * and the first would then land its *older* answer on the 帯 and the 区画. Nothing corrects it until
+   * the next probe, and a stale 帯 is not merely a display: it decides whether edit controls are
+   * offered at all.
+   *
+   * Two counters rather than one, because the values have different writers. `saveRefresh` guards what
+   * only `refreshAfterSave` writes; `programsRefresh` guards the panel, which 設定モーダルを開く also
+   * refreshes. One shared counter would let an open discard an in-flight save's 帯 answer — and
+   * nothing would re-issue it.
+   */
+  let saveRefresh = 0;
+  let programsRefresh = 0;
   /** Where `settings.toml` is (decision-13), for the 設定画面 to name. `null` while unknown. */
   let settingsPath = $state<string | null>(null);
   /**
@@ -945,29 +962,36 @@
     let failure: string | null;
     try {
       failure = await writeSettings(change);
+      if (failure === null) {
+        // 発行が通った事実そのものは ⑤ 通知 に載せない (doc-11 §4). 保存する closes the モーダル only
+        // when the write landed (`Settings.svelte`), so the layer coming down is the report, and a 帯
+        // would restate it at the top of a screen the user is not looking at yet. Cleared rather than
+        // left alone, for the reason `retry` and `move` clear it: a 帯 from before this save is no
+        // longer true of the settings now in force, and beside a save that worked it reads as this
+        // one having failed.
+        notice = null;
+        // **Inside the guard, unlike the probes below.** This one *applies* the setting rather than
+        // observing what the environment now looks like: 継続検出 being off has to mean the watches are
+        // actually stopped. It is also N sequential boundary calls, one per registered root, so
+        // leaving it outside would reopen exactly the window detaching the probes closed — the form
+        // editable and closable while a promise that will fire `onsaved` is still running.
+        if (before !== watchEnabled) await reconcileWatches();
+      }
     } finally {
       settingsSaving = false;
     }
     if (failure !== null) return failure;
-    // 発行が通った事実そのものは ⑤ 通知 に載せない (doc-11 §4). 保存する closes the モーダル only when
-    // the write landed (`Settings.svelte`), so the layer coming down is the report, and a 帯 would
-    // restate it at the top of a screen the user is not looking at yet — the 変化が分かりづらい
-    // TASK-74's 目視 left. Cleared rather than left alone, for the reason `retry` and `move` clear it:
-    // a 帯 from before this save (「設定を読み込めませんでした。既定値で動きます。」) is no longer true of
-    // the settings now in force, and beside a save that worked it reads as this one having failed.
-    notice = null;
-    if (before !== watchEnabled) await reconcileWatches();
-    // **The probes are deliberately not awaited.** What 保存する waits on is the write, and
-    // `Settings.svelte` closes the モーダル when this resolves — so anything awaited past this point
-    // holds the close open for as long as it takes. That window is not harmless: `settingsSaving` is
-    // already false by here (it guards the write), so the user can go on editing or close and reopen
-    // the form, and a late resolution would then fire `onsaved` against a モーダル holding a *different*
-    // 下書き — closing it with no 破棄前確認 and losing what was typed (doc-8 §6.3).
+    // **The probes are deliberately not awaited.** What 保存する waits on is the save — the write and
+    // the applying of it, both inside the guard above — and `Settings.svelte` closes the モーダル when
+    // this resolves. Anything awaited past this point holds the close open for as long as it takes,
+    // with `settingsSaving` already false, so the user can go on editing or close and reopen the
+    // form; a late resolution would then fire `onsaved` against a モーダル holding a *different* 下書き,
+    // closing it with no 破棄前確認 and losing what was typed (doc-8 §6.3).
     //
-    // The window existed before this change (the editor was probed here too) but was one process
-    // wide; the 解決結果の表示 made it four, each with a 5-second bound. Detaching removes it outright
-    // rather than narrowing it, and nothing is lost by doing so: every value below belongs to the
-    // shell, not to this form, so none of them is what the closing モーダル was waiting for.
+    // The window existed before this change (the editor was resolved here too) but was cheap; the
+    // 解決結果の表示 put four subprocess launches in it — three bounded at 5 s and the CLI's at 30 s
+    // (doc-5 §5). Detaching removes it outright rather than narrowing it, and nothing is lost: every
+    // value `refreshAfterSave` writes belongs to the shell, not to this form.
     void refreshAfterSave();
     return null;
   }
@@ -981,12 +1005,16 @@
    * an editor that is missing are separate facts, and the user acts on them separately.
    */
   async function refreshAfterSave(): Promise<void> {
+    const run = (saveRefresh += 1);
     // 起動指定の解決順 starts at アプリ設定 (doc-8 §7), so the probe's answer changes with this save.
     // The panel names the editor it would launch, and a stale name would say `$EDITOR` while the
     // launch used the setting just typed.
     try {
-      editorReadiness = await editorProbe();
+      const probed = await editorProbe();
+      if (run !== saveRefresh) return;
+      editorReadiness = probed;
     } catch (error) {
+      if (run !== saveRefresh) return;
       notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
     // 外部コマンド解決の順序 starts at the 外部コマンド指定 (decision-29), so this save changes what the
@@ -1007,26 +1035,34 @@
     // whether the program started, this says whether its version meets `MIN_VERSION`. Deriving one
     // from the other would make the band answer a question it does not ask.
     try {
-      readiness = await cliProbe();
+      const probed = await cliProbe();
+      if (run !== saveRefresh) return;
+      readiness = probed;
     } catch (error) {
+      if (run !== saveRefresh) return;
       notice = `Backlog CLI の確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
   }
 
   /**
    * Re-read the 解決結果の表示 (decision-29). Set to `null` first so the 区画 says 確認中 rather than
-   * holding the previous answer beside a 外部コマンド指定 that has already changed — this probe runs
-   * three processes and is the one panel value slow enough for the gap to be visible.
+   * holding the previous answer beside a 外部コマンド指定 that has already changed — this runs one
+   * `--version` per 外部コマンド, three of them bounded at 5 s each, which is the one panel value slow
+   * enough for the gap to be visible.
    *
    * A failure leaves the panel at 確認中 and states the reason on the 帯. There is no "probe failed"
    * row: the probe *is* what turns a failure into a row, so a failed probe has nothing to say per
    * command.
    */
   async function refreshExternalPrograms(): Promise<void> {
+    const run = (programsRefresh += 1);
     externalPrograms = null;
     try {
-      externalPrograms = await externalProgramsProbe();
+      const probed = await externalProgramsProbe();
+      if (run !== programsRefresh) return;
+      externalPrograms = probed;
     } catch (error) {
+      if (run !== programsRefresh) return;
       notice = `外部コマンドの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
   }
@@ -1919,10 +1955,10 @@
       // then 場所を開く holds the previous answer, or says it has not been confirmed on the first open
       // of a run whose startup probe has not returned.
       void refreshSettingsDirectory();
-      // 解決結果の表示 (decision-29). Asked on every open rather than once: it spawns one process per
-      // 外部コマンド, so it does not belong in startup, and its answer can change without Atlas doing
-      // anything — the user may have installed the tool since the last look, which is the likeliest
-      // reason they opened this screen at all.
+      // 解決結果の表示 (decision-29). Asked on every open rather than once: it spawns three processes
+      // (one `--version` per 外部コマンド, 5 s each), so it does not belong in startup, and its answer
+      // can change without Atlas doing anything — the user may have installed the tool since the last
+      // look, which is the likeliest reason they opened this screen at all.
       void refreshExternalPrograms();
     }
   }

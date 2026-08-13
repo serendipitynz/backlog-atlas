@@ -214,19 +214,76 @@ describe("起動時の設定・workspace・監視の順序", () => {
   });
 
   it("保存は probe の完了を待たずに返る", async () => {
-    // `settingsSaving` は書き込みだけを守るので、probe を待つ間このフォームは操作できる。待った場合、
-    // 遅れて解決した保存が `onsaved` を撃ち、そのときモーダルが持っている**別の下書き**を
-    // 破棄前確認なしに捨てる（doc-8 §6.3）。probe は 1 つ 5 秒上限で 4 つあるので、窓は実時間で開く。
+    // `settingsSaving` が守るのは保存（書き込みと適用）までなので、probe を待つ間このフォームは
+    // 操作できる。待った場合、遅れて解決した保存が `onsaved` を撃ち、そのときモーダルが持っている
+    // **別の下書き**を破棄前確認なしに捨てる（doc-8 §6.3）。外部エディタはプロセスを起こさないが、
+    // 外部コマンドが 3 つ（各 5 秒上限）、CLI が 1 つ（30 秒上限。doc-5 §5）なので、窓は実時間で開く。
     const host = await startWith([loaded("atlas", [TASK])]);
     // 起動時の probe も同じ fake を通るので、hold は起動を終えてから張る。
     const hold = deferred<void>();
-    answers.cliProbeHold = hold;
+    answers.cliProbeHolds = [hold];
     await saveSomethingInSettings(host);
 
     // probe は握られたままだが、書き込みは landed しているのでモーダルは下りている。
     expect(host.querySelector('[role="dialog"][aria-label="設定"]')).toBeNull();
     hold.resolve();
     await settled();
+  });
+
+  it("先に始めた probe が後から終わっても、新しい答えを上書きしない", async () => {
+    // 切り離した以上、2 つが同時に走りうる: `backlog` のパスを保存 → 開き直して `git` のパスを保存、
+    // という**この区画そのものの使い方**で起きる。1 つ 5 秒、CLI は 30 秒（doc-5 §5）なので、
+    // 後から始めたほうが先に終わるのは容易であり、そのとき古い答えが帯へ載ると次の probe まで直らない。
+    // 帯は表示だけの話ではなく、編集操作を出すかどうかを決めている。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    const first = deferred<void>();
+    const second = deferred<void>();
+    answers.cliProbeHolds = [first, second];
+
+    answers.cli = { state: "unavailable", detail: "古い答え" };
+    await saveSomethingInSettings(host); // 1 回目: 解決できない、を握ったまま
+    answers.cli = { state: "ready", version: CONFIRMED_CLI_VERSION };
+    await saveSomethingInSettings(host); // 2 回目: 解決する、を握ったまま
+
+    // 後から始めたほうを先に終わらせる。
+    second.resolve();
+    await settled();
+    expect(host.querySelector('[data-band="cliDegraded"]')).toBeNull();
+
+    // 先に始めたほうが後から終わる。これが上書きしてはいけない。
+    first.resolve();
+    await settled();
+    expect(host.querySelector('[data-band="cliDegraded"]')).toBeNull();
+  });
+
+  it("継続検出の適用が終わるまで保存中のままにする", async () => {
+    // `reconcileWatches` は登録ルート数ぶんの境界呼び出しで、**設定を適用する**側なので probe とは違い
+    // ガードの内側に置く。外へ出すと、probe を切り離して塞いだ窓がそのまま開き直す。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    const hold = deferred<void>();
+    answers.watchStopHolds = [hold];
+
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+    await settled();
+    // 継続検出のチェックボックス。保存区分にも checkbox が並ぶので、ラベルの語で選ぶ。
+    const watch = [...host.querySelectorAll("label")].find((label) =>
+      label.textContent?.includes("継続検出を使う"),
+    );
+    if (watch === undefined) {
+      throw new Error("継続検出を使う control not found");
+    }
+    click(only<HTMLInputElement>(watch, 'input[type="checkbox"]'));
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+
+    // 見るのは**ガードそのもの**であって、モーダルが立っているかではない。ガードの外へ出しても
+    // `saveSettings` は同じだけ遅く解決するのでモーダルは開いたままで、どちらでも通ってしまう。
+    // 違うのは `settingsSaving` — 保存する の語と、3 つの出口が塞がっているかどうかである。
+    expect(byText(host, "footer button", "保存中…")).not.toBeNull();
+    hold.resolve();
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).toBeNull();
   });
 
   /** 設定モーダルを開き、1 項目だけ変えて 保存する を押す。*/

@@ -237,8 +237,9 @@ export function cliProbe(): Promise<CliReadiness> {
  * 解決結果の表示 (decision-29): which executable each 外部コマンド would launch, and whether it
  * starts. All three — `backlog`, `git`, `gh`.
  *
- * Read when the 設定画面 opens rather than at startup: it spawns one process per command to fill one
- * panel, and every other screen gets on without the answer. Re-read after a save, so the panel
+ * Read when the 設定画面 opens rather than at startup: it spawns three processes to fill one panel —
+ * one `--version` per command, each bounded at 5 s — and every other screen gets on without the
+ * answer. Re-read after a save, so the panel
  * reports the 外部コマンド指定 just written rather than the one it replaced.
  *
  * Not the same question as `cliProbe`, which asks whether `backlog`'s *version* meets the minimum

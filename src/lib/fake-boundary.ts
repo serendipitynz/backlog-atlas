@@ -162,9 +162,14 @@ export const answers = {
    * write as well as start it, and `null` is the ordinary "answers at once" case.
    */
   settingsSaveHold: null as Deferred<void> | null,
-  /** Hold `cli_probe` open. What lets a test observe the モーダル closing while a post-save probe is
-   *  still in flight — the window a save that awaited its probes would leave open. */
-  cliProbeHold: null as Deferred<void> | null,
+  /**
+   * Holds handed to successive `cli_probe` calls, one each, in order. A queue rather than one flag so
+   * a test can let the *second* probe finish first — the ordering a detached refresh has to survive.
+   * A call made when the queue is empty resolves at once.
+   */
+  cliProbeHolds: [] as Deferred<void>[],
+  /** Holds handed to successive `project_watch_stop` calls, for the same reason. */
+  watchStopHolds: [] as Deferred<void>[],
   /**
    * Make every `settings_save` reject, the way decision-13 refuses to overwrite a file newer than this
    * build. A flag rather than a replaceable function: `vi.mock` copies the references, so a fake swapped
@@ -238,7 +243,8 @@ export function reset(): void {
   answers.subscribeFails = false;
   answers.settingsReadFails = false;
   answers.settingsSaveHold = null;
-  answers.cliProbeHold = null;
+  answers.cliProbeHolds = [];
+  answers.watchStopHolds = [];
   answers.settingsSaveFails = false;
   answers.ledgerRegisterHold = null;
 }
@@ -322,7 +328,12 @@ export const commandFakes = {
     record("project_watch_start", [slug], () => answers.watchStart(slug)),
 
   projectWatchStop: (slug: string): Promise<void> =>
-    record("project_watch_stop", [slug], () => Promise.resolve()),
+    record("project_watch_stop", [slug], async () => {
+      const hold = answers.watchStopHolds.shift();
+      if (hold !== undefined) {
+        await hold.promise;
+      }
+    }),
 
   taskHistoryRead: (slug: string, taskId: string, readId: string): Promise<TaskHistory> =>
     record("task_history_read", [slug, taskId, readId], () => {
@@ -370,8 +381,14 @@ export const commandFakes = {
 
   cliProbe: (): Promise<CliReadiness> =>
     record("cli_probe", [], async () => {
-      if (answers.cliProbeHold !== null) await answers.cliProbeHold.promise;
-      return answers.cli;
+      // Captured before the wait: the answer belongs to the moment the probe was issued, which is
+      // what makes an out-of-order completion observable at all.
+      const answer = answers.cli;
+      const hold = answers.cliProbeHolds.shift();
+      if (hold !== undefined) {
+        await hold.promise;
+      }
+      return answer;
     }),
 
   externalProgramsProbe: (): Promise<ExternalProgramReport[]> =>
