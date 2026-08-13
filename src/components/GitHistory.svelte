@@ -158,8 +158,8 @@
           {/if}
         {:else if relation.state === "remoteAbsent"}
           <p class="setting">
-            Git remote 不在（台帳の Git remote 有無属性が偽）のため関連解決なし。ローカルコミット履歴は
-            上のとおり表示します。台帳の設定で解消できます。
+            Git remote 不在（登録内容の Git remote 有無属性が「なし」）のため関連解決なし。ローカル
+            コミット履歴は上のとおり表示します。プロジェクト詳細の概要区画で解消できます。
           </p>
         {:else if relation.state === "hostUndetermined"}
           <p class="setting">
