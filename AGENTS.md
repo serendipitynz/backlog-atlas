@@ -17,6 +17,17 @@ start implementing — resolve the contradiction first.
   calls that run with the target project as their working directory. Do not edit
   the managed Markdown files directly. This rule binds you as an agent without
   exception; the product has one, immediately below.
+- **A decision is outside that list, because no CLI call can write one.**
+  `backlog decision` offers `create` alone, and its only options are `<title>` and
+  `-s/--status` — so a decision's body is unwritable through the CLI at creation as
+  well as afterwards (measured on v1.49.3; `doc`, by contrast, has
+  `update --content`). Every body in `backlog/decisions/` was therefore written by
+  editing the file, and that is how to write one. The three named kinds — tasks,
+  documents, milestones — keep the rule above without exception. **The owner
+  confirmed this reading on 2026-08-13** (TASK-162); it is recorded because the
+  enumeration's silence is not what establishes it, and a later session that
+  re-derives permission from an omission would be making the move the last bullet
+  here forbids.
 - **The product's one exception — a milestone's description** (decision-21).
   v1.49.3's `milestone` has no `update`/`edit`, so a description can only be set
   at creation, and re-creating the milestone changes its id. Atlas therefore
@@ -40,7 +51,7 @@ start implementing — resolve the contradiction first.
 ## Confirmed CLI version
 
 Where to write the Backlog CLI version Atlas is confirmed against (decision-27).
-The value itself is decision-7's; these four rules are about its expression.
+The value itself is decision-7's; these five rules are about its expression.
 
 - **A version used as a value comes from `update.rs`'s `MIN_VERSION`.** Rust tests
   derive it from that constant; the frontend's tests and fakes read
@@ -57,6 +68,13 @@ The value itself is decision-7's; these four rules are about its expression.
 - **A doc carrying 実測 statements declares its 実測基準版 once**, right after its
   前提 paragraph, and its body sentences then name no version. Statements about the
   difference between two versions keep both — the declaration does not cover them.
+- **The READMEs name no version.** They say a Backlog CLI is required, that the latest
+  release is fine and no upper bound is fixed, and that Atlas checks at startup and names
+  the version it needs when the reader's is short of it — which is §2's one allowed screen
+  sentence doing the work. A literal there would need editing on every bump while buying
+  the reader nothing: the install command they are given fetches the latest. **This layer
+  is not in decision-27**, which stops at code, screen text, docs and 実測註 — TASK-162
+  writes it in there, and until it does, this bullet is where the rule lives.
 
 ## Git and Pull Request references
 
@@ -174,9 +192,31 @@ reads the committed file. The samples are built as struct literals with fabricat
 absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
 and a recorded fixture has to be byte-identical on every machine.
 
+## Release
+
+**Before tagging a release, read `README.md` and `README.ja.md` against the build being
+shipped, and read them together.** A fix applied to one language only is the failure this
+step exists to catch. The claims that go stale are the ones tied to a measured value or to
+a decision that can be revisited: the platforms and the Linux minimum, the Backlog CLI
+minimum version, whether the app updates itself, and what the feature list says the app
+can do.
+
+**The README carries no implementation-status section, and none is to be added back**
+(TASK-90). Where work stands lives in `backlog/tasks/`, and why the design is what it is
+lives in `backlog/decisions/`; a status list in the README is a second copy of both, and it
+goes stale between releases without anything failing. The check above is over claims a
+reader acts on — what to install, what will run it, how a new version arrives — not over a
+progress report.
+
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.
+- **In Japanese Markdown, leave a half-width space after a closing `**` when text follows
+  it.** A closing delimiter has to be right-flanking, and one preceded by `。` with a
+  non-space after it is not — so `**…です。**Atlas` renders its asterisks literally rather
+  than as bold. Every Japanese sentence that ends inside the emphasis hits this, which is
+  most of them. It applies wherever the Markdown is rendered: the READMEs, and task and
+  document bodies, which Atlas draws with `markdown-it` (decision-25).
 - After implementation, run the relevant tests, formatter, and static analysis.
   Report anything that cannot be run, with the reason.
 - Do not commit, rewrite history, or push to a remote without an explicit request.

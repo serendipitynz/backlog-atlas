@@ -1,10 +1,10 @@
 ---
 id: TASK-97
 title: LICENSE を追加する
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-01 00:38'
+updated_date: '2026-08-13 03:53'
 labels:
   - release
   - docs
@@ -23,7 +23,7 @@ ordinal: 97000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 LICENSE がリポジトリルートにある
-- [ ] #2 README.md と README.ja.md にライセンス表記がある
-- [ ] #3 第三者素材（lucide アイコンなど）の帰属が必要かどうか判断され、必要なら記載されている
+- [x] #1 LICENSE がリポジトリルートにある
+- [x] #2 README.md と README.ja.md にライセンス表記がある
+- [x] #3 第三者素材（lucide アイコンなど）の帰属が必要かどうか判断され、必要なら記載されている
 <!-- AC:END -->
