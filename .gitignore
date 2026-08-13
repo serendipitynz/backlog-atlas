@@ -13,3 +13,6 @@ target/
 
 # Backlog.md runtime lock directory
 backlog/.locks/
+
+# macOS signing credentials (copy .env.signing.example to create it)
+.env.signing
