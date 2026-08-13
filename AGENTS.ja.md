@@ -319,8 +319,10 @@ node scripts/generate-third-party-licenses.mjs
   設定するためにメニューを自作もしない — 利用者に見えない差のために、Tauri 既定の
   Edit・View・Window・Help の構成を Rust 側へ複製して保守することになる。
 - **`category` は 1 つの値で両プラットフォームの分類を埋める。** `DeveloperTool` が macOS では
-  `public.app-category.developer-tools`、Linux では `Categories=Development` になり、Linux の
-  ランチャーがアプリを「その他」へ落とさなくなる。
+  `public.app-category.developer-tools`（ビルドした `.app` の `Info.plist` から実測）、Linux では
+  `Categories=Development` になり、ランチャーがアプリを「その他」へ落とさなくなる。
+  **Linux 側は Tauri の文書どおりの対応であって、ここで測った値ではない** — macOS では `.deb` が
+  作れないため。確かめるのは TASK-163 #2 である。
 - **Linux のパッケージへ届く文字列は ASCII に保つ。** crate の `description` が `.deb` control の
   `Description` と `.desktop` の `Comment` になるが、Desktop Entry のエスケープは
   `\s \n \t \r \\` だけを定義しており、それ以外を持たない — TASK-163 の em dash は
