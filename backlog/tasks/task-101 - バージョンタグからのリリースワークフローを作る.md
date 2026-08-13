@@ -1,10 +1,10 @@
 ---
 id: TASK-101
 title: バージョンタグからのリリースワークフローを作る
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-13 20:22'
+updated_date: '2026-08-13 20:59'
 labels:
   - release
   - 'kind:chore'
