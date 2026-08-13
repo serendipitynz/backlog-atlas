@@ -1,9 +1,10 @@
 ---
 id: TASK-161
-title: 既存の backlog 本文で閉じていない強調 (**) を直す
+title: 既存の backlog 本文で閉じていない太字強調を直す
 status: To Do
 assignee: []
 created_date: '2026-08-13 05:03'
+updated_date: '2026-08-13 05:03'
 labels:
   - docs
   - 'kind:chore'
