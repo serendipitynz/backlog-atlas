@@ -174,6 +174,22 @@ reads the committed file. The samples are built as struct literals with fabricat
 absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
 and a recorded fixture has to be byte-identical on every machine.
 
+## Release
+
+**Before tagging a release, read `README.md` and `README.ja.md` against the build being
+shipped, and read them together.** A fix applied to one language only is the failure this
+step exists to catch. The claims that go stale are the ones tied to a measured value or to
+a decision that can be revisited: the platforms and the Linux minimum, the Backlog CLI
+minimum version, whether the app updates itself, and what the feature list says the app
+can do.
+
+**The README carries no implementation-status section, and none is to be added back**
+(TASK-90). Where work stands lives in `backlog/tasks/`, and why the design is what it is
+lives in `backlog/decisions/`; a status list in the README is a second copy of both, and it
+goes stale between releases without anything failing. The check above is over claims a
+reader acts on — what to install, what will run it, how a new version arrives — not over a
+progress report.
+
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.
