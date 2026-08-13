@@ -1,10 +1,10 @@
 ---
 id: TASK-104
 title: アプリの更新経路を持つかどうかを決める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:35'
-updated_date: '2026-08-13 02:58'
+updated_date: '2026-08-13 03:21'
 labels:
   - release
   - decision
