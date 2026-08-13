@@ -1,10 +1,10 @@
 ---
 id: TASK-118
 title: 決定事項 (decisions) をプロジェクト詳細で閲覧できるようにする
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-05 08:18'
-updated_date: '2026-08-13 08:56'
+updated_date: '2026-08-13 09:24'
 labels:
   - ui
   - project-detail
