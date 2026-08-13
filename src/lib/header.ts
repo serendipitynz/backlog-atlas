@@ -70,7 +70,7 @@ export const HEADER_ENTRIES: readonly HeaderEntry[] = [
     id: "register",
     label: "プロジェクトを登録",
     action: "openRegister",
-    note: "台帳へエントリを 1 件足します。グリッドの末尾に行が 1 本増えます。",
+    note: "プロジェクトを 1 件登録します。グリッドの末尾に行が 1 本増えます。",
   },
   {
     id: "settings",

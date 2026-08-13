@@ -587,7 +587,7 @@
             <dd class="path">{settingsPath}</dd>
           {/if}
           {#if ledgerPath !== null}
-            <dt>台帳ファイル</dt>
+            <dt>登録ファイル</dt>
             <dd class="path">{ledgerPath}</dd>
           {/if}
         </dl>

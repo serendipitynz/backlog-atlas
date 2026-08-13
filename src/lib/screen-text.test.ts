@@ -148,38 +148,106 @@ describe("画面に置く文 (doc-11 §8)", () => {
     expect(screenText(section, true).some((line) => SPELLED_VERSION.test(line))).toBe(false);
   });
 
-  // --- 設計語と画面語 (doc-10 §10, TASK-118) -----------------------------------------------------
+  // --- 設計語と画面語 (doc-1 追補, doc-10 §10) ---------------------------------------------------
   //
-  // The third kind decidable from the text alone. `backlog/decisions/` has two words for one object:
-  // doc-4 §1 calls it 意思決定 and the screen calls it 決定事項 (the word the owner used for it). The
-  // split holds only while the design word stays off the screen — a screen carrying both would be
-  // asking the reader to decide whether they name the same thing.
+  // The third kind decidable from the text alone. Some objects have two words: one the design
+  // documents settled on, one a user reads. Each split holds only while the design word stays off the
+  // screen — a screen carrying both would be asking the reader to decide whether they name the same
+  // thing.
   //
-  // This is the only pair in that state, so the check names the one word rather than deriving a rule:
-  // the other three 管理ファイル nouns (タスク・マイルストーン・文書) have design and screen words that
-  // coincide, and nothing to keep apart. **The pair is what has to be re-read if a fourth kind
-  // appears**, not this regex.
-  const DESIGN_ONLY_WORD = /意思決定/;
+  // **A list, because there is more than one such word now.** TASK-118 added the first (意思決定) and
+  // recorded that it was the only pair, so naming the one word was cheaper than deriving a rule.
+  // TASK-158 made that false: 台帳 and 正本 joined it, and a rule still cannot be derived — the other
+  // 管理ファイル nouns (タスク・マイルストーン・文書) have design and screen words that coincide, and
+  // nothing to keep apart. What generalises is the *form*, so each entry carries the word together with
+  // what a user reads instead, and a failure names both. **The list's home is doc-1's 追補**, which is
+  // where a session adding a fourth pair records why — this is a copy of that table's first two columns.
+  const DESIGN_ONLY_WORDS = [
+    // doc-4 §1 calls one `backlog/decisions/` file 意思決定; the screen uses the word the owner used.
+    { word: "意思決定", instead: "決定事項" },
+    // doc-3 §1's three words for Atlas's own registry. 台帳 covers all three (プロジェクト台帳・
+    // 台帳ファイル・台帳エントリ), so one entry catches every form.
+    { word: "台帳", instead: "登録 / 登録内容 / 登録ファイル" },
+    // doc-2・doc-3's word for the target project's own Backlog.md files. The screen names the files.
+    { word: "正本", instead: "対象を書き下す（管理ファイル・タスク）" },
+  ];
+  /** The one matcher both tests below use, so the planted mutation exercises what the scan runs. */
+  const designOnlyHit = (line: string) => DESIGN_ONLY_WORDS.find((e) => line.includes(e.word));
 
-  it("keeps doc-4 §1's 意思決定 out of what a user reads", () => {
+  /**
+   * The crate's sources, scanned by this one check and by nothing else in this file.
+   *
+   * **A user reads Japanese that this crate builds**, not only Japanese from the frontend:
+   * `editor.rs` hands back its own 失敗の理由 (「アプリ設定の外部エディタ指定・VISUAL・EDITOR のいずれも
+   * 設定されていません」and the SE_ERR set), and those are printed beside the control that asked. A word
+   * banned from the screen has to be banned there too, or the next such reason may carry it.
+   *
+   * **Separate from `scanned` on purpose.** The two checks above must not reach this set: `update.rs`'s
+   * `MIN_VERSION` is the one legal home for a spelled version (decision-27 §1), so the 版表記 scan would
+   * fail on the very constant it exists to protect. `//`-stripping is shared — Rust's `///` and `//!`
+   * start with it — but a `//` after a string literal on the same line survives, as in the frontend.
+   */
+  const CRATE: Record<string, string> = import.meta.glob("../../src-tauri/src/**/*.rs", {
+    eager: true,
+    query: "?raw",
+    import: "default",
+  });
+
+  /**
+   * The two titles no code builds: the document's (`index.html`) and the native window's
+   * (`tauri.conf.json`). Both are read — one in the window frame, one by the OS — and neither is
+   * reachable from `SOURCES` or `CRATE`, so without them the scan would pass while a title said
+   * プロジェクト台帳. **A title is exactly the string a session would spell out rather than derive**,
+   * which is what makes the gap worth closing rather than noting (raised in review on PR #111).
+   *
+   * Scanned by this check alone, for `CRATE`'s reason turned around: `tauri.conf.json` carries the
+   * app `version`, which the 版表記 scan forbids.
+   */
+  const STATIC_UI: Record<string, string> = import.meta.glob(
+    ["../../index.html", "../../src-tauri/tauri.conf.json"],
+    { eager: true, query: "?raw", import: "default" },
+  );
+
+  it("keeps the 設計語 out of what a user reads", () => {
     const found: string[] = [];
-    for (const path of scanned) {
-      screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
-        if (DESIGN_ONLY_WORD.test(line)) {
-          found.push(`${path}:${index + 1}: ${line.trim()}`);
+    const sources = { ...SOURCES, ...CRATE, ...STATIC_UI };
+    const everywhere = [...scanned, ...Object.keys(CRATE).sort(), ...Object.keys(STATIC_UI).sort()];
+    for (const path of everywhere) {
+      // `index.html` takes the markup branch for its `<!-- -->`; the JSON has neither form of comment.
+      screenText(sources[path], /\.(svelte|html)$/.test(path)).forEach((line, index) => {
+        const hit = designOnlyHit(line);
+        if (hit !== undefined) {
+          found.push(`${path}:${index + 1}: ${hit.word} → ${hit.instead}: ${line.trim()}`);
         }
       });
     }
     expect(found).toEqual([]);
   });
 
-  it("finds the design word planted in a screen string, and leaves it in comments", () => {
-    const planted = 'export const EMPTY = "意思決定はありません。";\n';
-    expect(screenText(planted, false).some((line) => DESIGN_ONLY_WORD.test(line))).toBe(true);
-    const markup = "<h2>意思決定 {n} 件</h2>\n";
-    expect(screenText(markup, true).some((line) => DESIGN_ONLY_WORD.test(line))).toBe(true);
-    // Comments keep it: they are where the two words are related to each other (`mark.ts` does this).
-    const comment = "  // 意思決定 (doc-4 §1) is 決定事項 on screen.\n";
-    expect(screenText(comment, false).some((line) => DESIGN_ONLY_WORD.test(line))).toBe(false);
+  it("scans the crate and both titles too, so nothing a user reads is outside the check", () => {
+    expect(Object.keys(CRATE).some((path) => path.endsWith("/editor.rs"))).toBe(true);
+    expect(Object.keys(CRATE).length).toBeGreaterThan(5);
+    for (const name of ["/index.html", "/tauri.conf.json"]) {
+      expect(Object.keys(STATIC_UI).some((path) => path.endsWith(name))).toBe(true);
+    }
+    // The titles are what the scan is here for, so prove the stripper leaves them readable rather
+    // than trusting the glob: a `screenText` that swallowed them would pass by scanning nothing.
+    expect(screenText(STATIC_UI[Object.keys(STATIC_UI).find((p) => p.endsWith("/index.html"))!], true)
+      .some((line) => line.includes("<title>"))).toBe(true);
+    expect(screenText(STATIC_UI[Object.keys(STATIC_UI).find((p) => p.endsWith("/tauri.conf.json"))!], false)
+      .some((line) => line.includes('"title"'))).toBe(true);
+  });
+
+  it("finds each design word planted in a screen string, and leaves them in comments", () => {
+    for (const { word } of DESIGN_ONLY_WORDS) {
+      const planted = `export const EMPTY = "${word}はありません。";\n`;
+      expect(screenText(planted, false).some((line) => designOnlyHit(line))).toBeTruthy();
+      const markup = `<h2>${word} {n} 件</h2>\n`;
+      expect(screenText(markup, true).some((line) => designOnlyHit(line))).toBeTruthy();
+      // Comments keep them: they are where the two words are related to each other (`mark.ts` and
+      // `band.ts` both do this, and TASK-107 is what reduces doc citations in comments).
+      const comment = `  // ${word} (doc-4 §1) is the 設計語 for this.\n`;
+      expect(screenText(comment, false).some((line) => designOnlyHit(line))).toBe(false);
+    }
   });
 });
