@@ -4,7 +4,7 @@ title: GitHub リポジトリをパブリック化して v0.1.0 を公開する
 status: To Do
 assignee: []
 created_date: '2026-07-31 23:35'
-updated_date: '2026-08-13 04:06'
+updated_date: '2026-08-13 07:07'
 labels:
   - release
   - 'kind:chore'
@@ -14,8 +14,10 @@ dependencies:
   - TASK-97
   - TASK-98
   - TASK-101
+  - TASK-118
   - TASK-158
   - TASK-159
+  - TASK-163
 priority: high
 ordinal: 102000
 ---
