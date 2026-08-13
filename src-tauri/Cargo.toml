@@ -1,7 +1,11 @@
 [package]
 name = "backlog-atlas"
 version = "0.1.0"
-description = "Backlog Atlas — a multi-root Backlog.md client"
+# ASCII only: the bundlers copy this into the `.deb` control file's `Description` and the
+# `.desktop` `Comment`, where the escaping the Desktop Entry spec defines is `\s \n \t \r \\`
+# and nothing else. An em dash reached both as the six literal characters `\u2014` (TASK-163,
+# measured with `dpkg -I` on the 0.1.0 build), because no rule downstream turns them back.
+description = "Backlog Atlas - a multi-root Backlog.md client"
 authors = ["Takuya Otani"]
 edition = "2021"
 
