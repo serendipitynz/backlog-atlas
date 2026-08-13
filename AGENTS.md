@@ -121,8 +121,13 @@ Move the state through Backlog CLI calls, like every other task update.
   both; 20.04 and 22.04 do not, and a build on them stops early in `pkg-config` saying
   `glib-2.0` was not found — an error that names neither WebKit nor the Ubuntu version,
   so it invites installing packages one at a time instead of changing the distribution.
-  The development packages to install are listed in README's "Building from source",
-  and only there, so the list has one home.
+  The development packages to install are listed in README's "Building from source" and
+  repeated in `.github/workflows/release.yml`, whose Linux runner has to install them
+  before any step could read prose. **The list therefore has two places, not one**
+  (TASK-101 added the second) — change them together, and send a reader to the README.
+  The runner already carries the generic half of the list; it is installed again anyway,
+  so the two stay comparable line by line instead of drifting into a subset nobody
+  re-derives.
 - `pnpm install` reports `@parcel/watcher` and `esbuild` as ignored build scripts.
   Leave them unapproved: sass needs `@parcel/watcher` only for its own watch mode,
   esbuild resolves its platform binary through an optional dependency instead, and the
@@ -208,6 +213,30 @@ goes stale between releases without anything failing. The check above is over cl
 reader acts on — what to install, what will run it, how a new version arrives — not over a
 progress report.
 
+### Producing a release
+
+`.github/workflows/release.yml` builds the three platforms' bundles for a `v*` tag — pushed,
+or handed to the workflow from the Actions tab — and attaches them to a **draft** release
+whose notes GitHub generates from the merged Pull Requests (`.github/release.yml` groups
+them). **Publishing the draft is a manual step and stays one**: the notes are meant to be
+read first, and a platform whose job failed leaves the draft short an asset.
+
+Three things about that workflow are decisions rather than details, and an edit undoing one
+should say why.
+
+- **It refuses to build when the six macOS signing secrets are unregistered**, in the job
+  that would otherwise create the draft, so the run stops before any asset exists. An
+  unsigned macOS bundle is worse than a missing one — Gatekeeper refuses it, and the user
+  has already downloaded it by then.
+- **It does not run `pnpm test`.** m-3 TASK-150's intermittent component-test timeout would
+  fail releases at random for a fault that is not in the build. Tests run before the Pull
+  Request that produced the tag.
+- **It checks the tag against `package.json`, `src-tauri/tauri.conf.json`,
+  `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock` before building.** Tauri names the
+  bundles after `tauri.conf.json` and the build passes no `--locked`, so a tag out of step
+  with them yields assets carrying the previous version's name over a lockfile the build
+  silently rewrote.
+
 ### macOS signing and notarization
 
 A macOS build that opens without a Gatekeeper warning has to be signed with a **Developer ID
@@ -226,6 +255,12 @@ the rest of the README's "Building from source" need none of them.
 
 **The certificate and the Apple ID are the owner's assets.** The repository holds no
 credential, and an agent neither generates nor registers one.
+
+**The signing identity does not name the copyright holder, and that is deliberate.** The
+certificate is `Developer ID Application: Yoko Otani (9EYB4D9GGQ)`, so Gatekeeper and
+`codesign` show "Yoko Otani" while LICENSE says "Takuya Otani / SerendipityNZ Ltd." and the
+identifier says `com.serendipitynz.backlog-atlas`. The owner confirmed on 2026-08-14 that
+this is historical and not worth the work of changing. Do not raise it as a defect.
 
 **Tauri notarizes the .app but not the .dmg that wraps it**, so the disk image a user
 downloads is refused; `macos-sign-build.sh` notarizes and staples each produced .dmg
