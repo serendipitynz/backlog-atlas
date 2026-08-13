@@ -4,7 +4,7 @@ title: AGENTS の更新規則が decisions を覆っているかを確定する
 status: To Do
 assignee: []
 created_date: '2026-08-13 05:18'
-updated_date: '2026-08-13 05:28'
+updated_date: '2026-08-13 05:43'
 labels:
   - docs
   - release
@@ -43,8 +43,22 @@ PR #109 の 4R・5R で見つかった、AGENTS.md「更新」節の解釈が割
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 AGENTS.md「更新」節が decisions を覆っているかどうかが、ユーザーの判断として確定している
+- [x] #1 AGENTS.md「更新」節が decisions を覆っているかどうかが、ユーザーの判断として確定している
 - [ ] #2 AGENTS.md と AGENTS.ja.md の「更新」節に decisions の扱いが明記されている（覆うなら例外の条件、覆わないなら列挙の外である旨と理由）
 - [ ] #3 decision-27 に README が版を名乗らない規則が記録されている。または記録できない理由と、AGENTS に置き続ける根拠が記録されている
 - [ ] #4 backlog decision create が本文を受け取れないこと（1.49.3 実測）が、新しい decision を書く手順としてどこかに記録されている
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC #1 は 2026-08-13 に確定した。**ユーザーの判断は「decisions は列挙の外。直接編集でよい」である。**
+
+したがって残る作業は 3 つで、争点は無い。
+
+1. AC #2 は PR #109 で済ませた。AGENTS.md / AGENTS.ja.md「更新」節に、decision が列挙の外である旨と、その根拠（`backlog decision` は `create` のみ・options は `<title>` と `-s` だけ・したがって本文は作成時にも作成後にも CLI から書けない。v1.49.3 実測）を書いた。**沈黙から許可を導き直させないため、確定した旨と日付も書いた。**
+2. AC #3 — decision-27 への README 層の追記。直接編集が是と確定したので**書ける**。§1〜§5 の後に置く。いまの置き場は AGENTS 和英「動作確認済み版の書き方」の 5 つ目で、そこには「TASK-162 がそこへ書く」と書いてある。
+3. AC #4 — `backlog decision create` が本文を取らないことを、新しい decision を書く手順として記録する。1 と同じ文が兼ねているか、別に要るかを着手時に判断する。
+
+**TASK-161 の decisions 分（9 ファイル・94 箇所）は、この確定によって直せるようになった。**
+<!-- SECTION:NOTES:END -->

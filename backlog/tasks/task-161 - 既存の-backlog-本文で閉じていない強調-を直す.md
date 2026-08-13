@@ -4,7 +4,7 @@ title: 既存の backlog 本文で閉じていない太字強調を直す
 status: To Do
 assignee: []
 created_date: '2026-08-13 05:03'
-updated_date: '2026-08-13 05:29'
+updated_date: '2026-08-13 05:41'
 labels:
   - docs
   - 'kind:chore'
@@ -41,6 +41,6 @@ ordinal: 154700
 <!-- AC:BEGIN -->
 - [ ] #1 backlog/tasks と backlog/docs の本文に、閉じていない太字強調が残っていない（markdown-it で全文描画し、code span を除いて 0 件）
 - [ ] #2 tasks と docs の修正が Backlog CLI 経由で行われている（task edit の -d / --notes / --plan / --acceptance-criteria、doc update --content）
-- [ ] #3 backlog/decisions の 9 ファイルは、TASK-162 が確定した読みに沿って扱われている。直接編集が是と確定したなら直されており、非と確定したならその時点で手段が無いことと未修正である旨が記録されている
+- [ ] #3 backlog/decisions の 9 ファイルも 0 件になっている。CLI に本文を書く手段が無いので直接編集で行う（AGENTS.md「更新」節が decision を列挙の外と定めている。2026-08-13 確定）
 - [ ] #4 その検査が再現できる形で残っている（行単位の走査ではなく全文描画で数える）
 <!-- AC:END -->

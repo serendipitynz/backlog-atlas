@@ -17,6 +17,17 @@ start implementing — resolve the contradiction first.
   calls that run with the target project as their working directory. Do not edit
   the managed Markdown files directly. This rule binds you as an agent without
   exception; the product has one, immediately below.
+- **A decision is outside that list, because no CLI call can write one.**
+  `backlog decision` offers `create` alone, and its only options are `<title>` and
+  `-s/--status` — so a decision's body is unwritable through the CLI at creation as
+  well as afterwards (measured on v1.49.3; `doc`, by contrast, has
+  `update --content`). Every body in `backlog/decisions/` was therefore written by
+  editing the file, and that is how to write one. The three named kinds — tasks,
+  documents, milestones — keep the rule above without exception. **The owner
+  confirmed this reading on 2026-08-13** (TASK-162); it is recorded because the
+  enumeration's silence is not what establishes it, and a later session that
+  re-derives permission from an omission would be making the move the last bullet
+  here forbids.
 - **The product's one exception — a milestone's description** (decision-21).
   v1.49.3's `milestone` has no `update`/`edit`, so a description can only be set
   at creation, and re-creating the milestone changes its id. Atlas therefore
@@ -62,9 +73,8 @@ The value itself is decision-7's; these five rules are about its expression.
   the version it needs when the reader's is short of it — which is §2's one allowed screen
   sentence doing the work. A literal there would need editing on every bump while buying
   the reader nothing: the install command they are given fetches the latest. **This layer
-  is not in decision-27**, which stops at code, screen text, docs and 実測註; it is
-  recorded here because `backlog decision` has no `update` sub-command, so the decision
-  itself cannot be revised through the CLI (TASK-162).
+  is not in decision-27**, which stops at code, screen text, docs and 実測註 — TASK-162
+  writes it in there, and until it does, this bullet is where the rule lives.
 
 ## Git and Pull Request references
 
