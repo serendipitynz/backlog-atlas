@@ -25,6 +25,7 @@ Ubuntu なら 24.04 以降）。画面は日本語のみです。
 - References から Pull Request の URL を取り出し、タスク ID から Git コミットと Pull Request を引く。
 - Type を `kind:*` ラベルと frontmatter から導き、ラベルとは分けて表示する。
 - 文書とマイルストーンを一覧・編集する。
+- 決定事項（`backlog/decisions/`）を一覧・閲覧する。
 - 表示テーマ、カードの情報量、絞り込み、並び順を設定に持つ。
 
 ## Atlas が変えないこと

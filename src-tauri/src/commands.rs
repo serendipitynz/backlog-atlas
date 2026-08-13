@@ -127,7 +127,7 @@ pub struct ProjectSnapshot {
     /// 写せなかったファイル (decision-24) — the `milestones/`, `docs/` and `decisions/` files the
     /// read layer could not assemble at all. Carried beside the three collections rather than
     /// inside them because these have no id to be listed or selected by; each 区画 filters this
-    /// list to its own kind and draws it below its cards (doc-10 §5/§6).
+    /// list to its own kind and draws it below its cards (doc-10 §5/§6/§10).
     pub unmapped_files: Vec<UnmappedFile>,
     /// 列の作成時 status 候補 (doc-7 §4.1) — which of this project's declared statuses the 列内新規
     /// タスク入力 may pass for each canonical column. Sent with the snapshot rather than derived on

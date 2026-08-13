@@ -266,8 +266,9 @@ describe("unmappedFileReason", () => {
     expect(unmappedFileReason(file({ kind: "milestone" }))).toBe(
       "解析不能: このファイルをマイルストーンとして写せませんでした",
     );
+    // 決定事項, not doc-4 §1's 意思決定: this line is printed for the user (TASK-118).
     expect(unmappedFileReason(file({ kind: "decision" }))).toBe(
-      "解析不能: このファイルを意思決定として写せませんでした",
+      "解析不能: このファイルを決定事項として写せませんでした",
     );
   });
 });

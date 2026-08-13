@@ -9,9 +9,10 @@
  *
  * | doc-10 | here | is |
  * |---|---|---|
- * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | the four items 概要・文書・マイルストーン・新規タスク — a display change within one screen, not a screen transition |
+ * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | the five items 概要・文書・マイルストーン・決定事項・新規タスク — a display change within one screen, not a screen transition |
+ * | §1 区画ナビの件数 | [`sectionCount`] | how many the 区画's 一覧列 holds, in brackets beside the label — `null` where there is nothing to count, which is not zero |
  * | §3 区画ナビ | [`SECTION_NAV_WIDTH_REM`] | the 12rem column down the left that houses the 区画切替 — the place, where §1 is the choice |
- * | §1 一覧列 | [`LIST_COLUMN_WIDTH_REM`] | the 16rem column that keeps the selection — 文書一覧 (§5) and マイルストーン一覧 (§6) are its two instances; the pane right of it takes the remaining width, so only the list's width is a constant |
+ * | §1 一覧列 | [`LIST_COLUMN_WIDTH_REM`] | the 16rem column that keeps the selection — 文書一覧 (§5), マイルストーン一覧 (§6) and 決定事項一覧 (§10) are its three instances; the pane right of it takes the remaining width, so only the list's width is a constant |
  * | §5 表示パス | [`displayPath`] | the read layer's `source_path` made project-relative for the pane's heading — display only, never the value `-p` takes |
  * | §3 台帳読取専用帯 | `band.ts`'s [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and what still works |
  * | §3 CLI 縮退帯 | `band.ts`'s [`cliDegradedBand`] | that no supported CLI was found, and what still works |
@@ -46,15 +47,59 @@ import type { GitRemoteRead, ProjectEntry, UpdateRequest } from "./wire";
 
 // --- 区画切替 (doc-10 §1/§3) -------------------------------------------------------------------
 
-export type DetailSection = "overview" | "documents" | "milestones" | "newTask";
+export type DetailSection = "overview" | "documents" | "milestones" | "decisions" | "newTask";
 
-/** The four items down the left. Ordered as doc-10 §3's table is, not by how far each writes. */
+/**
+ * The five items down the left. Ordered as doc-10 §3's table is, not by how far each writes.
+ *
+ * 決定事項 (doc-10 §10, TASK-118) went in fourth rather than beside 文書, which it resembles most:
+ * design 07 fixes the other four and their order (doc-12 §8), so appending keeps every pair of them
+ * in the order 07 gave. What decides *which* end is that 新規タスク is the one 区画 with no 一覧列 —
+ * it only issues — so the three columns-and-a-pane 区画 stay adjacent.
+ */
 export const DETAIL_SECTIONS: readonly { id: DetailSection; label: string }[] = [
   { id: "overview", label: "概要" },
   { id: "documents", label: "文書" },
   { id: "milestones", label: "マイルストーン" },
+  { id: "decisions", label: "決定事項" },
   { id: "newTask", label: "新規タスク" },
 ] as const;
+
+/**
+ * 区画ナビ の項目に添える件数 (doc-10 §1)。**`null` は「数える対象が無い」であって 0 件ではない** —
+ * 概要と新規タスク は一覧を持たないので、括弧そのものを出さない側になる (doc-11 §6 が `—` を
+ * 正常な不在の目印と定めているのと同じ分け方で、ここでは括弧の有無がそれに当たる)。
+ *
+ * **読み取りが済んでいない間も `null`** である。0 と述べると、まだ読めていないことと空であることが
+ * 画面で同じ絵になる。ヘッダの側はその 2 つを文で書き分けており (読み込み中… / ルート読取不能)、
+ * ナビはその文を置ける幅を持たないので、括弧を出さないほうを取る。
+ *
+ * `switch` が値を返すので、`DetailSection` にメンバーを足すとここが `never` への代入で落ちる —
+ * 新しい区画が一覧を持つかどうかを、その場で決めさせるための形である。
+ */
+export function sectionCount(
+  section: DetailSection,
+  project: { documents: unknown[]; milestones: unknown[]; decisions: unknown[] } | null,
+): number | null {
+  if (project === null) {
+    return null;
+  }
+  switch (section) {
+    case "documents":
+      return project.documents.length;
+    case "milestones":
+      return project.milestones.length;
+    case "decisions":
+      return project.decisions.length;
+    case "overview":
+    case "newTask":
+      return null;
+    default: {
+      const unreachable: never = section;
+      return unreachable;
+    }
+  }
+}
 
 // --- 画面の列幅 (doc-10 §3/§5, 画面設計案 07) --------------------------------------------------
 //
@@ -68,9 +113,11 @@ export const SECTION_NAV_WIDTH_REM = 12;
 
 /**
  * 一覧列 (doc-10 §1): the column that keeps the selection, design 07's 16rem. One constant rather
- * than one per 区画 because doc-10 §1 makes it one column type with two instances — 文書一覧 (§5)
- * and マイルストーン一覧 (§6). Two constants holding 16 would let the two drift apart while the doc
- * still calls them the same column. The pane right of it has no constant — it takes what remains.
+ * than one per 区画 because doc-10 §1 makes it one column type — every 区画 that holds a list wears
+ * this same column, and the doc is where they are enumerated. A constant per 区画 would let them
+ * drift apart while the doc still calls them one column. The pane right of it has no constant — it
+ * takes what remains. **No count is written here on purpose**: TASK-118 made the instances three,
+ * and a number re-counted now would go stale the next time a 区画 is added, with nothing failing.
  */
 export const LIST_COLUMN_WIDTH_REM = 16;
 

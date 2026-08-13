@@ -147,4 +147,39 @@ describe("画面に置く文 (doc-11 §8)", () => {
     const section = '<p title="doc-11 §2.4">アイコンのみ</p>\n';
     expect(screenText(section, true).some((line) => SPELLED_VERSION.test(line))).toBe(false);
   });
+
+  // --- 設計語と画面語 (doc-10 §10, TASK-118) -----------------------------------------------------
+  //
+  // The third kind decidable from the text alone. `backlog/decisions/` has two words for one object:
+  // doc-4 §1 calls it 意思決定 and the screen calls it 決定事項 (the word the owner used for it). The
+  // split holds only while the design word stays off the screen — a screen carrying both would be
+  // asking the reader to decide whether they name the same thing.
+  //
+  // This is the only pair in that state, so the check names the one word rather than deriving a rule:
+  // the other three 管理ファイル nouns (タスク・マイルストーン・文書) have design and screen words that
+  // coincide, and nothing to keep apart. **The pair is what has to be re-read if a fourth kind
+  // appears**, not this regex.
+  const DESIGN_ONLY_WORD = /意思決定/;
+
+  it("keeps doc-4 §1's 意思決定 out of what a user reads", () => {
+    const found: string[] = [];
+    for (const path of scanned) {
+      screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
+        if (DESIGN_ONLY_WORD.test(line)) {
+          found.push(`${path}:${index + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("finds the design word planted in a screen string, and leaves it in comments", () => {
+    const planted = 'export const EMPTY = "意思決定はありません。";\n';
+    expect(screenText(planted, false).some((line) => DESIGN_ONLY_WORD.test(line))).toBe(true);
+    const markup = "<h2>意思決定 {n} 件</h2>\n";
+    expect(screenText(markup, true).some((line) => DESIGN_ONLY_WORD.test(line))).toBe(true);
+    // Comments keep it: they are where the two words are related to each other (`mark.ts` does this).
+    const comment = "  // 意思決定 (doc-4 §1) is 決定事項 on screen.\n";
+    expect(screenText(comment, false).some((line) => DESIGN_ONLY_WORD.test(line))).toBe(false);
+  });
 });

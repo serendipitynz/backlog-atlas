@@ -94,6 +94,7 @@
     OVERVIEW_READ_ONLY_NOTE,
     SECTION_NAV_WIDTH_REM,
     SLUG_IMMUTABLE_NOTE,
+    sectionCount,
     UNREGISTER_SCOPE_NOTE,
     gitRemoteDisagreement,
     gitRemoteLine,
@@ -111,6 +112,7 @@
   import { createGitRemoteReader } from "../lib/git-remote-read";
   import type {
     CliReadiness,
+    Decision,
     Document,
     GitRemoteRead,
     Milestone,
@@ -130,7 +132,9 @@
     ledgerReadOnly: boolean;
     /** True while one ledger command is in flight (the shell serializes them). */
     ledgerBusy: boolean;
-    /** Whether a supported CLI exists (doc-5 §5); `null` is 確認中. Reaches the other three 区画 only. */
+    /** Whether a supported CLI exists (doc-5 §5); `null` is 確認中. Reaches the 区画 that issue
+     *  (文書・マイルストーン・新規タスク) — not 概要, which does not go through the CLI, and not
+     *  決定事項, which issues nothing at all (doc-10 §8). */
     readiness: CliReadiness | null;
     onpickDirectory: (title: string) => Promise<string | null>;
     onupdate: (request: UpdateRequest) => Promise<LedgerActionResult>;
@@ -144,8 +148,8 @@
     /** Issue one 更新操作 (doc-5 §3, doc-9 §4). The re-read belongs to the shell. */
     onissue: (slug: string, action: UpdateOperation[]) => Promise<IssueOutcome>;
     /**
-     * A 本文リンク in the 文書 の本文 or the マイルストーン の説明 was pressed (doc-8 §9.3, which doc-10
-     * §5/§6 draw from). The shell issues 既定ブラウザ起動 and owns where a failure goes (⑤ 通知).
+     * A 本文リンク in a 管理ファイルの本文 this screen draws was pressed (doc-8 §9.3, which every 区画
+     * with a 閲覧 draws from). The shell issues 既定ブラウザ起動 and owns where a failure goes (⑤ 通知).
      */
     onopenlink: (url: string) => void;
     /** True while this screen holds 未保存入力 — what makes leaving it ask first. */
@@ -186,7 +190,8 @@
   let section = $state<DetailSection>("overview");
 
   let project = $derived(load?.state === "loaded" ? load.project : null);
-  /** ルート読取不能 (doc-10 §8). The 概要区画 still draws; the other three have no list to show. */
+  /** ルート読取不能 (doc-10 §8). The 概要区画 still draws from the 台帳エントリ; every 区画 that reads
+   *  the root has nothing to show. */
   let unreadable = $derived(load?.state === "unreadable" ? load.error : null);
 
   // The 台帳読取専用帯 and CLI 縮退帯 (doc-10 §3) are ③ and ② of the screen-common 上部帯 stack
@@ -356,6 +361,11 @@
         closeMilestoneOp();
         milestoneDescriptionDraft = null;
         pendingMilestone = null;
+        // 決定事項 has no session for §4.1 to close, but it has a selection resolved against the old
+        // root's read, and that is enough (doc-10 §10). Decision ids are `decision-1`, `decision-2`,
+        // … so the same id almost certainly exists in the new root: left standing, the pane would
+        // silently swap to a *different* project's decision under a selection the user never moved.
+        dropDecisionSelection();
         // status and milestone name the old root's ID space (doc-3 §5.3), so they do not travel
         // either. Both are selections rather than typed text, so dropping them costs no input.
         taskInput.status = "";
@@ -881,7 +891,8 @@
    * as three lists, because the record already carries its kind and one list is what keeps the three
    * 区画 from disagreeing about what counts as a failure.
    *
-   * `decisions` are read and recorded but have no 区画 to draw them in; TASK-118 adds one (doc-10 §9).
+   * All three kinds now have a 区画 to be drawn in — 決定事項 got one with TASK-118 (doc-10 §10), so
+   * decision-24's records are no longer recorded-but-unplaceable for any kind.
    */
   let unmappedDocuments = $derived(
     (project?.unmappedFiles ?? []).filter((file) => file.kind === "document"),
@@ -889,11 +900,14 @@
   let unmappedMilestones = $derived(
     (project?.unmappedFiles ?? []).filter((file) => file.kind === "milestone"),
   );
+  let unmappedDecisions = $derived(
+    (project?.unmappedFiles ?? []).filter((file) => file.kind === "decision"),
+  );
 
   /**
-   * 理由行 for whichever document / milestone the pane currently holds (doc-10 §5/§6). Derived once
-   * here rather than at each use, so the ⚠️ on the card and the lines in the pane can never be
-   * built from two different readings of the same file (decision-22 「導出は 1 回」).
+   * 理由行 for whichever document the 文書ペイン currently holds (doc-10 §5). One of these per 区画
+   * with a 一覧列, derived once rather than at each use, so the ⚠️ on the card and the lines in the
+   * pane can never be built from two different readings of the same file (decision-22 「導出は 1 回」).
    *
    * Taken from the **current read**, not from `docSession.baseline`. The baseline is the read the
    * *input* was made against and it deliberately survives a reload (that is how 未保存入力 stays
@@ -1006,6 +1020,84 @@
     // cannot reach this because its effect exempts an open session; this one deliberately does not.
     pendingMilestone = null;
     void resetMilestonePane();
+  });
+
+  // --- 決定事項区画 (doc-10 §10, TASK-118) --------------------------------------------------------
+  //
+  // The third 一覧列-holding 区画, and the only one that never issues: `backlog decision` has `create`
+  // alone, whose options are `<title>` and `-s` (2026-08-13 measured), so there is no 作成の入口, no
+  // 編集への切替 and no 編集セッション here. Everything the other two need in order to *hold* input —
+  // a session, a dirty flag, a 破棄前確認, a card-blocking reason while a 発行 is in flight — has no
+  // subject in this 区画 and is therefore absent rather than disabled (doc-11 §5: 理由の無い無効化を
+  // 置かない). What remains is the pair doc-10 §1 defines: a 一覧列 that keeps the selection, and a
+  // pane that shows 閲覧 of whatever it holds.
+
+  /** 選択 (doc-10 §10): which decision the 決定事項ペイン holds, as an id. */
+  let decisionSelection = $state<string | null>(null);
+  let decisionPane = $state<HTMLDivElement | undefined>(undefined);
+
+  /**
+   * The selected decision as the **current read** holds it, for the reason `selectedDocument` gives:
+   * a reload must move 閲覧 rather than leave it describing a file that has since changed, and a
+   * decision that disappears must take the selection with it (the `$effect` below).
+   */
+  let selectedDecision = $derived(
+    decisionSelection === null
+      ? null
+      : (project?.decisions.find((candidate) => candidate.id === decisionSelection) ?? null),
+  );
+
+  /** 理由行 for the decision in the pane (decision-24, doc-10 §10). Derived once, like the other two. */
+  let openDecisionReasons = $derived(
+    selectedDecision === null ? [] : fileInconsistencyReasons(selectedDecision.health, "決定事項"),
+  );
+
+  /** 表示パス (doc-10 §5's term, §10's instance) for the selected decision. */
+  let selectedDecisionPath = $derived(
+    selectedDecision === null ? null : displayPath(selectedDecision.sourcePath, entry.project_root),
+  );
+
+  /** 選択が成立する: the pane swaps to 閲覧 of this decision. */
+  async function selectDecision(decision: Decision): Promise<void> {
+    // Re-pressing the selected card must not re-run the swap: there is no input to lose, but the
+    // pane would jump to the top under a reader who had scrolled down it.
+    if (decisionSelection === decision.id) {
+      return;
+    }
+    decisionSelection = decision.id;
+    await resetDecisionPane();
+  }
+
+  /** The 決定事項ペイン's swap, reset for the reason `resetDocPane` records. */
+  async function resetDecisionPane(): Promise<void> {
+    await tick();
+    if (decisionPane !== undefined) {
+      decisionPane.scrollTop = 0;
+    }
+  }
+
+  /**
+   * 選択が落ちて非選択時の姿へ戻る (doc-10 §10). One function for both occasions that reach it — a
+   * disappearance from the read, and a completed root move — so the pane reset cannot come to depend
+   * on which one it was. The other two 区画 have this spread over two places because each also has a
+   * session and a 破棄前確認 to unwind, and those differ between the two occasions; here nothing does.
+   */
+  function dropDecisionSelection(): void {
+    decisionSelection = null;
+    void resetDecisionPane();
+  }
+
+  /**
+   * A selection that no longer resolves is dropped, and the pane returns to 非選択時 (doc-10 §10).
+   * Simpler than the other two 区画's: nothing here can be mid-edit, so there is no session to close
+   * and no 破棄前確認 to withdraw. Guarded on `project !== null` for their reason — a read in flight
+   * resolves nothing and must not be taken for a disappearance.
+   */
+  $effect(() => {
+    if (project === null || decisionSelection === null || selectedDecision !== null) {
+      return;
+    }
+    dropDecisionSelection();
   });
 
   // --- 作成モーダル (doc-10 §1, TASK-117) ---------------------------------------------------------
@@ -1285,9 +1377,11 @@
 {/snippet}
 
 {#snippet listHead(count: string, entry: string, hint: string, onopen: () => void)}
-  <!-- 一覧見出し行 (doc-10 §1, TASK-117). One snippet for both 一覧列 because §1 makes the row a
-       property of the column rather than of either 区画 — written twice, the two would start to
-       differ in exactly the way §1 rules out. What each 区画 supplies is its own wording.
+  <!-- 一覧見出し行 (doc-10 §1, TASK-117). One snippet for the 一覧列 that have a 作成の入口, because
+       §1 makes the row a property of the column rather than of any one 区画 — written out per 区画,
+       they would start to differ in exactly the way §1 rules out. What each 区画 supplies is its own
+       wording. **決定事項区画 does not use this snippet**: it has nothing to add to its list, so §1
+       leaves it the heading alone and this row's second half has no subject there.
 
        The 作成の入口 is never withheld: it issues nothing, and the reason a 作成 cannot be issued
        right now (CLI 縮退, a write in flight) is printed beside the 発行 control inside the layer,
@@ -1325,8 +1419,11 @@
     <span class="slug">{entry.slug}</span>
     <span class="counts">
       {#if project !== null}
-        タスク {project.tasks.length} ・ 文書 {project.documents.length} ・ マイルストーン
-        {project.milestones.length}
+        <!-- タスクの件数だけ (doc-10 §3・§10)。文書・マイルストーン は 2026-08-13 に区画ナビの括弧へ
+             移った (TASK-118)。タスクがここに残るのは、この画面に タスク の区画が無いためで、移す
+             先が無い — 区画ナビの括弧は「その区画の一覧が何件持っているか」であって、区画を持たない
+             ものの件数を置ける場所ではない。 -->
+        タスク {project.tasks.length}
       {:else if unreadable !== null}
         <span class="unreadable-count">件数はルート読取不能のため出せません</span>
       {:else}
@@ -1341,19 +1438,27 @@
          区画's input lives in this one component, so moving between them loses nothing. -->
     <nav class="sections" aria-label="区画">
       {#each DETAIL_SECTIONS as item (item.id)}
+        {@const count = sectionCount(item.id, project)}
         <button
           type="button"
           class:current={section === item.id}
           aria-current={section === item.id ? "true" : undefined}
           onclick={() => (section = item.id)}
         >
-          {item.label}
+          <!-- 件数は括弧で label の隣に出す (doc-10 §1, TASK-118)。`null` のときは括弧ごと出さない —
+               概要 と 新規タスク には数える対象が無く、読み取りが済むまでは件数そのものが無い。
+               `(0)` と出すと、その 2 つが「空の一覧」と同じ絵になる。件数は控えの名前の一部なので
+               `aria-hidden` にしない: 一覧に何件あるかは、その区画を開くかどうかの判断材料である。 -->
+          {item.label}{count === null ? "" : ` (${count})`}
         </button>
       {/each}
     </nav>
 
-    <!-- 一覧列を持つ 2 区画 (doc-10 §1/§5/§6) では、パネルはスクローラを 2 列へ譲る。 -->
-    <div class="panel" class:split={section === "documents" || section === "milestones"}>
+    <!-- 一覧列を持つ 3 区画 (doc-10 §1/§5/§6/§10) では、パネルはスクローラを 2 列へ譲る。 -->
+    <div
+      class="panel"
+      class:split={section === "documents" || section === "milestones" || section === "decisions"}
+    >
       {#if message !== null}
         <p class={message.tone}>{message.text}</p>
       {/if}
@@ -2018,8 +2123,8 @@
             <div class="columns">
               <div class="list-column">
                 <!-- 一覧見出し行 (doc-10 §1, TASK-117) — the same row as the 文書一覧's, from the
-                     same snippet. §1 puts it on the 一覧列 rather than on either 区画, so the two
-                     cannot come to differ in how a new object is added. -->
+                     same snippet. §1 puts it on the 一覧列 rather than on the 区画, so the two that
+                     can add an object cannot come to differ in how one is added. -->
                 {@render listHead(
                   `マイルストーン ${project.milestones.length} 件`,
                   "新規マイルストーン",
@@ -2408,6 +2513,149 @@
                        Since TASK-121 this state is reached only by the three occasions §6 lists, not
                        by a press: 選択を解除 is gone. -->
                   <p class="neutral">マイルストーンが選択されていません</p>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </section>
+      {:else if section === "decisions"}
+        <!-- 決定事項区画 (doc-10 §10, TASK-118): 決定事項一覧 — this 区画's 一覧列 (§1) — beside the
+             決定事項ペイン, the same three columns the other two 一覧列-holding 区画 have. Each column
+             scrolls on its own, for the reason doc-10 §5 records.
+
+             No 破棄前確認 stands above the columns here, and no 作成の入口 sits in the 一覧見出し行:
+             this 区画 issues nothing, so it holds no 未保存入力 to protect and has no 発行 to offer.
+             Nothing states *why* editing is absent — no control is shown, so doc-11 §8's 本則
+             (画面が操作も欄も見せていないものについて、なぜ無いかを述べない) applies with no
+             exception left in it (TASK-123). -->
+        <section class="split-section">
+          {#if unreadableNote !== null}
+            <h2>決定事項</h2>
+            <p class="unreadable">{unreadableNote}</p>
+          {:else if project === null}
+            <h2>決定事項</h2>
+            <p class="neutral">読み込み中…</p>
+          {:else}
+            <div class="columns">
+              <div class="list-column">
+                <!-- 一覧見出し行 (doc-10 §1) without its 作成の入口: `backlog decision create` exists,
+                     but it takes a title and a status and cannot write a body, so a 作成 here would
+                     produce a decision no screen in Atlas can then fill in. The count is the cards'
+                     own, which is why the 写せなかったファイル below are outside it (decision-24). -->
+                <div class="list-head">
+                  <h2>決定事項 {project.decisions.length} 件</h2>
+                </div>
+                {#if project.decisions.length === 0}
+                  <p class="neutral">決定事項はありません。</p>
+                {:else}
+                  <ul class="cards">
+                    {#each project.decisions as decision (decision.id)}
+                      {@const current = decisionSelection === decision.id}
+                      {@const reasons = fileInconsistencyReasons(decision.health, "決定事項")}
+                      <li>
+                        <!-- カード (doc-10 §10): the whole area is the selection, and the current one
+                             is marked — the same form the other two 一覧列 take. Cards are never
+                             withheld here: opening one drops nothing, so a 発行 elsewhere in the
+                             screen is not a reason to stop a reader (doc-11 §5). id・title・status
+                             are what a reader picks by; date and 本文 are read in the pane. -->
+                        <button
+                          type="button"
+                          class="card"
+                          class:current
+                          aria-current={current ? "true" : undefined}
+                          title="この決定事項を開きます"
+                          onclick={() => void selectDecision(decision)}
+                        >
+                          <span class="card-head">
+                            <span class="id">{decision.id}</span>
+                            <span class="meta">{decision.status ?? "status 未設定"}</span>
+                            {#if reasons.length > 0}
+                              <!-- 不整合印 (decision-22, decision-24): one ⚠️, no family name. The
+                                   lines themselves are read in the 閲覧ヘッダ, the place doc-11 §2.4
+                                   requires before this mark may be drawn at all. -->
+                              <span
+                                class="inconsistent"
+                                role="img"
+                                aria-label={inconsistencyLabel(reasons)}
+                                title={inconsistencyLabel(reasons)}
+                              >
+                                <Icon name="triangle-alert" />
+                              </span>
+                            {/if}
+                          </span>
+                          <span class="card-title">{decision.title}</span>
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+                {#if unmappedDecisions.length > 0}
+                  <!-- 写せなかったファイルの一覧 (doc-10 §1, decision-24). doc-10 §9 required this to
+                       arrive together with the normal list, never before it: on its own it would tell
+                       a reader Atlas handles decisions while giving them no decision to find. -->
+                  <div class="unmapped">
+                    <h3>写せなかったファイル {unmappedDecisions.length} 件</h3>
+                    <ul>
+                      {#each unmappedDecisions as file (file.sourcePath)}
+                        <li>
+                          <code>{displayPath(file.sourcePath, entry.project_root)}</code>
+                          <span class="reason-line">{unmappedFileReason(file)}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  </div>
+                {/if}
+              </div>
+
+              <!-- 決定事項ペイン (doc-10 §10): two states, not the other two 区画's three — 閲覧 while
+                   a decision is selected, and a line saying what the column is for while none is.
+                   The missing third is the 編集セッション, which this 区画 cannot open. -->
+              <div class="pane" bind:this={decisionPane}>
+                {#if selectedDecision !== null}
+                  {@const decision = selectedDecision}
+                  <!-- 閲覧 (doc-10 §10): what the selection opens. It is the only thing selection can
+                       open here, so 閲覧 is the whole of the pane rather than one state of three. -->
+                  <div class="sub-panel">
+                    <!-- 閲覧ヘッダ (doc-10 §5, widened by §10): title on the first line — no 編集
+                         beside it, since this 区画 has no 編集への切替 — then id・status・date・
+                         表示パス, then the 理由行. -->
+                    <div class="view-head">
+                      <h3>{decision.title}</h3>
+                    </div>
+                    <p class="meta-line">
+                      <span class="id">{decision.id}</span>
+                      <span>{decision.status ?? "status 未設定"}</span>
+                      <span>{decision.date ?? "date 未設定"}</span>
+                    </p>
+                    <!-- 表示パス (doc-10 §5): which file this is, project-relative. -->
+                    <p class="path"><code>{selectedDecisionPath}</code></p>
+                    {#if openDecisionReasons.length > 0}
+                      <!-- 理由行 (decision-22, decision-24): the place doc-11 §2.4 requires the ⚠️'s
+                           full reason to be readable without hovering. Keyed by index, not by the
+                           string — two reasons can read identically and a duplicate key throws in
+                           production Svelte (PR #71 [P2]). -->
+                      <ul class="reason-lines">
+                        {#each openDecisionReasons as reason, at (at)}
+                          <li>{reason}</li>
+                        {/each}
+                      </ul>
+                    {/if}
+                    <!-- 本文: 整形表示 (doc-8 §9, decision-25). Not decided again here — doc-8 §9
+                         states that it is not confined to タスク詳細, and this is the same object it
+                         names: 管理ファイルの本文 1 つを読むだけの表示. -->
+                    {#if (decision.body ?? "") === ""}
+                      <p class="neutral">本文はありません。</p>
+                    {:else}
+                      <div class="read-body-slot">
+                        <Body source={decision.body ?? ""} {onopenlink} />
+                      </div>
+                    {/if}
+                  </div>
+                {:else}
+                  <!-- 非選択時の決定事項ペイン (doc-10 §10). The column is not collapsed and the
+                       区画 does not fall to two columns: the cards' width would move every time a
+                       selection came and went (doc-10 §5's reason, taken as it stands). -->
+                  <p class="neutral">決定事項が選択されていません</p>
                 {/if}
               </div>
             </div>
@@ -2804,7 +3052,7 @@
       margin-left: -0.75rem;
     }
 
-    // 一覧列を持つ区画 (doc-10 §1: 文書 §5 と マイルストーン §6): the panel stops being the scroller
+    // 一覧列を持つ区画 (doc-10 §1 enumerates them): the panel stops being the scroller
     // and hands its height to the two columns, each scrolling on its own. Its horizontal padding
     // moves into the columns — a focus ring at a scrollport's edge is clipped (TASK-74's実測), so
     // each scroll container carries its own side padding — which leaves the direct children above
@@ -2843,8 +3091,8 @@
     min-height: 0;
   }
 
-  // 一覧列 (doc-10 §1): the column that keeps the selection — 文書一覧 (§5) and マイルストーン一覧
-  // (§6) are its two instances, styled once because the doc calls them one column type. Width is
+  // 一覧列 (doc-10 §1): the column that keeps the selection, worn by every 区画 that holds a list
+  // (the doc enumerates them), styled once because the doc calls them one column type. Width is
   // design 07's 16rem, a content box like the 区画ナビ's. The heading stays out of the scroller
   // (`.cards` is the scroll container) so the count is readable at any scroll position.
   .list-column {
@@ -2934,8 +3182,9 @@
     }
   }
 
-  // カード (doc-10 §5/§6): the whole area is the selection, and the current one is marked the way
-  // the 区画ナビ marks its current entry — one vocabulary for「いま開いているもの」.
+  // カード (doc-10 §5・§6・§10): the whole area is the selection, and the current one is marked the
+  // way the 区画ナビ marks its current entry — one vocabulary for「いま開いているもの」. Worn by the
+  // cards of every 一覧列; what each 区画 puts inside one is its own business.
   .card {
     display: block;
     width: 100%;
@@ -2988,11 +3237,12 @@
     font-size: 0.66rem;
   }
 
-  // 文書ペイン (doc-10 §5) / マイルストーンペイン (§6): 非選択時 の 1 行, 閲覧 while something is
-  // selected, and the 編集セッション once 編集 is pressed. Two names in the doc because they open
-  // different objects, one rule here because the column is the same shape — and since TASK-121 the
-  // same three states as well. Its first block starts at the columns' top: the pane has no heading
-  // of its own, so an inherited margin here reads as a hole (目視反映).
+  // The pane beside a 一覧列 — 文書ペイン (doc-10 §5), マイルストーンペイン (§6), 決定事項ペイン
+  // (§10). A name each in the doc because they open different objects, one rule here because the
+  // column is the same shape. **The states are not the same in all three**: 非選択時 の 1 行 and 閲覧
+  // everywhere, plus a 編集セッション in the two that can issue — 決定事項 has no way to open one, so
+  // there the column has two states rather than three. Its first block starts at the columns' top:
+  // the pane has no heading of its own, so an inherited margin here reads as a hole (目視反映).
   .pane {
     flex: 1;
     min-width: 0;
@@ -3347,10 +3597,13 @@
     word-break: break-all;
   }
 
-  // 閲覧ヘッダ (doc-10 §5・§6): title and 編集 on one line. The heading takes the space so the button
-  // keeps its place at the right edge whatever the title's length, and both stay on the first line —
-  // which is the line the selection is meant to land on. Worn by both 区画 since TASK-121: the two
-  // 閲覧ヘッダ differ in what they list underneath, not in this row.
+  // 閲覧ヘッダ (doc-10 §5, widened by §10): title, and beside it the 編集 of a 区画 that has one. The
+  // heading takes the space so that button keeps its place at the right edge whatever the title's
+  // length, and both stay on the first line — which is the line the selection is meant to land on.
+  // **決定事項区画 has no 編集**, so there the row is the title alone — and needs no rule of its own
+  // because the heading is the flexible child (`h3 { flex: 1 }`), so it fills the row whether or not
+  // a button follows. The 閲覧ヘッダ differ in what they list underneath, and in whether this row has
+  // a second child — not in the row itself.
   .view-head {
     display: flex;
     align-items: baseline;
@@ -3367,9 +3620,9 @@
     }
   }
 
-  // Under the 閲覧ヘッダ's first line: ID・type・tags in the 文書区画, id・所属タスク件数 in the
-  // マイルストーン区画. One line of muted metadata, the same values the card carries — repeated here
-  // because the card is 16rem and truncates, and this column is not.
+  // Under the 閲覧ヘッダ's first line: whichever values that 区画's card carries (doc-10 §5・§6・§10
+  // list them per 区画). One line of muted metadata, repeated here because the card is 16rem and
+  // truncates, and this column is not.
   .meta-line {
     display: flex;
     flex-wrap: wrap;
@@ -3392,7 +3645,7 @@
     margin-top: 0.5rem;
   }
 
-  // 不整合印 (decision-22, decision-24) on a 文書カード / マイルストーンカード. A 印グリフ: the family
+  // 不整合印 (decision-22, decision-24) on a card in any of the 一覧列. A 印グリフ: the family
   // colour is the figure's own, with no chip background and no word (doc-11 §2.4). The size matches
   // `TaskCard.svelte`'s .8rem — a figure carrying no word reads smaller than text of the same height
   // — and the 収録条件 is decision-22's 3:1, which `theme.test.ts` recomputes from `app.scss`.
@@ -3405,9 +3658,9 @@
     cursor: help;
   }
 
-  // 理由行 (decision-22) in either 区画's 閲覧ヘッダ — the place doc-11 §2.4 requires the ⚠️'s reason
-  // to be readable without hovering, which decision-24 fixes as「選択が開く場所の見出し下」and which
-  // TASK-121 made the same領域 in both. Plain lines, not a 区画: they carry no heading of their own
+  // 理由行 (decision-22) in a 閲覧ヘッダ — the place doc-11 §2.4 requires the ⚠️'s reason to be
+  // readable without hovering, which decision-24 fixes as「選択が開く場所の見出し下」and which is the
+  // same領域 in every 区画 whose selection opens 閲覧. Plain lines, not a 区画: they carry no heading of their own
   // because the ⚠️ above already said there is something to read.
   .reason-lines {
     margin: 0.35rem 0 0;
