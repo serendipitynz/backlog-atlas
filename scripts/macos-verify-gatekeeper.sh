@@ -47,7 +47,13 @@ release_mount() {
   fi
 }
 
-trap release_mount EXIT INT TERM
+# INT/TERM get their own handler that exits. A handler that only cleans up
+# returns to where the signal landed, so a Ctrl-C during a mount would detach the
+# image and then carry on reporting "the quarantined image would not mount" —
+# describing the interrupt as if it were a finding about the bundle.
+trap release_mount EXIT
+trap 'release_mount; trap - EXIT; exit 130' INT
+trap 'release_mount; trap - EXIT; exit 143' TERM
 
 check_app() {
   app=$1

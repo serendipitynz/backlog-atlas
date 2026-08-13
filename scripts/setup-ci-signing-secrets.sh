@@ -44,6 +44,17 @@ gh auth status >/dev/null 2>&1 || {
   exit 1
 }
 
+# `gh secret set` resolves its repository from the working directory, not from
+# $root, so running this by absolute path from another checkout would write a
+# certificate and two passwords onto that repository instead. Resolve the target
+# from $root, name it before the first write, and pin every call to it.
+cd "$root"
+repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) || {
+  echo "error: gh cannot resolve a repository from $root." >&2
+  exit 1
+}
+echo "Target repository: $repo"
+
 # Load APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID without echoing them.
 # (APPLE_SIGNING_IDENTITY is derived from the .p12 below, not from this file.)
 set -a
@@ -56,11 +67,19 @@ for var in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
   [ -n "$value" ] || { echo "error: $var is empty in $env_file." >&2; exit 1; }
 done
 
-# Prompt for the .p12 export password with echo off.
+# Prompt for the .p12 export password with echo off. Echo is restored through a
+# trap as well as inline: under `set -e` a Ctrl-D makes `read` return non-zero
+# and the script exits between the two stty calls, which would leave the
+# operator's terminal silent until they think to run `stty sane`.
+restore_echo() { stty echo 2>/dev/null || true; }
+trap 'restore_echo' EXIT
+trap 'restore_echo; trap - EXIT; exit 130' INT
+trap 'restore_echo; trap - EXIT; exit 143' TERM
 printf 'Export password for %s: ' "$p12"
 stty -echo 2>/dev/null || true
 IFS= read -r p12_password
-stty echo 2>/dev/null || true
+restore_echo
+trap - EXIT INT TERM
 printf '\n'
 
 # Derive the signing identity from the certificate inside the .p12 so it always
@@ -92,12 +111,12 @@ esac
 # APPLE_CERTIFICATE is the base64-encoded .p12; APPLE_SIGNING_IDENTITY is the
 # certificate's common name; the rest come from .env.signing. Piping keeps every
 # value off the argv list and out of the logs.
-base64 < "$p12"                 | gh secret set APPLE_CERTIFICATE
-printf '%s' "$p12_password"     | gh secret set APPLE_CERTIFICATE_PASSWORD
-printf '%s' "$signing_identity" | gh secret set APPLE_SIGNING_IDENTITY
-printf '%s' "$APPLE_ID"         | gh secret set APPLE_ID
-printf '%s' "$APPLE_PASSWORD"   | gh secret set APPLE_PASSWORD
-printf '%s' "$APPLE_TEAM_ID"    | gh secret set APPLE_TEAM_ID
+base64 < "$p12"                 | gh secret set APPLE_CERTIFICATE           --repo "$repo"
+printf '%s' "$p12_password"     | gh secret set APPLE_CERTIFICATE_PASSWORD  --repo "$repo"
+printf '%s' "$signing_identity" | gh secret set APPLE_SIGNING_IDENTITY      --repo "$repo"
+printf '%s' "$APPLE_ID"         | gh secret set APPLE_ID                    --repo "$repo"
+printf '%s' "$APPLE_PASSWORD"   | gh secret set APPLE_PASSWORD              --repo "$repo"
+printf '%s' "$APPLE_TEAM_ID"    | gh secret set APPLE_TEAM_ID               --repo "$repo"
 
-echo "Registered signing secrets on $(gh repo view --json nameWithOwner -q .nameWithOwner)."
-echo "Verify with: gh secret list"
+echo "Registered signing secrets on $repo."
+echo "Verify with: gh secret list --repo $repo"

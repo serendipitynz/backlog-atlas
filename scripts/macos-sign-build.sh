@@ -48,34 +48,68 @@ if ! security find-identity -v -p codesigning | grep -qF "$APPLE_SIGNING_IDENTIT
   exit 1
 fi
 
+# Build from the repository root: `pnpm tauri build` picks its project up from
+# the working directory while the bundle paths below are resolved against $root,
+# so a run started elsewhere would build one tree and staple another.
+cd "$root"
+
+# Everything after the build acts on the artifacts THIS run wrote, selected by
+# being newer than this stamp. A plain `pnpm tauri build` leaves an unsigned
+# bundle under target/release/, and a `--target …` run writes to a different
+# path, so globbing both would reach the stale unsigned image first: notarization
+# rejects it, `stapler staple` fails, and `set -e` ends the run before the bundle
+# that was just built is ever notarized.
+stamp=$(mktemp)
+artifacts=$(mktemp)
+trap 'rm -f "$stamp" "$artifacts"' EXIT INT TERM
+
 pnpm tauri build "$@"
 
-# Notarize and staple every .dmg the build produced, covering both the default
-# host-target path and an explicit --target path.
-staple_dmgs() {
-  found=0
-  for dmg in \
-    "$root"/src-tauri/target/release/bundle/dmg/*.dmg \
-    "$root"/src-tauri/target/*/release/bundle/dmg/*.dmg; do
-    [ -e "$dmg" ] || continue
-    found=1
-    if xcrun stapler validate "$dmg" >/dev/null 2>&1; then
-      echo "Already stapled, skipping: $dmg"
-      continue
-    fi
-    echo "Notarizing DMG: $dmg"
-    xcrun notarytool submit "$dmg" \
-      --apple-id "$APPLE_ID" \
-      --password "$APPLE_PASSWORD" \
-      --team-id "$APPLE_TEAM_ID" \
-      --wait
-    xcrun stapler staple "$dmg"
-  done
-  [ "$found" -eq 1 ] || echo "note: no .dmg found to notarize (targets may not include dmg)."
+# A .app's own directory mtime does not have to move when only its signature is
+# replaced, but Contents/ does — codesign writes _CodeSignature/ into it. Match
+# on Contents and strip it back to the bundle.
+find "$root/src-tauri/target" -maxdepth 6 -newer "$stamp" \
+  \( -path '*/release/bundle/macos/*.app/Contents' \
+     -o -path '*/release/bundle/dmg/*.dmg' \) -print \
+  | sed 's@/Contents$@@' > "$artifacts"
+
+grep -q '\.app$' "$artifacts" || {
+  echo "error: the build wrote no .app newer than its own start." >&2
+  echo "       Refusing to notarize or verify artifacts this run did not produce." >&2
+  exit 1
 }
 
-staple_dmgs
+found_dmg=0
+while IFS= read -r path; do
+  case "$path" in *.dmg) ;; *) continue ;; esac
+  found_dmg=1
+  if xcrun stapler validate "$path" >/dev/null 2>&1; then
+    echo "Already stapled, skipping: $path"
+    continue
+  fi
+  echo "Notarizing DMG: $path"
+  # The password rides on argv here, unlike the .p12 password in
+  # setup-ci-signing-secrets.sh, which is fed on stdin. notarytool offers no
+  # stdin form — the alternative is a stored keychain profile — and switching
+  # only this call would not reduce the exposure: `pnpm tauri build` above runs
+  # notarytool the same way for the .app, minutes earlier in the same run.
+  xcrun notarytool submit "$path" \
+    --apple-id "$APPLE_ID" \
+    --password "$APPLE_PASSWORD" \
+    --team-id "$APPLE_TEAM_ID" \
+    --wait
+  xcrun stapler staple "$path"
+done < "$artifacts"
+[ "$found_dmg" -eq 1 ] || echo "note: this build produced no .dmg (its targets may not include one)."
 
 echo
-echo "Verifying the produced bundles."
-"$root/scripts/macos-verify-gatekeeper.sh"
+echo "Verifying the bundles this build produced."
+# Hand the verifier the exact paths. Its own discovery sweeps every target path,
+# which would pull in leftovers from an earlier unsigned build and fail a run
+# that in fact succeeded. The forwarded build arguments are spent by now, so
+# reusing the positional parameters here costs nothing.
+set --
+while IFS= read -r path; do
+  set -- "$@" "$path"
+done < "$artifacts"
+"$root/scripts/macos-verify-gatekeeper.sh" "$@"
