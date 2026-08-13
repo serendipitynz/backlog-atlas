@@ -325,6 +325,33 @@ directory is the product name: spelling it in the workflow would put it in a sec
 a rename to miss. **The notice is attached to the release as its own asset as well**, so no
 platform depends on its bundler for the notice to exist at all.
 
+### Bundle metadata
+
+The three `bundle` values that a screen or a package manager shows, and what reads each.
+
+- **`copyright` is what the macOS About panel prints**, and it reaches the `.app`'s
+  `NSHumanReadableCopyright` and the `.deb`/`.msi` metadata at the same time. No code is
+  involved: Tauri's default menu builds `AboutMetadata` from the config, so a session asked to
+  change the About panel edits `tauri.conf.json` and nothing else. **The wording is a second
+  copy of LICENSE's** — the two files are unrelated to each other, so change them together.
+- **The About panel's icon is AppKit's own default and is not set anywhere.** Tauri's default
+  menu passes `icon: None`, so muda leaves `NSAboutPanelOptionApplicationIcon` out of the
+  options dictionary and the panel falls back to `NSApp.applicationIconImage` — which in a
+  bundle resolves `CFBundleIconFile`. **An unbundled `pnpm tauri dev` run has no bundle for
+  that fallback to resolve and shows a generic icon; the built `.app` is correct** (the owner
+  confirmed the launch mode on 2026-08-14, TASK-168). Do not raise the dev-run icon as a
+  defect, and do not build a custom menu to set it — that means maintaining a copy of Tauri's
+  default Edit/View/Window/Help structure in Rust for a difference no user sees.
+- **`category` fills both platforms' classification from one value.** `DeveloperTool` becomes
+  `public.app-category.developer-tools` on macOS and `Categories=Development` on Linux, so
+  the Linux launcher stops filing the app under "Other".
+- **Text that reaches a Linux package must stay ASCII.** The crate `description` becomes the
+  `.deb` control `Description` and the `.desktop` `Comment`, where Desktop Entry escaping
+  defines `\s \n \t \r \\` and nothing else — TASK-163's em dash arrived as the six literal
+  characters `\u2014`. The constraint is written above the line it binds in
+  `src-tauri/Cargo.toml`; it binds `bundle.shortDescription` and `bundle.longDescription`
+  equally, and neither is set.
+
 ### macOS signing and notarization
 
 A macOS build that opens without a Gatekeeper warning has to be signed with a **Developer ID

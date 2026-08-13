@@ -301,6 +301,33 @@ node scripts/generate-third-party-licenses.mjs
 成果物としても添付される。** 通知が存在すること自体をバンドラに依存しているプラット
 フォームは無い。
 
+### バンドルの metadata
+
+画面やパッケージマネージャに出る `bundle` の値 3 つと、それを読むもの。
+
+- **`copyright` が macOS の About パネルに出る文字列であり**、同時に `.app` の
+  `NSHumanReadableCopyright`・`.deb`・`.msi` の metadata にも入る。コードは関与しない —
+  Tauri の既定メニューが設定から `AboutMetadata` を組むので、About パネルを変える回は
+  `tauri.conf.json` だけを編集する。**文言は LICENSE の写しである** — 2 つのファイルは互いを
+  参照しないので、変えるときは両方変える。
+- **About パネルのアイコンは AppKit の既定で、どこにも設定していない。** 既定メニューは
+  `icon: None` を渡すため、muda は `NSAboutPanelOptionApplicationIcon` を options 辞書に
+  入れず、パネルは `NSApp.applicationIconImage` に落ちる — バンドルではそれが
+  `CFBundleIconFile` を解決する。**未バンドルの `pnpm tauri dev` にはその解決先となる
+  バンドルが無いので汎用アイコンが出る。ビルドした `.app` は正しい**（起動形態は
+  2026-08-14 にオーナーが確認済み。TASK-168）。**dev 起動のアイコンを欠陥として起票しない。**
+  設定するためにメニューを自作もしない — 利用者に見えない差のために、Tauri 既定の
+  Edit・View・Window・Help の構成を Rust 側へ複製して保守することになる。
+- **`category` は 1 つの値で両プラットフォームの分類を埋める。** `DeveloperTool` が macOS では
+  `public.app-category.developer-tools`、Linux では `Categories=Development` になり、Linux の
+  ランチャーがアプリを「その他」へ落とさなくなる。
+- **Linux のパッケージへ届く文字列は ASCII に保つ。** crate の `description` が `.deb` control の
+  `Description` と `.desktop` の `Comment` になるが、Desktop Entry のエスケープは
+  `\s \n \t \r \\` だけを定義しており、それ以外を持たない — TASK-163 の em dash は
+  `\u2014` という 6 文字のリテラルとして届いた。制約は `src-tauri/Cargo.toml` の、それが縛る
+  行の直上に書いてある。`bundle.shortDescription` と `bundle.longDescription` も同じ制約を
+  受ける（どちらも未設定）。
+
 ### macOS の署名と notarization
 
 Gatekeeper の警告なしに開く macOS ビルドは、**Developer ID Application** 証明書で署名し、
