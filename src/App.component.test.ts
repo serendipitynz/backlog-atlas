@@ -79,6 +79,22 @@ function confirmBand(host: HTMLElement): HTMLElement | null {
   return host.querySelector<HTMLElement>('.band[data-band="confirm"]');
 }
 
+/**
+ * 区画ナビ の 1 項目 (doc-10 §1)。`byText` を使えないのは、一覧列を持つ区画のラベルの後ろに件数が
+ * 付くためで（`文書 (1)`。TASK-118）、あちらは完全一致だからである。**前方一致にしても「ちょうど 1 つ」
+ * は保つ** — 区画へ移動するためのヘルパーであって、ここは画面が刷る語を主張している場所ではない
+ * （語そのものを固定しているのは `project-detail.test.ts` の `DETAIL_SECTIONS` の検査）。
+ */
+function sectionTab(host: HTMLElement, label: string): HTMLButtonElement {
+  const found = [...host.querySelectorAll<HTMLButtonElement>("nav.sections button")].filter(
+    (button) => (button.textContent ?? "").trim().startsWith(label),
+  );
+  if (found.length !== 1) {
+    throw new Error(`expected exactly one 区画ナビ item starting "${label}", found ${found.length}`);
+  }
+  return found[0];
+}
+
 const TASK = taskView({
   id: "TASK-1",
   title: "最初の題",
@@ -1240,7 +1256,7 @@ describe("プロジェクト詳細が自分で上げる被せ層", () => {
     const host = await startWith([loaded("atlas", [TASK], undefined, [DOCUMENT])]);
     click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
     await settled();
-    click(byText(host, "nav.sections button", "文書"));
+    click(sectionTab(host, "文書"));
     pressControl(byText(host, "button.create-entry", "新規文書"));
     return host;
   }
@@ -1521,7 +1537,7 @@ describe("プロジェクト詳細の離脱", () => {
     const host = await startWith([loaded("atlas", [TASK], undefined, [DOCUMENT])]);
     click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
     await settled();
-    click(byText(host, "nav.sections button", "文書"));
+    click(sectionTab(host, "文書"));
 
     click(only(host, "button.card"));
     await settled();
@@ -1558,7 +1574,7 @@ describe("プロジェクト詳細の離脱", () => {
     const host = await startWith([loaded("atlas", [TASK], undefined, [], [MILESTONE])]);
     click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
     await settled();
-    click(byText(host, "nav.sections button", "マイルストーン"));
+    click(sectionTab(host, "マイルストーン"));
 
     click(only(host, "button.card"));
     await settled();

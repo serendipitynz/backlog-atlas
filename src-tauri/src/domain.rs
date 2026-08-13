@@ -120,8 +120,9 @@ pub struct Decision {
     pub date: Option<String>,
     pub body: Option<String>,
     /// 想定外スキーマ found while mapping this decision's optional fields (doc-4 §5,
-    /// decision-24). No screen reads it yet — プロジェクト詳細 has no decisions 区画 until
-    /// TASK-118 — but the read layer records all three kinds alike (doc-10 §9).
+    /// decision-24). Drawn as the ⚠️ on a card in プロジェクト詳細's 決定事項区画 since TASK-118
+    /// (doc-10 §10); before that the read layer recorded all three kinds alike while only two of
+    /// them had anywhere to be shown.
     pub health: FileHealth,
 }
 

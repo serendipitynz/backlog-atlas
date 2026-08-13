@@ -94,6 +94,7 @@
     OVERVIEW_READ_ONLY_NOTE,
     SECTION_NAV_WIDTH_REM,
     SLUG_IMMUTABLE_NOTE,
+    sectionCount,
     UNREGISTER_SCOPE_NOTE,
     gitRemoteDisagreement,
     gitRemoteLine,
@@ -111,6 +112,7 @@
   import { createGitRemoteReader } from "../lib/git-remote-read";
   import type {
     CliReadiness,
+    Decision,
     Document,
     GitRemoteRead,
     Milestone,
@@ -356,6 +358,11 @@
         closeMilestoneOp();
         milestoneDescriptionDraft = null;
         pendingMilestone = null;
+        // 決定事項 has no session for §4.1 to close, but it has a selection resolved against the old
+        // root's read, and that is enough (doc-10 §10). Decision ids are `decision-1`, `decision-2`,
+        // … so the same id almost certainly exists in the new root: left standing, the pane would
+        // silently swap to a *different* project's decision under a selection the user never moved.
+        dropDecisionSelection();
         // status and milestone name the old root's ID space (doc-3 §5.3), so they do not travel
         // either. Both are selections rather than typed text, so dropping them costs no input.
         taskInput.status = "";
@@ -881,13 +888,17 @@
    * as three lists, because the record already carries its kind and one list is what keeps the three
    * 区画 from disagreeing about what counts as a failure.
    *
-   * `decisions` are read and recorded but have no 区画 to draw them in; TASK-118 adds one (doc-10 §9).
+   * All three kinds now have a 区画 to be drawn in — 決定事項 got one with TASK-118 (doc-10 §10), so
+   * decision-24's records are no longer recorded-but-unplaceable for any kind.
    */
   let unmappedDocuments = $derived(
     (project?.unmappedFiles ?? []).filter((file) => file.kind === "document"),
   );
   let unmappedMilestones = $derived(
     (project?.unmappedFiles ?? []).filter((file) => file.kind === "milestone"),
+  );
+  let unmappedDecisions = $derived(
+    (project?.unmappedFiles ?? []).filter((file) => file.kind === "decision"),
   );
 
   /**
@@ -1006,6 +1017,78 @@
     // cannot reach this because its effect exempts an open session; this one deliberately does not.
     pendingMilestone = null;
     void resetMilestonePane();
+  });
+
+  // --- 決定事項区画 (doc-10 §10, TASK-118) --------------------------------------------------------
+  //
+  // The third 一覧列-holding 区画, and the only one that never issues: `backlog decision` has `create`
+  // alone, whose options are `<title>` and `-s` (2026-08-13 measured), so there is no 作成の入口, no
+  // 編集への切替 and no 編集セッション here. Everything the other two need in order to *hold* input —
+  // a session, a dirty flag, a 破棄前確認, a card-blocking reason while a 発行 is in flight — has no
+  // subject in this 区画 and is therefore absent rather than disabled (doc-11 §5: 理由の無い無効化を
+  // 置かない). What remains is the pair doc-10 §1 defines: a 一覧列 that keeps the selection, and a
+  // pane that shows 閲覧 of whatever it holds.
+
+  /** 選択 (doc-10 §10): which decision the 決定事項ペイン holds, as an id. */
+  let decisionSelection = $state<string | null>(null);
+  let decisionPane = $state<HTMLDivElement | undefined>(undefined);
+
+  /**
+   * The selected decision as the **current read** holds it, for the reason `selectedDocument` gives:
+   * a reload must move 閲覧 rather than leave it describing a file that has since changed, and a
+   * decision that disappears must take the selection with it (the `$effect` below).
+   */
+  let selectedDecision = $derived(
+    decisionSelection === null
+      ? null
+      : (project?.decisions.find((candidate) => candidate.id === decisionSelection) ?? null),
+  );
+
+  /** 理由行 for the decision in the pane (decision-24, doc-10 §10). Derived once, like the other two. */
+  let openDecisionReasons = $derived(
+    selectedDecision === null ? [] : fileInconsistencyReasons(selectedDecision.health, "決定事項"),
+  );
+
+  /** 表示パス (doc-10 §5's term, §10's instance) for the selected decision. */
+  let selectedDecisionPath = $derived(
+    selectedDecision === null ? null : displayPath(selectedDecision.sourcePath, entry.project_root),
+  );
+
+  /** 選択が成立する: the pane swaps to 閲覧 of this decision. */
+  async function selectDecision(decision: Decision): Promise<void> {
+    // Re-pressing the selected card must not re-run the swap: there is no input to lose, but the
+    // pane would jump to the top under a reader who had scrolled down it.
+    if (decisionSelection === decision.id) return;
+    decisionSelection = decision.id;
+    await resetDecisionPane();
+  }
+
+  /** The 決定事項ペイン's swap, reset for the reason `resetDocPane` records. */
+  async function resetDecisionPane(): Promise<void> {
+    await tick();
+    if (decisionPane !== undefined) decisionPane.scrollTop = 0;
+  }
+
+  /**
+   * 選択が落ちて非選択時の姿へ戻る (doc-10 §10). One function for both occasions that reach it — a
+   * disappearance from the read, and a completed root move — so the pane reset cannot come to depend
+   * on which one it was. The other two 区画 have this spread over two places because each also has a
+   * session and a 破棄前確認 to unwind, and those differ between the two occasions; here nothing does.
+   */
+  function dropDecisionSelection(): void {
+    decisionSelection = null;
+    void resetDecisionPane();
+  }
+
+  /**
+   * A selection that no longer resolves is dropped, and the pane returns to 非選択時 (doc-10 §10).
+   * Simpler than the other two 区画's: nothing here can be mid-edit, so there is no session to close
+   * and no 破棄前確認 to withdraw. Guarded on `project !== null` for their reason — a read in flight
+   * resolves nothing and must not be taken for a disappearance.
+   */
+  $effect(() => {
+    if (project === null || decisionSelection === null || selectedDecision !== null) return;
+    dropDecisionSelection();
   });
 
   // --- 作成モーダル (doc-10 §1, TASK-117) ---------------------------------------------------------
@@ -1325,8 +1408,11 @@
     <span class="slug">{entry.slug}</span>
     <span class="counts">
       {#if project !== null}
-        タスク {project.tasks.length} ・ 文書 {project.documents.length} ・ マイルストーン
-        {project.milestones.length}
+        <!-- タスクの件数だけ (doc-10 §3・§10)。文書・マイルストーン は 2026-08-13 に区画ナビの括弧へ
+             移った (TASK-118)。タスクがここに残るのは、この画面に タスク の区画が無いためで、移す
+             先が無い — 区画ナビの括弧は「その区画の一覧が何件持っているか」であって、区画を持たない
+             ものの件数を置ける場所ではない。 -->
+        タスク {project.tasks.length}
       {:else if unreadable !== null}
         <span class="unreadable-count">件数はルート読取不能のため出せません</span>
       {:else}
@@ -1341,19 +1427,27 @@
          区画's input lives in this one component, so moving between them loses nothing. -->
     <nav class="sections" aria-label="区画">
       {#each DETAIL_SECTIONS as item (item.id)}
+        {@const count = sectionCount(item.id, project)}
         <button
           type="button"
           class:current={section === item.id}
           aria-current={section === item.id ? "true" : undefined}
           onclick={() => (section = item.id)}
         >
-          {item.label}
+          <!-- 件数は括弧で label の隣に出す (doc-10 §1, TASK-118)。`null` のときは括弧ごと出さない —
+               概要 と 新規タスク には数える対象が無く、読み取りが済むまでは件数そのものが無い。
+               `(0)` と出すと、その 2 つが「空の一覧」と同じ絵になる。件数は控えの名前の一部なので
+               `aria-hidden` にしない: 一覧に何件あるかは、その区画を開くかどうかの判断材料である。 -->
+          {item.label}{count === null ? "" : ` (${count})`}
         </button>
       {/each}
     </nav>
 
-    <!-- 一覧列を持つ 2 区画 (doc-10 §1/§5/§6) では、パネルはスクローラを 2 列へ譲る。 -->
-    <div class="panel" class:split={section === "documents" || section === "milestones"}>
+    <!-- 一覧列を持つ 3 区画 (doc-10 §1/§5/§6/§10) では、パネルはスクローラを 2 列へ譲る。 -->
+    <div
+      class="panel"
+      class:split={section === "documents" || section === "milestones" || section === "decisions"}
+    >
       {#if message !== null}
         <p class={message.tone}>{message.text}</p>
       {/if}
@@ -2408,6 +2502,149 @@
                        Since TASK-121 this state is reached only by the three occasions §6 lists, not
                        by a press: 選択を解除 is gone. -->
                   <p class="neutral">マイルストーンが選択されていません</p>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </section>
+      {:else if section === "decisions"}
+        <!-- 決定事項区画 (doc-10 §10, TASK-118): 決定事項一覧 — this 区画's 一覧列 (§1) — beside the
+             決定事項ペイン, the same three columns the other two 一覧列-holding 区画 have. Each column
+             scrolls on its own, for the reason doc-10 §5 records.
+
+             No 破棄前確認 stands above the columns here, and no 作成の入口 sits in the 一覧見出し行:
+             this 区画 issues nothing, so it holds no 未保存入力 to protect and has no 発行 to offer.
+             Nothing states *why* editing is absent — no control is shown, so doc-11 §8's 本則
+             (画面が操作も欄も見せていないものについて、なぜ無いかを述べない) applies with no
+             exception left in it (TASK-123). -->
+        <section class="split-section">
+          {#if unreadableNote !== null}
+            <h2>決定事項</h2>
+            <p class="unreadable">{unreadableNote}</p>
+          {:else if project === null}
+            <h2>決定事項</h2>
+            <p class="neutral">読み込み中…</p>
+          {:else}
+            <div class="columns">
+              <div class="list-column">
+                <!-- 一覧見出し行 (doc-10 §1) without its 作成の入口: `backlog decision create` exists,
+                     but it takes a title and a status and cannot write a body, so a 作成 here would
+                     produce a decision no screen in Atlas can then fill in. The count is the cards'
+                     own, which is why the 写せなかったファイル below are outside it (decision-24). -->
+                <div class="list-head">
+                  <h2>決定事項 {project.decisions.length} 件</h2>
+                </div>
+                {#if project.decisions.length === 0}
+                  <p class="neutral">決定事項はありません。</p>
+                {:else}
+                  <ul class="cards">
+                    {#each project.decisions as decision (decision.id)}
+                      {@const current = decisionSelection === decision.id}
+                      {@const reasons = fileInconsistencyReasons(decision.health, "決定事項")}
+                      <li>
+                        <!-- カード (doc-10 §10): the whole area is the selection, and the current one
+                             is marked — the same form the other two 一覧列 take. Cards are never
+                             withheld here: opening one drops nothing, so a 発行 elsewhere in the
+                             screen is not a reason to stop a reader (doc-11 §5). id・title・status
+                             are what a reader picks by; date and 本文 are read in the pane. -->
+                        <button
+                          type="button"
+                          class="card"
+                          class:current
+                          aria-current={current ? "true" : undefined}
+                          title="この決定事項を開きます"
+                          onclick={() => void selectDecision(decision)}
+                        >
+                          <span class="card-head">
+                            <span class="id">{decision.id}</span>
+                            <span class="meta">{decision.status ?? "status 未設定"}</span>
+                            {#if reasons.length > 0}
+                              <!-- 不整合印 (decision-22, decision-24): one ⚠️, no family name. The
+                                   lines themselves are read in the 閲覧ヘッダ, the place doc-11 §2.4
+                                   requires before this mark may be drawn at all. -->
+                              <span
+                                class="inconsistent"
+                                role="img"
+                                aria-label={inconsistencyLabel(reasons)}
+                                title={inconsistencyLabel(reasons)}
+                              >
+                                <Icon name="triangle-alert" />
+                              </span>
+                            {/if}
+                          </span>
+                          <span class="card-title">{decision.title}</span>
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+                {#if unmappedDecisions.length > 0}
+                  <!-- 写せなかったファイルの一覧 (doc-10 §1, decision-24). doc-10 §9 required this to
+                       arrive together with the normal list, never before it: on its own it would tell
+                       a reader Atlas handles decisions while giving them no decision to find. -->
+                  <div class="unmapped">
+                    <h3>写せなかったファイル {unmappedDecisions.length} 件</h3>
+                    <ul>
+                      {#each unmappedDecisions as file (file.sourcePath)}
+                        <li>
+                          <code>{displayPath(file.sourcePath, entry.project_root)}</code>
+                          <span class="reason-line">{unmappedFileReason(file)}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  </div>
+                {/if}
+              </div>
+
+              <!-- 決定事項ペイン (doc-10 §10): two states, not the other two 区画's three — 閲覧 while
+                   a decision is selected, and a line saying what the column is for while none is.
+                   The missing third is the 編集セッション, which this 区画 cannot open. -->
+              <div class="pane" bind:this={decisionPane}>
+                {#if selectedDecision !== null}
+                  {@const decision = selectedDecision}
+                  <!-- 閲覧 (doc-10 §10): what the selection opens. It is the only thing selection can
+                       open here, so 閲覧 is the whole of the pane rather than one state of three. -->
+                  <div class="sub-panel">
+                    <!-- 閲覧ヘッダ (doc-10 §5, widened by §10): title on the first line — no 編集
+                         beside it, since this 区画 has no 編集への切替 — then id・status・date・
+                         表示パス, then the 理由行. -->
+                    <div class="view-head">
+                      <h3>{decision.title}</h3>
+                    </div>
+                    <p class="meta-line">
+                      <span class="id">{decision.id}</span>
+                      <span>{decision.status ?? "status 未設定"}</span>
+                      <span>{decision.date ?? "date 未設定"}</span>
+                    </p>
+                    <!-- 表示パス (doc-10 §5): which file this is, project-relative. -->
+                    <p class="path"><code>{selectedDecisionPath}</code></p>
+                    {#if openDecisionReasons.length > 0}
+                      <!-- 理由行 (decision-22, decision-24): the place doc-11 §2.4 requires the ⚠️'s
+                           full reason to be readable without hovering. Keyed by index, not by the
+                           string — two reasons can read identically and a duplicate key throws in
+                           production Svelte (PR #71 [P2]). -->
+                      <ul class="reason-lines">
+                        {#each openDecisionReasons as reason, at (at)}
+                          <li>{reason}</li>
+                        {/each}
+                      </ul>
+                    {/if}
+                    <!-- 本文: 整形表示 (doc-8 §9, decision-25). Not decided again here — doc-8 §9
+                         states that it is not confined to タスク詳細, and this is the same object it
+                         names: 管理ファイルの本文 1 つを読むだけの表示. -->
+                    {#if (decision.body ?? "") === ""}
+                      <p class="neutral">本文はありません。</p>
+                    {:else}
+                      <div class="read-body-slot">
+                        <Body source={decision.body ?? ""} {onopenlink} />
+                      </div>
+                    {/if}
+                  </div>
+                {:else}
+                  <!-- 非選択時の決定事項ペイン (doc-10 §10). The column is not collapsed and the
+                       区画 does not fall to two columns: the cards' width would move every time a
+                       selection came and went (doc-10 §5's reason, taken as it stands). -->
+                  <p class="neutral">決定事項が選択されていません</p>
                 {/if}
               </div>
             </div>

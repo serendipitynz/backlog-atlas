@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALIAS_EFFECT_NOTES,
   DETAIL_SECTIONS,
+  sectionCount,
   OVERVIEW_INPUT_PROBLEMS_REASON,
   OVERVIEW_NO_CHANGES_REASON,
   OVERVIEW_READ_ONLY_NOTE,
@@ -42,13 +43,63 @@ function submittedFor(base: ProjectEntry, edit: EntryEdit) {
 // --- 区画切替 (doc-10 §1/§3) -------------------------------------------------------------------
 
 describe("区画切替", () => {
-  it("holds the four 区画 doc-10 §3 puts on this screen, in the doc's order", () => {
+  it("holds the five 区画 doc-10 §3 puts on this screen, in the doc's order", () => {
     expect(DETAIL_SECTIONS.map((section) => section.id)).toEqual([
+      "overview",
+      "documents",
+      "milestones",
+      "decisions",
+      "newTask",
+    ]);
+  });
+
+  // 決定事項 was appended rather than placed beside 文書 (doc-10 §10, TASK-118). Asserting the
+  // relative order of the four that design 07 fixes states what the placement rule protects: an
+  // item added later must leave every pair of them where 07 put them (doc-12 §8).
+  it("leaves design 07's four in the relative order 07 gave them", () => {
+    const ids = DETAIL_SECTIONS.map((section) => section.id);
+    expect(ids.filter((id) => id !== "decisions")).toEqual([
       "overview",
       "documents",
       "milestones",
       "newTask",
     ]);
+  });
+
+  it("labels 決定事項 with the 画面に出る語, not doc-4 §1's 意思決定", () => {
+    const decisions = DETAIL_SECTIONS.find((section) => section.id === "decisions");
+    expect(decisions?.label).toBe("決定事項");
+  });
+});
+
+// --- 区画ナビの件数 (doc-10 §1, TASK-118) ------------------------------------------------------
+
+describe("区画ナビの件数", () => {
+  const project = { documents: [1, 2, 3], milestones: [1], decisions: [1, 2] };
+
+  it("counts each 区画's own 一覧列", () => {
+    expect(sectionCount("documents", project)).toBe(3);
+    expect(sectionCount("milestones", project)).toBe(1);
+    expect(sectionCount("decisions", project)).toBe(2);
+  });
+
+  // `null` と 0 を分けるのがこの関数の仕事である。同じに畳むと、一覧を持たない区画が「空の一覧」に
+  // 見え、doc-11 §6 が正常な不在について禁じている型を括弧の側で作ることになる。
+  it("has nothing to count for the two 区画 that hold no 一覧列", () => {
+    expect(sectionCount("overview", project)).toBeNull();
+    expect(sectionCount("newTask", project)).toBeNull();
+  });
+
+  it("keeps 0 件 tellable from 数える対象が無い", () => {
+    expect(sectionCount("decisions", { documents: [], milestones: [], decisions: [] })).toBe(0);
+    expect(sectionCount("overview", { documents: [], milestones: [], decisions: [] })).toBeNull();
+  });
+
+  // 読み取りが済むまでは件数が無い。0 を返すと、読めていないことと空であることが同じ絵になる。
+  it("has no count before the root has been read", () => {
+    for (const section of DETAIL_SECTIONS) {
+      expect([section.id, sectionCount(section.id, null)]).toEqual([section.id, null]);
+    }
   });
 });
 
