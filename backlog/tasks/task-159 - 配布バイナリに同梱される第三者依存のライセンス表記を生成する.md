@@ -1,10 +1,10 @@
 ---
 id: TASK-159
 title: 配布バイナリに同梱される第三者依存のライセンス表記を生成する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 03:48'
-updated_date: '2026-08-13 21:44'
+updated_date: '2026-08-13 22:40'
 labels:
   - release
   - legal
