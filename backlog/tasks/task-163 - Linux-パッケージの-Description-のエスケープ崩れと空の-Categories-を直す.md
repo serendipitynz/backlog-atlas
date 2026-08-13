@@ -4,7 +4,7 @@ title: Linux パッケージの Description のエスケープ崩れと空の Ca
 status: In Review
 assignee: []
 created_date: '2026-08-13 07:03'
-updated_date: '2026-08-13 23:27'
+updated_date: '2026-08-13 23:57'
 labels:
   - release
   - 'kind:chore'
@@ -36,7 +36,7 @@ TASK-101 のリリースワークフローが 3 OS のバンドルを組むの�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Cargo.toml の description に由来する Description が、.desktop の Comment と .deb の control の両方でリテラルのエスケープを含まない（dpkg -I と dpkg -l で確認）
-- [ ] #2 .desktop の Categories が空でない。値は bundle.category から来ている
+- [x] #1 Cargo.toml の description に由来する Description が、.desktop の Comment と .deb の control の両方でリテラルのエスケープを含まない（dpkg -I と dpkg -l で確認）
+- [x] #2 .desktop の Categories が空でない。値は bundle.category から来ている
 - [x] #3 bundle.category を設定した影響が macOS 実機で確認されている（バンドルの分類が意図どおり）
 <!-- AC:END -->

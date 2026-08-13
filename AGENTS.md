@@ -343,10 +343,11 @@ The three `bundle` values that a screen or a package manager shows, and what rea
   defect, and do not build a custom menu to set it — that means maintaining a copy of Tauri's
   default Edit/View/Window/Help structure in Rust for a difference no user sees.
 - **`category` fills both platforms' classification from one value.** `DeveloperTool` becomes
-  `public.app-category.developer-tools` on macOS — read out of the built `.app`'s `Info.plist` —
-  and `Categories=Development` on Linux, so the launcher stops filing the app under "Other".
-  **The Linux half is Tauri's documented mapping and was not measured here**: a `.deb` cannot be
-  built on macOS, so TASK-163 #2 is what confirms it.
+  `public.app-category.developer-tools` on macOS and `Categories=Development` on Linux, so the
+  launcher stops filing the app under "Other". Both halves were read out of built bundles on
+  2026-08-14 (TASK-163): the `.app`'s `Info.plist`, and the `.desktop` entry inside the `.deb`,
+  unpacked with `dpkg-deb -x`. **Re-measuring the Linux half needs a Linux machine** — no macOS
+  build produces a `.deb`, so a session working only on macOS can confirm one half and no more.
 - **Text that reaches a Linux package must stay ASCII.** The crate `description` becomes the
   `.deb` control `Description` and the `.desktop` `Comment`, where Desktop Entry escaping
   defines `\s \n \t \r \\` and nothing else — TASK-163's em dash arrived as the six literal

@@ -4,7 +4,7 @@ title: About パネルに copyright を出す
 status: In Review
 assignee: []
 created_date: '2026-08-13 23:04'
-updated_date: '2026-08-13 23:27'
+updated_date: '2026-08-13 23:57'
 labels:
   - ui
   - release
@@ -29,5 +29,5 @@ Tauri の既定メニュー（`Menu::default`）は `AboutMetadata.copyright` �
 <!-- AC:BEGIN -->
 - [x] #1 tauri.conf.json の bundle.copyright が LICENSE と同じ文言である
 - [x] #2 ビルドした .app の Info.plist に NSHumanReadableCopyright がその文言で入っている
-- [ ] #3 macOS の About パネルに copyright 行が出ることを実機で確認した
+- [x] #3 macOS の About パネルに copyright 行が出ることを実機で確認した
 <!-- AC:END -->

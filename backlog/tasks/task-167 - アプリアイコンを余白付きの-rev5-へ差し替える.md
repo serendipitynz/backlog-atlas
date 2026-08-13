@@ -4,7 +4,7 @@ title: アプリアイコンを余白付きの rev5 へ差し替える
 status: In Review
 assignee: []
 created_date: '2026-08-13 23:04'
-updated_date: '2026-08-13 23:27'
+updated_date: '2026-08-13 23:57'
 labels:
   - ui
   - release
@@ -30,5 +30,5 @@ TASK-160 が採用した rev4 は 1200x1200 の全面が不透明で、角丸マ
 - [x] #1 src-tauri/app-icon.png が _sandbox/assets/atlas-icon-rev5.png と同一で、src-tauri/icons/ の 17 件がそこから生成されている
 - [x] #2 生成物が透明な余白を持ち、内容が画像の一辺の約 79% に収まっている
 - [x] #3 icons/android と icons/ios がコミットされていない
-- [ ] #4 macOS の Dock で周囲のアイコンと大きさが揃っていることを実機で確認した
+- [x] #4 macOS の Dock で周囲のアイコンと大きさが揃っていることを実機で確認した
 <!-- AC:END -->
