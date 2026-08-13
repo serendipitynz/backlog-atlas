@@ -1,10 +1,10 @@
 ---
 id: TASK-158
 title: 画面文言と設計文書の「台帳」「正本」を利用者に通じる語へ見直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 03:48'
-updated_date: '2026-08-13 10:26'
+updated_date: '2026-08-13 10:53'
 labels:
   - ui
   - docs
