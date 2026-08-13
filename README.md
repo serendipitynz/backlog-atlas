@@ -5,7 +5,7 @@
 A desktop app for working across the tasks, documents, and milestones of several projects
 from one screen. Your tasks stay where they are — as the Markdown that
 [Backlog.md](https://github.com/MrLesk/Backlog.md) manages, in each project — and Atlas
-reads them, lays them out, and delegates every update to the Backlog CLI.
+reads them, lays them out, and delegates updates to the Backlog CLI.
 
 **This is an unofficial Backlog.md client.** It is a separate project, not affiliated with
 the authors of Backlog.md and not provided or endorsed by them. It works by using the
@@ -126,8 +126,10 @@ in `backlog/docs/`.
 
 MIT — see [LICENSE](LICENSE).
 
-The icon figures come from [Lucide](https://lucide.dev/) (ISC, with some Feather-derived
-icons under MIT). The notices are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Two things by other authors ship with the app: the [Ace](https://github.com/ajaxorg/ace)
+editor (BSD 3-Clause) and the icon figures from [Lucide](https://lucide.dev/) (ISC, with some
+Feather-derived icons under MIT). Their notices are in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Contributing
 

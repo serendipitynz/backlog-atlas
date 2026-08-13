@@ -3,7 +3,46 @@
 Backlog Atlas itself is under the MIT License ([LICENSE](LICENSE)). This file covers
 material by other authors.
 
-## Material copied into this repository
+## Material vendored in this repository
+
+Two things are in this tree rather than resolved from a package manager, so their notices
+travel with it — and neither would be found by an inventory built from the lockfiles.
+
+### Ace
+
+`public/vendor/ace/ace.js` is the Ace editor, served verbatim and loaded at runtime by
+`src/lib/ace.ts` (the reasoning is in that file's header and decision-8). It ships inside
+the app, so its notice ships with it. The upstream `LICENSE` sits beside it at
+`public/vendor/ace/LICENSE` and is reproduced here:
+
+Source: <https://github.com/ajaxorg/ace>
+
+```
+Copyright (c) 2010, Ajax.org B.V.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of Ajax.org B.V. nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL AJAX.ORG B.V. BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
 
 ### Lucide
 
@@ -80,11 +119,16 @@ SOFTWARE.
 
 ## Dependencies resolved at build time
 
-The rest of the third-party code is not in this repository. It is fetched by `pnpm` and
+The remaining third-party code is not in this repository. It is fetched by `pnpm` and
 `cargo` when the app is built, and each package keeps its own licence — the resolved set
 is `pnpm-lock.yaml` and `src-tauri/Cargo.lock`. The notices those licences require in a
-**distributed binary** are not generated yet; that is tracked as its own task and belongs
-with the release artifacts rather than with this file.
+**distributed binary** are not generated yet; that is tracked as its own task (TASK-159) and
+belongs with the release artifacts rather than with this file.
+
+**A generated inventory does not replace the section above.** Ace and Lucide are in the tree
+rather than in a lockfile, so a tool that reads `pnpm-lock.yaml` and `Cargo.lock` will not
+list either. Whatever TASK-159 generates has to be combined with this file, not substituted
+for it.
 
 ## The Backlog CLI
 

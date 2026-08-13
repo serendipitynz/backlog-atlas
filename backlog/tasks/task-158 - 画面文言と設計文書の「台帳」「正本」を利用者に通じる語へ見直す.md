@@ -4,6 +4,7 @@ title: 画面文言と設計文書の「台帳」「正本」を利用者に通�
 status: To Do
 assignee: []
 created_date: '2026-08-13 03:48'
+updated_date: '2026-08-13 04:06'
 labels:
   - ui
   - docs
@@ -25,3 +26,12 @@ ordinal: 151700
 
 doc-3（プロジェクト台帳と横断タスクID 設計）が語の正本なので、画面文言だけ替えると doc と画面がずれる。doc の改訂を伴うか、画面文言だけを利用者向けに言い換えて doc の設計語は残すかは、着手時の判定に入る（AGENTS.md「decision/doc が契約」）。
 <!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 画面文言の「台帳」が、利用者に通じる語へ置き換わっている。対象は Settings.svelte の「台帳ファイル」、ProjectDetail.svelte の「概要（台帳エントリ）」「台帳から外す」「台帳エントリを更新しました」、App.svelte の「ほかの台帳操作が完了するまで待ってください。」「このプロジェクトは台帳にありません」、Swimlane.svelte の「台帳が読み取り専用のため…」、GitHistory.svelte の「台帳の設定で解消できます。」
+- [ ] #2 画面文言の「正本」1 箇所（project-detail.ts の「タスクの正本はそのまま残ります。」）が置き換わっている
+- [ ] #3 doc-3 の設計語を替えるか、画面文言だけ言い換えて doc の語は残すかが判断され、その理由が記録されている（doc を替えるなら doc-3 と、doc-3 の語を引く doc・decision も併せて更新されている）
+- [ ] #4 置き換え後の語が対応表で先に確定されている。projects.toml が全プロジェクトの登録一覧であること、および decision-13 のアプリ設定ファイルと語が衝突しないことが、その表で扱われている
+- [ ] #5 画面と doc が同じ語を使っている（片方だけ替わった箇所が無い）
+<!-- AC:END -->

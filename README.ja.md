@@ -113,8 +113,10 @@ Rust コアは `src-tauri/` で `cargo test`・`cargo fmt`・`cargo clippy` を�
 
 MIT License です。[LICENSE](LICENSE) を参照してください。
 
-アイコン図形は [Lucide](https://lucide.dev/) から取り込んでいます（ISC License、一部は Feather 由来の
-MIT License）。帰属は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) に記載しています。
+他の作者による成果物が 2 つ同梱されています。[Ace](https://github.com/ajaxorg/ace) エディタ
+（BSD 3-Clause License）と、[Lucide](https://lucide.dev/) のアイコン図形（ISC License、一部は
+Feather 由来の MIT License）です。帰属は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) に
+記載しています。
 
 ## コントリビューション
 
