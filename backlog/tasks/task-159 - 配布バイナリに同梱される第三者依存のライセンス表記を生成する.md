@@ -1,10 +1,10 @@
 ---
 id: TASK-159
 title: 配布バイナリに同梱される第三者依存のライセンス表記を生成する
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-08-13 03:48'
-updated_date: '2026-08-13 05:01'
+updated_date: '2026-08-13 21:44'
 labels:
   - release
   - legal
@@ -32,7 +32,7 @@ TASK-102 の依存に入っている。告知を欠いたまま公開しない�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 pnpm 側と cargo 側の依存ライセンス一覧が、ロックファイルからツールで機械生成される（手書きの一覧を置かない）
-- [ ] #2 生成ツールの選定理由と導入範囲が AGENTS.md Dependencies 節に従って確認されている
-- [ ] #3 生成した一覧が、リポジトリ内の THIRD-PARTY-NOTICES.md（Ace・Lucide）と併せてリリース成果物に含まれる。ロックファイル由来の一覧だけで置き換えない
+- [x] #1 pnpm 側と cargo 側の依存ライセンス一覧が、ロックファイルからツールで機械生成される（手書きの一覧を置かない）
+- [x] #2 生成ツールの選定理由と導入範囲が AGENTS.md Dependencies 節に従って確認されている
+- [x] #3 生成した一覧が、リポジトリ内の THIRD-PARTY-NOTICES.md（Ace・Lucide）と併せてリリース成果物に含まれる。ロックファイル由来の一覧だけで置き換えない
 <!-- AC:END -->
