@@ -133,9 +133,23 @@ jobs:
           set -eu
           # Reuse an existing release for this tag if present (e.g. on a re-run
           # after one platform failed). The tags endpoint cannot see drafts, so
-          # list releases and match on tag_name instead.
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq "[.[] | select(.tag_name == \"$RELEASE_TAG\")][0].id // empty")
+          # list releases and match on tag_name instead — paginated, because a
+          # tag past the first page would otherwise look absent and get a second
+          # release created for it.
+          #
+          # Matching on the tag alone would also match a release that has since
+          # been published: a re-run would then upload over a public release's
+          # assets, which is precisely what publishing by hand is the gate
+          # against. Reuse only a draft, and refuse outright when the tag is
+          # already out.
+          published=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$RELEASE_TAG\" and (.draft | not)) | .id" | head -1)
+          if [ -n "$published" ]; then
+            echo "::error::Release $RELEASE_TAG is already published (id $published). Building it again would replace the assets people have been downloading. Tag a new version, or delete that release first if it went out by mistake." >&2
+            exit 1
+          fi
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$RELEASE_TAG\" and .draft) | .id" | head -1)
           if [ -z "$id" ]; then
             id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
               -f tag_name="$RELEASE_TAG" \
@@ -222,15 +236,18 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS signing and notarization of the .app. Empty on the other two
-          # runners, where Tauri ignores them; create-release has already failed
-          # the run if any is unset.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS signing and notarization of the .app; create-release has
+          # already failed the run if any of the six is unset. Each is emptied on
+          # the other two runners rather than left to Tauri to ignore — a plain
+          # `${{ secrets.X }}` is expanded on every matrix job, which would hand
+          # the certificate and its password to every build script and build
+          # dependency a Windows or Linux `cargo build` runs.
+          APPLE_CERTIFICATE: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
         with:
           # Upload to the draft create-release made; do not create or edit it
           # here, so its generated notes survive.
