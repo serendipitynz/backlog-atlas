@@ -119,7 +119,7 @@ describe("CLI 縮退帯 (②)", () => {
     // doc-10 §3: one is about where Atlas writes, the other about whether the Backlog CLI runs, and
     // one can stand without the other (AC #3 独立した帯). Side by side they must not read as one
     // failure, which is why each says what it does *not* reach.
-    expect(cliDegradedBand(null)).toContain("台帳エントリの更新は影響を受けません");
+    expect(cliDegradedBand(null)).toContain("登録内容の更新は影響を受けません");
     expect(LEDGER_READ_ONLY_BAND).toContain("文書・マイルストーン・新規タスク");
     expect(kinds({ ...QUIET, ledgerReadOnly: true })).toEqual(["ledgerReadOnly"]);
     expect(kinds({ ...QUIET, readiness: null })).toEqual(["cliDegraded"]);

@@ -91,10 +91,16 @@ export interface BandInputs {
 /**
  * 台帳読取専用 (doc-3 §2.2), 縮約. Names what still works, because doc-10 §3 requires the two 縮退 帯
  * to be told apart: side by side they would otherwise read as one general failure.
+ *
+ * The parenthetical names the three 区画 and not 「…の発行」 because this sentence sat on doc-11 §4's
+ * one-line bound exactly (70) before TASK-158, and the screen word for the ledger file is four
+ * characters longer than 台帳 was. 影響を受けません is what was kept in the trade: `cliDegradedBand`
+ * hedges with the same verb, and both bands can stand at once — so neither may say the other's
+ * operations *can* be issued.
  */
 export const LEDGER_READ_ONLY_BAND =
-  "台帳が読み取り専用です。台帳エントリの更新・登録解除・行の並べ替えはできません" +
-  "（文書・マイルストーン・新規タスクの発行は影響を受けません）。";
+  "登録ファイルが読み取り専用です。登録内容の更新・登録解除・行の並べ替えはできません" +
+  "（文書・マイルストーン・新規タスクは影響を受けません）。";
 
 /**
  * The CLI state in as few words as the band has room for. Deliberately not `readinessReason`'s
@@ -121,7 +127,7 @@ function cliDegradedSummary(readiness: CliReadiness | null): string | null {
 export function cliDegradedBand(readiness: CliReadiness | null): string | null {
   const summary = cliDegradedSummary(readiness);
   if (summary === null) return null;
-  return `${summary}。作成・更新は発行できません（台帳エントリの更新は影響を受けません）。`;
+  return `${summary}。作成・更新は発行できません（登録内容の更新は影響を受けません）。`;
 }
 
 /**
