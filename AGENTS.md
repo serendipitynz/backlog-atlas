@@ -40,7 +40,7 @@ start implementing — resolve the contradiction first.
 ## Confirmed CLI version
 
 Where to write the Backlog CLI version Atlas is confirmed against (decision-27).
-The value itself is decision-7's; these four rules are about its expression.
+The value itself is decision-7's; these five rules are about its expression.
 
 - **A version used as a value comes from `update.rs`'s `MIN_VERSION`.** Rust tests
   derive it from that constant; the frontend's tests and fakes read
@@ -57,6 +57,14 @@ The value itself is decision-7's; these four rules are about its expression.
 - **A doc carrying 実測 statements declares its 実測基準版 once**, right after its
   前提 paragraph, and its body sentences then name no version. Statements about the
   difference between two versions keep both — the declaration does not cover them.
+- **The READMEs name no version.** They say a Backlog CLI is required, that the latest
+  release is fine and no upper bound is fixed, and that Atlas checks at startup and names
+  the version it needs when the reader's is short of it — which is §2's one allowed screen
+  sentence doing the work. A literal there would need editing on every bump while buying
+  the reader nothing: the install command they are given fetches the latest. **This layer
+  is not in decision-27**, which stops at code, screen text, docs and 実測註; it is
+  recorded here because `backlog decision` has no `update` sub-command, so the decision
+  itself cannot be revised through the CLI (TASK-162).
 
 ## Git and Pull Request references
 
