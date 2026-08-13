@@ -4,7 +4,7 @@ title: 画面文言と設計文書の「台帳」「正本」を利用者に通�
 status: To Do
 assignee: []
 created_date: '2026-08-13 03:48'
-updated_date: '2026-08-13 04:14'
+updated_date: '2026-08-13 05:01'
 labels:
   - ui
   - docs
@@ -20,7 +20,7 @@ ordinal: 151700
 <!-- SECTION:DESCRIPTION:BEGIN -->
 2026-08-13 のユーザーフィードバック由来。「耳慣れない文言（日本語）の利用が目につきます（README だけじゃなく）」「プロジェクト台帳、という言い方も個人的には違和を持っています」。TASK-90 で README からは 3 語（正本・集約画面・プロジェクト台帳）を外したが、ユーザーの判断で画面文言と設計文書は本タスクへ回した。
 
-**対象は列挙ではなく網羅である。**起票時に数えた範囲は 8 箇所前後だったが、PR #109 の 2R でその列挙が実際の約 1/3 だと分かった。コメントを除いた画面文だけで App.svelte・ProjectDetail.svelte・ProjectRegister.svelte・GitHistory.svelte・Settings.svelte・Swimlane.svelte・project-detail.ts・ledger.ts・band.ts・edit.ts・header.ts・settings.ts に散っている。**着手時に自分で数え直すこと。**列挙を AC に書くと、その列挙を満たしたまま同じ問題が別の場所に残る。
+**対象は列挙ではなく網羅である。** 起票時に数えた範囲は 8 箇所前後だったが、PR #109 の 2R でその列挙が実際の約 1/3 だと分かった。コメントを除いた画面文だけで App.svelte・ProjectDetail.svelte・ProjectRegister.svelte・GitHistory.svelte・Settings.svelte・Swimlane.svelte・project-detail.ts・ledger.ts・band.ts・edit.ts・header.ts・settings.ts に散っている。**着手時に自分で数え直すこと。** 列挙を AC に書くと、その列挙を満たしたまま同じ問題が別の場所に残る。
 
 「プロジェクト設定ファイル」を素朴に当てられない理由が 2 つあるので、着手時に対応表で対象を先に固定する。(1) projects.toml は全プロジェクトの登録一覧であって、プロジェクトごとの設定ではない（それは各プロジェクトの backlog/config.yml が持つ）。(2) decision-13 のアプリ設定ファイルが別にあるので、「設定ファイル」を当てると 2 つのファイルが同じ語で呼ばれる。PR #109 の対応表（_sandbox/handoff/referent-table/referent-table-task-97-90.md 第 1 版）が README 側の結論を持っている。
 

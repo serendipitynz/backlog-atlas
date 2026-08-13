@@ -4,7 +4,7 @@ title: README の実装状況を現状へ更新する
 status: In Review
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-13 03:53'
+updated_date: '2026-08-13 05:01'
 labels:
   - docs
   - 'kind:writing'
@@ -61,7 +61,7 @@ AGENTS.ja.md の「リリース」節である。
 ライセンスとコントリビューション）だった。満たしたことにだけして AC を据え置くと、後から読んだ
 ときに何が求められていたか分からなくなる。
 
-**「正本」「集約画面」「プロジェクト台帳」は README からのみ外した。**画面文言の `台帳`（約 10 箇所）と
-`正本`（1 箇所）はユーザーの判断で別タスクへ回した（TASK-158）。対応表は
+**「正本」「集約画面」「プロジェクト台帳」は README からのみ外した。** 画面文言の `台帳`（実測で
+12 ファイル）と `正本` はユーザーの判断で別タスクへ回した（TASK-158）。対応表は
 `_sandbox/handoff/referent-table/referent-table-task-97-90.md` 第 1 版。
 <!-- SECTION:NOTES:END -->

@@ -4,7 +4,7 @@ title: 配布バイナリに同梱される第三者依存のライセンス表�
 status: To Do
 assignee: []
 created_date: '2026-08-13 03:48'
-updated_date: '2026-08-13 04:06'
+updated_date: '2026-08-13 05:01'
 labels:
   - release
   - legal
@@ -23,7 +23,7 @@ TASK-97 で LICENSE と THIRD-PARTY-NOTICES.md を置いたが、後者が原文
 
 生成の対象は 2 系統。npm 側は pnpm-lock.yaml が解決した集合、Rust 側は src-tauri/Cargo.lock が解決した集合。どちらもツールで機械生成し、リリース成果物に含める（生成物を手で書かない — 依存が動くたびに古びるため）。TASK-101 のリリースワークフローが成果物を組む場所なので、そこに寄せるのが自然である。
 
-**ロックファイルだけでは足りない。**Ace と Lucide はロックファイルに現れないので、生成した一覧に載らない。成果物へ入れるのは「生成した一覧 ＋ THIRD-PARTY-NOTICES.md」であって、生成物で後者を置き換えない。
+**ロックファイルだけでは足りない。** Ace と Lucide はロックファイルに現れないので、生成した一覧に載らない。成果物へ入れるのは「生成した一覧 ＋ THIRD-PARTY-NOTICES.md」であって、生成物で後者を置き換えない。
 
 AGENTS.md Dependencies 節により、生成ツールを入れる場合も選定理由と導入範囲を先に確認する（開発時のみの依存であっても）。
 
