@@ -1,10 +1,10 @@
 ---
 id: TASK-156
 title: GUI 起動したアプリが PATH 上の backlog を解決できず、直す手段が画面に無い
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-12 21:46'
-updated_date: '2026-08-13 00:56'
+updated_date: '2026-08-13 02:03'
 labels:
   - release
   - 'kind:bug'
