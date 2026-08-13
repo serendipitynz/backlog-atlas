@@ -208,6 +208,35 @@ goes stale between releases without anything failing. The check above is over cl
 reader acts on — what to install, what will run it, how a new version arrives — not over a
 progress report.
 
+### macOS signing and notarization
+
+A macOS build that opens without a Gatekeeper warning has to be signed with a **Developer ID
+Application** certificate and notarized by Apple. Tauri does both when the credentials are in
+the environment and produces an unsigned bundle when they are not, so `pnpm tauri build` and
+the rest of the README's "Building from source" need none of them.
+
+- **Building signed** — fill in `.env.signing` from `.env.signing.example` (git-ignored) and
+  run `./scripts/macos-sign-build.sh`. Its arguments are forwarded to `pnpm tauri build`.
+- **Checking the result** — `./scripts/macos-verify-gatekeeper.sh`, over the built bundles or
+  over paths handed to it, including a release asset downloaded from GitHub.
+- **CI** — `./scripts/setup-ci-signing-secrets.sh path/to/DeveloperID.p12` registers the six
+  repository secrets a macOS runner needs, printing no value: `APPLE_CERTIFICATE` (the .p12
+  base64-encoded), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`,
+  `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
+
+**The certificate and the Apple ID are the owner's assets.** The repository holds no
+credential, and an agent neither generates nor registers one.
+
+**Tauri notarizes the .app but not the .dmg that wraps it**, so the disk image a user
+downloads is refused; `macos-sign-build.sh` notarizes and staples each produced .dmg
+afterwards. Measured on @tauri-apps/cli 2.11.4: the CLI drives `bundle_dmg.sh`, that script
+takes a `--notarize` option, and the argument list the CLI passes does not include it.
+
+**`APPLE_SIGNING_IDENTITY` is not the same value locally and in CI.** Local signing accepts
+the certificate's SHA-1 hash; a runner imports the certificate and string-matches its common
+name, so CI needs that name. `setup-ci-signing-secrets.sh` derives it from the .p12 instead
+of copying `.env.signing`.
+
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.

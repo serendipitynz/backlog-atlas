@@ -187,6 +187,35 @@ fixture はどの機械でもバイト単位で同一でなければならない
 対象にするのは読者が行動の根拠にする記述（何を入れるか・何で動くか・新しい版がどう届くか）
 であって、進捗報告ではない。
 
+### macOS の署名と notarization
+
+Gatekeeper の警告なしに開く macOS ビルドは、**Developer ID Application** 証明書で署名し、
+Apple の notarization を通す必要がある。資格情報が環境にあれば Tauri が両方を行い、無ければ
+未署名のバンドルを作るので、`pnpm tauri build` も README の「ソースからのビルド」に挙げた
+残りも、資格情報を 1 つも要求しない。
+
+- **署名してビルドする** — `.env.signing.example` を写した `.env.signing`（git 管理外）を
+  埋め、`./scripts/macos-sign-build.sh` を実行する。引数はそのまま `pnpm tauri build` へ渡る。
+- **結果を確かめる** — `./scripts/macos-verify-gatekeeper.sh`。ビルド済みのバンドル、または
+  渡したパスを対象に走る。GitHub から取得したリリース成果物でもよい。
+- **CI** — `./scripts/setup-ci-signing-secrets.sh path/to/DeveloperID.p12` が、macOS ランナーに
+  要る 6 つのリポジトリシークレットを、値を 1 つも表示せずに登録する: `APPLE_CERTIFICATE`
+  （.p12 を base64 にしたもの）・`APPLE_CERTIFICATE_PASSWORD`・`APPLE_SIGNING_IDENTITY`・
+  `APPLE_ID`・`APPLE_PASSWORD`・`APPLE_TEAM_ID`。
+
+**証明書と Apple ID は所有者の資産である。** リポジトリは資格情報を 1 つも持たず、
+エージェントはそれを生成も登録もしない。
+
+**Tauri が notarize するのは .app であって、それを包む .dmg ではない。** 利用者が取得する
+ディスクイメージはそのままでは拒否されるので、`macos-sign-build.sh` が生成された .dmg を
+後から notarize して staple する。@tauri-apps/cli 2.11.4 で実測: CLI は `bundle_dmg.sh` を
+起動し、そのスクリプトは `--notarize` を受け取るが、CLI が渡す引数列にそれは無い。
+
+**`APPLE_SIGNING_IDENTITY` は手元と CI で同じ値ではない。** 手元の署名は証明書の SHA-1
+ハッシュを受け付けるが、ランナーは証明書を import してその common name と文字列一致を取るので、
+CI にはその名前が要る。`setup-ci-signing-secrets.sh` は `.env.signing` から写さず .p12 から
+導出する。
+
 ## 作業上の規約
 
 - コードコメントは英語、利用者向け説明は日本語を基本にする。
