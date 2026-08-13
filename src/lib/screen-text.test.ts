@@ -165,7 +165,9 @@ describe("画面に置く文 (doc-11 §8)", () => {
     const found: string[] = [];
     for (const path of scanned) {
       screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
-        if (DESIGN_ONLY_WORD.test(line)) found.push(`${path}:${index + 1}: ${line.trim()}`);
+        if (DESIGN_ONLY_WORD.test(line)) {
+          found.push(`${path}:${index + 1}: ${line.trim()}`);
+        }
       });
     }
     expect(found).toEqual([]);

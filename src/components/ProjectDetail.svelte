@@ -146,8 +146,8 @@
     /** Issue one 更新操作 (doc-5 §3, doc-9 §4). The re-read belongs to the shell. */
     onissue: (slug: string, action: UpdateOperation[]) => Promise<IssueOutcome>;
     /**
-     * A 本文リンク in the 文書 の本文 or the マイルストーン の説明 was pressed (doc-8 §9.3, which doc-10
-     * §5/§6 draw from). The shell issues 既定ブラウザ起動 and owns where a failure goes (⑤ 通知).
+     * A 本文リンク in a 管理ファイルの本文 this screen draws was pressed (doc-8 §9.3, which every 区画
+     * with a 閲覧 draws from). The shell issues 既定ブラウザ起動 and owns where a failure goes (⑤ 通知).
      */
     onopenlink: (url: string) => void;
     /** True while this screen holds 未保存入力 — what makes leaving it ask first. */
@@ -1058,7 +1058,9 @@
   async function selectDecision(decision: Decision): Promise<void> {
     // Re-pressing the selected card must not re-run the swap: there is no input to lose, but the
     // pane would jump to the top under a reader who had scrolled down it.
-    if (decisionSelection === decision.id) return;
+    if (decisionSelection === decision.id) {
+      return;
+    }
     decisionSelection = decision.id;
     await resetDecisionPane();
   }
@@ -1066,7 +1068,9 @@
   /** The 決定事項ペイン's swap, reset for the reason `resetDocPane` records. */
   async function resetDecisionPane(): Promise<void> {
     await tick();
-    if (decisionPane !== undefined) decisionPane.scrollTop = 0;
+    if (decisionPane !== undefined) {
+      decisionPane.scrollTop = 0;
+    }
   }
 
   /**
@@ -1087,7 +1091,9 @@
    * resolves nothing and must not be taken for a disappearance.
    */
   $effect(() => {
-    if (project === null || decisionSelection === null || selectedDecision !== null) return;
+    if (project === null || decisionSelection === null || selectedDecision !== null) {
+      return;
+    }
     dropDecisionSelection();
   });
 
@@ -3041,7 +3047,7 @@
       margin-left: -0.75rem;
     }
 
-    // 一覧列を持つ区画 (doc-10 §1: 文書 §5 と マイルストーン §6): the panel stops being the scroller
+    // 一覧列を持つ区画 (doc-10 §1 enumerates them): the panel stops being the scroller
     // and hands its height to the two columns, each scrolling on its own. Its horizontal padding
     // moves into the columns — a focus ring at a scrollport's edge is clipped (TASK-74's実測), so
     // each scroll container carries its own side padding — which leaves the direct children above
@@ -3080,8 +3086,8 @@
     min-height: 0;
   }
 
-  // 一覧列 (doc-10 §1): the column that keeps the selection — 文書一覧 (§5) and マイルストーン一覧
-  // (§6) are its two instances, styled once because the doc calls them one column type. Width is
+  // 一覧列 (doc-10 §1): the column that keeps the selection, worn by every 区画 that holds a list
+  // (the doc enumerates them), styled once because the doc calls them one column type. Width is
   // design 07's 16rem, a content box like the 区画ナビ's. The heading stays out of the scroller
   // (`.cards` is the scroll container) so the count is readable at any scroll position.
   .list-column {
@@ -3584,10 +3590,13 @@
     word-break: break-all;
   }
 
-  // 閲覧ヘッダ (doc-10 §5・§6): title and 編集 on one line. The heading takes the space so the button
-  // keeps its place at the right edge whatever the title's length, and both stay on the first line —
-  // which is the line the selection is meant to land on. Worn by both 区画 since TASK-121: the two
-  // 閲覧ヘッダ differ in what they list underneath, not in this row.
+  // 閲覧ヘッダ (doc-10 §5, widened by §10): title, and beside it the 編集 of a 区画 that has one. The
+  // heading takes the space so that button keeps its place at the right edge whatever the title's
+  // length, and both stay on the first line — which is the line the selection is meant to land on.
+  // **決定事項区画 has no 編集**, so there the row is the title alone — and needs no rule of its own
+  // because the heading is the flexible child (`h3 { flex: 1 }`), so it fills the row whether or not
+  // a button follows. The 閲覧ヘッダ differ in what they list underneath, and in whether this row has
+  // a second child — not in the row itself.
   .view-head {
     display: flex;
     align-items: baseline;
@@ -3604,9 +3613,9 @@
     }
   }
 
-  // Under the 閲覧ヘッダ's first line: ID・type・tags in the 文書区画, id・所属タスク件数 in the
-  // マイルストーン区画. One line of muted metadata, the same values the card carries — repeated here
-  // because the card is 16rem and truncates, and this column is not.
+  // Under the 閲覧ヘッダ's first line: whichever values that 区画's card carries (doc-10 §5・§6・§10
+  // list them per 区画). One line of muted metadata, repeated here because the card is 16rem and
+  // truncates, and this column is not.
   .meta-line {
     display: flex;
     flex-wrap: wrap;
@@ -3629,7 +3638,7 @@
     margin-top: 0.5rem;
   }
 
-  // 不整合印 (decision-22, decision-24) on a 文書カード / マイルストーンカード. A 印グリフ: the family
+  // 不整合印 (decision-22, decision-24) on a card in any of the 一覧列. A 印グリフ: the family
   // colour is the figure's own, with no chip background and no word (doc-11 §2.4). The size matches
   // `TaskCard.svelte`'s .8rem — a figure carrying no word reads smaller than text of the same height
   // — and the 収録条件 is decision-22's 3:1, which `theme.test.ts` recomputes from `app.scss`.
@@ -3642,9 +3651,9 @@
     cursor: help;
   }
 
-  // 理由行 (decision-22) in either 区画's 閲覧ヘッダ — the place doc-11 §2.4 requires the ⚠️'s reason
-  // to be readable without hovering, which decision-24 fixes as「選択が開く場所の見出し下」and which
-  // TASK-121 made the same領域 in both. Plain lines, not a 区画: they carry no heading of their own
+  // 理由行 (decision-22) in a 閲覧ヘッダ — the place doc-11 §2.4 requires the ⚠️'s reason to be
+  // readable without hovering, which decision-24 fixes as「選択が開く場所の見出し下」and which is the
+  // same領域 in every 区画 whose selection opens 閲覧. Plain lines, not a 区画: they carry no heading of their own
   // because the ⚠️ above already said there is something to read.
   .reason-lines {
     margin: 0.35rem 0 0;

@@ -81,7 +81,9 @@ export function sectionCount(
   section: DetailSection,
   project: { documents: unknown[]; milestones: unknown[]; decisions: unknown[] } | null,
 ): number | null {
-  if (project === null) return null;
+  if (project === null) {
+    return null;
+  }
   switch (section) {
     case "documents":
       return project.documents.length;
@@ -111,9 +113,11 @@ export const SECTION_NAV_WIDTH_REM = 12;
 
 /**
  * 一覧列 (doc-10 §1): the column that keeps the selection, design 07's 16rem. One constant rather
- * than one per 区画 because doc-10 §1 makes it one column type with two instances — 文書一覧 (§5)
- * and マイルストーン一覧 (§6). Two constants holding 16 would let the two drift apart while the doc
- * still calls them the same column. The pane right of it has no constant — it takes what remains.
+ * than one per 区画 because doc-10 §1 makes it one column type — every 区画 that holds a list wears
+ * this same column, and the doc is where they are enumerated. A constant per 区画 would let them
+ * drift apart while the doc still calls them one column. The pane right of it has no constant — it
+ * takes what remains. **No count is written here on purpose**: TASK-118 made the instances three,
+ * and a number re-counted now would go stale the next time a 区画 is added, with nothing failing.
  */
 export const LIST_COLUMN_WIDTH_REM = 16;
 
