@@ -299,12 +299,22 @@ in for them, kept in `scripts/spdx/` with its provenance in that directory's REA
 identifier with no text there stops the generator rather than being invented** — that stop is
 the point, because it means the tree took on a licence nobody has looked at.
 
-**The copy inside a bundle is confirmed on macOS only.** TASK-159 built locally and found
-`Contents/Resources/` carrying `LICENSE` and `THIRD-PARTY-LICENSES.txt` byte-identical to the
-committed files; the workflow re-checks that. Where the Windows and Linux bundlers put a
-resource has not been measured, so nothing checks them — a check written from a guess would
-stop a release for being wrong about itself. **The notice is attached to the release as its
-own asset regardless**, so no platform ships without it either way.
+**All three bundles were confirmed to carry it, on real machines** (TASK-159, 2026-08-14),
+and the release workflow re-checks each. The paths were worth measuring rather than assuming
+because `tauri.conf.json` names the two files as `../LICENSE` and `../THIRD-PARTY-LICENSES.txt`
+— above `src-tauri/`, which each bundler has to resolve for itself, and any of them could have
+failed to.
+
+| bundle | where the copy lands | how the workflow reads it |
+|---|---|---|
+| macOS `.app` | `Contents/Resources/` | the path directly |
+| Linux `.deb` | `usr/lib/<productName>/` | `dpkg-deb -x`, then find by name |
+| Windows `.msi` | `Program Files\<productName>\` | `msiexec /a` to unpack, then find by name |
+
+Two of the three **search for the file rather than naming its directory**, because that
+directory is the product name: spelling it in the workflow would put it in a second place for
+a rename to miss. **The notice is attached to the release as its own asset as well**, so no
+platform depends on its bundler for the notice to exist at all.
 
 ### macOS signing and notarization
 
