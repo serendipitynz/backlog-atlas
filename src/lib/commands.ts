@@ -219,8 +219,15 @@ export function settingsLocationOpen(): Promise<EditorLaunch> {
 }
 
 /**
- * Whether a supported `backlog` is on PATH (doc-5 §5 縮退). Read once at startup so the screen can
- * withhold edit controls with a reason instead of offering an action that cannot be issued.
+ * Whether a supported `backlog` can be run (doc-5 §5 縮退) — the 縮退帯's own question, and the reason
+ * edit controls are withheld with a stated cause rather than offered and refused.
+ *
+ * Read at startup **and after every settings save**: `backlog_cli` is the first step of the same
+ * resolution (doc-5 §4 順序 1, decision-29), so a save can turn 発行不能 into 発行できる and back. Not
+ * once per run — that was true only while the setting had no control on any screen.
+ *
+ * Not the same question as `externalProgramsProbe`, whose `backlog` row says whether the program
+ * started; this says whether its version meets `MIN_VERSION` (decision-7).
  */
 export function cliProbe(): Promise<CliReadiness> {
   return invoke<CliReadiness>("cli_probe");

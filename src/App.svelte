@@ -750,9 +750,10 @@
       reloadFeed = "unavailable";
       notice = `変更の通知を購読できません（${unreadableDetail(asCommandError(error))}）`;
     }
-    // Probed once and not per edit: it decides whether edit controls are offered at all (doc-5 §5),
-    // and a probe per keystroke-worth of UI would spawn a process for a question that does not
-    // change while the app runs.
+    // Probed here and after every settings save, not per edit: it decides whether edit controls are
+    // offered at all (doc-5 §5), and a probe per keystroke-worth of UI would spawn a process for a
+    // question that changes only when アプリ設定 does — which is the save (`refreshAfterSave`, and
+    // doc-5 §4 順序 1 is why a save changes it at all).
     try {
       readiness = await cliProbe();
     } catch (error) {
@@ -956,9 +957,33 @@
     // the settings now in force, and beside a save that worked it reads as this one having failed.
     notice = null;
     if (before !== watchEnabled) await reconcileWatches();
+    // **The probes are deliberately not awaited.** What 保存する waits on is the write, and
+    // `Settings.svelte` closes the モーダル when this resolves — so anything awaited past this point
+    // holds the close open for as long as it takes. That window is not harmless: `settingsSaving` is
+    // already false by here (it guards the write), so the user can go on editing or close and reopen
+    // the form, and a late resolution would then fire `onsaved` against a モーダル holding a *different*
+    // 下書き — closing it with no 破棄前確認 and losing what was typed (doc-8 §6.3).
+    //
+    // The window existed before this change (the editor was probed here too) but was one process
+    // wide; the 解決結果の表示 made it four, each with a 5-second bound. Detaching removes it outright
+    // rather than narrowing it, and nothing is lost by doing so: every value below belongs to the
+    // shell, not to this form, so none of them is what the closing モーダル was waiting for.
+    void refreshAfterSave();
+    return null;
+  }
+
+  /**
+   * Re-read what アプリ設定 decides outside the 設定モーダル, after a save landed.
+   *
+   * Sequential rather than concurrent: these are subprocess launches, and three at once on a machine
+   * that is already slow enough to make this visible would compete for the thing that made it slow.
+   * Each failure is its own 帯 (doc-11 §4 ⑤) rather than one joint report — a `gh` that is missing and
+   * an editor that is missing are separate facts, and the user acts on them separately.
+   */
+  async function refreshAfterSave(): Promise<void> {
     // 起動指定の解決順 starts at アプリ設定 (doc-8 §7), so the probe's answer changes with this save.
-    // Re-probed here rather than left until the next start: the panel names the editor it would
-    // launch, and a stale name would say `$EDITOR` while the launch used the setting just typed.
+    // The panel names the editor it would launch, and a stale name would say `$EDITOR` while the
+    // launch used the setting just typed.
     try {
       editorReadiness = await editorProbe();
     } catch (error) {
@@ -986,7 +1011,6 @@
     } catch (error) {
       notice = `Backlog CLI の確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
-    return null;
   }
 
   /**

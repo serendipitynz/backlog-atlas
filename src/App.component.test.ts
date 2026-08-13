@@ -24,6 +24,7 @@ vi.mock("./lib/commands", async (importOriginal) => {
 import App from "./App.svelte";
 import { byLabel, byText, cleanup, click, fill, only, press, render } from "./lib/render";
 import { BODY_LINK_CLASS } from "./lib/markdown";
+import { CONFIRMED_CLI_VERSION } from "./lib/confirmed-version";
 import {
   answers,
   deferred,
@@ -176,32 +177,74 @@ describe("起動時の設定・workspace・監視の順序", () => {
     expect(madeTo("settings_directory_present")).toHaveLength(2);
   });
 
-  it("設定を保存したら Backlog CLI の縮退判定を問い直す", async () => {
+  it("設定を保存したら Backlog CLI の縮退判定を問い直し、その結果を帯へ反映する", async () => {
     // doc-5 §4 順序 1 の `backlog_cli` は、この保存で変わりうる（decision-29）。問い直さないと、
     // **利用者がこの画面で直した直後も、再起動するまで縮退帯が立ったまま**になる。TASK-156 の趣旨は
     // 「発行できないから設定へ来た利用者が、アプリの中で直せること」なので、再起動を要する回復は
-    // 到達できる手段になっていない。逆向き（有効なパスを壊れたパスに変える）も同じ理由で要る。
+    // 到達できる手段になっていない。
+    //
+    // **呼び出し回数ではなく帯の有無で見る。** 回数だけを見るテストは、返ってきた縮退判定を捨てる
+    // 実装でも通ってしまう。
+    answers.cli = { state: "unavailable", detail: "解決できません" };
     const host = await startWith([loaded("atlas", [TASK])]);
-    click(byLabel(host, "button.header-entry", "メニュー"));
-    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
-    await settled();
-    expect(madeTo("cli_probe")).toHaveLength(1); // 起動時の 1 回だけ
+    expect(host.querySelector('[data-band="cliDegraded"]')).not.toBeNull();
 
-    const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
-      (radio) => !radio.checked,
-    );
-    if (other === undefined) throw new Error("every カード情報量 is already checked");
-    click(other);
-    click(byText(host, "footer button", "保存する"));
-    await settled();
+    // 設定でパスを直した、に相当する: 次の probe は解決する。
+    answers.cli = { state: "ready", version: CONFIRMED_CLI_VERSION };
+    await saveSomethingInSettings(host);
 
-    expect(madeTo("settings_save")).toHaveLength(1);
     expect(madeTo("cli_probe")).toHaveLength(2);
+    expect(host.querySelector('[data-band="cliDegraded"]')).toBeNull();
     // 保存で問い直すのは 3 つとも。外部エディタ（doc-8 §7 起動指定の解決順）と 解決結果の表示
     // （decision-29）は先に入っており、縮退帯だけが落ちていた。
     expect(madeTo("editor_probe")).toHaveLength(2);
     expect(madeTo("external_programs_probe").length).toBeGreaterThanOrEqual(2);
   });
+
+  it("逆向きも同じ: 解決できるパスを壊すと帯が立つ", async () => {
+    // 片側だけ通すのは、片方向にしか効かない実装（例: 縮退から回復したときだけ書き換える）を
+    // 見逃す。壊した側こそ、編集操作が有効なまま残るので害が大きい。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    expect(host.querySelector('[data-band="cliDegraded"]')).toBeNull();
+
+    answers.cli = { state: "unavailable", detail: "解決できません" };
+    await saveSomethingInSettings(host);
+
+    expect(host.querySelector('[data-band="cliDegraded"]')).not.toBeNull();
+  });
+
+  it("保存は probe の完了を待たずに返る", async () => {
+    // `settingsSaving` は書き込みだけを守るので、probe を待つ間このフォームは操作できる。待った場合、
+    // 遅れて解決した保存が `onsaved` を撃ち、そのときモーダルが持っている**別の下書き**を
+    // 破棄前確認なしに捨てる（doc-8 §6.3）。probe は 1 つ 5 秒上限で 4 つあるので、窓は実時間で開く。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    // 起動時の probe も同じ fake を通るので、hold は起動を終えてから張る。
+    const hold = deferred<void>();
+    answers.cliProbeHold = hold;
+    await saveSomethingInSettings(host);
+
+    // probe は握られたままだが、書き込みは landed しているのでモーダルは下りている。
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).toBeNull();
+    hold.resolve();
+    await settled();
+  });
+
+  /** 設定モーダルを開き、1 項目だけ変えて 保存する を押す。*/
+  async function saveSomethingInSettings(host: HTMLElement): Promise<void> {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+    await settled();
+    // 変更あり: 下書きがファイルと違わないと 保存する は押下を受け付けない。
+    const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
+      (radio) => !radio.checked,
+    );
+    if (other === undefined) {
+      throw new Error("every カード情報量 is already checked");
+    }
+    click(other);
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+  }
 
   it("設定の読取が失敗しても既定値で起動を続ける", async () => {
     // What is fixed here is that a *rejection* is not fatal: the boundary already degrades a missing
@@ -483,7 +526,9 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
     const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
       (radio) => !radio.checked,
     );
-    if (other === undefined) throw new Error("every カード情報量 is already checked");
+    if (other === undefined) {
+      throw new Error("every カード情報量 is already checked");
+    }
     click(other);
     click(byText(host, "footer button", "保存する"));
     await settled();
@@ -610,7 +655,9 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
       (radio) => !radio.checked,
     );
-    if (other === undefined) throw new Error("every カード情報量 is already checked");
+    if (other === undefined) {
+      throw new Error("every カード情報量 is already checked");
+    }
     click(other);
     return host;
   }

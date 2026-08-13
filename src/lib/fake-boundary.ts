@@ -162,6 +162,9 @@ export const answers = {
    * write as well as start it, and `null` is the ordinary "answers at once" case.
    */
   settingsSaveHold: null as Deferred<void> | null,
+  /** Hold `cli_probe` open. What lets a test observe the モーダル closing while a post-save probe is
+   *  still in flight — the window a save that awaited its probes would leave open. */
+  cliProbeHold: null as Deferred<void> | null,
   /**
    * Make every `settings_save` reject, the way decision-13 refuses to overwrite a file newer than this
    * build. A flag rather than a replaceable function: `vi.mock` copies the references, so a fake swapped
@@ -235,6 +238,7 @@ export function reset(): void {
   answers.subscribeFails = false;
   answers.settingsReadFails = false;
   answers.settingsSaveHold = null;
+  answers.cliProbeHold = null;
   answers.settingsSaveFails = false;
   answers.ledgerRegisterHold = null;
 }
@@ -365,7 +369,10 @@ export const commandFakes = {
     ),
 
   cliProbe: (): Promise<CliReadiness> =>
-    record("cli_probe", [], () => Promise.resolve(answers.cli)),
+    record("cli_probe", [], async () => {
+      if (answers.cliProbeHold !== null) await answers.cliProbeHold.promise;
+      return answers.cli;
+    }),
 
   externalProgramsProbe: (): Promise<ExternalProgramReport[]> =>
     record("external_programs_probe", [], () => Promise.resolve(answers.externalPrograms)),
