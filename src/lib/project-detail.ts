@@ -298,8 +298,8 @@ export function gitRemoteDisagreement(
     return null;
   }
   return found
-    ? "台帳が記録している Git remote 有無属性は「なし」で、いまの検出と食い違っています。"
-    : "台帳が記録している Git remote 有無属性は「あり」で、いまの検出と食い違っています。";
+    ? "登録内容の Git remote 有無属性は「なし」で、いまの検出と食い違っています。"
+    : "登録内容の Git remote 有無属性は「あり」で、いまの検出と食い違っています。";
 }
 
 /**
@@ -309,7 +309,7 @@ export function gitRemoteDisagreement(
  * `running` is separate from `withheld` although both leave the control unpressable, because the two
  * are read differently and shown differently. A withheld control has an obstacle outside itself, so
  * doc-11 §5 wants that obstacle stated near it; a running one is doing what it was just pressed for,
- * and its own label can say so. Folding them let this control state the generic「台帳の更新を実行中
+ * and its own label can say so. Folding them let this control state the generic「登録の更新を実行中
  * です」and grow a line under itself on every press; that line arriving and leaving, together with the
  * value going to 未取得 and back, is what made the field flash (2026-08-08 の目視).
  *
@@ -331,7 +331,7 @@ export function redetectControl(context: {
     return { state: "running", label: "再検出中…" };
   }
   const reason = context.readOnly
-    ? "台帳が読み取り専用のため、Git remote の再検出はできません。"
+    ? "登録ファイルが読み取り専用のため、Git remote の再検出はできません。"
     : overviewBlocked(context);
   return reason === null
     ? { state: "ready", label: "再検出する" }
@@ -377,7 +377,7 @@ export const ALIAS_EFFECT_NOTES: Record<AliasEffect, AliasEffectNote> = {
     label: "宣言なし → 効果なし",
     note:
       "どこにも宣言が無い status です。別名を書いてもこの status のタスクは未分類区画に残ります。" +
-      "台帳からは削除しません。",
+      "登録内容からは削除しません。",
     ineffective: true,
   },
 };
@@ -392,7 +392,7 @@ export const ALIAS_EFFECT_NOTES: Record<AliasEffect, AliasEffectNote> = {
  * replaces a document whole. Distinct from `ISSUE_BUSY_REASON`, which is about another 発行 running.
  */
 export const LEDGER_WRITE_IN_FLIGHT_REASON =
-  "台帳エントリの更新を実行中です。ルートが変わることがあるため、完了するまで発行できません";
+  "登録内容の更新を実行中です。ルートが変わることがあるため、完了するまで発行できません";
 
 /**
  * The sentence that says a read-only ledger stops the 概要区画's *inputs* as well (doc-10 §8). Placed
@@ -407,15 +407,15 @@ export const LEDGER_WRITE_IN_FLIGHT_REASON =
  * so they are later asked whether to discard changes that were never saveable.
  */
 export const OVERVIEW_READ_ONLY_NOTE =
-  "台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。" +
+  "登録ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。" +
   "この区画の入力・保存・登録解除はすべてできません。" +
-  "文書・マイルストーン・新規タスクは台帳を書かないので、そちらは操作できます。";
+  "文書・マイルストーン・新規タスクは登録ファイルを書かないので、そちらは操作できます。";
 
 /** What 登録解除 removes and what it leaves (doc-3 §4.2). Body text, not a note beside the button. */
 export const UNREGISTER_SCOPE_NOTE =
-  "登録解除は台帳エントリを 1 件消し、スイムレーンからこの行を外します。" +
+  "登録解除はこのプロジェクトの登録内容を消し、スイムレーンからこの行を外します。" +
   "対象プロジェクトの Backlog ルート・管理ファイル・Git リポジトリには触れません。" +
-  "タスクの正本はそのまま残ります。";
+  "タスクはそのまま残ります。";
 
 /**
  * Why the 概要区画's update is held, if it is (doc-11 §5). Only 台帳読取専用 counts, never CLI 縮退:
@@ -423,9 +423,9 @@ export const UNREGISTER_SCOPE_NOTE =
  */
 export function overviewBlocked(context: { readOnly: boolean; busy: boolean }): string | null {
   if (context.readOnly) {
-    return "台帳が読み取り専用のため、台帳エントリの更新はできません。";
+    return "登録ファイルが読み取り専用のため、登録内容の更新はできません。";
   }
-  return context.busy ? "台帳の更新を実行中です。完了するまで次の操作は始められません。" : null;
+  return context.busy ? "登録の更新を実行中です。完了するまで次の操作は始められません。" : null;
 }
 
 /**
@@ -443,7 +443,7 @@ export function unregisterBlocked(
   const blocked = overviewBlocked(context);
   if (blocked !== null) {
     return context.readOnly
-      ? "台帳が読み取り専用のため、登録解除はできません。"
+      ? "登録ファイルが読み取り専用のため、登録解除はできません。"
       : blocked;
   }
   return typed.trim() === slug

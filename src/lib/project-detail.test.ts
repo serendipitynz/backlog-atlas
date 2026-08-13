@@ -447,7 +447,7 @@ describe("別名が効くかの提示", () => {
 
   it("says the ineffective alias is kept in the ledger, not dropped (doc-3 §3.3, TASK-42)", () => {
     expect(ALIAS_EFFECT_NOTES.undeclared.note).toContain("未分類区画");
-    expect(ALIAS_EFFECT_NOTES.undeclared.note).toContain("台帳からは削除しません");
+    expect(ALIAS_EFFECT_NOTES.undeclared.note).toContain("登録内容からは削除しません");
   });
 });
 
@@ -506,6 +506,6 @@ describe("登録解除", () => {
 
   it("states what is not deleted, which is what makes the button safe to press", () => {
     expect(UNREGISTER_SCOPE_NOTE).toContain("触れません");
-    expect(UNREGISTER_SCOPE_NOTE).toContain("正本はそのまま残ります");
+    expect(UNREGISTER_SCOPE_NOTE).toContain("タスクはそのまま残ります");
   });
 });

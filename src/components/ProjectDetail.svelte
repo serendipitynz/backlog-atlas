@@ -375,7 +375,7 @@
           "旧ルートの読み取りに基づくため閉じました。";
         return;
       }
-      overviewNotice = `${result.slug} の台帳エントリを更新しました。`;
+      overviewNotice = `${result.slug} の登録内容を更新しました。`;
     } finally {
       ledgerSaving = false;
     }
@@ -1329,7 +1329,7 @@
     unreadable === null
       ? null
       : "ルートが読めないため、この区画の一覧と発行は出せません。概要区画でルートを直してください" +
-        "（台帳エントリ自体は読めています）。",
+        "（登録内容自体は読めています）。",
   );
 </script>
 
@@ -1467,7 +1467,7 @@
         <!-- 概要区画 (doc-10 §4): the ledger file is the only thing it writes, so CLI 縮退 does not
              reach it. -->
         <section>
-          <h2>概要（台帳エントリ）</h2>
+          <h2>概要（登録内容）</h2>
 
           {#if ledgerReadOnly}
             <!-- doc-10 §8 asks for both the inputs and 登録解除 to be disabled. With only the save
@@ -1697,7 +1697,7 @@
                   : SAVE_BLOCKED_ID}
               title={saveControl.state === "withheld"
                 ? saveControl.reason
-                : "上に並べた属性を台帳へ書きます"}
+                : "上に並べた属性を登録内容へ書きます"}
               onclick={save}>保存</button
             >
           </div>
@@ -1739,8 +1739,8 @@
                   : ledgerReadOnly
                     ? OVERVIEW_BLOCKED_ID
                     : UNREGISTER_BLOCKED_ID}
-                title={unregisterReason ?? "この登録を台帳から外します"}
-                onclick={unregister}>台帳から外す</button
+                title={unregisterReason ?? "このプロジェクトの登録を解除します"}
+                onclick={unregister}>登録を解除</button
               >
             </div>
             {#if unregisterReason !== null && !ledgerReadOnly}

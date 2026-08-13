@@ -92,7 +92,7 @@
   const BLOCKED_ID = "register-blocked";
   const READ_ONLY_ID = "register-read-only";
   const READ_ONLY_PICK_REASON =
-    "台帳が読み取り専用のため、フォルダを選んでも登録できません。";
+    "登録ファイルが読み取り専用のため、フォルダを選んでも登録できません。";
 
   /**
    * Why registration is held, and only when it is (doc-11 §5). One string drives both the withheld
@@ -106,9 +106,9 @@
    */
   let blocked = $derived(
     readOnly
-      ? "台帳が読み取り専用のため、プロジェクトを登録できません。"
+      ? "登録ファイルが読み取り専用のため、プロジェクトを登録できません。"
       : busy || submitting
-        ? "台帳の更新を実行中です。完了するまで登録は始められません。"
+        ? "登録の更新を実行中です。完了するまで登録は始められません。"
         : issues.length > 0
           ? OVERVIEW_INPUT_PROBLEMS_REASON
           : null,
@@ -192,7 +192,7 @@
     <!-- A reason that applies to the whole screen (doc-11 §5). The 選択… buttons below point at it
          rather than repeating the sentence. -->
     <p class="readonly" id={READ_ONLY_ID}>
-      台帳ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。
+      登録ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。
       登録はできません。
     </p>
   {/if}
@@ -309,7 +309,7 @@
         class="primary"
         aria-disabled={!canRegister}
         aria-describedby={canRegister ? undefined : BLOCKED_ID}
-        title={blocked ?? "入力の内容で台帳へ登録します"}
+        title={blocked ?? "入力の内容でプロジェクトを登録します"}
         onclick={submit}
       >
         {submitting ? "登録中…" : "登録"}

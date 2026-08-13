@@ -1267,7 +1267,7 @@
     // (`ledgerBusy`) rather than racing it. Reported rather than dropped: the row visibly did not
     // move, and the neighbour it would have passed may be different by the time the other finishes.
     if (ledgerBusy) {
-      notice = "ほかの台帳操作が完了するまで待ってください。";
+      notice = "ほかの登録の更新が完了するまで待ってください。";
       return;
     }
     ledgerBusy = true;
@@ -1303,7 +1303,7 @@
   /** The answer to a ledger action asked for while another was still in flight. */
   const LEDGER_BUSY_RESULT: LedgerActionResult = {
     state: "refused",
-    report: { message: "ほかの台帳操作が完了するまで待ってください。", field: null },
+    report: { message: "ほかの登録の更新が完了するまで待ってください。", field: null },
   };
 
   /** Adopt a ledger the boundary just returned: the row order and the read-only state come with it. */
@@ -2330,7 +2330,7 @@
          hands down. -->
     {#if detailEntry === null}
       <p class="status">
-        このプロジェクトは台帳にありません（別の画面で登録が外れた可能性）。
+        このプロジェクトは登録されていません（別の画面で登録が外れた可能性）。
         <button type="button" class="link" onclick={() => leaveProject(false)}>
           スイムレーンへ戻る
         </button>

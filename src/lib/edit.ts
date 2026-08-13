@@ -819,7 +819,7 @@ export function commandErrorDetail(error: CommandError): string {
     case "projectNotOpen":
       return `プロジェクト ${error.slug} が開かれていません`;
     case "unknownProject":
-      return `プロジェクト ${error.slug} は台帳にありません`;
+      return `プロジェクト ${error.slug} は登録されていません`;
     case "rootUnreadable":
       return `ルートを読めません: ${error.detail}`;
     // 外部エディタ経路 (doc-8 §7). Stated here because this is the one place a `CommandError` becomes

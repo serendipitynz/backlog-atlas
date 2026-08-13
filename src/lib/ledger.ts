@@ -417,15 +417,15 @@ export function refusalReport(error: CommandError): RefusalReport {
     // Not a refusal of the operation: the ledger file could not be read or written, or the failure
     // is not a ledger one at all. Reported as it arrived rather than dressed as a correctable input.
     const detail = "detail" in error ? error.detail : JSON.stringify(error);
-    return { message: `台帳を操作できません: ${detail}`, field: null };
+    return { message: `登録を更新できません: ${detail}`, field: null };
   }
   const reason = error.reason;
   switch (reason.reason) {
     case "readOnly":
       return {
         message:
-          `台帳ファイルの schema_version ${reason.schema_version} はこのビルドが読める版より新しい` +
-          "ため、上書きを拒否しました（読み取り専用）。Atlas を更新するまで台帳は編集できません。",
+          `登録ファイルの schema_version ${reason.schema_version} はこのビルドが読める版より新しい` +
+          "ため、上書きを拒否しました（読み取り専用）。Atlas を更新するまで登録は変更できません。",
         field: null,
       };
     case "backlogRootInvalid":
@@ -445,7 +445,7 @@ export function refusalReport(error: CommandError): RefusalReport {
     case "slugNotFound":
       return {
         message:
-          `slug ${reason.slug} の台帳エントリがありません（別の画面で削除された可能性）。` +
+          `slug ${reason.slug} の登録内容がありません（別の画面で削除された可能性）。` +
           "一覧を読み直してください。",
         field: null,
       };
