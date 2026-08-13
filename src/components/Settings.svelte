@@ -17,11 +17,13 @@
   // — is gone with it (AC #3). It answered a question the screen does not raise: nothing here offers
   // those switches, and the file's rules are decision-13's to state.
   import { untrack } from "svelte";
+  import Icon from "../lib/icons/Icon.svelte";
   import {
     CARD_DENSITY_LABEL,
     CARD_DENSITY_NOTE,
     CLOSE_WITHOUT_SAVING_LABEL,
     DETAIL_PLACEMENT_LABEL,
+    EXTERNAL_COMMANDS,
     NO_CHANGES_REASON,
     OPEN_LOCATION_LABEL,
     OPEN_LOCATION_TITLE,
@@ -30,12 +32,16 @@
     STORAGE_SELECTIONS,
     STORAGE_SELECTION_LABEL,
     WATCH_OFF_NOTE,
+    commandPathOf,
     editorArgsText,
     editorCommandOf,
     emptyStorageWarning,
     isDirty,
     mergeDraft,
     openLocationAvailability,
+    probeSummary,
+    programResolved,
+    programSourceLabel,
     saveAvailability,
     statusNotice,
     toggleStorage,
@@ -50,6 +56,7 @@
     AppSettings,
     CardDensity,
     DetailPlacement,
+    ExternalProgramReport,
     LoadedSettings,
     StorageSelection,
   } from "../lib/wire";
@@ -79,6 +86,17 @@
      * settings' absence is precisely the fact that used to be mistaken for this one.
      */
     directoryPresent: boolean | null;
+    /**
+     * 解決結果の表示 (decision-29): what each 外部コマンド resolved to, and whether it starts. `null`
+     * while the probe is in flight, which draws 確認中 rather than an empty panel — unlike the paths
+     * above, this answer *is* retried (after every save), so "not yet" is a real state here.
+     *
+     * **All three, `backlog` included.** It and the 縮退帯 (`CliReadiness`) do not answer one question
+     * twice: this says whether the program started, that says whether its version meets the minimum,
+     * and a CLI below the minimum starts fine. Leaving it out was the first draft's mistake — with the
+     * band down, the screen then said nothing at all about the one command it exists for.
+     */
+    programs: ExternalProgramReport[] | null;
     /**
      * Persist the draft. Resolves with the failure's text, or `null` on success.
      *
@@ -131,6 +149,7 @@
     settingsPath,
     ledgerPath,
     directoryPresent,
+    programs,
     onsave,
     onopenLocation,
     saving,
@@ -168,18 +187,15 @@
       }
       // The editor fields are two controls over one field, so they are folded in before the merge and
       // read back out of it — otherwise a half-typed 起動指定 would be lost to an outside write.
-      const current =
-        draft === null
-          ? null
-          : {
-              ...$state.snapshot(draft),
-              external_editor: editorCommandOf(editorProgram, editorArgs),
-            };
+      const current = draft === null ? null : asSaved($state.snapshot(draft));
       const merged = mergeDraft(baseline, current, settings);
       baseline = { ...settings };
       draft = merged;
       editorProgram = merged.external_editor?.program ?? "";
       editorArgs = editorArgsText(merged.external_editor);
+      for (const command of EXTERNAL_COMMANDS) {
+        commandPaths[command.field] = merged[command.field] ?? "";
+      }
       failure = null;
     });
   });
@@ -198,11 +214,7 @@
    * became pressable. Nothing is persisted from here: 保存 is still the only writer (doc-8 §6.3 の
    * 明示保存 と同じ理由).
    */
-  let pending = $derived.by(() =>
-    draft === null
-      ? null
-      : { ...draft, external_editor: editorCommandOf(editorProgram, editorArgs) },
-  );
+  let pending = $derived.by(() => (draft === null ? null : asSaved(draft)));
   let dirty = $derived(
     pending !== null && loaded !== null && isDirty(pending, loaded.settings),
   );
@@ -236,6 +248,48 @@
    */
   let editorProgram = $state("");
   let editorArgs = $state("");
+
+  /**
+   * The three 外部コマンド指定 as text (decision-29). Strings rather than a binding onto the draft:
+   * "unset" is an *absent key* in the file, which an `<input>` cannot hold, and `commandPathOf` is
+   * where that conversion is decided. Seeded by the merge effect above for the same reason the editor
+   * fields are — a second seeding effect would overwrite the merged result with the file's.
+   */
+  let commandPaths = $state<Record<string, string>>(
+    Object.fromEntries(EXTERNAL_COMMANDS.map((command) => [command.field, ""])),
+  );
+
+  /**
+   * Which row's `?` is open, or `null`. One at a time: two notes open at once would push the fields
+   * apart twice over, and the question each answers is about one command.
+   */
+  let helpOpen = $state<string | null>(null);
+
+  /** The 解決結果 for one command, or `undefined` while the probe has not answered. */
+  function reportFor(name: string): ExternalProgramReport | undefined {
+    return programs?.find((report) => report.name === name);
+  }
+
+  /**
+   * A settings value with the fields that live in their own controls folded back in — the 外部エディタ
+   * 指定 and the three 外部コマンド指定. Used both for what would be saved and for what the merge
+   * carries, so a half-typed path cannot be lost to a write from outside this form.
+   */
+  function asSaved(settings: AppSettings): AppSettings {
+    const next: AppSettings = {
+      ...settings,
+      external_editor: editorCommandOf(editorProgram, editorArgs),
+    };
+    for (const command of EXTERNAL_COMMANDS) {
+      const path = commandPathOf(commandPaths[command.field]);
+      if (path === undefined) {
+        delete next[command.field];
+      } else {
+        next[command.field] = path;
+      }
+    }
+    return next;
+  }
 
   /**
    * なぜ押せないか、押せないときだけ (doc-11 §5). Derived as a string rather than left as a boolean so
@@ -438,6 +492,67 @@
           継続検出を使う
         </label>
         <p class="hint">{WATCH_OFF_NOTE}</p>
+      </section>
+
+      <!-- 外部コマンド (decision-29, TASK-156). One row per command: 状態の印, label, field, `?`.
+           The 印 and the label's colour carry the answer the user came for — did Atlas find this
+           tool — so there is no separate 解決結果 区画 restating it, and no paragraph under each
+           field: what each command is *for* is behind its `?` (doc-11 §8).
+
+           Placed before 外部エディタ指定 because that one is the fourth 外部コマンド and reads as a
+           special case of this 区画 — it is the only one taking arguments, which is why it keeps its
+           own. -->
+      <section>
+        <h3>外部コマンド</h3>
+        <p class="hint">Atlas が利用する外部コマンドのパスを指定します。</p>
+        {#each EXTERNAL_COMMANDS as command (command.field)}
+          {@const report = reportFor(command.name)}
+          {@const resolved = programResolved(report?.outcome ?? null)}
+          <div class="command">
+            <!-- 族を持たない状態の印 / 印グリフ (doc-11 §2.4). Not inside a control, so the wrapper
+                 carries `role="img"` and the word — the figure itself is `aria-hidden` and leaves
+                 nothing to read. -->
+            <span
+              class="mark"
+              class:unresolved={resolved === false}
+              role="img"
+              aria-label={resolved === null ? "確認中" : resolved ? "解決済み" : "解決できません"}
+            >
+              {#if resolved === null}
+                <span class="pending" aria-hidden="true">…</span>
+              {:else}
+                <Icon name={resolved ? "square-check" : "triangle-alert"} />
+              {/if}
+            </span>
+            <label class:unresolved={resolved === false}>
+              <span class="name">{command.label}</span>
+              <input type="text" bind:value={commandPaths[command.field]} />
+            </label>
+            <!-- アイコンのみのボタン (doc-11 §2.4): the name is the `aria-label`, and `aria-expanded`
+                 is what says the note below is this button's. -->
+            <button
+              type="button"
+              class="help"
+              aria-label={`${command.label} の説明`}
+              title={`${command.label} の説明`}
+              aria-expanded={helpOpen === command.field}
+              onclick={() => (helpOpen = helpOpen === command.field ? null : command.field)}
+            >
+              <Icon name="circle-question-mark" />
+            </button>
+            {#if helpOpen === command.field}
+              <p class="note" role="note">
+                {command.help}
+                {#if report !== undefined}
+                  <br />
+                  {programSourceLabel(report.source)}: {report.program}
+                  <br />
+                  {probeSummary(report.outcome)}
+                {/if}
+              </p>
+            {/if}
+          </div>
+        {/each}
       </section>
 
       <section>
@@ -775,6 +890,77 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     // The path is one long unbroken token; without this it widens the モーダル rather than wrapping.
     overflow-wrap: anywhere;
+  }
+
+  // 外部コマンド の 1 行 (decision-29). Grid rather than flex so the three fields line up on their
+  // inputs whatever the label's width — the labels are 3 different lengths and a ragged left edge on
+  // the inputs is what the 区画 would otherwise have.
+  .command {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.3rem;
+
+    label {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      align-items: center;
+      gap: 0.4rem;
+      margin: 0;
+    }
+
+    .name {
+      font-size: 0.78rem;
+    }
+
+    // 解決できない ときだけ色を持つ (doc-11 §2.4 の 印グリフ)。CLI 縮退帯 ② が同じ理由で借りている
+    // 不整合の族の色をそのまま引く (decision-22): 族は色を選ぶ単位であって事象の分類ではなく、
+    // 外部コマンドが起動できないことと管理ファイル 1 件の不整合が同じ対象へ同時に付くことはない。
+    // 面は --panel で、族の色との 3:1 は theme.test.ts が押さえている。
+    .unresolved {
+      color: var(--mark-inconsistent);
+    }
+
+    // 確認中 は解決済みでも未解決でもないので、どちらの印も出さない (doc-11 §6 の 正常な不在 と
+    // 同じ扱い: --faint の 1 文字だけで、警告記号も枠も付けない)。
+    .pending {
+      color: var(--faint);
+    }
+
+    .mark {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+
+    .help {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem;
+      border: 0;
+      border-radius: 4px;
+      background: none;
+      color: var(--muted);
+      font-size: 0.85rem;
+      cursor: pointer;
+
+      &:hover {
+        color: var(--fg);
+      }
+    }
+
+    // 説明は行の全幅を使って下へ開く。絶対配置の浮きにしないのは、モーダルの本文が縦スクロール
+    // するためで、浮かせた層はスクロールでフィールドから離れる。
+    .note {
+      grid-column: 1 / -1;
+      margin: 0 0 0.2rem;
+      padding: 0.3rem 0.4rem;
+      border-radius: 3px;
+      background: var(--inset);
+      font-size: 0.72rem;
+      // パス は ui-monospace (doc-11 §2.2) だが、この文は散文とパスが混じるので地の書体のまま。
+      overflow-wrap: anywhere;
+    }
   }
 
   // An action's own report, not one of the 印の族 (decision-6): the neutral info hue, as the shell's

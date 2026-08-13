@@ -18,6 +18,7 @@ import type {
   CliReadiness,
   CommandError,
   EditorLaunch,
+  ExternalProgramReport,
   EditorReadiness,
   GitRemoteRead,
   LaunchMethod,
@@ -218,11 +219,34 @@ export function settingsLocationOpen(): Promise<EditorLaunch> {
 }
 
 /**
- * Whether a supported `backlog` is on PATH (doc-5 §5 縮退). Read once at startup so the screen can
- * withhold edit controls with a reason instead of offering an action that cannot be issued.
+ * Whether a supported `backlog` can be run (doc-5 §5 縮退) — the 縮退帯's own question, and the reason
+ * edit controls are withheld with a stated cause rather than offered and refused.
+ *
+ * Read at startup **and after every settings save**: `backlog_cli` is the first step of the same
+ * resolution (doc-5 §4 順序 1, decision-29), so a save can turn 発行不能 into 発行できる and back. Not
+ * once per run — that was true only while the setting had no control on any screen.
+ *
+ * Not the same question as `externalProgramsProbe`, whose `backlog` row says whether the program
+ * started; this says whether its version meets `MIN_VERSION` (decision-7).
  */
 export function cliProbe(): Promise<CliReadiness> {
   return invoke<CliReadiness>("cli_probe");
+}
+
+/**
+ * 解決結果の表示 (decision-29): which executable each 外部コマンド would launch, and whether it
+ * starts. All three — `backlog`, `git`, `gh`.
+ *
+ * Read when the 設定画面 opens rather than at startup: it spawns three processes to fill one panel —
+ * one `--version` per command, each bounded at 5 s — and every other screen gets on without the
+ * answer. Re-read after a save, so the panel
+ * reports the 外部コマンド指定 just written rather than the one it replaced.
+ *
+ * Not the same question as `cliProbe`, which asks whether `backlog`'s *version* meets the minimum
+ * (decision-7). Both are re-read after a save; neither is derived from the other.
+ */
+export function externalProgramsProbe(): Promise<ExternalProgramReport[]> {
+  return invoke<ExternalProgramReport[]>("external_programs_probe");
 }
 
 /**

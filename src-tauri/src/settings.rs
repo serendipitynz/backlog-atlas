@@ -19,6 +19,8 @@
 //! | doc-9 §3.1 継続検出の可否 | [`AppSettings::watch_external_changes`] | whether the per-root file watch is started at all |
 //! | doc-8 §7 外部エディタ指定 | [`AppSettings::external_editor`] | the 起動指定 that outranks `$VISUAL`/`$EDITOR` |
 //! | doc-5 §4 実行ファイル解決の順序 1 段目 | [`AppSettings::backlog_cli`] | the Backlog CLI executable to run, outranking every automatic resolution |
+//! | decision-29 外部コマンド指定 (`git`) | [`AppSettings::git_cli`] | the `git` executable doc-6 §3/§5 and doc-3 §3.2 launch |
+//! | decision-29 外部コマンド指定 (`gh`) | [`AppSettings::gh_cli`] | the `gh` executable doc-6 §6 の GitHub 参照手段 launches |
 //! | decision-13 既定値で動いている旨 | [`SettingsStatus`] | why the values in hand are the defaults, and whether saving is allowed |
 //!
 //! ## Reading this file never stops the screen (AC #6)
@@ -50,13 +52,14 @@ use std::path::{Path, PathBuf};
 /// *higher* one degrades to read-only and is left untouched (decision-13, AC #1) — the same rule the
 /// ledger follows (doc-3 §2.2), which decision-13 asks the two files to keep in step.
 ///
-/// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16) and to 3 when `default_card_order`
-/// was (TASK-132). decision-13 puts 項目の追加 under this version's management, and the read-only
+/// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16), to 3 when `default_card_order`
+/// was (TASK-132), and to 4 when `git_cli` and `gh_cli` joined them (TASK-156, decision-29).
+/// decision-13 puts 項目の追加 under this version's management, and the read-only
 /// degrade is what the raise buys: left where it was, a build predating the field would read the newer
 /// file as its own version, let serde drop the key it does not know, and delete the value on its next
 /// save. Older files are unaffected — a *lower* version loads with the missing keys defaulted, and the
 /// next save writes this version.
-pub const KNOWN_SCHEMA_VERSION: u32 = 3;
+pub const KNOWN_SCHEMA_VERSION: u32 = 4;
 
 /// カード情報量 (doc-7 §3): which column of the card assignment table is in force.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -179,6 +182,21 @@ pub struct AppSettings {
     /// one after a sub-table. Skipped when unset, like the editor override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backlog_cli: Option<PathBuf>,
+    /// 外部コマンド指定 for `git` (decision-29): the executable doc-6 §3 コミット検索, doc-6 §5
+    /// remote ホスト種別の判別 and doc-3 §3.2 Git remote 有無属性判定 all launch. Same rule as
+    /// `backlog_cli` — used as written, no existence check, no fallback.
+    ///
+    /// This one has a consequence the other two do not: 有無属性判定 records *absence* when `git`
+    /// cannot be launched (doc-3 §3.2), so an unresolvable `git` does not fail loudly, it registers
+    /// every project as having no remote and takes doc-6 §6 関連解決 down with it silently. That is
+    /// the case TASK-156 was raised for, and it is why this item exists rather than being left to
+    /// PATH.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_cli: Option<PathBuf>,
+    /// 外部コマンド指定 for `gh` (decision-29): the executable doc-6 §6 の GitHub 参照手段 launches
+    /// (decision-14). Same rule as `backlog_cli`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gh_cli: Option<PathBuf>,
     // Last field on purpose: it serializes as the `[external_editor]` sub-table, and TOML forbids a
     // scalar key appearing after a table within the same table. Skipped when unset so a file with no
     // editor override stays terse.
@@ -205,6 +223,8 @@ impl Default for AppSettings {
             default_card_order: CardOrder::default(),
             watch_external_changes: watch_external_changes_default(),
             backlog_cli: None,
+            git_cli: None,
+            gh_cli: None,
             external_editor: None,
         }
     }
@@ -434,6 +454,8 @@ mod tests {
             // A path with a space, because that is what an npm global prefix under a Windows user
             // profile or an Application Support directory looks like (doc-5 §4 順序 1).
             backlog_cli: Some(PathBuf::from("/opt/my tools/backlog")),
+            git_cli: Some(PathBuf::from("/opt/my tools/git")),
+            gh_cli: Some(PathBuf::from("/opt/my tools/gh")),
             external_editor: Some(EditorCommand {
                 program: "/Applications/My Editor.app/Contents/MacOS/my editor".into(),
                 args: vec!["-w".into()],
@@ -446,15 +468,20 @@ mod tests {
         assert_eq!(reloaded.status, SettingsStatus::Stored);
         assert_eq!(reloaded.settings, settings);
 
-        // `backlog_cli` is a scalar and `external_editor` a sub-table: TOML forbids the scalar after
-        // the table, so a save that emitted them the other way round would produce a file this very
-        // `load` cannot read. Asserted on the text because the round-trip above passes either way
-        // only as long as the field order stays right.
+        // The 外部コマンド指定 are scalars and `external_editor` a sub-table: TOML forbids a scalar
+        // after the table, so a save that emitted them the other way round would produce a file this
+        // very `load` cannot read. Asserted on the text because the round-trip above passes either
+        // way only as long as the field order stays right. All three are checked rather than the
+        // first: each was added in its own change, and a new one appended after the sub-table is
+        // exactly the mistake this guards.
         let text = std::fs::read_to_string(&path).expect("written");
-        assert!(
-            text.find("backlog_cli").unwrap() < text.find("[external_editor]").unwrap(),
-            "the scalar has to precede the sub-table:\n{text}"
-        );
+        let table = text.find("[external_editor]").expect("sub-table written");
+        for scalar in ["backlog_cli", "git_cli", "gh_cli"] {
+            assert!(
+                text.find(scalar).expect("scalar written") < table,
+                "{scalar} has to precede the sub-table:\n{text}"
+            );
+        }
     }
 
     /// Settings that differ from the defaults in every item, so "the previous ones survived" and
@@ -469,6 +496,8 @@ mod tests {
             default_card_order: CardOrder::MilestoneAsc,
             watch_external_changes: false,
             backlog_cli: Some(PathBuf::from("/opt/my tools/backlog")),
+            git_cli: Some(PathBuf::from("/opt/my tools/git")),
+            gh_cli: Some(PathBuf::from("/opt/my tools/gh")),
             external_editor: Some(EditorCommand {
                 program: "/usr/bin/my editor".into(),
                 args: vec!["-w".into()],

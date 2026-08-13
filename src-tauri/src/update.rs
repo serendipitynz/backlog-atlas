@@ -1018,8 +1018,10 @@ pub enum CliProgram {
 }
 
 impl CliProgram {
-    /// The program `Command::new` receives.
-    fn program(&self) -> &Path {
+    /// The program `Command::new` receives. Public because the 解決結果の表示 (decision-29) reports it:
+    /// the 設定画面 has to name the executable actually in use, and re-deriving it there would let the
+    /// panel and the launch disagree.
+    pub fn program(&self) -> &Path {
         match self {
             CliProgram::Configured(path) | CliProgram::SubPackage(path) => path,
             CliProgram::OnPath => Path::new("backlog"),

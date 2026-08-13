@@ -19,6 +19,7 @@ import type {
   AppSettings,
   CliReadiness,
   EditorLaunch,
+  ExternalProgramReport,
   EditorReadiness,
   GitRemoteRead,
   LaunchMethod,
@@ -93,6 +94,28 @@ function emptyLedger(): LedgerResponse {
  */
 export const answers = {
   cli: { state: "ready", version: CONFIRMED_CLI_VERSION } as CliReadiness,
+  /** 解決結果の表示 (decision-29). Both 外部コマンド resolve and launch, which is the state a test that
+   *  is not about them should not have to arrange. */
+  externalPrograms: [
+    {
+      name: "backlog",
+      program: "backlog",
+      source: "onPath",
+      outcome: { state: "launched", report: `Backlog.md v${CONFIRMED_CLI_VERSION}` },
+    },
+    {
+      name: "git",
+      program: "git",
+      source: "onPath",
+      outcome: { state: "launched", report: "git version 2.51.0" },
+    },
+    {
+      name: "gh",
+      program: "gh",
+      source: "onPath",
+      outcome: { state: "launched", report: "gh version 2.97.0" },
+    },
+  ] as ExternalProgramReport[],
   editor: { configured: null, association: "open" } as EditorReadiness,
   ledger: emptyLedger(),
   ledgerPath: "/config/ledger.toml",
@@ -140,6 +163,16 @@ export const answers = {
    */
   settingsSaveHold: null as Deferred<void> | null,
   /**
+   * Holds handed to successive `cli_probe` calls, one each, in order. A queue rather than one flag so
+   * a test can let the *second* probe finish first — the ordering a detached refresh has to survive.
+   * A call made when the queue is empty resolves at once.
+   */
+  cliProbeHolds: [] as Deferred<void>[],
+  /** Holds handed to successive `project_watch_stop` calls, for the same reason. */
+  watchStopHolds: [] as Deferred<void>[],
+  /** Holds handed to successive `external_programs_probe` calls, for the same reason. */
+  externalProgramsHolds: [] as Deferred<void>[],
+  /**
    * Make every `settings_save` reject, the way decision-13 refuses to overwrite a file newer than this
    * build. A flag rather than a replaceable function: `vi.mock` copies the references, so a fake swapped
    * in afterwards would never be the one the shell calls.
@@ -177,6 +210,26 @@ export function reset(): void {
   calls.length = 0;
   listeners.length = 0;
   answers.cli = { state: "ready", version: CONFIRMED_CLI_VERSION };
+  answers.externalPrograms = [
+    {
+      name: "backlog",
+      program: "backlog",
+      source: "onPath",
+      outcome: { state: "launched", report: `Backlog.md v${CONFIRMED_CLI_VERSION}` },
+    },
+    {
+      name: "git",
+      program: "git",
+      source: "onPath",
+      outcome: { state: "launched", report: "git version 2.51.0" },
+    },
+    {
+      name: "gh",
+      program: "gh",
+      source: "onPath",
+      outcome: { state: "launched", report: "gh version 2.97.0" },
+    },
+  ];
   answers.editor = { configured: null, association: "open" };
   answers.ledger = emptyLedger();
   answers.ledgerPath = "/config/ledger.toml";
@@ -192,6 +245,9 @@ export function reset(): void {
   answers.subscribeFails = false;
   answers.settingsReadFails = false;
   answers.settingsSaveHold = null;
+  answers.cliProbeHolds = [];
+  answers.watchStopHolds = [];
+  answers.externalProgramsHolds = [];
   answers.settingsSaveFails = false;
   answers.ledgerRegisterHold = null;
 }
@@ -275,7 +331,12 @@ export const commandFakes = {
     record("project_watch_start", [slug], () => answers.watchStart(slug)),
 
   projectWatchStop: (slug: string): Promise<void> =>
-    record("project_watch_stop", [slug], () => Promise.resolve()),
+    record("project_watch_stop", [slug], async () => {
+      const hold = answers.watchStopHolds.shift();
+      if (hold !== undefined) {
+        await hold.promise;
+      }
+    }),
 
   taskHistoryRead: (slug: string, taskId: string, readId: string): Promise<TaskHistory> =>
     record("task_history_read", [slug, taskId, readId], () => {
@@ -322,7 +383,28 @@ export const commandFakes = {
     ),
 
   cliProbe: (): Promise<CliReadiness> =>
-    record("cli_probe", [], () => Promise.resolve(answers.cli)),
+    record("cli_probe", [], async () => {
+      // Captured before the wait: the answer belongs to the moment the probe was issued, which is
+      // what makes an out-of-order completion observable at all.
+      const answer = answers.cli;
+      const hold = answers.cliProbeHolds.shift();
+      if (hold !== undefined) {
+        await hold.promise;
+      }
+      return answer;
+    }),
+
+  externalProgramsProbe: (): Promise<ExternalProgramReport[]> =>
+    record("external_programs_probe", [], async () => {
+      // Captured before the wait, like `cli_probe`: the answer belongs to the moment the probe was
+      // issued, which is what makes an out-of-order completion observable.
+      const answer = answers.externalPrograms;
+      const hold = answers.externalProgramsHolds.shift();
+      if (hold !== undefined) {
+        await hold.promise;
+      }
+      return answer;
+    }),
 
   editorProbe: (): Promise<EditorReadiness> =>
     record("editor_probe", [], () => Promise.resolve(answers.editor)),

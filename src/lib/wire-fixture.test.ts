@@ -58,6 +58,9 @@ import type {
   CardOrder,
   DetailPlacement,
   EditorSource,
+  ExternalProgramReport,
+  ExternalProgramSource,
+  ProbeOutcome,
   GitRemoteRead,
   FailureKind,
   LaunchMethod,
@@ -271,6 +274,11 @@ const REQUIRED_FIELDS = unionValues<RequiredField>()("id", "title", "status");
 const REMOTE_HOST_KINDS = unionValues<RemoteHostKind>()("gitHub");
 const LAUNCH_METHODS = unionValues<LaunchMethod>()("configured", "association");
 const EDITOR_SOURCES = unionValues<EditorSource>()("appSettings", "visual", "editor");
+const EXTERNAL_PROGRAM_SOURCES = unionValues<ExternalProgramSource>()(
+  "configured",
+  "subPackage",
+  "onPath",
+);
 const CARD_DENSITIES = unionValues<CardDensity>()("s", "m", "l");
 const DETAIL_PLACEMENTS = unionValues<DetailPlacement>()("sidebar", "modal", "full");
 const CARD_ORDERS = unionValues<CardOrder>()(
@@ -331,6 +339,7 @@ const FAILURE_KINDS = unionValues<FailureKind["kind"]>()(
   "write",
 );
 const CLI_STATES = unionValues<CliReadiness["state"]>()("ready", "unavailable", "unsupported");
+const PROBE_OUTCOME_STATES = unionValues<ProbeOutcome["state"]>()("launched", "failed");
 const SETTINGS_STATES = unionValues<SettingsStatus["state"]>()(
   "stored",
   "absent",
@@ -553,6 +562,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       "commit_search_unreadable.json",
       "editor_launch.json",
       "editor_readiness.json",
+      "external_program_report.json",
       "git_remote_read.json",
       "ledger_response.json",
       "loaded_settings.json",
@@ -702,8 +712,9 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
   it("AppSettings — 設定ファイルのキーがそのまま IPC の項目名", () => {
     const loaded = fixture<LoadedSettings>("loaded_settings.json");
     expect(keysOf(loaded)).toEqual(keysOfType<LoadedSettings>()("settings", "status"));
-    // `backlog_cli` and `external_editor` are optional on both sides and skipped when unset, so the
-    // recording has to carry them — an absent key here would let an optional field drop out unnoticed.
+    // The three 外部コマンド指定 and `external_editor` are optional on both sides and skipped when
+    // unset, so the recording has to carry them — an absent key here would let an optional field drop
+    // out unnoticed.
     expect(keysOf(loaded.settings)).toEqual(
       keysOfType<AppSettings>()(
         "schema_version",
@@ -714,6 +725,8 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
         "default_card_order",
         "watch_external_changes",
         "backlog_cli",
+        "git_cli",
+        "gh_cli",
         "external_editor",
       ),
     );
@@ -883,6 +896,24 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
     expect(CONFIRMED_CLI_VERSION).toBe(unavailable.readiness.minimum);
   });
 
+  it("ExternalProgramReport — 解決結果の表示", () => {
+    // The 外部コマンド指定 case is the recorded one, so `program` has a path to take a type from.
+    // The `onPath` source and the `failed` outcome are anchored through `wire_tokens.json` — the
+    // recording exercises only the variants it happens to carry.
+    const report = fixture<ExternalProgramReport>("external_program_report.json");
+    expect(keysOf(report)).toEqual(
+      keysOfType<ExternalProgramReport>()("name", "program", "source", "outcome"),
+    );
+    sameValueTypes("external_program_report", report, {
+      name: "git",
+      program: "/usr/bin/git",
+      source: "configured",
+      outcome: { state: "launched", report: "git version 2.0.0" },
+    } satisfies ExternalProgramReport);
+    admits(EXTERNAL_PROGRAM_SOURCES, report.source, "external_program_report.source");
+    admits(PROBE_OUTCOME_STATES, report.outcome.state, "external_program_report.outcome.state");
+  });
+
   it("CliReadiness と外部エディタ経路", () => {
     sameValueTypes("cli_readiness", fixture<CliReadiness>("cli_readiness.json"), {
       state: "ready",
@@ -950,6 +981,7 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     LookupFailure: LOOKUP_FAILURES,
     LaunchMethod: LAUNCH_METHODS,
     EditorSource: EDITOR_SOURCES,
+    ExternalProgramSource: EXTERNAL_PROGRAM_SOURCES,
     CardDensity: CARD_DENSITIES,
     DetailPlacement: DETAIL_PLACEMENTS,
     CardOrder: CARD_ORDERS,
@@ -963,6 +995,7 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     UpdateOutcome: OUTCOME_STATES,
     FailureKind: FAILURE_KINDS,
     CliReadiness: CLI_STATES,
+    ProbeOutcome: PROBE_OUTCOME_STATES,
     SettingsStatus: SETTINGS_STATES,
     CommandError: ERROR_KINDS,
     LedgerRefusal: REFUSAL_REASONS,

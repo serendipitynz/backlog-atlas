@@ -49,6 +49,40 @@ npm install -g backlog.md
 Atlas checks the version at startup by running `backlog --version`, and no upper bound is
 fixed: a newer CLI is used as-is.
 
+**A desktop app does not always inherit your shell's `PATH`.** Started from Finder, Dock,
+or a launcher, Atlas gets the `PATH` the OS session hands it — which on macOS need not
+contain the directory your version manager (fnm, nvm, asdf) puts `backlog` in, even though
+the same machine resolves it fine in a terminal. The same applies to `git` and `gh`, which
+Atlas uses for commit and Pull Request history.
+
+So if Atlas cannot find a tool you know is installed, **name it in 設定 → 外部コマンド**: give
+the executable's absolute path, and Atlas uses that instead of searching `PATH`. The same panel
+reports what each tool currently resolves to and whether it starts, so you can see which of the
+three is the problem (decision-29).
+
+**For `backlog`, do not use what `which backlog` prints.** On an npm install that is a shim — a
+symlink (or, on Windows, a `.cmd`/`.ps1`) that runs `cli.js` through `node`. Naming it here would
+only move the problem: the file begins `#!/usr/bin/env node`, so launching it needs `node` on the
+very `PATH` that is already missing `backlog`. Point at the native binary inside the package:
+
+```sh
+# macOS / Linux
+ls "$(npm prefix -g)"/lib/node_modules/backlog.md/node_modules/backlog.md-*/backlog
+```
+
+```powershell
+# Windows
+Get-ChildItem "$(npm prefix -g)\node_modules\backlog.md\node_modules\backlog.md-*\backlog.exe"
+```
+
+`git` and `gh` need no such care — they are native binaries, so the path `which` / `Get-Command`
+prints is the one to use.
+
+If you use a version manager, note also that **the directory it puts on your shell's `PATH` is
+usually per-session** (fnm's `fnm_multishells/<pid>_<timestamp>/…`, for one) and is gone the next
+time you open a terminal. The commands above resolve to the installed version's own directory,
+which is stable — that is the path to paste in.
+
 **Atlas still starts without it.** Reading does not go through the CLI at all — Atlas
 parses each project's Backlog.md files directly (decision-2) — so with no `backlog` on
 `PATH`, or one below v1.49.3, Atlas opens read-only: every screen renders, and the
@@ -167,6 +201,10 @@ Key decisions:
   macOS bundle from 14 MB to 81 MB, and the friction it would remove is already
   handled — Windows resolution by decision-16, and pre-install use by the read-only
   start (decision-26).
+- External commands: every tool Atlas launches but does not ship — `backlog`, `git`,
+  `gh`, and your editor — resolves from an app-settings path first, and only then
+  automatically. A GUI-started app may not inherit the `PATH` that has them, and the
+  setting is what a user can reach from inside Atlas when it does not (decision-29).
 - Frontend: Svelte 5 used plainly (no SvelteKit), built with Vite and TypeScript,
   with component-scoped styles (decision-8).
 - Dependency choices: `toml` for the ledger, `serde_yaml_ng` for frontmatter parsing,

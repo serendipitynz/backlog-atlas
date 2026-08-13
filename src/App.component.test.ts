@@ -24,6 +24,7 @@ vi.mock("./lib/commands", async (importOriginal) => {
 import App from "./App.svelte";
 import { byLabel, byText, cleanup, click, fill, only, press, render } from "./lib/render";
 import { BODY_LINK_CLASS } from "./lib/markdown";
+import { CONFIRMED_CLI_VERSION } from "./lib/confirmed-version";
 import {
   answers,
   deferred,
@@ -175,6 +176,172 @@ describe("起動時の設定・workspace・監視の順序", () => {
     await settled();
     expect(madeTo("settings_directory_present")).toHaveLength(2);
   });
+
+  it("設定を保存したら Backlog CLI の縮退判定を問い直し、その結果を帯へ反映する", async () => {
+    // doc-5 §4 順序 1 の `backlog_cli` は、この保存で変わりうる（decision-29）。問い直さないと、
+    // **利用者がこの画面で直した直後も、再起動するまで縮退帯が立ったまま**になる。TASK-156 の趣旨は
+    // 「発行できないから設定へ来た利用者が、アプリの中で直せること」なので、再起動を要する回復は
+    // 到達できる手段になっていない。
+    //
+    // **呼び出し回数ではなく帯の有無で見る。** 回数だけを見るテストは、返ってきた縮退判定を捨てる
+    // 実装でも通ってしまう。
+    answers.cli = { state: "unavailable", detail: "解決できません" };
+    const host = await startWith([loaded("atlas", [TASK])]);
+    expect(host.querySelector('[data-band="cliDegraded"]')).not.toBeNull();
+
+    // 設定でパスを直した、に相当する: 次の probe は解決する。
+    answers.cli = { state: "ready", version: CONFIRMED_CLI_VERSION };
+    await saveSomethingInSettings(host);
+
+    expect(madeTo("cli_probe")).toHaveLength(2);
+    expect(host.querySelector('[data-band="cliDegraded"]')).toBeNull();
+    // 保存で問い直すのは 3 つとも。外部エディタ（doc-8 §7 起動指定の解決順）と 解決結果の表示
+    // （decision-29）は先に入っており、縮退帯だけが落ちていた。
+    expect(madeTo("editor_probe")).toHaveLength(2);
+    expect(madeTo("external_programs_probe").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("逆向きも同じ: 解決できるパスを壊すと帯が立つ", async () => {
+    // 片側だけ通すのは、片方向にしか効かない実装（例: 縮退から回復したときだけ書き換える）を
+    // 見逃す。壊した側こそ、編集操作が有効なまま残るので害が大きい。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    expect(host.querySelector('[data-band="cliDegraded"]')).toBeNull();
+
+    answers.cli = { state: "unavailable", detail: "解決できません" };
+    await saveSomethingInSettings(host);
+
+    expect(host.querySelector('[data-band="cliDegraded"]')).not.toBeNull();
+  });
+
+  it("保存は probe の完了を待たずに返る", async () => {
+    // `settingsSaving` が守るのは保存（書き込みと適用）までなので、probe を待つ間このフォームは
+    // 操作できる。待った場合、遅れて解決した保存が `onsaved` を撃ち、そのときモーダルが持っている
+    // **別の下書き**を破棄前確認なしに捨てる（doc-8 §6.3）。外部エディタはプロセスを起こさないが、
+    // 外部コマンドが 3 つ（各 5 秒上限）、CLI が 1 つ（30 秒上限。doc-5 §5）なので、窓は実時間で開く。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    // 起動時の probe も同じ fake を通るので、hold は起動を終えてから張る。
+    const hold = deferred<void>();
+    answers.cliProbeHolds = [hold];
+    await saveSomethingInSettings(host);
+
+    // probe は握られたままだが、書き込みは landed しているのでモーダルは下りている。
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).toBeNull();
+    hold.resolve();
+    await settled();
+  });
+
+  it("先に始めた probe が後から終わっても、新しい答えを上書きしない", async () => {
+    // 切り離した以上、2 つが同時に走りうる: `backlog` のパスを保存 → 開き直して `git` のパスを保存、
+    // という**この区画そのものの使い方**で起きる。1 つ 5 秒、CLI は 30 秒（doc-5 §5）なので、
+    // 後から始めたほうが先に終わるのは容易であり、そのとき古い答えが帯へ載ると次の probe まで直らない。
+    // 帯は表示だけの話ではなく、編集操作を出すかどうかを決めている。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    const first = deferred<void>();
+    const second = deferred<void>();
+    answers.cliProbeHolds = [first, second];
+
+    answers.cli = { state: "unavailable", detail: "古い答え" };
+    await saveSomethingInSettings(host); // 1 回目: 解決できない、を握ったまま
+    answers.cli = { state: "ready", version: CONFIRMED_CLI_VERSION };
+    await saveSomethingInSettings(host); // 2 回目: 解決する、を握ったまま
+
+    // 後から始めたほうを先に終わらせる。
+    second.resolve();
+    await settled();
+    expect(host.querySelector('[data-band="cliDegraded"]')).toBeNull();
+
+    // 先に始めたほうが後から終わる。これが上書きしてはいけない。
+    first.resolve();
+    await settled();
+    expect(host.querySelector('[data-band="cliDegraded"]')).toBeNull();
+  });
+
+  it("区画も同じ: 先に始めた probe が後から終わっても上書きしない", async () => {
+    // 帯と区画は**別の生成番号**で守っている（書き手が違う — 区画は設定モーダルを開く操作でも
+    // 更新される）。片方だけ試すと、もう片方の競合が戻っても通ってしまう。
+    //
+    // **保存ではなく「開く・閉じる・開く」で起こす。**保存はモーダルを閉じるので、区画を見るには
+    // 開き直すことになり、その開き直しが新しい probe を撃って競合ではなくそちらを見てしまう。
+    // 開く操作 2 回なら、2 回目のモーダルが立ったまま両方を解決させられる。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    const first = deferred<void>();
+    const second = deferred<void>();
+    answers.externalProgramsHolds = [first, second];
+
+    answers.externalPrograms = [{ ...answers.externalPrograms[0], program: "/古い/backlog" }];
+    openSettingsPanel(host);
+    await settled();
+    click(byText(host, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
+    await settled();
+
+    answers.externalPrograms = [{ ...answers.externalPrograms[0], program: "/新しい/backlog" }];
+    openSettingsPanel(host);
+    await settled();
+
+    // 後から始めたほうを先に、次に先に始めたほうを終わらせる。
+    second.resolve();
+    await settled();
+    first.resolve();
+    await settled();
+
+    // 区画が持つのは 2 回目の答え。1 回目の古い答えで上書きされてはならない。
+    // Backlog CLI 行の ? を開く（解決結果はその中にある）。
+    click(host.querySelectorAll<HTMLElement>(".command .help")[0]);
+    expect(host.textContent).toContain("/新しい/backlog");
+    expect(host.textContent).not.toContain("/古い/backlog");
+  });
+
+  function openSettingsPanel(host: HTMLElement): void {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+  }
+
+  it("継続検出の適用が終わるまで保存中のままにする", async () => {
+    // `reconcileWatches` は登録ルート数ぶんの境界呼び出しで、**設定を適用する**側なので probe とは違い
+    // ガードの内側に置く。外へ出すと、probe を切り離して塞いだ窓がそのまま開き直す。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    const hold = deferred<void>();
+    answers.watchStopHolds = [hold];
+
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+    await settled();
+    // 継続検出のチェックボックス。保存区分にも checkbox が並ぶので、ラベルの語で選ぶ。
+    const watch = [...host.querySelectorAll("label")].find((label) =>
+      label.textContent?.includes("継続検出を使う"),
+    );
+    if (watch === undefined) {
+      throw new Error("継続検出を使う control not found");
+    }
+    click(only<HTMLInputElement>(watch, 'input[type="checkbox"]'));
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+
+    // 見るのは**ガードそのもの**であって、モーダルが立っているかではない。ガードの外へ出しても
+    // `saveSettings` は同じだけ遅く解決するのでモーダルは開いたままで、どちらでも通ってしまう。
+    // 違うのは `settingsSaving` — 保存する の語と、3 つの出口が塞がっているかどうかである。
+    expect(byText(host, "footer button", "保存中…")).not.toBeNull();
+    hold.resolve();
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="設定"]')).toBeNull();
+  });
+
+  /** 設定モーダルを開き、1 項目だけ変えて 保存する を押す。*/
+  async function saveSomethingInSettings(host: HTMLElement): Promise<void> {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+    await settled();
+    // 変更あり: 下書きがファイルと違わないと 保存する は押下を受け付けない。
+    const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
+      (radio) => !radio.checked,
+    );
+    if (other === undefined) {
+      throw new Error("every カード情報量 is already checked");
+    }
+    click(other);
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+  }
 
   it("設定の読取が失敗しても既定値で起動を続ける", async () => {
     // What is fixed here is that a *rejection* is not fatal: the boundary already degrades a missing
@@ -456,7 +623,9 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
     const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
       (radio) => !radio.checked,
     );
-    if (other === undefined) throw new Error("every カード情報量 is already checked");
+    if (other === undefined) {
+      throw new Error("every カード情報量 is already checked");
+    }
     click(other);
     click(byText(host, "footer button", "保存する"));
     await settled();
@@ -583,7 +752,9 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
       (radio) => !radio.checked,
     );
-    if (other === undefined) throw new Error("every カード情報量 is already checked");
+    if (other === undefined) {
+      throw new Error("every カード情報量 is already checked");
+    }
     click(other);
     return host;
   }
