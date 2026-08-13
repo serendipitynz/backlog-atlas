@@ -32,6 +32,11 @@ if [ -z "$p12" ]; then
   exit 1
 fi
 [ -f "$p12" ] || { echo "error: certificate '$p12' not found." >&2; exit 1; }
+# Pin the path now, before the `cd "$root"` below. A relative argument — which is
+# how the usage line above writes it — would otherwise pass this check and then
+# stop resolving, and openssl's discarded stderr turns that into "wrong export
+# password?" for a password that was right.
+case "$p12" in /*) ;; *) p12="$PWD/$p12" ;; esac
 [ -f "$env_file" ] || {
   echo "error: $env_file not found — copy .env.signing.example and fill it in." >&2
   exit 1

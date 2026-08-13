@@ -7,6 +7,8 @@
 # submits it to Apple's notary service, and staples the ticket. Extra arguments
 # are forwarded to the build, e.g.
 #     ./scripts/macos-sign-build.sh --target universal-apple-darwin
+# The build runs from the repository root (see below), so a relative path inside
+# those arguments resolves against the root, not against the caller's directory.
 #
 # Tauri does NOT notarize the .dmg that wraps the .app: the CLI drives
 # bundle_dmg.sh, that script takes a --notarize option, and the CLI's argument
@@ -61,7 +63,13 @@ cd "$root"
 # that was just built is ever notarized.
 stamp=$(mktemp)
 artifacts=$(mktemp)
-trap 'rm -f "$stamp" "$artifacts"' EXIT INT TERM
+# INT/TERM exit rather than returning to where the signal landed. A handler that
+# only cleans up would let a Ctrl-C during `stapler validate` read as "not
+# stapled" and start a multi-minute notary submission, and would delete the
+# artifacts file the verification below still has to read.
+trap 'rm -f "$stamp" "$artifacts"' EXIT
+trap 'rm -f "$stamp" "$artifacts"; trap - EXIT; exit 130' INT
+trap 'rm -f "$stamp" "$artifacts"; trap - EXIT; exit 143' TERM
 
 pnpm tauri build "$@"
 
