@@ -1,69 +1,79 @@
+<img src="src-tauri/icons/128x128@2x.png" alt="" width="128">
+
 # Backlog Atlas
 
-## What it is
+A desktop app for working across the tasks, documents, and milestones of several projects
+from one screen. Your tasks stay where they are — as the Markdown that
+[Backlog.md](https://github.com/MrLesk/Backlog.md) manages, in each project — and Atlas
+reads them, lays them out, and delegates every update to the Backlog CLI.
 
-Backlog Atlas is a Backlog.md-compatible client that lets you view and operate on
-multiple Backlog roots — along with each repository's Git and Pull Request history —
-from a single screen. A Backlog root is the directory that holds a project's
-Backlog.md management files together with the project root from which its settings
-resolve. Atlas reads several registered project roots and brings them together into
-one view, while the source of truth for every task stays in each project's own
-Backlog.md files.
+**This is an unofficial Backlog.md client.** It is a separate project, not affiliated with
+the authors of Backlog.md and not provided or endorsed by them. It works by using the
+management-file format Backlog.md defines and the Backlog CLI it ships.
 
-## Scope
+Atlas is a single app. You do not need a resident `backlog browser` per project, and you do
+not run more than one Atlas.
 
-- Register and manage multiple projects in a project ledger.
-- Show per-project swimlanes (a row per project, a column per status).
-- Show Type, derived from `kind:*` labels, separately from ordinary labels.
-- Show task detail, including References and extracted Pull Request URLs.
-- Update tasks, documents, and milestones through the Backlog CLI.
-- Look up a task's Git and Pull Request history from its task ID.
+## Platforms
 
-## Data ownership
+macOS, Windows, and Linux. On Linux the WebView comes from system libraries — webkit2gtk-4.1
+and libsoup-3.0 — so a distribution carrying them is required: **Ubuntu 24.04 or newer**, as
+20.04 and 22.04 do not ship both.
 
-The source of truth for each task stays in that project's Backlog root. Existing
-design, specification, and plot documents also stay in each project. Atlas does not
-create a second source of truth of its own, and it does not aggregate every
-project's tasks into one central Backlog.
+The interface is in Japanese only.
 
-Across the aggregated screen, Atlas identifies a task by its cross-project task ID
-`<project-slug>:<TASK-ID>`. Within each project, the usual `TASK-N` form is used.
-A task's project is determined by the Backlog root it was loaded from, not by any
-`project:<slug>` label on the task.
+## What it does
 
-## Runtime model
+- Register several projects and work with them together.
+- See every project's tasks in a swimlane: a row per project, a column per status.
+- View and edit task detail, with the body rendered as Markdown and diagram fences drawn
+  by mermaid.
+- Extract Pull Request URLs from a task's References, and look up its Git commits and Pull
+  Requests from the task ID.
+- Derive Type from `kind:*` labels and the frontmatter `type`, shown apart from ordinary
+  labels.
+- List and edit documents and milestones.
+- Keep the display theme, card density, filters, and sort order in settings.
 
-A single Atlas process starts once and reads all registered Backlog roots. Atlas
-does not keep a `backlog browser`, an MCP server, or a separate Atlas process
-resident per project.
+## What Atlas does not change
 
-## Requirements
+- **Your tasks do not move.** Atlas keeps no copy of them; it reads and writes each
+  project's Backlog.md files as they are, and never gathers every project's tasks into one
+  central Backlog.
+- **No extra process stays resident.** The one you start is Atlas itself.
+- **The Backlog CLI is what writes managed files.** Updates Atlas originates are delegated
+  to the Backlog CLI, run with the target project as its working directory. There are two
+  exceptions: a milestone's description, which the CLI offers no way to change, and edits
+  you make yourself in an external editor Atlas opened at your request.
 
-Atlas needs the **Backlog CLI (`backlog.md`) at v1.49.3 or newer** on your `PATH`. It is
-not bundled with Atlas — the reasoning is in decision-26 — so install it yourself:
+Because several projects share one screen, Atlas identifies a task there as
+`<project-slug>:<TASK-ID>`. Inside a project it is the usual `TASK-N`.
+
+## Installing
+
+Builds are on the [Releases page](https://github.com/serendipitynz/backlog-atlas/releases).
+
+Creating and updating anything needs the **Backlog CLI (`backlog.md`) at v1.49.3 or newer**.
+It is not bundled with Atlas, so install it yourself:
 
 ```sh
 npm install -g backlog.md
 ```
 
-Atlas checks the version at startup by running `backlog --version`, and no upper bound is
-fixed: a newer CLI is used as-is.
+**Atlas starts without it.** Reading never goes through the CLI — Atlas parses the
+Backlog.md files directly — so with no `backlog` on your `PATH`, or one below v1.49.3, it
+opens read-only: every screen renders, and only the operations that would write are held
+back, with the reason stated where the control is. Install the CLI, restart, and they turn
+on.
 
-**A desktop app does not always inherit your shell's `PATH`.** Started from Finder, Dock,
-or a launcher, Atlas gets the `PATH` the OS session hands it — which on macOS need not
-contain the directory your version manager (fnm, nvm, asdf) puts `backlog` in, even though
-the same machine resolves it fine in a terminal. The same applies to `git` and `gh`, which
-Atlas uses for commit and Pull Request history.
+Git commit and Pull Request history uses `git` and `gh`. Without them you simply do not get
+that display.
 
-So if Atlas cannot find a tool you know is installed, **name it in 設定 → 外部コマンド**: give
-the executable's absolute path, and Atlas uses that instead of searching `PATH`. The same panel
-reports what each tool currently resolves to and whether it starts, so you can see which of the
-three is the problem (decision-29).
-
-**For `backlog`, do not use what `which backlog` prints.** On an npm install that is a shim — a
-symlink (or, on Windows, a `.cmd`/`.ps1`) that runs `cli.js` through `node`. Naming it here would
-only move the problem: the file begins `#!/usr/bin/env node`, so launching it needs `node` on the
-very `PATH` that is already missing `backlog`. Point at the native binary inside the package:
+**An app started from Finder or the Dock does not always inherit your shell's `PATH`.** If
+Atlas cannot find a tool you know is installed, name it in **設定 → 外部コマンド** (Settings →
+External commands) by its absolute path; the same panel shows what each tool currently
+resolves to. For `backlog`, do not use what `which backlog` prints — that is a shim. Point
+at the native binary inside the package:
 
 ```sh
 # macOS / Linux
@@ -75,55 +85,20 @@ ls "$(npm prefix -g)"/lib/node_modules/backlog.md/node_modules/backlog.md-*/back
 Get-ChildItem "$(npm prefix -g)\node_modules\backlog.md\node_modules\backlog.md-*\backlog.exe"
 ```
 
-`git` and `gh` need no such care — they are native binaries, so the path `which` / `Get-Command`
-prints is the one to use.
+## Updating
 
-If you use a version manager, note also that **the directory it puts on your shell's `PATH` is
-usually per-session** (fnm's `fnm_multishells/<pid>_<timestamp>/…`, for one) and is gone the next
-time you open a terminal. The commands above resolve to the installed version's own directory,
-which is stable — that is the path to paste in.
-
-**Atlas still starts without it.** Reading does not go through the CLI at all — Atlas
-parses each project's Backlog.md files directly (decision-2) — so with no `backlog` on
-`PATH`, or one below v1.49.3, Atlas opens read-only: every screen renders, and the
-operations that would write are held back with the reason stated where the control is.
-Installing the CLI and restarting turns them on.
-
-## Boundaries
-
-Atlas never writes managed Markdown itself. Updates that Atlas originates are
-delegated to the Backlog CLI, run with the target project as its working directory.
-The Backlog update adapter — the part that translates an Atlas operation into a
-Backlog CLI call — uses fixed subcommands and argument arrays, and never concatenates
-user input into a shell string.
-
-One update path reaches managed Markdown outside the CLI: on the user's explicit
-request, Atlas can open a task's file in the user's own external editor. There the
-user — not Atlas — writes the file directly, without the Backlog CLI's schema
-protection. Atlas only launches the editor and picks up the save as an external
-change to reload. The invariant that Atlas itself never writes managed Markdown still
-holds; the CLI-mediated path is not the only way managed Markdown changes.
+v0.1.0 has no mechanism for updating itself. New versions are published on the
+[Releases page](https://github.com/serendipitynz/backlog-atlas/releases); download a build
+and replace your copy. Watching Releases will notify you when one appears.
 
 ## Building from source
 
-Requirements: Node 24, pnpm 10.30.3, and the Rust toolchain Tauri 2 asks for. The Node
-major is pinned in `.node-version`, holding the bare major `24`. fnm reads that file by
-default and resolves the bare major on its own (measured with fnm 1.39.0: it selects
-v24.18.1), and `actions/setup-node` reads it through `node-version-file`. Other version
-managers need a step of their own — asdf reads `.node-version` only under
-`legacy_version_file = yes`, mise keeps idiomatic version files off by default, and
-nodenv does not resolve a bare major without an alias plugin — so with those, select
-Node 24 however that tool expects. pnpm is pinned in `package.json`'s `packageManager`
-field, which Corepack reads. Node is a build-time requirement only — the shipped
-artifact is a Tauri binary with the Vite output inside it, and it carries no Node.
+You need Node 24 (`.node-version` pins the Node major), pnpm 10.30.3 (pinned in
+`package.json`'s `packageManager`), and the Rust toolchain Tauri 2 asks for. Node is a
+build-time requirement only — it is not in the shipped app.
 
-On Linux the WebView is a system library rather than a cargo dependency, so building
-also needs its development headers, and which ones follows from the lockfile: the
-`webkit2gtk` crate binds webkit2gtk-4.1 and `soup3` binds libsoup-3.0. **Ubuntu 24.04 or
-newer** carries both — it is what this project has been built on. Ubuntu 20.04 and 22.04
-do not, and a build there stops in `pkg-config` reporting that `glib-2.0` was not found;
-the error names neither WebKit nor the distribution version, so it reads as a missing
-package rather than as the wrong Ubuntu.
+On Linux the WebView is a system library, so its development headers are needed too
+(Ubuntu 24.04 or newer):
 
 ```sh
 sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
@@ -144,90 +119,21 @@ pnpm tauri build     # package the app
 The Rust core has its own commands, run from `src-tauri/`: `cargo test`, `cargo fmt`,
 `cargo clippy`.
 
-## Status
+Design decisions live in `backlog/decisions/`, and the screen and read-layer specifications
+in `backlog/docs/`.
 
-The design phase (m-0) is complete and the implementation phase (m-1) is under way.
-Decisions 1–13 are recorded in `backlog/decisions/`, and the specifications
-(`backlog/docs/doc-1`–`doc-11`) cover the scope above.
+## License
 
-Implemented (TASK-25–42):
+MIT — see [LICENSE](LICENSE).
 
-- Rust core: reading and writing the project ledger (`projects.toml`) with
-  register/remove/update, the domain model, the read layer (config resolution,
-  scanning, parsing, storage division, degradation), status normalization and Type
-  derivation, commit search and Pull Request URL extraction, the Backlog update
-  adapter, and the file watch with its read-version index and pre-update conflict
-  detection.
-- The Tauri command boundary between the Rust core and the frontend.
-- Screens: per-project swimlanes; task detail (Type, References, Pull Requests, Git
-  history); GUI editing of a task's detail; the external-editor path; ledger and
-  project registration/management; the document and milestone management GUI with
-  the entry point for creating a task; and the distinct display of target-absent,
-  unreadable, and no-match.
+The icon figures come from [Lucide](https://lucide.dev/) (ISC, with some Feather-derived
+icons under MIT). The notices are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-Not started (TASK-43–45): the reference means for resolving relations between commits
-and Pull Requests (doc-6 §6 fixes only its structure and leaves each host's means to
-a later addition), the OS-association launch on Windows, and the matching rule for
-reference-following rewrites that would enable renaming, removing, and archiving a
-milestone.
+## Contributing
 
-Not started (TASK-46–57), from the screen design proposal and the corrections it
-surfaced: the app-settings file and settings screen (decision-13), the display-theme
-mechanism (decision-12), the shared drawing rules of doc-11, card information levels
-S/M/L, the lane-header-row rebuild of the swimlane with column and row folding, the
-token-based filter bar, the fixed order of the top banners, in-column new-task input,
-the three task-detail placements with a persisted default, the project detail screen
-(doc-10), the fixed header with its menu, and the correction of what `task create`
-actually accepts (TASK-57).
-
-Distribution — packaging — has not started. Whether to bundle the Backlog CLI as a
-sidecar is settled: it is not bundled (decision-26).
-
-Key decisions:
-
-- Desktop implementation: Tauri, with a Rust core (decision-1).
-- Read/update split: read by parsing Backlog management files directly; delegate
-  updates to the Backlog CLI (decision-2). Going through an MCP server was not
-  adopted.
-- cross-branch: limited to the current checkout in the initial version (decision-3).
-- status: per-project statuses are allowed and mapped onto the canonical status
-  columns (To Do / In Progress / In Review / Done) (decision-4).
-- Type: derived by stripping the `kind:` prefix, with multiple, absent, and unknown
-  values shown distinctly (decision-5).
-- Absence and gaps: target-absent, unreadable, and no-match are shown as distinct
-  states rather than one blank (decision-6).
-- Backlog CLI: a `backlog` on the user's PATH, both while developing and once
-  distributed (decision-7). It is not bundled as a sidecar: doing so would grow the
-  macOS bundle from 14 MB to 81 MB, and the friction it would remove is already
-  handled — Windows resolution by decision-16, and pre-install use by the read-only
-  start (decision-26).
-- External commands: every tool Atlas launches but does not ship — `backlog`, `git`,
-  `gh`, and your editor — resolves from an app-settings path first, and only then
-  automatically. A GUI-started app may not inherit the `PATH` that has them, and the
-  setting is what a user can reach from inside Atlas when it does not (decision-29).
-- Frontend: Svelte 5 used plainly (no SvelteKit), built with Vite and TypeScript,
-  with component-scoped styles (decision-8).
-- Dependency choices: `toml` for the ledger, `serde_yaml_ng` for frontmatter parsing,
-  and `notify` for the file watch (decision-9–11).
-- Colour: a display theme holds one set of colour values, chosen in the settings; the
-  mark families stay defined in one place per theme (decision-12).
-- App settings: kept in a file of their own next to the ledger, so the ledger's
-  read-only degradation does not take the display defaults with it (decision-13).
-
-Bundling the Backlog CLI as a sidecar was a distribution choice, not a question of
-ownership; either way the source of truth for tasks stays in each project's Backlog
-root. It is not bundled (decision-26), and decision-7's two remaining triggers — pinning
-a version on the distribution side, and CLI-install friction blocking real use — would
-reopen it.
-
-## Related planning
-
-- This project's own planning lives in this repository's Backlog root
-  (`backlog/`): the terminology table (`backlog/docs/doc-1`) and the bootstrap
-  guide (`backlog/docs/doc-2`), plus tasks under `backlog/tasks/`.
-- Portfolio-level governance stays in the `personal-planning` repository under
-  `backlog/docs/portfolio/`: the project registry, operating policy, and
-  Git-linking rules that span every project.
+This is a personal project. Bug reports and requests are welcome in
+[Issues](https://github.com/serendipitynz/backlog-atlas/issues). If you would like to send a
+Pull Request, please open an issue first so we can talk it over.
 
 ## Language
 
