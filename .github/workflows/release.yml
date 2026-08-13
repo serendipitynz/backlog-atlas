@@ -127,6 +127,47 @@ jobs:
           fi
           exit "$fail"
 
+      # THIRD-PARTY-LICENSES.txt is generated from the lockfiles and committed,
+      # and every bundle carries a copy (tauri.conf.json's bundle.resources). A
+      # stale one is therefore a defect in all three assets at once, which is why
+      # this stops the run here — before the draft exists — rather than in a
+      # platform job.
+      #
+      # `third-party-licenses.test.ts` makes the same comparison, and the suite
+      # is deliberately not run here (see the header). This is the second place
+      # that knowledge lives, for the same reason the manifest check above is:
+      # what a tag must not ship with is worth checking without a test runner.
+      - name: Verify the third-party notice describes the tagged tree
+        shell: python
+        run: |
+          import hashlib, re, sys
+          from pathlib import Path
+
+          notice = Path("THIRD-PARTY-LICENSES.txt")
+          if not notice.is_file():
+              sys.exit("::error::THIRD-PARTY-LICENSES.txt is missing from the tagged tree.")
+
+          # The header lists one `  <path>  sha256 <digest>` line per input the
+          # generator read, and ends where section 1 begins.
+          header = notice.read_text(encoding="utf-8").split("SECTION 1")[0]
+          recorded = re.findall(r"^ {2}(\S+) +sha256 ([0-9a-f]{64})$", header, re.MULTILINE)
+          if not recorded:
+              sys.exit("::error::THIRD-PARTY-LICENSES.txt records no input digests. Regenerate it.")
+
+          stale = [
+              path
+              for path, digest in recorded
+              if not Path(path).is_file()
+              or hashlib.sha256(Path(path).read_bytes()).hexdigest() != digest
+          ]
+          if stale:
+              sys.exit(
+                  f"::error::THIRD-PARTY-LICENSES.txt no longer describes {', '.join(stale)}. "
+                  "Regenerate it with scripts/generate-third-party-licenses.mjs, commit it, "
+                  "move the tag, and re-run."
+              )
+          print(f"THIRD-PARTY-LICENSES.txt matches all {len(recorded)} of its inputs.")
+
       - name: Create (or reuse) the draft release with generated notes
         id: release
         run: |
@@ -163,6 +204,15 @@ jobs:
             echo "Reusing existing release $id for $RELEASE_TAG"
           fi
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
+      # Every bundle already carries this file, so attaching it here is for the
+      # reader who wants to know what is inside before downloading a hundred
+      # megabytes — and for anyone auditing the release without installing it.
+      # Uploaded from this job rather than the matrix: the three platforms
+      # produce the same file, and three jobs racing to --clobber one asset is
+      # a race with nothing to win.
+      - name: Attach the third-party notice to the draft release
+        run: gh release upload "$RELEASE_TAG" THIRD-PARTY-LICENSES.txt --clobber -R "$GITHUB_REPOSITORY"
 
   build:
     needs: create-release
@@ -280,6 +330,32 @@ jobs:
             exit 1
           fi
           echo "icon.icns in $app matches the committed source."
+
+      # bundle.resources is one config for every bundler, and this is the only
+      # platform whose copy has been looked at (measured on a local build,
+      # TASK-159). The Windows and Linux bundles are not checked here: what
+      # their copy is named and where it sits has not been measured, and a check
+      # written from a guess would stop a release for being wrong about itself.
+      # The notice is attached to the release as its own asset regardless, so
+      # nothing ships without it either way — the first release run is where the
+      # other two get looked at.
+      - name: Verify the macOS bundle carries the third-party notice
+        if: matrix.platform == 'macos-latest'
+        run: |
+          set -eu
+          app=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos \
+            -maxdepth 1 -name '*.app' -print -quit 2>/dev/null || true)
+          if [ -z "$app" ]; then
+            echo "::error::No .app was produced." >&2
+            exit 1
+          fi
+          for file in LICENSE THIRD-PARTY-LICENSES.txt; do
+            if ! cmp "$app/Contents/Resources/$file" "$file"; then
+              echo "::error::$app does not carry $file." >&2
+              exit 1
+            fi
+          done
+          echo "LICENSE and THIRD-PARTY-LICENSES.txt in $app match the committed sources."
 
       - name: Verify the Linux .deb carries the app icon
         if: matrix.platform == 'ubuntu-24.04'
