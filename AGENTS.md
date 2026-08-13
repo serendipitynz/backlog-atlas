@@ -193,6 +193,12 @@ progress report.
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.
+- **In Japanese Markdown, leave a half-width space after a closing `**` when text follows
+  it.** A closing delimiter has to be right-flanking, and one preceded by `。` with a
+  non-space after it is not — so `**…です。**Atlas` renders its asterisks literally rather
+  than as bold. Every Japanese sentence that ends inside the emphasis hits this, which is
+  most of them. It applies wherever the Markdown is rendered: the READMEs, and task and
+  document bodies, which Atlas draws with `markdown-it` (decision-25).
 - After implementation, run the relevant tests, formatter, and static analysis.
   Report anything that cannot be run, with the reason.
 - Do not commit, rewrite history, or push to a remote without an explicit request.
