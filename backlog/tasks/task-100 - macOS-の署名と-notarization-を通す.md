@@ -1,10 +1,10 @@
 ---
 id: TASK-100
 title: macOS の署名と notarization を通す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-13 11:23'
+updated_date: '2026-08-13 12:17'
 labels:
   - release
   - 'kind:chore'
