@@ -975,7 +975,9 @@
         // actually stopped. It is also N sequential boundary calls, one per registered root, so
         // leaving it outside would reopen exactly the window detaching the probes closed — the form
         // editable and closable while a promise that will fire `onsaved` is still running.
-        if (before !== watchEnabled) await reconcileWatches();
+        if (before !== watchEnabled) {
+          await reconcileWatches();
+        }
       }
     } finally {
       settingsSaving = false;
@@ -1011,10 +1013,14 @@
     // launch used the setting just typed.
     try {
       const probed = await editorProbe();
-      if (run !== saveRefresh) return;
+      if (run !== saveRefresh) {
+        return;
+      }
       editorReadiness = probed;
     } catch (error) {
-      if (run !== saveRefresh) return;
+      if (run !== saveRefresh) {
+        return;
+      }
       notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
     // 外部コマンド解決の順序 starts at the 外部コマンド指定 (decision-29), so this save changes what the
@@ -1036,10 +1042,14 @@
     // from the other would make the band answer a question it does not ask.
     try {
       const probed = await cliProbe();
-      if (run !== saveRefresh) return;
+      if (run !== saveRefresh) {
+        return;
+      }
       readiness = probed;
     } catch (error) {
-      if (run !== saveRefresh) return;
+      if (run !== saveRefresh) {
+        return;
+      }
       notice = `Backlog CLI の確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
   }
@@ -1059,10 +1069,14 @@
     externalPrograms = null;
     try {
       const probed = await externalProgramsProbe();
-      if (run !== programsRefresh) return;
+      if (run !== programsRefresh) {
+        return;
+      }
       externalPrograms = probed;
     } catch (error) {
-      if (run !== programsRefresh) return;
+      if (run !== programsRefresh) {
+        return;
+      }
       notice = `外部コマンドの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
     }
   }

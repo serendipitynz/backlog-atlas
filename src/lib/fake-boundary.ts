@@ -170,6 +170,8 @@ export const answers = {
   cliProbeHolds: [] as Deferred<void>[],
   /** Holds handed to successive `project_watch_stop` calls, for the same reason. */
   watchStopHolds: [] as Deferred<void>[],
+  /** Holds handed to successive `external_programs_probe` calls, for the same reason. */
+  externalProgramsHolds: [] as Deferred<void>[],
   /**
    * Make every `settings_save` reject, the way decision-13 refuses to overwrite a file newer than this
    * build. A flag rather than a replaceable function: `vi.mock` copies the references, so a fake swapped
@@ -245,6 +247,7 @@ export function reset(): void {
   answers.settingsSaveHold = null;
   answers.cliProbeHolds = [];
   answers.watchStopHolds = [];
+  answers.externalProgramsHolds = [];
   answers.settingsSaveFails = false;
   answers.ledgerRegisterHold = null;
 }
@@ -392,7 +395,16 @@ export const commandFakes = {
     }),
 
   externalProgramsProbe: (): Promise<ExternalProgramReport[]> =>
-    record("external_programs_probe", [], () => Promise.resolve(answers.externalPrograms)),
+    record("external_programs_probe", [], async () => {
+      // Captured before the wait, like `cli_probe`: the answer belongs to the moment the probe was
+      // issued, which is what makes an out-of-order completion observable.
+      const answer = answers.externalPrograms;
+      const hold = answers.externalProgramsHolds.shift();
+      if (hold !== undefined) {
+        await hold.promise;
+      }
+      return answer;
+    }),
 
   editorProbe: (): Promise<EditorReadiness> =>
     record("editor_probe", [], () => Promise.resolve(answers.editor)),
