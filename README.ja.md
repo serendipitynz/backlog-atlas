@@ -112,7 +112,7 @@ MIT License です（[LICENSE](LICENSE)）。
 
 個人プロジェクトとして開発しています。バグ報告と要望は
 [Issues](https://github.com/serendipitynz/backlog-atlas/issues) へどうぞ。Pull Request は先に
-Issue で相談してもらえると助かります。
+Issue でご相談ください。
 
 ## Language
 

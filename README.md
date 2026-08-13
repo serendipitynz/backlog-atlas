@@ -122,7 +122,7 @@ Feather-derived icons under MIT). Their notices are in
 
 This is a personal project. Bug reports and requests are welcome in
 [Issues](https://github.com/serendipitynz/backlog-atlas/issues). For a Pull Request, please open
-an issue first so we can talk it over.
+an issue first.
 
 ## Language
 
