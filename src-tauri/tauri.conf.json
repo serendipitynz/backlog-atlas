@@ -26,6 +26,8 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "DeveloperTool",
+    "copyright": "Copyright (c) 2026 Takuya Otani / SerendipityNZ Ltd.",
     "resources": {
       "../LICENSE": "LICENSE",
       "../THIRD-PARTY-LICENSES.txt": "THIRD-PARTY-LICENSES.txt"
