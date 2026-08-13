@@ -28,6 +28,7 @@ Ubuntu 24.04 or newer). The interface is in Japanese only.
   Requests from the task ID.
 - Derive Type from `kind:*` labels and the frontmatter, shown apart from ordinary labels.
 - List and edit documents and milestones.
+- List and read decisions (`backlog/decisions/`).
 - Keep the display theme, card density, filters, and sort order in settings.
 
 ## What Atlas does not change
