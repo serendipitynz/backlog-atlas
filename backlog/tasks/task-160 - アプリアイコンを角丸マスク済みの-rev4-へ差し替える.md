@@ -1,10 +1,10 @@
 ---
 id: TASK-160
 title: アプリアイコンを角丸マスク済みの rev4 へ差し替える
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 03:48'
-updated_date: '2026-08-13 03:53'
+updated_date: '2026-08-13 07:02'
 labels:
   - ui
   - release

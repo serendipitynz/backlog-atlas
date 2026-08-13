@@ -1,10 +1,10 @@
 ---
 id: TASK-97
 title: LICENSE を追加する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-13 03:53'
+updated_date: '2026-08-13 07:02'
 labels:
   - release
   - docs

@@ -1,10 +1,10 @@
 ---
 id: TASK-90
 title: README の実装状況を現状へ更新する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-13 05:01'
+updated_date: '2026-08-13 07:02'
 labels:
   - docs
   - 'kind:writing'
