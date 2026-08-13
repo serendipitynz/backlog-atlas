@@ -193,11 +193,28 @@ describe("画面に置く文 (doc-11 §8)", () => {
     import: "default",
   });
 
+  /**
+   * The two titles no code builds: the document's (`index.html`) and the native window's
+   * (`tauri.conf.json`). Both are read — one in the window frame, one by the OS — and neither is
+   * reachable from `SOURCES` or `CRATE`, so without them the scan would pass while a title said
+   * プロジェクト台帳. **A title is exactly the string a session would spell out rather than derive**,
+   * which is what makes the gap worth closing rather than noting (raised in review on PR #111).
+   *
+   * Scanned by this check alone, for `CRATE`'s reason turned around: `tauri.conf.json` carries the
+   * app `version`, which the 版表記 scan forbids.
+   */
+  const STATIC_UI: Record<string, string> = import.meta.glob(
+    ["../../index.html", "../../src-tauri/tauri.conf.json"],
+    { eager: true, query: "?raw", import: "default" },
+  );
+
   it("keeps the 設計語 out of what a user reads", () => {
     const found: string[] = [];
-    const sources = { ...SOURCES, ...CRATE };
-    for (const path of [...scanned, ...Object.keys(CRATE).sort()]) {
-      screenText(sources[path], path.endsWith(".svelte")).forEach((line, index) => {
+    const sources = { ...SOURCES, ...CRATE, ...STATIC_UI };
+    const everywhere = [...scanned, ...Object.keys(CRATE).sort(), ...Object.keys(STATIC_UI).sort()];
+    for (const path of everywhere) {
+      // `index.html` takes the markup branch for its `<!-- -->`; the JSON has neither form of comment.
+      screenText(sources[path], /\.(svelte|html)$/.test(path)).forEach((line, index) => {
         const hit = designOnlyHit(line);
         if (hit !== undefined) {
           found.push(`${path}:${index + 1}: ${hit.word} → ${hit.instead}: ${line.trim()}`);
@@ -207,9 +224,18 @@ describe("画面に置く文 (doc-11 §8)", () => {
     expect(found).toEqual([]);
   });
 
-  it("scans the crate too, so a reason it builds cannot carry a 設計語 unseen", () => {
+  it("scans the crate and both titles too, so nothing a user reads is outside the check", () => {
     expect(Object.keys(CRATE).some((path) => path.endsWith("/editor.rs"))).toBe(true);
     expect(Object.keys(CRATE).length).toBeGreaterThan(5);
+    for (const name of ["/index.html", "/tauri.conf.json"]) {
+      expect(Object.keys(STATIC_UI).some((path) => path.endsWith(name))).toBe(true);
+    }
+    // The titles are what the scan is here for, so prove the stripper leaves them readable rather
+    // than trusting the glob: a `screenText` that swallowed them would pass by scanning nothing.
+    expect(screenText(STATIC_UI[Object.keys(STATIC_UI).find((p) => p.endsWith("/index.html"))!], true)
+      .some((line) => line.includes("<title>"))).toBe(true);
+    expect(screenText(STATIC_UI[Object.keys(STATIC_UI).find((p) => p.endsWith("/tauri.conf.json"))!], false)
+      .some((line) => line.includes('"title"'))).toBe(true);
   });
 
   it("finds each design word planted in a screen string, and leaves them in comments", () => {
