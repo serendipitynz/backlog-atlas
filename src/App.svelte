@@ -967,13 +967,32 @@
     // 外部コマンド解決の順序 starts at the 外部コマンド指定 (decision-29), so this save changes what the
     // 解決結果の表示 reports — for the same reason the editor is re-probed just above.
     await refreshExternalPrograms();
+    // And the 縮退帯 with it. `backlog_cli` is the first step of the same order (doc-5 §4 順序 1), so a
+    // save can turn 発行不能 into 発行できる or the other way round — and until this ran, neither took
+    // effect before a restart. That is the whole of what TASK-156 is for: the user reaches the
+    // setting from inside Atlas precisely because they cannot issue updates, and a fix that needs a
+    // restart to be believed is not a means they can reach.
+    //
+    // Unconditional, not "only when `backlog_cli` changed": `saveSettings` takes a *change function*
+    // rather than a value (アプリ設定 is written from outside this form too), so what the file now
+    // holds is not knowable here without re-deriving it. One `--version` per save is the cost of not
+    // having to know.
+    //
+    // Separate from the 解決結果の表示's own `backlog` row on purpose (decision-29): that row says
+    // whether the program started, this says whether its version meets `MIN_VERSION`. Deriving one
+    // from the other would make the band answer a question it does not ask.
+    try {
+      readiness = await cliProbe();
+    } catch (error) {
+      notice = `Backlog CLI の確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
+    }
     return null;
   }
 
   /**
    * Re-read the 解決結果の表示 (decision-29). Set to `null` first so the 区画 says 確認中 rather than
    * holding the previous answer beside a 外部コマンド指定 that has already changed — this probe runs
-   * two processes and is the one panel value slow enough for the gap to be visible.
+   * three processes and is the one panel value slow enough for the gap to be visible.
    *
    * A failure leaves the panel at 確認中 and states the reason on the 帯. There is no "probe failed"
    * row: the probe *is* what turns a failure into a row, so a failed probe has nothing to say per
@@ -1876,10 +1895,10 @@
       // then 場所を開く holds the previous answer, or says it has not been confirmed on the first open
       // of a run whose startup probe has not returned.
       void refreshSettingsDirectory();
-      // 解決結果の表示 (decision-29). Asked on every open rather than once: it spawns two processes,
-      // so it does not belong in startup, and its answer can change without Atlas doing anything —
-      // the user may have installed the tool since the last look, which is the likeliest reason they
-      // opened this screen at all.
+      // 解決結果の表示 (decision-29). Asked on every open rather than once: it spawns one process per
+      // 外部コマンド, so it does not belong in startup, and its answer can change without Atlas doing
+      // anything — the user may have installed the tool since the last look, which is the likeliest
+      // reason they opened this screen at all.
       void refreshExternalPrograms();
     }
   }

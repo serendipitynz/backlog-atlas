@@ -227,11 +227,15 @@ export function cliProbe(): Promise<CliReadiness> {
 }
 
 /**
- * 解決結果の表示 (decision-29): which `git` and `gh` Atlas would launch, and whether they start.
+ * 解決結果の表示 (decision-29): which executable each 外部コマンド would launch, and whether it
+ * starts. All three — `backlog`, `git`, `gh`.
  *
- * Read when the 設定画面 opens rather than at startup: it spawns two processes to fill one panel, and
- * every other screen gets on without the answer. Re-read after a save, so the panel reports the
- * 外部コマンド指定 just written rather than the one it replaced.
+ * Read when the 設定画面 opens rather than at startup: it spawns one process per command to fill one
+ * panel, and every other screen gets on without the answer. Re-read after a save, so the panel
+ * reports the 外部コマンド指定 just written rather than the one it replaced.
+ *
+ * Not the same question as `cliProbe`, which asks whether `backlog`'s *version* meets the minimum
+ * (decision-7). Both are re-read after a save; neither is derived from the other.
  */
 export function externalProgramsProbe(): Promise<ExternalProgramReport[]> {
   return invoke<ExternalProgramReport[]>("external_programs_probe");

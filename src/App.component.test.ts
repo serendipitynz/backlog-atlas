@@ -176,6 +176,33 @@ describe("起動時の設定・workspace・監視の順序", () => {
     expect(madeTo("settings_directory_present")).toHaveLength(2);
   });
 
+  it("設定を保存したら Backlog CLI の縮退判定を問い直す", async () => {
+    // doc-5 §4 順序 1 の `backlog_cli` は、この保存で変わりうる（decision-29）。問い直さないと、
+    // **利用者がこの画面で直した直後も、再起動するまで縮退帯が立ったまま**になる。TASK-156 の趣旨は
+    // 「発行できないから設定へ来た利用者が、アプリの中で直せること」なので、再起動を要する回復は
+    // 到達できる手段になっていない。逆向き（有効なパスを壊れたパスに変える）も同じ理由で要る。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+    await settled();
+    expect(madeTo("cli_probe")).toHaveLength(1); // 起動時の 1 回だけ
+
+    const other = [...host.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
+      (radio) => !radio.checked,
+    );
+    if (other === undefined) throw new Error("every カード情報量 is already checked");
+    click(other);
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+
+    expect(madeTo("settings_save")).toHaveLength(1);
+    expect(madeTo("cli_probe")).toHaveLength(2);
+    // 保存で問い直すのは 3 つとも。外部エディタ（doc-8 §7 起動指定の解決順）と 解決結果の表示
+    // （decision-29）は先に入っており、縮退帯だけが落ちていた。
+    expect(madeTo("editor_probe")).toHaveLength(2);
+    expect(madeTo("external_programs_probe").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("設定の読取が失敗しても既定値で起動を続ける", async () => {
     // What is fixed here is that a *rejection* is not fatal: the boundary already degrades a missing
     // or unreadable file to the defaults, so only an IPC failure reaches the shell, and leaving

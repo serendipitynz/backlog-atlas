@@ -52,10 +52,33 @@ npm install -g backlog.md
 ターミナルでは問題なく解決できるのに、である。コミット・Pull Request 履歴に使う `git` と `gh` も
 同じである。
 
-導入したはずの道具を Atlas が見つけられないときは、**設定 → 外部コマンドの場所**で指定する。
-実行ファイルの絶対パス (`which backlog` が出す) を入れれば、`PATH` を探す代わりにそれを使う。
-同じ区画が、いま何が解決されていて起動できるかどうかも示すので、3 つのどれが問題なのかが分かる
-(decision-29)。
+導入したはずの道具を Atlas が見つけられないときは、**設定 → 外部コマンド**で指定する。
+実行ファイルの絶対パスを入れれば、`PATH` を探す代わりにそれを使う。同じ区画が、いま何が
+解決されていて起動できるかどうかも示すので、3 つのどれが問題なのかが分かる (decision-29)。
+
+**`backlog` については、`which backlog` が出すものを使わない。**npm 導入の場合それは shim で、
+`cli.js` を `node` 経由で起動する symlink (Windows では `.cmd`／`.ps1`) である。ここへ書いても
+問題がずれるだけで、そのファイルは `#!/usr/bin/env node` で始まるため、起動には**まさに
+`backlog` を欠いているその `PATH` 上の `node`** が要る。パッケージの中の native な実行ファイルを
+指す。
+
+```sh
+# macOS / Linux
+ls "$(npm prefix -g)"/lib/node_modules/backlog.md/node_modules/backlog.md-*/backlog
+```
+
+```powershell
+# Windows
+Get-ChildItem "$(npm prefix -g)\node_modules\backlog.md\node_modules\backlog.md-*\backlog.exe"
+```
+
+`git` と `gh` にこの注意は要らない。native な実行ファイルなので、`which`／`Get-Command` が出す
+パスをそのまま使える。
+
+バージョン管理ツールを使っている場合はもう 1 つ。**それがシェルの `PATH` へ置くディレクトリは
+セッションごとであることが多く** (fnm の `fnm_multishells/<PID>_<時刻>/…` など)、ターミナルを
+開き直すと消えている。上のコマンドが出すのは導入したバージョン自身のディレクトリで、そちらは
+安定している — 書き写すのはこちらである。
 
 **CLI が無くても Atlas は起動する。**読み取りは CLI を通らず、各プロジェクトの Backlog.md を
 直接解析する (decision-2)。したがって `PATH` 上に `backlog` が無い場合も、v1.49.3 未満の場合も、

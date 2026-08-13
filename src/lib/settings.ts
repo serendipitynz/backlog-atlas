@@ -411,13 +411,21 @@ export function mergeDraft(
   //
   // Absent rather than `undefined`-valued: the key is skipped in the file when there is no value.
   const cli = pick(draft.backlog_cli, baseline.backlog_cli, next.backlog_cli);
-  if (cli !== undefined) merged.backlog_cli = cli;
+  if (cli !== undefined) {
+    merged.backlog_cli = cli;
+  }
   const git = pick(draft.git_cli, baseline.git_cli, next.git_cli);
-  if (git !== undefined) merged.git_cli = git;
+  if (git !== undefined) {
+    merged.git_cli = git;
+  }
   const gh = pick(draft.gh_cli, baseline.gh_cli, next.gh_cli);
-  if (gh !== undefined) merged.gh_cli = gh;
+  if (gh !== undefined) {
+    merged.gh_cli = gh;
+  }
   const editor = pick(draft.external_editor, baseline.external_editor, next.external_editor);
-  if (editor !== undefined) merged.external_editor = editor;
+  if (editor !== undefined) {
+    merged.external_editor = editor;
+  }
   return merged;
 }
 

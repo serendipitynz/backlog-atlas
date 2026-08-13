@@ -87,13 +87,14 @@
      */
     directoryPresent: boolean | null;
     /**
-     * 解決結果の表示 (decision-29): what `git` and `gh` resolved to, and whether they start. `null`
+     * 解決結果の表示 (decision-29): what each 外部コマンド resolved to, and whether it starts. `null`
      * while the probe is in flight, which draws 確認中 rather than an empty panel — unlike the paths
      * above, this answer *is* retried (after every save), so "not yet" is a real state here.
      *
-     * `backlog` is not in this list. Its readiness is the 縮退帯's (`CliReadiness`), which answers the
-     * additional question of whether the version is supported; showing it here too would put two
-     * answers about one program on one screen.
+     * **All three, `backlog` included.** It and the 縮退帯 (`CliReadiness`) do not answer one question
+     * twice: this says whether the program started, that says whether its version meets the minimum,
+     * and a CLI below the minimum starts fine. Leaving it out was the first draft's mistake — with the
+     * band down, the screen then said nothing at all about the one command it exists for.
      */
     programs: ExternalProgramReport[] | null;
     /**
