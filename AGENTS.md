@@ -221,13 +221,16 @@ whose notes GitHub generates from the merged Pull Requests (`.github/release.yml
 them). **Publishing the draft is a manual step and stays one**: the notes are meant to be
 read first, and a platform whose job failed leaves the draft short an asset.
 
-Three things about that workflow are decisions rather than details, and an edit undoing one
+Four things about that workflow are decisions rather than details, and an edit undoing one
 should say why.
 
 - **It refuses to build when the six macOS signing secrets are unregistered**, in the job
   that would otherwise create the draft, so the run stops before any asset exists. An
   unsigned macOS bundle is worse than a missing one — Gatekeeper refuses it, and the user
   has already downloaded it by then.
+- **It checks that `THIRD-PARTY-LICENSES.txt` still describes the tagged tree**, in that
+  same job and for the same reason: every bundle carries a copy, so a stale one is a defect
+  in all three assets at once rather than in the platform whose job noticed.
 - **It does not run `pnpm test`.** m-3 TASK-150's intermittent component-test timeout would
   fail releases at random for a fault that is not in the build. Tests run before the Pull
   Request that produced the tag.
@@ -236,6 +239,91 @@ should say why.
   bundles after `tauri.conf.json` and the build passes no `--locked`, so a tag out of step
   with them yields assets carrying the previous version's name over a lockfile the build
   silently rewrote.
+
+### Third-party notices
+
+**The generator adds no dependency, and that was the dependency gate's outcome rather than
+its accident** (TASK-159, confirmed with the owner on 2026-08-14). The npm half is
+`pnpm licenses list --prod --json`, pnpm's own subcommand, so it is already pinned by
+`packageManager`; the cargo half is `cargo metadata` and a tar reader inside the script. The
+alternative put beside it was `cargo-about`, which carries the SPDX text corpus this repo
+instead keeps in `scripts/spdx/` — it was declined because it covers only the cargo half (the
+npm half would still be written here), it compiles on every release run, and its `accepted`
+allowlist stops a release for a licence change the notice would otherwise just record.
+
+**`THIRD-PARTY-LICENSES.txt` is generated and committed. Do not edit it.**
+`scripts/generate-third-party-licenses.mjs` writes it out of the two lockfiles and the
+packages they resolve, so a hand edit is lost the next time a dependency moves. Regenerate
+and commit it whenever an input changes — either lockfile, `THIRD-PARTY-NOTICES.md`, or an
+`scripts/spdx/` text:
+
+```
+pnpm install
+cargo fetch --manifest-path src-tauri/Cargo.toml \
+  --target aarch64-apple-darwin --target x86_64-apple-darwin \
+  --target x86_64-pc-windows-msvc --target x86_64-unknown-linux-gnu
+node scripts/generate-third-party-licenses.mjs
+```
+
+The file records a digest of each of those inputs in its own header.
+`src/lib/third-party-licenses.test.ts` compares them against the tree and fails when one has
+moved, and the release workflow makes the same comparison before creating the draft — so
+"someone has to remember to re-run it" is not what this rests on.
+
+Four things about the generator are decisions rather than details.
+
+- **Its output is committed rather than produced in CI**, because `tauri.conf.json` lists
+  the file under `bundle.resources`: a resource that exists only on a runner breaks
+  `pnpm tauri build` for everyone following README's "Building from source". Committing it is
+  safe because the output is byte-reproducible — nothing in the generator reads a clock, a
+  path, or a machine-specific value, and every list it emits is sorted.
+- **It opens by reproducing `THIRD-PARTY-NOTICES.md` in full.** Ace and Lucide are vendored
+  into this tree and appear in neither lockfile, so no inventory built from one lists either.
+  One file rather than two is what makes shipping the generated list without them impossible,
+  instead of a rule someone has to remember at bundling time.
+- **The crate set is the union over the four release target triples**, one
+  `cargo metadata --filter-platform` pass each. The unfiltered graph is 442 crates against
+  that union's 352: cargo resolves every platform the lockfile can describe, so the notice
+  would claim the Android, wasm, Redox, iOS and GNU-ABI Windows crates ship inside these
+  bundles.
+- **Crate texts are read out of the `.crate` tarballs in the cargo registry cache**, not out
+  of the extracted sources beside them. `cargo fetch --target` fills the cache for a platform
+  it never builds, but extraction happens at build time — so on any one machine the extracted
+  set covers the host alone, and this notice has to cover four triples at once (measured on
+  2026-08-14: 58 of the tree's crates were cached and unextracted).
+
+**`.gitattributes` is load-bearing here, not housekeeping.** The digests are taken over the
+bytes on disk, so the scheme rests on every checkout producing the same bytes; `* text=auto
+eol=lf` is what delivers that against git's default `core.autocrlf=true` on Windows. Without
+it a Windows checkout changes all nine digests at once **and** leaves the notice's header
+unparseable, which was worse than it sounds: the staleness test then compared an empty list
+against an empty list and passed, so the one check that reads every input agreed nothing had
+gone stale, having read none of them. `third-party-licenses.test.ts` now fails on a converted
+checkout and on a header it cannot parse, rather than going quiet.
+
+**Nineteen crates publish no licence text at all**, declaring only an SPDX expression in
+`Cargo.toml` — the `objc2` and `unic` families, `selectors`, `tauri-plugin`, `alloc-stdlib`,
+`webview2-com`, `dlopen2`, `libappindicator-sys`. The standard text of each identifier stands
+in for them, kept in `scripts/spdx/` with its provenance in that directory's README. **An
+identifier with no text there stops the generator rather than being invented** — that stop is
+the point, because it means the tree took on a licence nobody has looked at.
+
+**All three bundles were confirmed to carry it, on real machines** (TASK-159, 2026-08-14),
+and the release workflow re-checks each. The paths were worth measuring rather than assuming
+because `tauri.conf.json` names the two files as `../LICENSE` and `../THIRD-PARTY-LICENSES.txt`
+— above `src-tauri/`, which each bundler has to resolve for itself, and any of them could have
+failed to.
+
+| bundle | where the copy lands | how the workflow reads it |
+|---|---|---|
+| macOS `.app` | `Contents/Resources/` | the path directly |
+| Linux `.deb` | `usr/lib/<productName>/` | `dpkg-deb -x`, then find by name |
+| Windows `.msi` | `Program Files\<productName>\` | `msiexec /a` to unpack, then find by name |
+
+Two of the three **search for the file rather than naming its directory**, because that
+directory is the product name: spelling it in the workflow would put it in a second place for
+a rename to miss. **The notice is attached to the release as its own asset as well**, so no
+platform depends on its bundler for the notice to exist at all.
 
 ### macOS signing and notarization
 

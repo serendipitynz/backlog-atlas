@@ -1,0 +1,21 @@
+# THIRD-PARTY-LICENSES.txt records a sha256 of each file it was generated from,
+# over the bytes on disk, and third-party-licenses.test.ts recomputes them. A
+# checkout that converted line endings would change all nine digests at once and
+# leave the notice's own header unparseable — on a Windows runner, where git's
+# default core.autocrlf=true does exactly that. `eol=lf` overrides autocrlf, so
+# every checkout gets the bytes the digests were taken over.
+#
+# The rule is repository-wide rather than a list of the generator's inputs: that
+# list is computed at generation time (scripts/spdx/*.txt is a glob), so spelling
+# it here would create a second place for a new input to be forgotten. Nothing is
+# renormalized by adding this — all 381 text files were already stored with LF.
+* text=auto eol=lf
+
+# Marked explicitly rather than left to git's detection. Every file in
+# src-tauri/icons/ is generated from app-icon.png and compared byte-for-byte by
+# the release workflow, and icon.icns is not byte-reproducible across runs to
+# begin with — a heuristic deciding one of them is text would be a defect nobody
+# would think to look for here.
+*.png -text
+*.ico -text
+*.icns -text
