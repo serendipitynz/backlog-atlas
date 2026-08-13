@@ -20,6 +20,12 @@
 // here reads a clock, a path, or a machine-specific value, and the packages and
 // their texts are emitted in a sorted order.
 //
+// That reproducibility reaches as far as the bytes on disk and no further: the
+// input digests below are taken over those bytes, so a checkout that converted
+// line endings would change all nine at once. `.gitattributes` pins the whole
+// tree to LF for exactly this reason — without it, git's default
+// core.autocrlf=true on Windows produces a tree whose every digest is wrong.
+//
 // Crate texts come from the `.crate` tarballs in the cargo registry cache, not
 // from the extracted sources beside them. `cargo fetch --target` populates the
 // cache for a platform it never builds, but extraction happens at build time —
@@ -375,8 +381,12 @@ function applyFallback(packages) {
 // --- output ---------------------------------------------------------------
 
 const order = (a, b) => {
-  if (a.ecosystem !== b.ecosystem) return a.ecosystem < b.ecosystem ? -1 : 1
-  if (a.name !== b.name) return a.name < b.name ? -1 : 1
+  if (a.ecosystem !== b.ecosystem) {
+    return a.ecosystem < b.ecosystem ? -1 : 1
+  }
+  if (a.name !== b.name) {
+    return a.name < b.name ? -1 : 1
+  }
   return a.version < b.version ? -1 : a.version > b.version ? 1 : 0
 }
 

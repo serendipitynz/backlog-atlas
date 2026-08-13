@@ -269,6 +269,15 @@ node scripts/generate-third-party-licenses.mjs
   この通知は 4 トリプルを一度に覆う必要がある（2026-08-14 実測: この木の 58 crate が
   取得済みかつ未展開だった）。
 
+**`.gitattributes` はここでは飾りではなく、仕組みを支えている。** ダイジェストはディスク上の
+バイト列に対して取るので、**どの checkout でも同じバイト列になること**に全体が乗っている。
+`* text=auto eol=lf` がそれを保証する — git の既定は Windows で `core.autocrlf=true` だからである。
+無ければ Windows の checkout は 9 つのダイジェストを一度に変え、**そのうえ通知のヘッダを
+解析不能にする。** これは字面より悪い: 古び検査が空リスト同士を比べて通ってしまい、
+**全入力を読むはずの検査が、1 つも読まないまま「古びていない」と答える。**
+`third-party-licenses.test.ts` は、変換された checkout でも解析できないヘッダでも落ちるようにした。
+黙らない。
+
 **19 の crate はライセンス本文を一切公開せず**、`Cargo.toml` に SPDX 式だけを宣言している —
 `objc2` 族と `unic` 族、`selectors`、`tauri-plugin`、`alloc-stdlib`、`webview2-com`、
 `dlopen2`、`libappindicator-sys`。その代わりに各識別子の標準本文を当て、`scripts/spdx/` に

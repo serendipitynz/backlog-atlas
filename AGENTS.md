@@ -292,6 +292,15 @@ Four things about the generator are decisions rather than details.
   set covers the host alone, and this notice has to cover four triples at once (measured on
   2026-08-14: 58 of the tree's crates were cached and unextracted).
 
+**`.gitattributes` is load-bearing here, not housekeeping.** The digests are taken over the
+bytes on disk, so the scheme rests on every checkout producing the same bytes; `* text=auto
+eol=lf` is what delivers that against git's default `core.autocrlf=true` on Windows. Without
+it a Windows checkout changes all nine digests at once **and** leaves the notice's header
+unparseable, which was worse than it sounds: the staleness test then compared an empty list
+against an empty list and passed, so the one check that reads every input agreed nothing had
+gone stale, having read none of them. `third-party-licenses.test.ts` now fails on a converted
+checkout and on a header it cannot parse, rather than going quiet.
+
 **Nineteen crates publish no licence text at all**, declaring only an SPDX expression in
 `Cargo.toml` — the `objc2` and `unic` families, `selectors`, `tauri-plugin`, `alloc-stdlib`,
 `webview2-com`, `dlopen2`, `libappindicator-sys`. The standard text of each identifier stands

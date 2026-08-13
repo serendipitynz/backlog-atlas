@@ -1,5 +1,6 @@
 /**
- * 出荷物の契約 1 件 (TASK-159): `THIRD-PARTY-LICENSES.txt` が、いま木にある依存を述べているか.
+ * One 出荷物の契約 (TASK-159): whether `THIRD-PARTY-LICENSES.txt` still describes the dependencies
+ * this tree resolves.
  *
  * The notice that ships inside a bundle is generated from the two lockfiles by
  * `scripts/generate-third-party-licenses.mjs` and committed, because `tauri.conf.json` lists it
@@ -66,7 +67,14 @@ const normalize = (text: string) =>
     .replace(/\r\n/g, "\n")
     .replace(/\s+$/, "");
 
-/** The `  <path>  sha256 <digest>` lines the generator writes into the header. */
+/**
+ * The `  <path>  sha256 <digest>` lines the generator writes into the header.
+ *
+ * Empty is an error rather than a result. A parser that matches nothing would otherwise leave the
+ * staleness test comparing an empty list against an empty list and passing — which is what a CRLF
+ * checkout produced before `.gitattributes` existed: the one check that reads every input agreed
+ * that nothing had gone stale, having read none of them.
+ */
 function recordedInputs(): Map<string, string> {
   const recorded = new Map<string, string>();
   for (const line of GENERATED.split("\n")) {
@@ -78,10 +86,36 @@ function recordedInputs(): Map<string, string> {
       break;
     }
   }
+  if (recorded.size === 0) {
+    throw new Error(
+      "THIRD-PARTY-LICENSES.txt records no input digests in its header. Either it was not written " +
+        "by scripts/generate-third-party-licenses.mjs, or the checkout altered it — see the line-ending test below.",
+    );
+  }
   return recorded;
 }
 
 describe("THIRD-PARTY-LICENSES.txt", () => {
+  /**
+   * The digests are over the bytes on disk, so the whole scheme rests on every checkout producing
+   * the same bytes — which is `.gitattributes`' `eol=lf`, against git's default core.autocrlf=true
+   * on Windows. This is what fails when that pin stops working: a converted checkout changes all
+   * nine digests at once and leaves the header unparseable, and the tests below would then be
+   * reporting on a file nobody wrote.
+   */
+  it("holds its inputs and itself as LF, which is what makes the digests reproducible", () => {
+    const converted = Object.entries(FILES)
+      .filter(([, text]) => text.includes("\r"))
+      .map(([key]) => pathOf(key));
+
+    expect(
+      converted,
+      "these files were checked out with converted line endings, so their bytes are not the ones " +
+        "THIRD-PARTY-LICENSES.txt was generated over. Confirm .gitattributes is present and re-clone " +
+        "(or `git add --renormalize .`).",
+    ).toEqual([]);
+  });
+
   it("records a digest for every input this test can see, and no other", () => {
     const expected = Object.keys(FILES)
       .filter((key) => key !== OUTPUT_KEY)
