@@ -1,0 +1,23 @@
+# Shapes GitHub's automatically generated release notes, which the
+# `create-release` job in .github/workflows/release.yml requests with
+# `generate_release_notes=true`. Merged pull requests are grouped by their
+# labels.
+#
+# The labels named below are the ones this repository actually defines, so a
+# category cannot silently match nothing. No pull request here has carried a
+# label so far, which is why the catch-all is not decoration: without it a run
+# of unlabelled pull requests would produce empty notes.
+changelog:
+  categories:
+    - title: Features
+      labels:
+        - enhancement
+    - title: Bug Fixes
+      labels:
+        - bug
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Other Changes
+      labels:
+        - "*"

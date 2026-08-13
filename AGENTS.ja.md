@@ -108,7 +108,11 @@ decision-7 が持ち、次の 5 つは表記についての規則である。
   持たず、ビルドは `pkg-config` の段階で `glib-2.0` が見つからないと言って止まる。**この
   エラーは WebKit にも Ubuntu の版にも触れない**ので、ディストリを替えるのではなくパッケージを
   1 つずつ入れる方向へ誘導してしまう。導入する開発パッケージの一覧は README の
-  「ソースからのビルド」にあり、そこにしか置かない (一覧の置き場を 1 つに保つため)。
+  「ソースからのビルド」にあり、`.github/workflows/release.yml` がそれを繰り返す。Linux
+  ランナーは、どの段が散文を読むより先にこれらを入れておく必要があるためである。**したがって
+  一覧の置き場は 1 つではなく 2 つある** (2 つ目は TASK-101 が足した)。両方を一緒に直し、
+  読者は README へ送る。ランナーは一覧の汎用な半分を既に持っているが、それも入れ直す —
+  そうすれば 2 つの一覧を行ごとに見比べられ、誰も導出し直さない部分集合へずれていかない。
 - `pnpm install` は `@parcel/watcher` と `esbuild` を build script 未承認として報告する。
   承認しないまま残す。`@parcel/watcher` は sass 自身の watch モードにしか要らず、esbuild
   はプラットフォーム別バイナリを optional dependency で解決するため、いずれの script
@@ -187,6 +191,29 @@ fixture はどの機械でもバイト単位で同一でなければならない
 対象にするのは読者が行動の根拠にする記述（何を入れるか・何で動くか・新しい版がどう届くか）
 であって、進捗報告ではない。
 
+### リリースの作り方
+
+`.github/workflows/release.yml` が `v*` タグに対して 3 プラットフォームのバンドルを組み、
+**下書き (draft)** のリリースへ添付する。タグは push でも、Actions タブから手で渡してもよい。
+リリースノートは、マージ済みの Pull Request から GitHub が生成する (分類は
+`.github/release.yml`)。**下書きの公開は手作業であり、今後もそのままにする。** ノートは
+公開前に読むためのものであり、ジョブが落ちたプラットフォームがあれば下書きは成果物を
+1 つ欠いた状態になるからである。
+
+このワークフローには、細部ではなく判断である点が 3 つある。取り消す変更を加えるなら、
+その理由を書く。
+
+- **macOS 署名の 6 シークレットが未登録なら、ビルドを拒む。** 判定は下書きを作るジョブに
+  あるので、実行は成果物が 1 つも生まれる前に止まる。**未署名の macOS バンドルは、無いよりも
+  悪い** — Gatekeeper に拒否される時点で、利用者は既にそれを取得している。
+- **`pnpm test` は実行しない。** m-3 TASK-150 の断続的なコンポーネントテスト timeout が、
+  ビルドに無い欠陥でリリースをランダムに落としてしまう。テストは、そのタグを生んだ
+  Pull Request の側で走っている。
+- **ビルド前に、タグと `package.json`・`src-tauri/tauri.conf.json`・`src-tauri/Cargo.toml`・
+  `src-tauri/Cargo.lock` を突き合わせる。** Tauri はバンドルを `tauri.conf.json` の版で
+  命名し、ビルドは `--locked` を渡さない。突き合わせが無ければ、タグは前の版の名前を持つ
+  成果物を、ビルドが黙って書き換えた lock の上に作ってしまう。
+
 ### macOS の署名と notarization
 
 Gatekeeper の警告なしに開く macOS ビルドは、**Developer ID Application** 証明書で署名し、
@@ -205,6 +232,12 @@ Apple の notarization を通す必要がある。資格情報が環境にあれ
 
 **証明書と Apple ID は所有者の資産である。** リポジトリは資格情報を 1 つも持たず、
 エージェントはそれを生成も登録もしない。
+
+**署名の名義が copyright と揃わないのは意図的である。** 証明書は
+`Developer ID Application: Yoko Otani (9EYB4D9GGQ)` なので、Gatekeeper と `codesign` が示す
+名前は "Yoko Otani" になる。LICENSE の "Takuya Otani / SerendipityNZ Ltd." とも identifier の
+`com.serendipitynz.backlog-atlas` とも揃わないが、**歴史的経緯によるもので、直す手間に
+見合わないという判断である** (所有者が 2026-08-14 に確定)。欠陥として起票しない。
 
 **Tauri が notarize するのは .app であって、それを包む .dmg ではない。** 利用者が取得する
 ディスクイメージはそのままでは拒否されるので、`macos-sign-build.sh` が生成された .dmg を

@@ -1,0 +1,398 @@
+name: Release
+
+# Build the macOS, Windows, and Linux bundles for a version tag and attach them
+# to a GitHub release.
+#
+# Trigger by pushing a version tag (e.g. `v0.1.0`), or run it from the Actions
+# tab with an explicit tag. Either way the release is created as a DRAFT whose
+# notes are generated from the pull requests merged since the previous tag
+# (grouped per .github/release.yml) — read the notes, check the assets, and
+# publish it by hand. Nothing here publishes a release.
+#
+# `create-release` makes the draft once and hands its id to the `build` matrix,
+# so the three platform jobs upload to it instead of racing to create it.
+#
+# The bundle carries neither a Backlog CLI sidecar (decision-26) nor an updater
+# (decision-30): `tauri.conf.json` declares no `externalBin`, no
+# `plugins.updater`, and no `bundle.createUpdaterArtifacts`, so no signing key
+# and no update endpoint go into the shipped binary and tauri-action produces no
+# `.sig` / `.app.tar.gz` asset. v0.1.0 is replaced by hand, and the version a
+# user is on is announced through this release page (README "Updating").
+#
+# The suite is not run here. `pnpm test` has a known intermittent timeout in one
+# component test (m-3 TASK-150; 7 occurrences up to 2026-08-13, none of them
+# reproducible on demand), so gating a tag on it would fail releases at random
+# for a fault that is not in the build. Tests run before the PR that made the tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g. v0.1.0). It must already exist; a draft release is created for it.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    # Nothing is bundled here, so this job is free to follow ubuntu-latest —
+    # the pin below applies to the runner whose glibc the Linux bundle inherits.
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      # A macOS build without these is produced unsigned, and Gatekeeper refuses
+      # the .dmg a user downloads. Checking here — before the draft exists and
+      # before any platform builds — is what keeps a run from leaving a release
+      # holding Windows and Linux assets and no usable macOS one.
+      - name: Verify the macOS signing secrets are registered
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -eu
+          missing=''
+          for var in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+                     APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            eval "value=\${$var:-}"
+            [ -n "$value" ] || missing="$missing $var"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. Register all six with 'scripts/setup-ci-signing-secrets.sh path/to/DeveloperID.p12' and re-run." >&2
+            exit 1
+          fi
+
+      # On a manual run, fail early and say so when the tag does not exist yet:
+      # the generated notes are computed against the tag, and the build below
+      # checks the tag out.
+      - name: Verify the release tag exists (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag '$TAG' does not exist. Create and push it first: git tag $TAG && git push origin $TAG" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # Tauri names the bundles after tauri.conf.json's version, not after the
+      # tag, so a tag pushed without bumping the manifests produces a release
+      # whose assets carry the previous version's name. Cargo.lock is in the set
+      # because the build does not pass --locked: a stale lock is rewritten
+      # mid-build instead of failing, and the tag would then name a tree the
+      # build did not use.
+      - name: Verify the manifests match the release tag
+        run: |
+          set -eu
+          expected="${RELEASE_TAG#v}"
+          fail=0
+          check() {
+            if [ "$2" != "$expected" ]; then
+              echo "::error::$1 declares version '$2' but the tag is '$RELEASE_TAG'." >&2
+              fail=1
+            fi
+          }
+          json_version() {
+            grep -m1 '"version"' "$1" | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
+          }
+          check package.json "$(json_version package.json)"
+          check src-tauri/tauri.conf.json "$(json_version src-tauri/tauri.conf.json)"
+          check src-tauri/Cargo.toml \
+            "$(sed -n '/^\[package\]/,/^\[/{s/^version = "\([^"]*\)".*/\1/p;}' src-tauri/Cargo.toml | head -1)"
+          check src-tauri/Cargo.lock \
+            "$(sed -n '/^name = "backlog-atlas"$/,/^$/s/^version = "\([^"]*\)"$/\1/p' src-tauri/Cargo.lock | head -1)"
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Set all four to '$expected' on the tagged commit (Cargo.lock through 'cargo update -p backlog-atlas'), move the tag, and re-run." >&2
+          fi
+          exit "$fail"
+
+      - name: Create (or reuse) the draft release with generated notes
+        id: release
+        run: |
+          set -eu
+          # Reuse an existing release for this tag if present (e.g. on a re-run
+          # after one platform failed). The tags endpoint cannot see drafts, so
+          # list releases and match on tag_name instead — paginated, because a
+          # tag past the first page would otherwise look absent and get a second
+          # release created for it.
+          #
+          # Matching on the tag alone would also match a release that has since
+          # been published: a re-run would then upload over a public release's
+          # assets, which is precisely what publishing by hand is the gate
+          # against. Reuse only a draft, and refuse outright when the tag is
+          # already out.
+          published=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$RELEASE_TAG\" and (.draft | not)) | .id" | head -1)
+          if [ -n "$published" ]; then
+            echo "::error::Release $RELEASE_TAG is already published (id $published). Building it again would replace the assets people have been downloading. Tag a new version, or delete that release first if it went out by mistake." >&2
+            exit 1
+          fi
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$RELEASE_TAG\" and .draft) | .id" | head -1)
+          if [ -z "$id" ]; then
+            id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$RELEASE_TAG" \
+              -f name="Backlog Atlas $RELEASE_TAG" \
+              -F draft=true \
+              -F prerelease=false \
+              -F generate_release_notes=true \
+              --jq .id)
+            echo "Created draft release $id for $RELEASE_TAG"
+          else
+            echo "Reusing existing release $id for $RELEASE_TAG"
+          fi
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: create-release
+    strategy:
+      # One platform failing must not cancel the other two: their bundles are
+      # still worth having on the draft while the failure is looked at.
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon runner; `universal-apple-darwin` lipo-merges an Intel
+          # slice too, so one .dmg covers both architectures.
+          - platform: macos-latest
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            tauri_args: --target universal-apple-darwin
+          # Pinned, not ubuntu-latest: the bundle a runner builds cannot run on
+          # an older glibc than the runner's, and 24.04 is the minimum README
+          # states (it is the first Ubuntu carrying both webkit2gtk-4.1 and
+          # libsoup-3.0, which the lockfile binds). Following ubuntu-latest would
+          # raise that floor above the documented one without anything failing.
+          - platform: ubuntu-24.04
+            rust_targets: ''
+            tauri_args: ''
+          - platform: windows-latest
+            rust_targets: ''
+            tauri_args: ''
+    runs-on: ${{ matrix.platform }}
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      # Build from the release tag itself, so a manual run can never bundle a
+      # different commit than the tag names. On a tag push github.ref is already
+      # refs/tags/<tag>, so this is equivalent to the default there.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # README's "Building from source" is where this list is maintained for a
+      # reader on a bare distribution; the runner needs the same packages before
+      # any step could read prose, so the list appears twice. Change both
+      # together. The runner image already carries the generic half
+      # (build-essential, curl, wget, file, pkg-config, libssl-dev) — they are
+      # repeated anyway so the two lists stay comparable line by line.
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      # No version here: the pin is `packageManager` in package.json, which this
+      # action reads. Same reason setup-node reads .node-version below — one pin
+      # per tool, with nowhere for a second one to drift.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build, sign, and upload to the draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing and notarization of the .app; create-release has
+          # already failed the run if any of the six is unset. Each is emptied on
+          # the other two runners rather than left to Tauri to ignore — a plain
+          # `${{ secrets.X }}` is expanded on every matrix job, which would hand
+          # the certificate and its password to every build script and build
+          # dependency a Windows or Linux `cargo build` runs.
+          APPLE_CERTIFICATE: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
+        with:
+          # Upload to the draft create-release made; do not create or edit it
+          # here, so its generated notes survive.
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: ${{ matrix.tauri_args }}
+
+      # That the icon reaches the bundle was confirmed on real machines for all
+      # three platforms (TASK-96 on 2026-08-12, and again with the current
+      # artwork in TASK-160), so the three checks below are regression cover,
+      # not a first confirmation. Each compares against the committed source
+      # file rather than asserting that some icon is present, and none of them
+      # spells a size or an offset — the artwork has been regenerated once
+      # already, and a recorded number would have to be re-measured every time.
+      - name: Verify the macOS bundle carries the app icon
+        if: matrix.platform == 'macos-latest'
+        run: |
+          set -eu
+          # The directory itself is absent when the bundler produced nothing, and
+          # find's own error for that would arrive without saying what it means.
+          app=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos \
+            -maxdepth 1 -name '*.app' -print -quit 2>/dev/null || true)
+          if [ -z "$app" ]; then
+            echo "::error::No .app was produced." >&2
+            exit 1
+          fi
+          # The bundler copies icon.icns in as it is, and signing writes only
+          # _CodeSignature/, so the copy inside a signed .app is still identical.
+          if ! cmp "$app/Contents/Resources/icon.icns" src-tauri/icons/icon.icns; then
+            echo "::error::$app does not carry src-tauri/icons/icon.icns." >&2
+            exit 1
+          fi
+          echo "icon.icns in $app matches the committed source."
+
+      - name: Verify the Linux .deb carries the app icon
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          set -eu
+          deb=$(find src-tauri/target/release/bundle/deb -name '*.deb' -print -quit 2>/dev/null || true)
+          if [ -z "$deb" ]; then
+            echo "::error::No .deb was produced." >&2
+            exit 1
+          fi
+          work=$(mktemp -d)
+          dpkg-deb -x "$deb" "$work"
+          # Take the name from the .desktop entry's Icon= rather than writing it
+          # here: that key is what icon lookup resolves, so a file present under
+          # any other name is a file nothing displays.
+          desktop=$(find "$work/usr/share/applications" -name '*.desktop' -print -quit 2>/dev/null || true)
+          if [ -z "$desktop" ]; then
+            echo "::error::$(basename "$deb") holds no .desktop entry." >&2
+            exit 1
+          fi
+          name=$(sed -n 's/^Icon=//p' "$desktop" | head -1)
+          if [ -z "$name" ]; then
+            echo "::error::$(basename "$desktop") declares no Icon=." >&2
+            exit 1
+          fi
+          # 128x128, deliberately not the 256x256@2 directory the bundler also
+          # writes: that name is malformed (the theme spec's form is 256x256@2x)
+          # and hicolor's index.theme lists neither, so the file there is invisible
+          # to icon lookup. Checking it would pass a bundle whose icon is present
+          # and unused.
+          icon="$work/usr/share/icons/hicolor/128x128/apps/$name.png"
+          if [ ! -f "$icon" ]; then
+            echo "::error::$(basename "$deb") has no hicolor/128x128/apps/$name.png, the icon its .desktop names." >&2
+            exit 1
+          fi
+          if ! cmp "$icon" src-tauri/icons/128x128.png; then
+            echo "::error::$(basename "$deb") carries a 128x128 icon that is not src-tauri/icons/128x128.png." >&2
+            exit 1
+          fi
+          echo "hicolor/128x128/apps/$name.png matches the committed source."
+
+      # Windows has no icon file in the bundle to compare: build.rs embeds
+      # icon.ico into the executable as a Win32 resource at compile time, and
+      # each of the .ico's entries goes into RT_ICON as the PNG it already is.
+      # So take the largest entry's bytes out of the .ico and look for that exact
+      # run inside the executable — the method TASK-96 used on the real machine.
+      - name: Verify the Windows executable carries the app icon
+        if: matrix.platform == 'windows-latest'
+        # Python rather than PowerShell so this runs unchanged on a developer's
+        # machine, where it was tested before it ever reached a runner.
+        shell: python
+        run: |
+          import struct, sys
+          from pathlib import Path
+
+          exe = Path("src-tauri/target/release/backlog-atlas.exe")
+          if not exe.is_file():
+              sys.exit(f"::error::No executable at {exe}.")
+
+          ico = Path("src-tauri/icons/icon.ico").read_bytes()
+          count = struct.unpack_from("<H", ico, 4)[0]
+          if count == 0:
+              sys.exit("::error::icon.ico holds no image entries.")
+
+          size, offset = max(
+              (struct.unpack_from("<II", ico, 6 + i * 16 + 8) for i in range(count)),
+              key=lambda entry: entry[0],
+          )
+          at = exe.read_bytes().find(ico[offset:offset + size])
+          if at < 0:
+              sys.exit(
+                  f"::error::{exe.name} does not embed icon.ico's largest entry "
+                  f"({size} bytes at ico offset {offset})."
+              )
+          print(f"icon.ico's largest entry ({size} bytes) is embedded in {exe.name} at offset {at}.")
+
+      # Tauri notarizes the .app but not the .dmg that wraps it (measured on
+      # @tauri-apps/cli 2.11.4: the CLI drives bundle_dmg.sh, which takes a
+      # --notarize option the CLI's argument list does not pass), so the disk
+      # image a user downloads is refused on open. Notarize and staple it, then
+      # replace the asset tauri-action already uploaded. Same workaround as
+      # scripts/macos-sign-build.sh.
+      - name: Notarize and staple the macOS .dmg
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          found=0
+          for dmg in src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg; do
+            [ -e "$dmg" ] || continue
+            found=1
+            echo "Notarizing $dmg"
+            xcrun notarytool submit "$dmg" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$dmg"
+            gh release upload "$RELEASE_TAG" "$dmg" --clobber -R "$GITHUB_REPOSITORY"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::No .dmg found to notarize." >&2
+            exit 1
+          fi
+
+      # The same check the maintainer runs on a local signed build, and on a
+      # release asset downloaded afterwards. No arguments: a runner's target
+      # directory holds only what this run produced, so its own discovery cannot
+      # reach a stale unsigned bundle the way it can locally.
+      - name: Verify Gatekeeper accepts the macOS bundles
+        if: matrix.platform == 'macos-latest'
+        run: ./scripts/macos-verify-gatekeeper.sh
