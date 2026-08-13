@@ -1,16 +1,20 @@
 ---
 id: TASK-104
 title: アプリの更新経路を持つかどうかを決める
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-07-31 23:35'
-updated_date: '2026-08-01 01:52'
+updated_date: '2026-08-13 02:28'
 labels:
   - release
   - decision
   - 'kind:research'
 milestone: m-2
 dependencies: []
+documentation:
+  - >-
+    backlog/decisions/decision-30 -
+    v0.1.0-は自己更新を持たず版の告知を-README-と-GitHub-Releases-に置く.md
 priority: low
 ordinal: 104000
 ---
@@ -27,7 +31,21 @@ m-2 に置く理由: updater は署名鍵とバンドル設定がビルド時に
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 更新経路を持つ／持たないの判断と理由が decision として記録されている
-- [ ] #2 持つ場合、更新署名鍵の管理方法とエンドポイントが決まっている
-- [ ] #3 持たない場合、新しい版を利用者が知る手段が決まっている
+- [x] #1 更新経路を持つ／持たないの判断と理由が decision として記録されている
+- [x] #2 持つ場合、更新署名鍵の管理方法とエンドポイントが決まっている
+- [x] #3 持たない場合、新しい版を利用者が知る手段が決まっている
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+自己更新を持たないと判断し、decision-30 として記録した。語は referent-table-task-104.md 第 1 版で先に固定した — 起票の「更新経路」は自己更新・版の告知・手動入れ替えの 3 つを束ねており、そのままでは AC #2 と AC #3 が排他に読める。実際には版の告知はどちらの判断でも要るので、判断の対象は自己更新 1 つである。
+
+判断の根拠は 2026-08-13 の実測 2 点と、先行判断との関係 1 点である。①作業場に複製した src-tauri へ tauri-plugin-updater 2.10.1 を実際に足して測ると、実行ファイルが 13,814,928 B から 17,450,384 B へ増え（+3.47 MiB、+26.3%）、crate が 443 から 479 へ増える（+36 行、別名 34）。増える骨は TLS スタック一式である ②その集合は decision-14 が GitHub の参照手段を選んだときに「新規に増える」と数えて却下したものと同じで、今回の実測はそれを数で確かめた形になる ③自プロセスの外向き通信はいま 0 本で、外部との通信はすべて利用者が導入・認証した CLI の子プロセスが行っている。自己更新はその 0 を 1 にする。手順と全数値は _sandbox/updater-cost/measurement-2026-08-13.md にある。変更前も測った。
+
+着手して分かったことが 3 つある。①遡れない受け皿は pubkey と plugin 登録の 2 つだけで、bundle.createUpdaterArtifacts は版ごとに効く設定なので後から有効にしてよい（tauri-utils-2.9.3/src/config.rs:1540・1571）。起票の「バンドル設定がビルド時に必要」は実際にはこの 2 つを指す ②自己更新の通信に CSP は関係しない。更新マニフェストの取得は Rust 側の reqwest で行われ（tauri-plugin-updater-2.10.1/src/updater.rs:23）、フロントエンドは invoke('plugin:updater|check') を呼ぶだけである（guest-js/index.ts:139。ビルド済みの api-iife.js に fetch( は 0 件）。引き継ぎ指示書のタスク別の注意が「持つと判断したら connect-src を緩める」と書いていたのは誤りなので、判断の結果によらず指示書から落とした。decision-28 §3 の表の行自体は WebView の通信を指しているので正しい ③Linux の deb/rpm は更新の適用に pkexec/sudo の昇格を要求する（同 updater.rs:1105-1145）。AppImage だけは昇格が要らない。
+
+AC #2 は条件節（持つ場合）が発火しないため、更新署名鍵の管理方法とエンドポイントは決めていない。AC #3 の版の告知は、README（和英）が①v0.1.0 が意図的に手動更新のみであること②新しい版は GitHub Releases に出ること③更新の操作は新しい配布物を取得して入れ替えることを書く、で確定した。README の記述そのものは TASK-90 の AC #5 が担う。アプリ内の版の告知はユーザーの判断で TASK-157（m-3）として起票した — gh は decision-29 で既に解決済みの外部コマンドなので、gh release view を子プロセスとして使えば新規依存も自プロセスの外向き通信も増えない。それでも m-2 に入れないのは、README と Releases だけで版の告知が成立しており公開阻害に当たらないためである。
+
+doc と AGENTS の改訂は不要と判定した。アプリ自身の配布と更新を扱う doc は無く（doc-1 の sidecar 同梱は Backlog CLI の同梱を指す別の対象）、AGENTS の Updates 節は Backlog 管理ファイルの更新についての規則なので、本決定はどちらの契約にも触れない。
+<!-- SECTION:NOTES:END -->
