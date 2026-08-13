@@ -122,13 +122,16 @@ SOFTWARE.
 The remaining third-party code is not in this repository. It is fetched by `pnpm` and
 `cargo` when the app is built, and each package keeps its own licence — the resolved set
 is `pnpm-lock.yaml` and `src-tauri/Cargo.lock`. The notices those licences require in a
-**distributed binary** are not generated yet; that is tracked as its own task (TASK-159) and
-belongs with the release artifacts rather than with this file.
+**distributed binary** are generated from those two lockfiles by
+`scripts/generate-third-party-licenses.mjs` into `THIRD-PARTY-LICENSES.txt`, which is what
+ships: it is attached to each release and bundled into the app itself.
 
 **A generated inventory does not replace the section above.** Ace and Lucide are in the tree
 rather than in a lockfile, so a tool that reads `pnpm-lock.yaml` and `Cargo.lock` will not
-list either. Whatever TASK-159 generates has to be combined with this file, not substituted
-for it.
+list either. `THIRD-PARTY-LICENSES.txt` therefore opens by reproducing this file in full and
+adds the generated inventory after it. Combining them in one file is deliberate — it is what
+makes shipping the generated list without this one impossible, rather than a rule someone has
+to remember at bundling time.
 
 ## The Backlog CLI
 
