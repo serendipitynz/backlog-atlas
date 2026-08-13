@@ -4,7 +4,7 @@ title: 設定ファイルのパスを OS のファイルマネージャで開く
 status: Done
 assignee: []
 created_date: '2026-07-31 23:31'
-updated_date: '2026-08-12 23:59'
+updated_date: '2026-08-13 00:55'
 labels:
   - ui
   - settings
@@ -113,4 +113,10 @@ Atlas の欠陥ではない）。**そもそも WSL はこの確認の代理に�
 `wslview` 経由で Windows のエクスプローラを開く構成が多く、「Linux のファイルマネージャが開くか」の
 答えにならないためである。**ユーザーが Ubuntu VM を用意すると決めた（2026-08-13）ので、
 そこで TASK-156 の Linux 実測と併せて確かめる。**
+
+**Linux の `xdg-open` も確認した（2026-08-13、Ubuntu VM 実機。TASK-156 の回で併せて実施）**:
+`.deb` で入れた Atlas をアプリセンターから起動し、設定画面の 場所を開く でファイルマネージャが
+実際に開いた。**これで上の「残る未測定は Windows と Linux の実機」は両方とも解けた。**
+`ShellExecuteW`（Windows）・`xdg-open`（Linux）・`open`（macOS、2026-08-05）の 3 つとも、
+起動そのものが実機で確かめられている。**この項に未測定は残っていない。**
 <!-- SECTION:NOTES:END -->

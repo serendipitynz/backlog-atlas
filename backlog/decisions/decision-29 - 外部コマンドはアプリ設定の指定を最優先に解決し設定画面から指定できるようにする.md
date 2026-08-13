@@ -23,10 +23,27 @@ Finder・Dock から起動した `.app` は Backlog CLI を解決できず更新
 - **導入済みで不可視** … 利用者のログインシェルでは外部コマンドが動くのに、Atlas の
   プロセスからは解決できない事態。
 
-原因は PATH の継承である。実測（このマシン、2026-08-13）では GUI 継承 PATH は
+原因は PATH の継承である。実測（macOS、2026-08-13）では GUI 継承 PATH は
 `launchctl getenv PATH` が返す 11 ディレクトリで、`backlog` の実体がある fnm の
 multishell ディレクトリを含まない。したがって decision-16 の実行ファイル解決の順序 3 段目
 （bare name を OS に解決させる）が空振りする。
+
+**3 OS で実測した（2026-08-13）。macOS 固有ではない。**
+
+| OS | GUI 起動 | 結果 |
+|---|---|---|
+| macOS | Finder / Dock の `.app` | `backlog` を解決できない（`git`・`gh` はこのマシンの launchd PATH が customize 済みで届いた） |
+| Windows | 実機 | 3 つとも解決した。`backlog` は decision-16 順序 2（npm の配置）で解決 |
+| Linux | `.deb` が入れた `.desktop` をアプリセンターから | `backlog`・`gh` を解決できない。`git` は解決した |
+
+**Linux の実測が、この事態の機構を最もはっきり示している。**同じビルド・同じマシンで、
+`pnpm tauri dev`（シェルの子プロセス）では `backlog` が解決し、`.desktop` からの起動
+（デスクトップセッションの子プロセス）では解決しない。**しかも 3 行が導入経路で割れた** —
+apt 導入の `git`（`/usr/bin`）は解決し、fnm ＋ `npm -g` 導入の `backlog`・`gh` は解決しない。
+**PATH が空なのではなく、バージョン管理ツールが置いた場所だけが入っていない。**
+Ubuntu 24 の既定は Wayland で、セッションの環境は systemd user session から来るため、
+`~/.bashrc` にしか書かれない fnm の設定は届かない。**したがってこれは Atlas 固有の事象ではなく、
+バージョン管理ツールで node を入れた利用者に一般に起きる。**
 
 **この事態は 2 つの前提の取り違えを露わにした。** decision-26 は「利用者の PATH 上の
 `backlog` を用いる前提を保つ」と書いたが、その「PATH 上」は 2 つの別の状態を指しうる。

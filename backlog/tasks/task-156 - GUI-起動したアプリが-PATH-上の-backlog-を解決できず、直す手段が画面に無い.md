@@ -1,10 +1,10 @@
 ---
 id: TASK-156
 title: GUI 起動したアプリが PATH 上の backlog を解決できず、直す手段が画面に無い
-status: In Progress
+status: In Review
 assignee: []
 created_date: '2026-08-12 21:46'
-updated_date: '2026-08-12 23:59'
+updated_date: '2026-08-13 00:56'
 labels:
   - release
   - 'kind:bug'
@@ -50,7 +50,7 @@ ordinal: 149700
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 macOS で Finder / Dock から起動したアプリが、README の手順で導入された backlog を解決できる。解決できない場合は、利用者が画面から到達できる手段を持つ
-- [ ] #2 Windows・Linux で GUI 起動したときに CLI を解決できるかどうかが、実機の実測として記録されている
+- [x] #2 Windows・Linux で GUI 起動したときに CLI を解決できるかどうかが、実機の実測として記録されている
 - [x] #3 README の導入要件が、GUI 起動でも成り立つ記述になっている
 - [x] #4 decision-16（実行ファイル解決の順序）と decision-26（PATH 上 backlog の前提）のどちらを改訂したか、または改訂不要と判断した理由が記録されている
 - [x] #5 設定画面から backlog・git・gh の実行ファイルを指定でき、その指定が実際の起動に使われる（decision-29 の外部コマンド指定）
@@ -129,4 +129,34 @@ Backlog CLI 行の `?` が出どころを `npm の配置から解決` とし、�
 **AC #2 の Linux 分は Ubuntu VM で測ると決まった**（2026-08-13、ユーザーの判断。案 A）。
 WSL の結果を実測として記録する案（案 C）と、未実測のまま閉じて別タスクへ切り出す案（案 B）は
 採らない。**したがって本タスクは Ubuntu VM での実測待ちであり、それまで PR を作らない。**
+
+## Linux の実測（2026-08-13、Ubuntu VM。ユーザー）
+
+**再現した。同じビルド・同じマシンで、起動経路だけが結果を分けた。**
+
+| 起動 | Backlog CLI | Git | GitHub CLI |
+|---|---|---|---|
+| `pnpm tauri dev`（シェルから） | 解決した | — | — |
+| アプリセンター（`.deb` が入れた `.desktop`） | **解決できない** | 解決した | **解決できない** |
+
+縮退帯は「backlog CLI の実行ファイルを解決できません」で、外部コマンド区画の Backlog CLI 行は
+`PATH から解決: backlog` ／ `起動できません（backlog を起動できません（No such file or directory
+(os error 2)））`。node は fnm 経由で入れ、`backlog` はその上の `npm -g` で入れてある。
+
+**3 行が導入経路で割れたことが、この実測の要点である。**同じセッションの同じ PATH の下で、
+apt 導入の `git`（`/usr/bin`）は解決し、fnm + npm 導入の `backlog`・`gh` は解決しない。
+**PATH が空なのではなく、バージョン管理ツールが置いた場所だけが入っていない。**
+
+**macOS の実測に残っていた穴が、こちらには無い。**あちらは `.app` と `open <実行ファイル>` の比較で、
+`open` が何を継承したのかを確かめていなかった（Description の「まだ確かめていないこと」）。
+こちらは `pnpm tauri dev`（シェルの子プロセス）と `.desktop` からの起動（デスクトップセッションの
+子プロセス）という、素性のはっきりした 2 経路の比較である。
+
+**Ubuntu 24 は既定が Wayland で、セッションの環境は systemd user session から来る。**fnm は
+`~/.bashrc` に書くので、対話シェル以外には届かない。**したがってこれは Atlas 固有ではなく、
+バージョン管理ツールで node を入れた利用者に一般に起きる。**
+
+**未測定として残すもの**: 走っているプロセス自身の PATH（`/proc/<pid>/environ`）は取っていない。
+起動失敗が `No such file or directory` である以上、PATH に無いことは確かだが、
+**セッションの PATH の中身そのものは記録していない**（macOS 側は `launchctl getenv PATH` を記録済み）。
 <!-- SECTION:NOTES:END -->
