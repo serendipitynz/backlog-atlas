@@ -114,10 +114,15 @@ Design decisions live in `backlog/decisions/`, and the specifications in `backlo
 
 MIT — see [LICENSE](LICENSE).
 
-Two works by other authors ship with the app: the [Ace](https://github.com/ajaxorg/ace) editor
-(BSD 3-Clause) and the icon figures from [Lucide](https://lucide.dev/) (ISC, with some
-Feather-derived icons under MIT). Their notices are in
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Two works by other authors are vendored into this repository: the
+[Ace](https://github.com/ajaxorg/ace) editor (BSD 3-Clause) and the icon figures from
+[Lucide](https://lucide.dev/) (ISC, with some Feather-derived icons under MIT). Their notices
+are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+A built app carries more than those two — every package `pnpm` and `cargo` resolve into the
+binary keeps its own licence. Those notices are generated from the two lockfiles into
+[THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt), which reproduces the file above in full
+before listing them. It is attached to every release and bundled into the app itself.
 
 ## Contributing
 
