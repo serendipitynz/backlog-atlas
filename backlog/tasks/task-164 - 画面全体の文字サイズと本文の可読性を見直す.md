@@ -1,10 +1,10 @@
 ---
 id: TASK-164
 title: 画面全体の文字サイズと本文の可読性を見直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 08:34'
-updated_date: '2026-08-14 10:26'
+updated_date: '2026-08-14 10:39'
 labels:
   - ui
   - readability
@@ -30,7 +30,7 @@ TASK-118 の実機目視 (2026-08-13) 由来。ユーザーが backlog browser �
 - [x] #1 文字サイズを決めている箇所を実装から数え上げ、基準の置き場を 1 か所に決めて doc-11 へ書いた
 - [x] #2 整形表示の本文について、変更前後の寸法を実エンジンで測って記録した (行の高さ・段落間・見出しとの比)
 - [x] #3 4 か所 (タスク詳細・文書・マイルストーン・決定事項) すべてに同じ基準が効いていることを検査で保つ
-- [ ] #4 ユーザーの目視で backlog browser と並べて読みやすさを確認した
+- [x] #4 ユーザーの目視で backlog browser と並べて読みやすさを確認した
 <!-- AC:END -->
 
 ## Implementation Notes
