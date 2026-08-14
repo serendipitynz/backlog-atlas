@@ -1,10 +1,10 @@
 ---
 id: TASK-171
 title: SmartScreen の文言を実機で確かめ、README に戻すか決める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-14 02:22'
-updated_date: '2026-08-14 04:00'
+updated_date: '2026-08-14 04:40'
 labels:
   - docs
   - 'kind:improvement'

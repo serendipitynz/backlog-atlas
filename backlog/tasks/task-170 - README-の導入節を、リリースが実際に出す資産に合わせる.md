@@ -1,10 +1,10 @@
 ---
 id: TASK-170
 title: README の導入節を、リリースが実際に出す資産に合わせる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-14 02:22'
-updated_date: '2026-08-14 04:00'
+updated_date: '2026-08-14 04:40'
 labels:
   - docs
   - 'kind:improvement'
@@ -42,4 +42,8 @@ TASK-102 (2026-08-14 の v0.1.0 公開) 由来。**公開した下書きに 7 �
 - **.deb / .rpm / .AppImage** — それぞれ Debian・Ubuntu / Fedora・openSUSE / その他 (インストール不要)。3 形式とも残す。**いずれも x86_64 のみで、arm64 の欠落は TASK-172 が引き取った** (オーナーの Linux 検証環境が arm64 VM のため)。
 
 release.yml 頭書きの「tauri-action produces no .sig / .app.tar.gz asset」は実測で偽と確定したので、削除工程の追加と同じ PR で書き直した。AGENTS 和英「リリースを作る」の判断一覧にも 5 つ目として追記した。
+
+## PR #117 レビューでの変更 (2 巡、Claude Code CLI)
+
+初版の削除工程は set -eu のみで、一覧取得の失敗が while の exit 0 に隠れて「資産 0 件の成功」と区別が付かなかった ([P2])。set -euo pipefail に直し、pipefail が効いている理由を工程内のコメントに記録した。将来 decision-30 の再検討で自己更新を採る版は、この工程を外すか .sig 付きの updater 成果物を除外しない形へ直す (AGENTS の判断一覧が置き場)。
 <!-- SECTION:NOTES:END -->
