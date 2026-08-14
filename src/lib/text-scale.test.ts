@@ -27,6 +27,20 @@ const SOURCES: Record<string, string> = import.meta.glob("../**/*.svelte", {
 });
 
 /**
+ * doc-11 §2.2 の 文字寸法段階 の行。**この行が段の値の正本である。**
+ *
+ * The six numbers are not written into this file. They are the design document's, and a test that
+ * spelled them would be a third copy of the values beside the doc and `app.scss` — the shape TASK-164
+ * removed. Reading them out of the doc is instead what makes `app.scss` answer to it, which is the
+ * form AGENTS gives the confirmed CLI version (one source, everything else derives from it).
+ */
+const DOC_11: Record<string, string> = import.meta.glob("../../backlog/docs/doc-11*.md", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+});
+
+/**
  * `app.scss` は `?raw` では読めない — vite の CSS 経路を通るので、この glob に混ぜても既定の輸出は
  * 空文字になる (実測。**キーは在るのに中身が 0 バイトなので、`typeof` を見る検査は素通りする**)。
  * `theme.test.ts` と同じく sass に開かせて**出荷されるほうの CSS** を読む — 値がそこにしか無い点も
@@ -46,6 +60,8 @@ const DECLARATION = /font-size:\s*([^;\n]+);/g;
 /** `--text-xs: 0.62rem;` and its five siblings, as written in `app.scss`. */
 const STEP_DEFINITION = /--text-(xs|sm|md|lg|xl|2xl):\s*([\d.]+)rem;/g;
 
+const STEP_NAMES = ["--text-xs", "--text-sm", "--text-md", "--text-lg", "--text-xl", "--text-2xl"];
+
 /**
  * A value a declaration may hold besides a step.
  *
@@ -58,6 +74,38 @@ const RELATIVE = /^(inherit|[\d.]+em)$/;
 const componentSources = () => Object.entries(SOURCES);
 
 const declarationsIn = (source: string) => [...source.matchAll(DECLARATION)].map((m) => m[1].trim());
+
+/** Every `--name: value;` written anywhere in the components, so a `var()` can be followed to its end. */
+const customProperties = () => {
+  const defined = new Map<string, string[]>();
+  for (const [, source] of componentSources()) {
+    for (const [, name, value] of source.matchAll(/(--[a-z0-9-]+):\s*([^;\n]+);/g)) {
+      defined.set(name, [...(defined.get(name) ?? []), value.trim()]);
+    }
+  }
+  return defined;
+};
+
+/**
+ * Whether a `font-size` value ends at a step, following `var()` through as many aliases as it takes.
+ *
+ * **Accepting any `var(--…)` was not enough**, which the review of PR #118 found: a component could
+ * write `--caption-size: 0.5rem; font-size: var(--caption-size)` and hold a size of its own while the
+ * check passed, because the alias case only looked at names containing `text`. A name is not what makes
+ * a reference safe — where it leads is.
+ */
+const resolvesToAStep = (value: string, defined: Map<string, string[]>, seen = new Set<string>()): boolean => {
+  const reference = value.match(/^var\((--[a-z0-9-]+)(?:\s*,[\s\S]*)?\)$/);
+  if (reference === null) return false;
+  const name = reference[1];
+  if (STEP_NAMES.includes(name)) return true;
+  // A cycle cannot reach a step, and must not hang the test either.
+  if (seen.has(name)) return false;
+  seen.add(name);
+  const definitions = defined.get(name) ?? [];
+  // **Every** definition has to reach a step: one screen redefining the alias to a number is the hole.
+  return definitions.length > 0 && definitions.every((next) => resolvesToAStep(next, defined, seen));
+};
 
 describe("走査する対象", () => {
   it("scans the ground and every component, so no case below can pass by matching nothing", () => {
@@ -76,10 +124,24 @@ describe("文字寸法段階 (doc-11 §2.2)", () => {
   }));
 
   it("は app.scss が 6 段を持ち、小さい順に並び、同じ値を 2 つ持たない", () => {
-    expect(steps.map((s) => s.name)).toEqual(["--text-xs", "--text-sm", "--text-md", "--text-lg", "--text-xl", "--text-2xl"]);
+    expect(steps.map((s) => s.name)).toEqual(STEP_NAMES);
     const values = steps.map((s) => s.rem);
     expect(values).toEqual([...values].sort((a, b) => a - b));
     expect(new Set(values).size).toBe(values.length);
+  });
+
+  // **doc-11 §2.2 の値そのものと突き合わせる。** 昇順・幅一定・6 段だけを見ていた版は、梯子ごと平行移動
+  // されても通り、そのとき doc-11 の表と、その表を基準に測った §13・§14.1 の実測がまとめて偽になる
+  // (PR #118 のレビュー指摘)。**期待値はこのファイルに書かない** — 書けば doc と `app.scss` に並ぶ 3 つ目の
+  // 写しになるので、doc の行から読んで比べる。
+  it("は doc-11 §2.2 が書いている 6 値と一致する", () => {
+    const doc = Object.values(DOC_11)[0];
+    expect(doc, "doc-11 が読めていない").toBeTypeOf("string");
+    const row = doc.match(/^\|\s*文字寸法段階\s*\|([^|]+)\|/m);
+    expect(row, "doc-11 §2.2 に 文字寸法段階 の行が無い").not.toBeNull();
+    const documented = [...row![1].matchAll(/([\d.]+)(?:rem)?/g)].map(([, n]) => Number(n));
+    expect(documented).toHaveLength(6);
+    expect(steps.map((s) => s.rem)).toEqual(documented);
   });
 
   // **一定であることを見る。**「ある幅以上」にすると、置き換えた 18 値が持っていた .74/.75 (0.01 差) や
@@ -91,15 +153,15 @@ describe("文字寸法段階 (doc-11 §2.2)", () => {
     expect(gaps[0]).toBeGreaterThan(0);
   });
 
-  // **これが「置き場は 1 か所」の全部である。** 段の値そのものはここでは検めない — 値は doc-11 §2.2 が
-  // 持ち、上の 2 件がその形 (6 段・昇順・重複なし) を押さえる。ここが押さえるのは、どの画面も自分で
-  // 数を決められないことである。
+  // **これが「置き場は 1 か所」の全部である。** ここが押さえるのは、どの画面も自分で数を決められない
+  // ことだけで、段がどの値であるべきかは上の 3 件が doc-11 §2.2 に対して押さえる。
   it("の外で font-size に長さを書いた画面が 1 つも無い", () => {
+    const defined = customProperties();
     const offenders: string[] = [];
     for (const [path, source] of componentSources()) {
       for (const value of declarationsIn(source)) {
-        if (value.startsWith("var(--")) continue;
         if (RELATIVE.test(value)) continue;
+        if (resolvesToAStep(value, defined)) continue;
         offenders.push(`${path}: ${value}`);
       }
     }
@@ -110,14 +172,20 @@ describe("文字寸法段階 (doc-11 §2.2)", () => {
     expect(declarationsIn(GROUND_CSS)).toEqual(["110%"]);
   });
 
-  it("を引く別名も段を指す（`--frame-text` のように画面が置いた別名が数へ戻らない）", () => {
-    const aliases: string[] = [];
-    for (const [path, source] of componentSources()) {
-      for (const [, name, value] of source.matchAll(/(--[a-z-]*text[a-z-]*):\s*([^;]+);/g)) {
-        if (!value.trim().startsWith("var(--text-")) aliases.push(`${path}: ${name}: ${value.trim()}`);
-      }
-    }
-    expect(aliases).toEqual([]);
+  // 別名 (`TaskDetail.svelte` の `--frame-text`) を数へ戻す変更は、上の case が捕まえる — `resolvesToAStep`
+  // が `var()` を辿るので、辿った先が数なら「長さを書いた」ことになる。**名前に `text` を含む別名だけを
+  // 見ていた専用の case は落とした** — 名前で選ぶ形が PR #118 のレビューで見つかった穴そのもので、
+  // 残しておくと、そちらが番をしているように読める。
+  it("を引く別名は、名前ではなく辿った先で判定される", () => {
+    const defined = customProperties();
+    expect(resolvesToAStep("var(--frame-text)", defined)).toBe(true);
+    expect(resolvesToAStep("var(--text-md)", defined)).toBe(true);
+    // 未定義の名前、循環、数そのものはどれも段に届かない。
+    expect(resolvesToAStep("var(--caption-size)", defined)).toBe(false);
+    expect(resolvesToAStep("0.5rem", defined)).toBe(false);
+    expect(resolvesToAStep("var(--a)", new Map([["--a", ["var(--b)"]], ["--b", ["var(--a)"]]]))).toBe(false);
+    // 別名が 2 か所で定義され、片方だけが段を指す形も通さない。
+    expect(resolvesToAStep("var(--a)", new Map([["--a", ["var(--text-md)", "0.5rem"]]]))).toBe(false);
   });
 });
 
@@ -157,7 +225,7 @@ describe("整形表示 (doc-11 §14) の 4 か所", () => {
       expect(match, `${selector} が Body.svelte に無い`).not.toBeNull();
       return match![1];
     };
-    const rank = ["--text-xs", "--text-sm", "--text-md", "--text-lg", "--text-xl", "--text-2xl"];
+    const rank = STEP_NAMES;
     const prose = rank.indexOf(step(/\.body-block[\s\S]*?font-size:\s*var\((--text-[\w-]+)\);/));
     const upper = rank.indexOf(step(/:global\(h1\),\s*\n\s*:global\(h2\)\s*\{\s*\n\s*font-size:\s*var\((--text-[\w-]+)\);/));
     const lower = rank.indexOf(step(/:global\(h6\)\s*\{\s*\n\s*font-size:\s*var\((--text-[\w-]+)\);/));
