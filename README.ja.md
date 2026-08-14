@@ -43,6 +43,10 @@ Ubuntu なら 24.04 以降）。画面は日本語のみです。
 
 配布物は [Releases](https://github.com/serendipitynz/backlog-atlas/releases) にあります。
 
+macOS のビルドは署名と notarization を通してあるので、macOS に拒まれません。
+Windows と Linux のビルドは未署名です。Windows では SmartScreen が警告を出し、
+その警告を展開すると実行に進めます。
+
 作成・更新には **Backlog CLI (`backlog.md`)** が要ります。同梱していないので、別に入れてください。
 最新版でよく、上限は固定していません。Git 履歴には `git` と `gh` を使います。
 

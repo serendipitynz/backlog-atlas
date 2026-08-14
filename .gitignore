@@ -3,6 +3,8 @@
 
 # Dependencies
 node_modules/
+# Written when a project-local store path is configured, not by a default install
+.pnpm-store/
 
 # Build output
 dist/
@@ -16,3 +18,8 @@ backlog/.locks/
 
 # macOS signing credentials (copy .env.signing.example to create it)
 .env.signing
+
+# Session working area: handoff notes, measurement scripts, screenshots. Here
+# rather than in .git/info/exclude, which is where it had been: that file is not
+# cloned, so a fork or a fresh clone holds nothing back.
+_sandbox/
