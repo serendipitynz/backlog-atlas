@@ -329,6 +329,10 @@ pub struct Task {
 /// documents, cross-referenced by id within this project (doc-4 §3.2, AC #1). Ids are unique
 /// only within a project; cross-project reference goes through the ledger's cross-task-id, not
 /// this type.
+///
+/// **`milestones`, `documents` and `decisions` are in id order** (doc-4 §7):
+/// [`crate::read::read_project`] sorts them, and no screen decides the order again. `tasks` is
+/// deliberately not sorted — its card order is the user's choice (doc-7 §5.4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectModel {
@@ -336,9 +340,6 @@ pub struct ProjectModel {
     pub slug: String,
     pub config: Config,
     pub tasks: Vec<Task>,
-    /// The three non-task kinds, each in id order (doc-4 §7) — [`crate::read::read_project`]
-    /// sorts them, and no screen decides the order again. `tasks` is deliberately not sorted:
-    /// its card order is the user's choice (doc-7 §5.4).
     pub milestones: Vec<Milestone>,
     pub documents: Vec<Document>,
     pub decisions: Vec<Decision>,

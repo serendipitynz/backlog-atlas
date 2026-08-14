@@ -208,13 +208,17 @@ export interface ColumnCreateStatuses {
   statuses: string[];
 }
 
+/**
+ * One project (one Backlog root) as the read layer built it.
+ *
+ * **`milestones`, `documents` and `decisions` arrive in id order** (doc-4 §7) — 一覧の並び
+ * (doc-10 §1) is not decided again on this side, so a list rendered from any of the three needs no
+ * sort of its own. `tasks` arrives unsorted: its card order is the user's choice (doc-7 §5.4).
+ */
 export interface ProjectSnapshot {
   slug: string;
   config: Config;
   tasks: TaskView[];
-  /** The three non-task kinds, each in id order (doc-4 §7). **The screen draws them as they
-   *  arrive** — 一覧の並び (doc-10 §1) is not decided again on this side, and a list rendered from
-   *  any of these three needs no sort of its own. */
   milestones: Milestone[];
   documents: Document[];
   decisions: Decision[];

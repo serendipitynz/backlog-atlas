@@ -1106,29 +1106,28 @@ ordinal: 1000\n\
         }
 
         let model = read(&source);
-        let ids = |list: &[String]| list.to_vec();
         assert_eq!(
-            ids(&model
+            model
                 .decisions
                 .iter()
-                .map(|d| d.id.clone())
-                .collect::<Vec<_>>()),
+                .map(|d| d.id.as_str())
+                .collect::<Vec<_>>(),
             ["decision-1", "decision-2", "decision-10"]
         );
         assert_eq!(
-            ids(&model
+            model
                 .documents
                 .iter()
-                .map(|d| d.id.clone())
-                .collect::<Vec<_>>()),
+                .map(|d| d.id.as_str())
+                .collect::<Vec<_>>(),
             ["doc-1", "doc-2", "doc-11"]
         );
         assert_eq!(
-            ids(&model
+            model
                 .milestones
                 .iter()
-                .map(|m| m.id.clone())
-                .collect::<Vec<_>>()),
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
             ["m-1", "m-2", "m-10"]
         );
     }

@@ -13,8 +13,9 @@
  * | 解決時点 | the `now` argument | the instant a 相対指定 is turned into a 暦日 at |
  * | 解析できない値 | `localDay` returning `null` | a value in neither accepted form |
  *
- * **Why this module reads the machine's zone at all**, when doc-7 §5.4 has the opposite rule for
- * 並び順 (「比較は locale を読まない」・「日付を文字列のまま比べる」): a 並び順 only needs the
+ * **Why this module reads the machine's zone at all**, when 並び順 has the opposite rule
+ * (doc-7 §5.4's 「日付を文字列のまま比べる」, and doc-4 §7's 「比較は locale を読まない」 — the
+ * second moved there with TASK-165): a 並び順 only needs the
  * *relative* order of two values, and a uniform shift leaves that untouched, so the sort can stay on
  * the raw strings. A 期間 compares each value against an *absolute* boundary the user named, and the
  * boundary is a day on the user's own calendar — 「今日更新したもの」 is a question whose answer

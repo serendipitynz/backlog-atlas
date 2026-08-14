@@ -19,7 +19,9 @@
 import { describe, expect, it } from "vitest";
 import { compareNumberAware } from "./swimlane";
 
-const DOC_4: Record<string, string> = import.meta.glob("../../backlog/docs/doc-4*.md", {
+// `doc-4 -*` rather than `doc-4*`: the loose form would also match a future `doc-40`, and the
+// count check below would then fail pointing at this glob instead of at whatever broke.
+const DOC_4: Record<string, string> = import.meta.glob("../../backlog/docs/doc-4 -*.md", {
   eager: true,
   query: "?raw",
   import: "default",
