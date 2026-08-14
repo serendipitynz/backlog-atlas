@@ -47,10 +47,20 @@ Because several projects share one screen, Atlas identifies a task there as
 ## Installing
 
 Builds are on the [Releases page](https://github.com/serendipitynz/backlog-atlas/releases).
+Which file to take:
+
+- **macOS** — the `.dmg`. It is a universal build, for Apple silicon and Intel alike.
+- **Windows** — the `.msi`. The `x64-setup.exe` installs the same app through a different
+  installer; either works. x64 only.
+- **Linux** — the `.deb` on Debian and Ubuntu, the `.rpm` on Fedora and openSUSE, or the
+  `.AppImage` on any distribution, with no install step. x86_64 only.
 
 The macOS builds are signed and notarized, so macOS does not refuse them. The Windows and
-Linux builds are unsigned; on Windows, SmartScreen warns before an unrecognised installer
-runs, and the warning has to be expanded before it offers to run the file anyway.
+Linux builds are unsigned. On Windows that surfaced in two places when the v0.1.0 `.msi`
+was installed on an English-language machine: the browser flagged the download — Edge said
+the file "isn't commonly downloaded" and offered **Keep**, then **Keep anyway** — and the
+elevation prompt that opens the installer named its publisher as unknown
+("Publisher Unknown").
 
 Creating and updating anything needs the **Backlog CLI (`backlog.md`)**, which is not bundled
 with Atlas — install it yourself. The latest release is fine; no upper bound is fixed. Git

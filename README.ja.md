@@ -42,10 +42,19 @@ Ubuntu なら 24.04 以降）。画面は日本語のみです。
 ## 導入
 
 配布物は [Releases](https://github.com/serendipitynz/backlog-atlas/releases) にあります。
+取るファイルは次のとおりです。
+
+- **macOS** — `.dmg`。universal ビルドなので、Apple silicon でも Intel でも動きます。
+- **Windows** — `.msi`。`x64-setup.exe` は同じアプリを別のインストーラで入れるもので、
+  どちらでも構いません。x64 のみです。
+- **Linux** — Debian・Ubuntu は `.deb`、Fedora・openSUSE は `.rpm`、それ以外は
+  `.AppImage` (インストール不要) です。x86_64 のみです。
 
 macOS のビルドは署名と notarization を通してあるので、macOS に拒まれません。
-Windows と Linux のビルドは未署名です。Windows では SmartScreen が警告を出し、
-その警告を展開すると実行に進めます。
+Windows と Linux のビルドは未署名です。Windows では、英語 UI の実機に v0.1.0 の `.msi` を
+入れたとき 2 か所に現れました: ダウンロード時にブラウザが警告し (Edge は「isn't commonly
+downloaded」と告げ、**Keep** に続けて **Keep anyway** を選ぶ必要がありました)、インストーラを
+開く管理者権限のダイアログは発行元を不明 (Publisher Unknown) と表示しました。
 
 作成・更新には **Backlog CLI (`backlog.md`)** が要ります。同梱していないので、別に入れてください。
 最新版でよく、上限は固定していません。Git 履歴には `git` と `gh` を使います。
