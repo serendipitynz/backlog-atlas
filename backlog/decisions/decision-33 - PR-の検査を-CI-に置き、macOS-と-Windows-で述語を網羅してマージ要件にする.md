@@ -31,7 +31,7 @@ status: accepted
   ビルドだけである。
 - **`cargo fmt --check` と `cargo clippy --all-targets -- -D warnings` は現状のまま通る。**
   つまりこの 2 つを要件にするために直すコードが無い。
-- **OS 条件付きコンパイル述語は 6 種類ある。** `unix` が 12、`target_os = "windows"` が 9、
+- **OS 条件付きコンパイル述語は 7 種類ある。** `unix` が 12、`target_os = "windows"` が 9、
   `windows` が 8、`any(target_os = "windows", test)` が 3、`not(target_os = "windows")` が 2、
   `target_os = "macos"` が 1、`not(any(target_os = "macos", target_os = "windows"))` が 1。
   **`target_os = "linux"` は 1 つも無い。**
@@ -54,7 +54,7 @@ status: accepted
    `pnpm run build` を、**段を分けて**（どれが落ちたかをログを開かずに読めるように）実行する。
    `rust` は `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test` を実行する。
 3. **`rust` は macOS と Windows で走らせ、Linux では走らせない。** 理由は 2 つあり、2 つ目が
-   効いている。**述語の網羅** — 上の 6 種類のうち 5 種類はこの 2 つのどちらかがコンパイルし、
+   効いている。**述語の網羅** — 上の 7 種類のうち 6 種類はこの 2 つのどちらかがコンパイルし、
    Linux が足すのは 1 つの `return` である。**そして Linux のランナーは、crate をリンクする前に
    WebView の開発パッケージを `apt-get install` しなければならず、その一覧は既に
    README の "Building from source" と `release.yml` の 2 箇所に在る**（AGENTS.md Toolchain が
@@ -86,6 +86,18 @@ status: accepted
   一覧の置き場を 2 箇所に保てる唯一の道ではあるが、**`release.yml` を書き換えることになり、
   その正しさはタグを打つまで確かめられない。** 1 行の `return` のために、確かめられない変更を
   リリース経路へ入れる取引は割に合わない。
+- **Rust の toolchain を固定しない。decision-32 §4 が Biome を厳密固定したのと逆であり、
+  その非対称は承知のうえである。** `dtolnay/rust-toolchain@stable` はジョブが走る日の stable に
+  解決されるので、clippy か rustfmt のリリース 1 つで、誰も触っていないコードに対して
+  マージ要件が 2 つとも赤になり得る — **この decision の PR 自身がそれを踏んだ**（手元 1.96.0 に
+  対しランナー 1.97.1、`question_mark` が両ランナーで 1 件）。それでも固定しないのは、
+  **固定する範囲がここだけでは済まないから**である。`release.yml` も `@stable` を使い、
+  リポジトリに `rust-toolchain.toml` は無い。CI だけを固定すると、**マージ要件が通す版と
+  リリースが実際にビルドする版が別物になる** — 出荷するバンドルを検査していない状態であり、
+  ずれた lint より悪い。Biome にこの問題が無いのは、それが `package.json` の 1 行で、
+  リリース経路がそれを読まないためである。**代わりに 2 つ置いた**: admin の迂回（版が上がった
+  直後の PR を止め続けない）と、AGENTS の 継続的インテグレーション 節の註（手元の版をランナーに
+  合わせる手順）。**固定するとしたら `release.yml` と一緒であり、それはこの decision の範囲外である。**
 - **`strict_required_status_checks_policy` を有効にしない。** 有効にすると main が動くたびに
   PR の再 rebase を求める。**1 人で回すリポジトリでは、防いでいるものより摩擦のほうが大きい。**
 - **必須レビューを足さない。** 所有者は自分の PR をマージする。ユーザー設定の Pull requests &

@@ -254,6 +254,16 @@ commit のために main を書ける状態を保つのがひとつ、壊れた�
 もうひとつ — 迂回が無いと、検査を直す変更をその検査が阻む。**Pull Request を作ること自体は
 要求していない。** 要求しているのは、Pull Request があるときにその検査が通ることである。
 
+**手元の `cargo clippy` が通っても CI のそれが落ちることがあり、違いは toolchain である。**
+`dtolnay/rust-toolchain@stable` はジョブが走る日の stable に解決され、clippy はリリースごとに
+lint を広げる — 数版遅れている機械は、その分だけ見えていない。TASK-178 がまさにこれを踏んだ:
+手元 1.96.0 に対しランナー 1.97.1 で、誰も触っていないコードに `question_mark` が 1 件、
+両ランナーで出た。このリポジトリは Rust を意図的に固定していない（release ワークフローも
+stable を追い、`rust-toolchain.toml` も無い）ので、対処は固定ではなくランナーに合わせることで
+ある: `rustc --version` をジョブが表示する版と突き合わせ、違えば
+`rustup toolchain install <その版>` して `cargo +<その版> clippy` を走らせる。既定を更新しても
+よいが、`+` の形は既定を動かさずに CI の答えを確かめられる。
+
 ## リリース
 
 **リリースのタグを打つ前に、`README.md` と `README.ja.md` を出荷するビルドと突き合わせ、
@@ -458,7 +468,8 @@ CI にはその名前が要る。`setup-ci-signing-secrets.sh` は `.env.signing
   強調の中で日本語の文が終わる書き方はすべてこれに当たる（そしてそれが大半である）。
   描画される場所すべてに効く: README 和英と、Atlas が `markdown-it` で描くタスク・文書の
   本文（decision-25）。
-- 実装後は対象の検査を実行し、実行できないものは理由を報告する。**ここにフォーマッタは無い** —
-  フロントエンドは `pnpm test`・`pnpm run check`・`pnpm run lint`、Rust 側は `src-tauri/` での
-  `cargo test`・`cargo fmt`・`cargo clippy` である。フォーマッタを置かない理由は decision-32。
+- 実装後は対象の検査を実行し、実行できないものは理由を報告する。**フロントエンドにフォーマッタは
+  無い** — 検査は `pnpm test`・`pnpm run check`・`pnpm run lint` である。Rust 側は持っている:
+  `src-tauri/` での `cargo fmt` と、`cargo test`・`cargo clippy`。フロントエンドに置かない理由は
+  decision-32。
 - 明示的な依頼なしに commit、履歴改変、リモートへの push を行わない。

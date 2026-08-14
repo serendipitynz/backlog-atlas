@@ -277,6 +277,16 @@ the `Done` commits Task state describes, and it is what makes a broken workflow 
 it, the change that repairs a check would be blocked by that check. **A pull request is not
 itself required**, only the checks when one exists.
 
+**A local `cargo clippy` can pass while CI's fails, and the difference is the toolchain.**
+`dtolnay/rust-toolchain@stable` resolves to whatever stable is on the day the job runs, and a
+clippy release extends its lints — so a machine a version or two behind sees fewer of them.
+TASK-178 hit exactly this: 1.96.0 locally against 1.97.1 on the runner, one `question_mark`
+finding, on both runners, in code nobody had touched. Rust is deliberately unpinned here (the
+release workflow tracks stable too, and there is no `rust-toolchain.toml`), so the fix is to
+match the runner rather than to pin it: `rustc --version` against the version the job prints,
+and `rustup toolchain install <it>` then `cargo +<it> clippy` when they differ. Updating your
+default works too; the `+` form is what checks CI's answer without moving your default.
+
 ## Release
 
 **Before tagging a release, read `README.md` and `README.ja.md` against the build being
@@ -487,7 +497,7 @@ of copying `.env.signing`.
   most of them. It applies wherever the Markdown is rendered: the READMEs, and task and
   document bodies, which Atlas draws with `markdown-it` (decision-25).
 - After implementation, run the relevant checks and report anything that cannot be run, with the
-  reason. **There is no formatter here** — the frontend's are `pnpm test`, `pnpm run check` and
-  `pnpm run lint`, and the Rust side's are `cargo test`, `cargo fmt` and `cargo clippy` from
-  `src-tauri/`. Why no formatter is decision-32.
+  reason. **The frontend has no formatter** — its checks are `pnpm test`, `pnpm run check` and
+  `pnpm run lint`. The Rust side does have one: `cargo fmt`, alongside `cargo test` and
+  `cargo clippy`, from `src-tauri/`. Why the frontend has none is decision-32.
 - Do not commit, rewrite history, or push to a remote without an explicit request.

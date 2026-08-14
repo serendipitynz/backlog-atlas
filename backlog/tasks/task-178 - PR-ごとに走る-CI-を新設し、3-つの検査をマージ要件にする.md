@@ -4,7 +4,7 @@ title: PR ごとに走る CI を新設し、3 つの検査をマージ要件に�
 status: In Review
 assignee: []
 created_date: '2026-08-14 22:42'
-updated_date: '2026-08-14 22:59'
+updated_date: '2026-08-14 23:18'
 labels: []
 dependencies: []
 ordinal: 169700
@@ -31,13 +31,13 @@ decision-33 の実施。これまで .github/workflows/ に在るのは release.
 <!-- SECTION:NOTES:BEGIN -->
 実測は 2026-08-15、macOS。GitHub 側の設定は同日に API から読み書きした。
 
-ランナーの選択根拠: src-tauri/src の OS 条件付きコンパイル述語は 6 種類 (unix 12、target_os="windows" 9、windows 8、any(target_os="windows", test) 3、not(target_os="windows") 2、target_os="macos" 1、not(any(macos, windows)) 1) で、target_os="linux" は 0 件。macOS と Windows の 2 ランナーは最後の 1 つを除くすべてをコンパイルする。その 1 つは editor.rs の Platform::current の return Platform::Freedesktop; 1 行で、その値の挙動は Platform::ALL が全プラットフォームのテストに載せている。
+ランナーの選択根拠: src-tauri/src の OS 条件付きコンパイル述語は 7 種類 (unix 12、target_os="windows" 9、windows 8、any(target_os="windows", test) 3、not(target_os="windows") 2、target_os="macos" 1、not(any(macos, windows)) 1) で、target_os="linux" は 0 件。macOS と Windows の 2 ランナーは、最後の 1 つを除く 6 種類をコンパイルする。その 1 つは editor.rs の Platform::current の return Platform::Freedesktop; 1 行で、その値の挙動は Platform::ALL が全プラットフォームのテストに載せている。
 
 rust ジョブに Node を入れていないのは、cargo test が dist/ 無しで通ることを測ったため (412 passed / 4 ignored)。tauri-build が frontendDist を要求するのはバンドルを作るビルドだけである。
 
-断続的失敗は decision-25 の動的 import がテスト予算に乗る構造によるもので、component プロジェクトの testTimeout を 30 秒にした。単独実行では 5 回とも 1 秒前後、全体実行 6 回でも落ちなかったが、機械が他の仕事をしている間の全体実行では既定の 5000ms を超えていた。TASK-150 は閉じない。
+断続的失敗は decision-25 の動的 import がテスト予算に乗る構造によるもので、component プロジェクトの testTimeout を 30 秒にした。TASK-150 は閉じない。
 
 ruleset は既存の無効な ruleset (deletion / non_fast_forward) を拡張して有効化した。新規作成ではないので、その 2 つの規則はそのまま残っている。
 
-ワークフローは GitHub のランナー上でまだ 1 度も走っていない。ruleset が名指しした 3 つの文字列が実際に報告される check 名と一致するかは、最初の Pull Request が確かめる。
+初回実行が 2 つの未確認事項のうち 1 つを解消した: ruleset が名指しした 3 つの文字列は、実際に報告された check 名と一致した。同じ実行で rust が両ランナーとも落ちたが、原因はコードではなく toolchain の差である (手元 1.96.0 に対しランナー 1.97.1、clippy 1.97 が question_mark を広げた)。この非対称 — Biome は厳密固定、Rust は stable 追随 — は decision-33 の 採らなかったもの に記録した。clippy で落ちたため両ランナーとも cargo test は skip され、Windows で dist/ 無しに通るかは次の実行が最初の確認機会になる。
 <!-- SECTION:NOTES:END -->
