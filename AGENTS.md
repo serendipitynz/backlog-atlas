@@ -221,7 +221,7 @@ whose notes GitHub generates from the merged Pull Requests (`.github/release.yml
 them). **Publishing the draft is a manual step and stays one**: the notes are meant to be
 read first, and a platform whose job failed leaves the draft short an asset.
 
-Four things about that workflow are decisions rather than details, and an edit undoing one
+Five things about that workflow are decisions rather than details, and an edit undoing one
 should say why.
 
 - **It refuses to build when the six macOS signing secrets are unregistered**, in the job
@@ -239,6 +239,13 @@ should say why.
   bundles after `tauri.conf.json` and the build passes no `--locked`, so a tag out of step
   with them yields assets carrying the previous version's name over a lockfile the build
   silently rewrote.
+- **It deletes the `.app.tar.gz` that tauri-action uploads beside the `.dmg`** (TASK-170).
+  tauri-action archives any `.app` it finds, updater or not, and offers no input to leave
+  one asset out — `bundle.targets` cannot prevent it either, because building the `.dmg`
+  produces the `.app`. With no updater (decision-30) nobody consumes the archive, and the
+  `.dmg` carries the same `.app`, so shipping it would keep an asset on the release page
+  that README tells every reader to skip. v0.1.0 shipped it once; the owner deleted it on
+  2026-08-14.
 
 ### Third-party notices
 

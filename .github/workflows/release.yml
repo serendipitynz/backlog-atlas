@@ -14,10 +14,14 @@ name: Release
 #
 # The bundle carries neither a Backlog CLI sidecar (decision-26) nor an updater
 # (decision-30): `tauri.conf.json` declares no `externalBin`, no
-# `plugins.updater`, and no `bundle.createUpdaterArtifacts`, so no signing key
-# and no update endpoint go into the shipped binary and tauri-action produces no
-# `.sig` / `.app.tar.gz` asset. v0.1.0 is replaced by hand, and the version a
-# user is on is announced through this release page (README "Updating").
+# `plugins.updater`, and no `bundle.createUpdaterArtifacts`, so no signing key,
+# no update endpoint, and no updater `.sig` go into what is shipped. tauri-action
+# still archives the built `.app` into a `.app.tar.gz` and uploads it — measured
+# on v0.1.0's run, whose log packages the `.app` directory explicitly; it does
+# this to any `.app` it finds, updater or not, and offers no input to exclude
+# it — so a step after the macOS build deletes that asset from the draft
+# (TASK-170). Releases are replaced by hand, and the version a user is on is
+# announced through this release page (README "Updating").
 #
 # The suite is not run here. `pnpm test` has a known intermittent timeout in one
 # component test (m-3 TASK-150; 7 occurrences up to 2026-08-13, none of them
@@ -303,6 +307,33 @@ jobs:
           # here, so its generated notes survive.
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.tauri_args }}
+
+      # tauri-action archives the .app it built into a .app.tar.gz and uploads
+      # it beside the .dmg — it packages any .app it finds, updater or not, and
+      # has no input to leave one asset out (measured on v0.1.0's run, which
+      # shipped the archive). With no updater (decision-30) nobody consumes it:
+      # the .dmg carries the same .app, so the archive is a second copy of the
+      # macOS build that README would have to tell every reader to skip.
+      # Deleting it here keeps the asset list equal to what README recommends
+      # (TASK-170; the owner confirmed on 2026-08-14 and deleted v0.1.0's copy).
+      # Zero matching assets is success, not an error — it is this step's goal
+      # state, arrived at early if tauri-action ever stops uploading the archive.
+      - name: Remove the .app.tar.gz tauri-action uploaded
+        if: matrix.platform == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: |
+          # pipefail matters here: without it a failed asset listing leaves the
+          # while loop reading nothing and exiting 0 — a green that is
+          # indistinguishable from the "zero matching assets" success state.
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+            --paginate --jq '.[] | select(.name | endswith(".app.tar.gz")) | .id' |
+          while read -r asset_id; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            echo "Deleted release asset $asset_id (.app.tar.gz)."
+          done
 
       # That the icon reaches the bundle was confirmed on real machines for all
       # three platforms (TASK-96 on 2026-08-12, and again with the current
