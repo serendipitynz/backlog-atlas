@@ -1,0 +1,102 @@
+name: CI
+
+# Every pull request, and `main` after one lands. The second is not redundant with the first:
+# branch protection leaves an administrator able to merge past a failing check, and a
+# push-triggered run is what states that on `main` rather than leaving it in a closed pull
+# request nobody reopens.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same ref cancels the run still going for the older one, whose verdict is
+# about code nobody is going to merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No version is written here. The pin is `packageManager` in package.json, which this
+      # action reads, and `.node-version`, which setup-node reads — one pin per tool, with
+      # nowhere for a second one to drift (AGENTS.md Toolchain). `release.yml` does the same.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      # `--frozen-lockfile` so a pull request that edited package.json without regenerating the
+      # lockfile fails here rather than resolving to something no other machine will resolve to.
+      - run: pnpm install --frozen-lockfile
+
+      # Ordered cheapest first, and each is a separate step so the run names which one failed
+      # without anyone opening the log.
+      - run: pnpm run lint
+      - run: pnpm run check
+      - run: pnpm test
+
+      # The build is a check in its own right: `pnpm test` runs modules through Vitest's
+      # transform, which is not the same pass as the production one, and a release that first
+      # discovers a build error at tag time discovers it with no pull request left to fix.
+      - run: pnpm run build
+
+  rust:
+    name: rust (${{ matrix.platform }})
+    strategy:
+      # Windows finding something is worth knowing even after macOS has already failed, and the
+      # two share no state.
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+      # `--all-targets` so the test code is linted too, and `-D warnings` because a warning that
+      # does not fail is a warning nobody reads.
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      # No Node and no `pnpm run build` on this job. `tauri.conf.json` points `frontendDist` at
+      # `../dist`, which a fresh checkout does not have because it is git-ignored — but
+      # `tauri-build` only requires it for a bundling build, and `cargo test` was measured
+      # passing without it (412 passed, 4 ignored, 2026-08-15). Adding the frontend toolchain
+      # here to produce a directory nothing reads would roughly double this job.
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+# Why macOS and Windows, and deliberately not Linux.
+#
+# **Coverage.** The crate has exactly one Linux-exclusive line: the
+# `not(any(target_os = "macos", target_os = "windows"))` arm of `Platform::current` in
+# `editor.rs`, which returns `Platform::Freedesktop`. Every other OS-conditional predicate in
+# `src-tauri/src` — `unix`, `windows`, `target_os = "windows"`, `not(target_os = "windows")`,
+# `target_os = "macos"` — is compiled by one of these two runners, and `Platform::ALL` puts
+# Freedesktop's *behaviour* under test on every platform regardless. What a Linux runner would
+# add is the compilation of one `return`.
+#
+# **Cost of the alternative.** A Linux runner cannot link the crate until it has
+# `apt-get install`ed the WebView development packages, and that list already lives in exactly
+# two places — README's "Building from source" and `release.yml`, which AGENTS.md Toolchain says
+# to change together. Naming it here would make three, and the third would be the copy nobody
+# re-derives.
+#
+# The Linux bundle is still built on every `v*` tag by `release.yml`.

@@ -253,6 +253,30 @@ reads the committed file. The samples are built as struct literals with fabricat
 absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
 and a recorded fixture has to be byte-identical on every machine.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and on `main` after one lands
+(decision-33). It is a different thing from `release.yml`, which builds bundles for a `v*` tag
+and checks no code.
+
+- **`frontend`** on ubuntu — `pnpm run lint`, `pnpm run check`, `pnpm test`, `pnpm run build`,
+  each its own step so a failure names itself.
+- **`rust`** on macOS and Windows — `cargo fmt --check`, `cargo clippy --all-targets -- -D
+  warnings`, `cargo test`. **Deliberately not Linux**: the two runners between them compile
+  every OS-conditional predicate in `src-tauri/src` but one, and a Linux runner would need the
+  WebView `apt-get` list written in a third place. The workflow's own trailing comment carries
+  the full reasoning; do not add a Linux job without reading it.
+
+**Three checks are required before a pull request can merge** — `frontend`,
+`rust (macos-latest)` and `rust (windows-latest)` — through the repository ruleset named `main`.
+**A job's `name` is that string.** Rename a job and the ruleset waits forever on the old name;
+change the two together.
+
+**Repository admins can bypass those checks**, on purpose. It is what keeps `main` writable for
+the `Done` commits Task state describes, and it is what makes a broken workflow fixable — without
+it, the change that repairs a check would be blocked by that check. **A pull request is not
+itself required**, only the checks when one exists.
+
 ## Release
 
 **Before tagging a release, read `README.md` and `README.ja.md` against the build being

@@ -231,6 +231,29 @@ Rust 側でそれを改名しても全検査を通過する。`wire_fixtures.rs`
 作り置いた struct リテラルで組む。リテラルなら新しい項目をコンパイラが名指しし、記録した
 fixture はどの機械でもバイト単位で同一でなければならない。
 
+## 継続的インテグレーション
+
+`.github/workflows/ci.yml` は Pull Request ごとと、それが main に入った後の push で走る
+（decision-33）。`v*` タグでバンドルを作りコードを一切見ない `release.yml` とは別物である。
+
+- **`frontend`**（ubuntu）— `pnpm run lint`・`pnpm run check`・`pnpm test`・`pnpm run build` を、
+  どれが落ちたかがそれ自身で分かるよう段を分けて実行する。
+- **`rust`**（macOS と Windows）— `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・
+  `cargo test`。**Linux は意図して外してある** — この 2 つのランナーは `src-tauri/src` の OS 条件付き
+  コンパイル述語を 1 つを除いてすべてコンパイルし、Linux のランナーは WebView の `apt-get` 一覧を
+  3 箇所目に書くことを要求する。根拠の全文はワークフロー末尾のコメントが持つ。**読まずに Linux の
+  ジョブを足さない。**
+
+**Pull Request がマージできるようになるには 3 つの検査が要る** — `frontend`・
+`rust (macos-latest)`・`rust (windows-latest)` — リポジトリの ruleset `main` がそれを課している。
+**job の `name` がその文字列そのものである。** job を改名すると ruleset は古い名前を待ち続け、
+Pull Request は永久に緑にならない。改名するなら ruleset も一緒に変える。
+
+**repository admin はその検査を迂回できる。これは意図である。** タスクの状態 が述べる `Done` の
+commit のために main を書ける状態を保つのがひとつ、壊れたワークフローを直せる状態を保つのが
+もうひとつ — 迂回が無いと、検査を直す変更をその検査が阻む。**Pull Request を作ること自体は
+要求していない。** 要求しているのは、Pull Request があるときにその検査が通ることである。
+
 ## リリース
 
 **リリースのタグを打つ前に、`README.md` と `README.ja.md` を出荷するビルドと突き合わせ、
