@@ -48,9 +48,9 @@ Because several projects share one screen, Atlas identifies a task there as
 
 Builds are on the [Releases page](https://github.com/serendipitynz/backlog-atlas/releases).
 
-The macOS builds are signed and notarized, so they open without a Gatekeeper prompt. The
-Windows and Linux builds are unsigned; on Windows, SmartScreen warns before the installer
-runs — choose **More info → Run anyway**.
+The macOS builds are signed and notarized, so macOS does not refuse them. The Windows and
+Linux builds are unsigned; on Windows, SmartScreen warns before an unrecognised installer
+runs, and the warning has to be expanded before it offers to run the file anyway.
 
 Creating and updating anything needs the **Backlog CLI (`backlog.md`)**, which is not bundled
 with Atlas — install it yourself. The latest release is fine; no upper bound is fixed. Git
