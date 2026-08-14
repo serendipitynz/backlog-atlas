@@ -2488,7 +2488,7 @@
 
     h1 {
       margin: 0;
-      font-size: var(--text-2xl);
+      font-size: var(--text-3xl);
     }
   }
 
@@ -2527,7 +2527,7 @@
     border-radius: 4px;
     background: transparent;
     color: inherit;
-    font-size: var(--text-2xl);
+    font-size: var(--text-3xl);
     cursor: pointer;
   }
 
@@ -2700,7 +2700,7 @@
       margin: 0 0 0.45rem;
       padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
       // 画面見出し .92rem / 650 (doc-11 §2.2 のタイポ).
-      font-size: var(--text-2xl);
+      font-size: var(--text-3xl);
       font-weight: 650;
     }
 

@@ -2990,7 +2990,7 @@
   }
 
   .name {
-    font-size: var(--text-2xl);
+    font-size: var(--text-3xl);
     font-weight: 600;
   }
 

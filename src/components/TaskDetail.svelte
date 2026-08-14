@@ -1959,7 +1959,7 @@
 
     h2 {
       margin: 0;
-      font-size: var(--text-2xl);
+      font-size: var(--text-3xl);
       line-height: 1.35;
     }
   }

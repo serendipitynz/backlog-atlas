@@ -358,7 +358,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: var(--text-2xl);
+    font-size: var(--text-3xl);
     cursor: pointer;
 
     // hover は 枠線 --line → --line-strong (doc-11 §2.3). At rest the border is transparent rather

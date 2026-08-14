@@ -57,10 +57,10 @@ const GROUND_CSS = sass.compile("src/app.scss").css;
  */
 const DECLARATION = /font-size:\s*([^;\n]+);/g;
 
-/** `--text-xs: 0.62rem;` and its five siblings, as written in `app.scss`. */
-const STEP_DEFINITION = /--text-(xs|sm|md|lg|xl|2xl):\s*([\d.]+)rem;/g;
+/** `--text-xs: 0.62rem;` and its six siblings, as written in `app.scss`. */
+const STEP_DEFINITION = /--text-(xs|sm|md|lg|xl|2xl|3xl):\s*([\d.]+)rem;/g;
 
-const STEP_NAMES = ["--text-xs", "--text-sm", "--text-md", "--text-lg", "--text-xl", "--text-2xl"];
+const STEP_NAMES = ["--text-xs", "--text-sm", "--text-md", "--text-lg", "--text-xl", "--text-2xl", "--text-3xl"];
 
 /**
  * A value a declaration may hold besides a step.
@@ -134,7 +134,7 @@ describe("文字寸法段階 (doc-11 §2.2)", () => {
     rem: Number(value),
   }));
 
-  it("は app.scss が 6 段を持ち、小さい順に並び、同じ値を 2 つ持たない", () => {
+  it("は app.scss が 7 段を持ち、小さい順に並び、同じ値を 2 つ持たない", () => {
     expect(steps.map((s) => s.name)).toEqual(STEP_NAMES);
     const values = steps.map((s) => s.rem);
     expect(values).toEqual([...values].sort((a, b) => a - b));
@@ -145,13 +145,13 @@ describe("文字寸法段階 (doc-11 §2.2)", () => {
   // されても通り、そのとき doc-11 の表と、その表を基準に測った §13・§14.1 の実測がまとめて偽になる
   // (PR #118 のレビュー指摘)。**期待値はこのファイルに書かない** — 書けば doc と `app.scss` に並ぶ 3 つ目の
   // 写しになるので、doc の行から読んで比べる。
-  it("は doc-11 §2.2 が書いている 6 値と一致する", () => {
+  it("は doc-11 §2.2 が書いている値と一致する", () => {
     const doc = Object.values(DOC_11)[0];
     expect(doc, "doc-11 が読めていない").toBeTypeOf("string");
     const row = doc.match(/^\|\s*文字寸法段階\s*\|([^|]+)\|/m);
     expect(row, "doc-11 §2.2 に 文字寸法段階 の行が無い").not.toBeNull();
     const documented = [...row![1].matchAll(/([\d.]+)(?:rem)?/g)].map(([, n]) => Number(n));
-    expect(documented).toHaveLength(6);
+    expect(documented).toHaveLength(STEP_NAMES.length);
     expect(steps.map((s) => s.rem)).toEqual(documented);
   });
 
@@ -250,7 +250,7 @@ describe("整形表示 (doc-11 §14) の 4 か所", () => {
     expect(drawers).toEqual(["../components/Body.svelte"]);
   });
 
-  it("の中の見出しは、本文より大きく、タスク title とは競合しない (doc-11 §14.1)", () => {
+  it("の中の見出しは、本文より大きく、パネルの見出し とは競合しない (doc-11 §14.1)", () => {
     const body = SOURCES["../components/Body.svelte"];
     const step = (selector: RegExp) => {
       const match = body.match(selector);
@@ -262,9 +262,9 @@ describe("整形表示 (doc-11 §14) の 4 か所", () => {
     const upper = rank.indexOf(step(/:global\(h1\),\s*\n\s*:global\(h2\)\s*\{\s*\n\s*font-size:\s*var\((--text-[\w-]+)\);/));
     const lower = rank.indexOf(step(/:global\(h6\)\s*\{\s*\n\s*font-size:\s*var\((--text-[\w-]+)\);/));
     expect(prose).toBeGreaterThanOrEqual(0);
-    // 段が 2 つで、どちらも本文より大きい。上段は タスク title (`--text-2xl`) に届かない。
+    // 段が 2 つで、どちらも本文より大きい。上段は パネルの見出し (`--text-3xl`) に届かない。
     expect(upper).toBeGreaterThan(lower);
     expect(lower).toBeGreaterThan(prose);
-    expect(upper).toBeLessThan(rank.indexOf("--text-2xl"));
+    expect(upper).toBeLessThan(rank.indexOf("--text-3xl"));
   });
 });

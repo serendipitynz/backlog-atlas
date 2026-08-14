@@ -66,7 +66,7 @@
   h2 {
     // 画面見出し (doc-11 §2.2).
     margin: 0;
-    font-size: var(--text-2xl);
+    font-size: var(--text-3xl);
     font-weight: 650;
   }
 

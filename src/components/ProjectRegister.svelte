@@ -331,7 +331,7 @@
 
   h2 {
     margin: 0;
-    font-size: var(--text-2xl);
+    font-size: var(--text-3xl);
   }
 
   // 読み取り専用縮退 (doc-3 §2.2) is not one of decision-6's 印の族 — nothing is degraded about the

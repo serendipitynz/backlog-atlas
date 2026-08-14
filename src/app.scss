@@ -301,6 +301,10 @@ $themes: (
   --text-lg: 0.8rem;
   --text-xl: 0.86rem;
   --text-2xl: 0.92rem;
+  // 7 段目は 2026-08-14 の目視で入った。整形表示 の本文を 1 段上げると、その上に載る見出し 2 段も 1 段ずつ
+  // 上がって パネルの見出し に届く。**届かせる代わりに天井を 1 段上げた** — 段の幅は一定のままである。
+  // 上げたのは パネルの見出し の側で、整形表示 は空いた 1 段へ入る (doc-11 §2.2・§14.1)。
+  --text-3xl: 0.98rem;
 
   // 地の 1rem (doc-11 §2.2). 110% of the engine's default rather than a pixel count, so an OS text
   // size the user has raised still multiplies through — a `px` here would be Atlas overriding it.

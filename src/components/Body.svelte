@@ -181,12 +181,12 @@
   .body-block {
     margin: 0;
     // The frame the 本文 had before it was rendered: くぼみ面 with a 罫線 (doc-12 §3 の原文, doc-11 §2.1).
-    padding: 0.35rem 0.45rem;
+    padding: 0.6rem 0.75rem;
     border: 1px solid var(--line);
     border-radius: 4px;
     background: var(--inset);
     font-family: inherit;
-    font-size: var(--text-md);
+    font-size: var(--text-lg);
     line-height: 1.5;
     // doc-8 §2.1 の行長上限 48rem。The value is the caller's `--prose-max-width` so this component holds
     // no second 48 (doc-10 §5 takes the same line).
@@ -220,35 +220,35 @@
     :global(h4),
     :global(h5),
     :global(h6) {
-      margin: 0.6rem 0 0.16rem;
+      margin: 0.75rem 0 0.25rem;
       font-weight: 650;
       line-height: 1.35;
     }
 
     :global(h1),
     :global(h2) {
-      font-size: var(--text-xl);
+      font-size: var(--text-2xl);
     }
 
     :global(h3),
     :global(h4),
     :global(h5),
     :global(h6) {
-      font-size: var(--text-lg);
+      font-size: var(--text-xl);
     }
 
     :global(p) {
-      margin: 0.3rem 0;
+      margin: 0.6rem 0;
     }
 
     :global(ul),
     :global(ol) {
-      margin: 0.3rem 0;
+      margin: 0.45rem 0;
       padding-left: 1rem;
     }
 
     :global(li) {
-      margin: 0.16rem 0;
+      margin: 0.25rem 0;
     }
 
     // 本文リンク (doc-11 §14.3): only the ones the screen opens are drawn as links at all, so the colour
@@ -270,7 +270,7 @@
 
     // コード (doc-11 §14.2). The ground stays the block's; the 罫線 is what separates it.
     :global(code) {
-      padding: 0 0.16rem;
+      padding: 0 0.25rem;
       border: 1px solid var(--line);
       border-radius: 3px;
       font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -278,8 +278,8 @@
     }
 
     :global(pre) {
-      margin: 0.3rem 0;
-      padding: 0.25rem 0.3rem;
+      margin: 0.45rem 0;
+      padding: 0.3rem 0.45rem;
       border: 1px solid var(--line);
       border-radius: 3px;
       // No wrapping; it scrolls inside its own block instead (doc-11 §14.2): a fence's lines carry
@@ -300,13 +300,13 @@
     :global(table) {
       display: block;
       overflow-x: auto;
-      margin: 0.3rem 0;
+      margin: 0.45rem 0;
       border-collapse: collapse;
     }
 
     :global(th),
     :global(td) {
-      padding: 0.16rem 0.3rem;
+      padding: 0.25rem 0.45rem;
       border: 1px solid var(--line);
       text-align: left;
     }
@@ -316,14 +316,14 @@
     }
 
     :global(blockquote) {
-      margin: 0.3rem 0;
-      padding-left: 0.45rem;
+      margin: 0.45rem 0;
+      padding-left: 0.6rem;
       border-left: 2px solid var(--line);
       color: var(--muted);
     }
 
     :global(hr) {
-      margin: 0.6rem 0;
+      margin: 0.75rem 0;
       border: 0;
       border-top: 1px solid var(--line);
     }
@@ -356,7 +356,7 @@
 
     // 作図結果 (doc-11 §14.5): bounded by the block, scrolling inside itself when it cannot be.
     :global(.body-figure-drawn) {
-      margin: 0.3rem 0;
+      margin: 0.45rem 0;
       overflow-x: auto;
     }
 
