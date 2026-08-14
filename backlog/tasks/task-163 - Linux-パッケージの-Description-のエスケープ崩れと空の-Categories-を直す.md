@@ -1,10 +1,10 @@
 ---
 id: TASK-163
 title: Linux パッケージの Description のエスケープ崩れと空の Categories を直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 07:03'
-updated_date: '2026-08-14 00:06'
+updated_date: '2026-08-14 00:12'
 labels:
   - release
   - 'kind:chore'

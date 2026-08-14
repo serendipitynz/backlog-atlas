@@ -1,10 +1,10 @@
 ---
 id: TASK-168
 title: About パネルに copyright を出す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 23:04'
-updated_date: '2026-08-13 23:57'
+updated_date: '2026-08-14 00:12'
 labels:
   - ui
   - release
