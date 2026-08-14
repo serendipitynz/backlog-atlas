@@ -124,7 +124,9 @@
   let query = $state("");
 
   function typed(event: Event): void {
-    if ((event as InputEvent).isComposing) return;
+    if ((event as InputEvent).isComposing) {
+      return;
+    }
     query = search;
   }
 
@@ -137,7 +139,9 @@
   // even when no single label contains the word.
   let shown = $derived.by(() => {
     const needle = query.trim().toLowerCase();
-    if (needle === "") return sections.filter((section) => section.entries.length > 0);
+    if (needle === "") {
+      return sections.filter((section) => section.entries.length > 0);
+    }
     return sections
       .map((section) => ({
         ...section,
@@ -199,7 +203,9 @@
   $effect(() => {
     function outside(event: PointerEvent): void {
       const box = boundary ?? root;
-      if (box !== null && !box.contains(event.target as Node)) onclose();
+      if (box !== null && !box.contains(event.target as Node)) {
+        onclose();
+      }
     }
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
@@ -214,7 +220,9 @@
       textEntry: textEntryFocused(document.activeElement),
       mac: MAC_KEYBOARD,
     });
-    if (binding?.action !== "closeOverlay") return;
+    if (binding?.action !== "closeOverlay") {
+      return;
+    }
     // Only this popover's Escape: it is the innermost thing open, and the press is spent closing it.
     event.stopPropagation();
     onclose();

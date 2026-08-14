@@ -136,7 +136,9 @@ export interface SwimlaneInput {
 const PRIORITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
 export function priorityRank(priority: string | null): number {
-  if (priority === null) return 0;
+  if (priority === null) {
+    return 0;
+  }
   return PRIORITY_RANK[priority.trim().toLowerCase()] ?? 0;
 }
 
@@ -386,7 +388,9 @@ function buildRow(
   inconsistent: InconsistentLookup,
   compare: Comparator,
 ): SwimlaneRow {
-  if (load === undefined) return { state: "pending", slug };
+  if (load === undefined) {
+    return { state: "pending", slug };
+  }
   if (load.state === "unreadable") {
     return { state: "unreadable", slug, detail: unreadableDetail(load.error) };
   }
@@ -396,13 +400,18 @@ function buildRow(
   const unmapped: TaskView[] = [];
 
   for (const view of load.project.tasks) {
-    if (!matchesFilter(view, filter, inconsistent)) continue;
+    if (!matchesFilter(view, filter, inconsistent)) {
+      continue;
+    }
     // doc-7 §4: placement is the interpretation's column, with no second rule here. No column
     // — 未分類 status, or a 解析不能 task with no status at all — goes to the 未分類区画, never
     // into a canonical column.
     const column = view.interpretation.status?.column ?? null;
-    if (column === null) unmapped.push(view);
-    else byColumn.get(column)?.tasks.push(view);
+    if (column === null) {
+      unmapped.push(view);
+    } else {
+      byColumn.get(column)?.tasks.push(view);
+    }
   }
 
   for (const cell of cells) {
@@ -437,13 +446,17 @@ export interface LaneCount {
 
 /** Cards this row currently shows in one canonical column — the count a folded column keeps. */
 export function cellCount(row: SwimlaneRow, column: StatusColumn): number {
-  if (row.state !== "loaded") return 0;
+  if (row.state !== "loaded") {
+    return 0;
+  }
   return row.cells.find((cell) => cell.column === column)?.tasks.length ?? 0;
 }
 
 /** Cards the row shows after filtering, across every column and its 未分類区画 (doc-7 §5.2 の n). */
 export function visibleCount(row: SwimlaneRow): number {
-  if (row.state !== "loaded") return 0;
+  if (row.state !== "loaded") {
+    return 0;
+  }
   return row.cells.reduce((sum, cell) => sum + cell.tasks.length, 0) + row.unmapped.length;
 }
 
@@ -492,8 +505,12 @@ export type GridColumn = StatusColumn | "unmapped";
  * is unreachable through the screen, but this is an exported rule and "always" has to mean always.
  */
 export function columnFoldable(collapsed: readonly GridColumn[], column: GridColumn): boolean {
-  if (collapsed.includes(column)) return true;
-  if (column === "unmapped") return true;
+  if (collapsed.includes(column)) {
+    return true;
+  }
+  if (column === "unmapped") {
+    return true;
+  }
   return CANONICAL_COLUMNS.some((other) => other !== column && !collapsed.includes(other));
 }
 
@@ -691,7 +708,9 @@ export function laneNeighbours(
   ref: { slug: string; sourcePath: string },
 ): LaneNeighbours | null {
   const row = rows.find((candidate) => candidate.slug === ref.slug);
-  if (row === undefined || row.state !== "loaded") return null;
+  if (row === undefined || row.state !== "loaded") {
+    return null;
+  }
   const groups: { group: LaneNeighbours["group"]; tasks: TaskView[] }[] = [
     ...row.cells.map((cell) => ({
       group: { kind: "column" as const, column: cell.column },
@@ -701,7 +720,9 @@ export function laneNeighbours(
   ];
   for (const { group, tasks } of groups) {
     const at = tasks.findIndex((view) => view.task.sourcePath === ref.sourcePath);
-    if (at === -1) continue;
+    if (at === -1) {
+      continue;
+    }
     return {
       group,
       position: at + 1,

@@ -73,7 +73,9 @@ function stubLayout(): () => void {
  * (受入条件 #1–#3 of TASK-61), and no test may assert on it — the same rule as `getClientRects`.
  */
 function stubResizeObserver(): () => void {
-  if ("ResizeObserver" in window) return () => {};
+  if ("ResizeObserver" in window) {
+    return () => {};
+  }
   class Stub {
     observe(): void {}
     unobserve(): void {}
@@ -86,11 +88,17 @@ function stubResizeObserver(): () => void {
 }
 
 function rendered(element: Element): boolean {
-  if (!element.ownerDocument.body.contains(element)) return false;
+  if (!element.ownerDocument.body.contains(element)) {
+    return false;
+  }
   let child: Element = element;
   for (let node: Element | null = element; node !== null; node = node.parentElement) {
-    if (node.hasAttribute("hidden")) return false;
-    if (node instanceof HTMLElement && node.style.display === "none") return false;
+    if (node.hasAttribute("hidden")) {
+      return false;
+    }
+    if (node instanceof HTMLElement && node.style.display === "none") {
+      return false;
+    }
     // A closed `details` renders its `summary` and hides the rest, which is the case doc-11 §5
     // relies on when it keeps a withheld control focusable inside an open one.
     if (
@@ -143,7 +151,9 @@ export function render<C extends Component<any, any>>(
  * — the one that gives focus back to the opener.
  */
 export function cleanup(): void {
-  while (opened.length > 0) opened.pop()?.destroy();
+  while (opened.length > 0) {
+    opened.pop()?.destroy();
+  }
   restoreLayout?.();
   restoreLayout = null;
   restoreObserver?.();
@@ -215,11 +225,14 @@ export function only<E extends Element>(host: ParentNode, selector: string): E {
  */
 function announced(element: Element): string {
   const label = element.getAttribute("aria-label");
-  if (label !== null) return label.trim();
+  if (label !== null) {
+    return label.trim();
+  }
   let text = "";
   for (const node of element.childNodes) {
-    if (node.nodeType === node.TEXT_NODE) text += node.textContent ?? "";
-    else if (node instanceof Element && node.getAttribute("aria-hidden") !== "true") {
+    if (node.nodeType === node.TEXT_NODE) {
+      text += node.textContent ?? "";
+    } else if (node instanceof Element && node.getAttribute("aria-hidden") !== "true") {
       text += announced(node);
     }
   }

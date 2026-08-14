@@ -75,7 +75,9 @@ const PRIORITY_STEPS: readonly PriorityStep[] = ["high", "medium", "low"];
  * showing the word as written either way, so 未知 is not hidden — it is only uncoloured.
  */
 export function priorityStep(priority: string | null): PriorityStep | null {
-  if (priority === null) return null;
+  if (priority === null) {
+    return null;
+  }
   const value = normalizePriority(priority);
   // `find` rather than `includes` + a cast: the returned element already has the narrow type, so
   // nothing here asserts that a string is one of the three.
@@ -134,7 +136,9 @@ export const PRIORITY_STEP_LABEL: Record<string, string> = {
  */
 export function collapsedCellLabel(label: string, views: readonly TaskView[]): string {
   const groups = priorityTally(views);
-  if (groups.length === 0) return `${label} ${views.length} 件`;
+  if (groups.length === 0) {
+    return `${label} ${views.length} 件`;
+  }
   const breakdown = groups
     .map((group) => `${PRIORITY_STEP_LABEL[group.step ?? "none"]} ${group.count}`)
     .join("・");

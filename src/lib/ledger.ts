@@ -160,7 +160,9 @@ export function isAbsolutePath(path: string): boolean {
 export function parentPath(path: string): string | null {
   const trimmed = path.replace(/[\\/]+$/, "");
   const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
-  if (cut < 0) return null;
+  if (cut < 0) {
+    return null;
+  }
   // Keep the root itself spelled as a root ("/x" → "/"), rather than as an empty string.
   const parent = cut === 0 ? trimmed.slice(0, 1) : trimmed.slice(0, cut);
   return parent === "" || parent === trimmed ? null : parent;
@@ -169,9 +171,13 @@ export function parentPath(path: string): string | null {
 /** The Backlog root a registration would resolve to (doc-3 §3: default `<project_root>/backlog`). */
 export function resolvedBacklogRoot(input: RegisterInput): string {
   const explicit = input.backlogRoot.trim();
-  if (explicit !== "") return explicit;
+  if (explicit !== "") {
+    return explicit;
+  }
   const projectRoot = input.projectRoot.trim().replace(/[\\/]+$/, "");
-  if (projectRoot === "") return "";
+  if (projectRoot === "") {
+    return "";
+  }
   const separator = projectRoot.includes("\\") && !projectRoot.includes("/") ? "\\" : "/";
   return `${projectRoot}${separator}backlog`;
 }
@@ -228,9 +234,13 @@ export function registerProblems(
 export function toRegisterRequest(input: RegisterInput): RegisterRequest {
   const request: RegisterRequest = { project_root: input.projectRoot.trim() };
   const backlogRoot = input.backlogRoot.trim();
-  if (backlogRoot !== "") request.backlog_root = backlogRoot;
+  if (backlogRoot !== "") {
+    request.backlog_root = backlogRoot;
+  }
   const slug = input.slug.trim();
-  if (slug !== "") request.slug = slug;
+  if (slug !== "") {
+    request.slug = slug;
+  }
   return request;
 }
 
@@ -271,7 +281,9 @@ export function aliasProblems(rows: readonly AliasRow[]): FieldProblem[] {
   for (const row of rows) {
     const key = row.key.trim();
     const value = row.value.trim();
-    if (key === "" && value === "") continue;
+    if (key === "" && value === "") {
+      continue;
+    }
     if (key === "") {
       problems.push({ field: "aliases", message: "別名表に status 名の無い行があります。" });
       continue;
@@ -302,7 +314,9 @@ export function aliasTable(rows: readonly AliasRow[]): Record<string, string> {
   for (const row of rows) {
     const key = row.key.trim();
     const value = row.value.trim();
-    if (key === "" || value === "") continue;
+    if (key === "" || value === "") {
+      continue;
+    }
     table[key] = value;
   }
   return table;
@@ -324,9 +338,15 @@ export function aliasKeyEffect(
   statuses: readonly string[],
 ): "declared" | "draft" | "noDeclaredSet" | "undeclared" {
   const normalized = key.trim().toLowerCase();
-  if (normalized === "") return "undeclared";
-  if (statuses.some((status) => status.trim().toLowerCase() === normalized)) return "declared";
-  if (normalized === "draft") return "draft";
+  if (normalized === "") {
+    return "undeclared";
+  }
+  if (statuses.some((status) => status.trim().toLowerCase() === normalized)) {
+    return "declared";
+  }
+  if (normalized === "draft") {
+    return "draft";
+  }
   return statuses.length === 0 ? "noDeclaredSet" : "undeclared";
 }
 
@@ -370,7 +390,9 @@ export function toUpdateRequest(
 
 function sameTable(a: Record<string, string>, b: Record<string, string>): boolean {
   const keys = Object.keys(a);
-  if (keys.length !== Object.keys(b).length) return false;
+  if (keys.length !== Object.keys(b).length) {
+    return false;
+  }
   return keys.every((key) => a[key] === b[key]);
 }
 
@@ -385,7 +407,9 @@ export function moveTarget(
   direction: -1 | 1,
 ): number | null {
   const index = order.indexOf(slug);
-  if (index < 0) return null;
+  if (index < 0) {
+    return null;
+  }
   const target = index + direction;
   return target < 0 || target >= order.length ? null : target;
 }

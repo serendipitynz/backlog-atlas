@@ -202,8 +202,12 @@ export function subscribed(): boolean {
  * never been re-read.
  */
 export function emitReload(event: ReloadEvent): void {
-  if (listeners.length === 0) throw new Error("emitReload with no subscriber");
-  for (const listener of [...listeners]) listener(event);
+  if (listeners.length === 0) {
+    throw new Error("emitReload with no subscriber");
+  }
+  for (const listener of [...listeners]) {
+    listener(event);
+  }
 }
 
 export function reset(): void {
@@ -264,7 +268,9 @@ export function ledgerFor(...entries: LedgerResponse["ledger"]["project"]): Ledg
 
 /** The snapshot a slug's load carries, for the tests that need to hand the same one back. */
 export function snapshotOf(load: ProjectLoad): ProjectSnapshot {
-  if (load.state !== "loaded") throw new Error("snapshotOf on an unreadable load");
+  if (load.state !== "loaded") {
+    throw new Error("snapshotOf on an unreadable load");
+  }
   return load.project;
 }
 
@@ -288,7 +294,9 @@ export const commandFakes = {
 
   ledgerRegister: (request: RegisterRequest): Promise<RegisterResponse> =>
     record("ledger_register", [request], async () => {
-      if (answers.ledgerRegisterHold !== null) await answers.ledgerRegisterHold.promise;
+      if (answers.ledgerRegisterHold !== null) {
+        await answers.ledgerRegisterHold.promise;
+      }
       // The entry the ledger would have created, with the slug resolved: an absent one is derived
       // from the project-root directory name (doc-3 §3.1), which is the case a caller has to be able
       // to read back off the response rather than assume.
@@ -340,7 +348,9 @@ export const commandFakes = {
 
   taskHistoryRead: (slug: string, taskId: string, readId: string): Promise<TaskHistory> =>
     record("task_history_read", [slug, taskId, readId], () => {
-      if (answers.historyNeverAnswers) return new Promise<TaskHistory>(() => {});
+      if (answers.historyNeverAnswers) {
+        return new Promise<TaskHistory>(() => {});
+      }
       const found = answers.history.get(`${slug}:${taskId}`);
       return found === undefined
         ? Promise.reject(new Error(`task_history_read with no answer for ${slug}:${taskId}`))
@@ -359,7 +369,9 @@ export const commandFakes = {
 
   settingsSave: (settings: AppSettings): Promise<LoadedSettings> =>
     record("settings_save", [settings], async () => {
-      if (answers.settingsSaveHold !== null) await answers.settingsSaveHold.promise;
+      if (answers.settingsSaveHold !== null) {
+        await answers.settingsSaveHold.promise;
+      }
       if (answers.settingsSaveFails) {
         throw new Error("settings are read-only");
       }
@@ -424,11 +436,15 @@ export const commandFakes = {
 
   onProjectReloaded: (handler: (event: ReloadEvent) => void): Promise<() => void> =>
     record("on_project_reloaded", [], () => {
-      if (answers.subscribeFails) return Promise.reject(new Error("no channel"));
+      if (answers.subscribeFails) {
+        return Promise.reject(new Error("no channel"));
+      }
       listeners.push(handler);
       return Promise.resolve(() => {
         const at = listeners.indexOf(handler);
-        if (at >= 0) listeners.splice(at, 1);
+        if (at >= 0) {
+          listeners.splice(at, 1);
+        }
       });
     }),
 };

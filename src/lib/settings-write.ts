@@ -49,9 +49,13 @@ export function createSettingsWriter(
   return function write(change: SettingsChange): Promise<string | null> {
     const issued = queue.then(async (): Promise<string | null> => {
       const current = ports.peek();
-      if (current === null) return SETTINGS_NOT_READ;
+      if (current === null) {
+        return SETTINGS_NOT_READ;
+      }
       const next = change(current);
-      if (!isDirty(next, current)) return null;
+      if (!isDirty(next, current)) {
+        return null;
+      }
       try {
         ports.adopt(await ports.save(next));
         return null;

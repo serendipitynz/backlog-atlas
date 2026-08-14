@@ -214,13 +214,17 @@
    */
   function measureHead(): number {
     const elements = boundElements(columnHeads);
-    if (elements.length === 0) return 0;
+    if (elements.length === 0) {
+      return 0;
+    }
     return Math.max(...elements.map((element) => element.getBoundingClientRect().height));
   }
 
   $effect(() => {
     const elements = boundElements(columnHeads);
-    if (elements.length === 0) return;
+    if (elements.length === 0) {
+      return;
+    }
     // Measured once here as well as from the callback: a `ResizeObserver` reports asynchronously, so
     // without this the grid's first paint would put every レーンヘッダ行 at the top of the scrollport,
     // behind the 列ヘッダ行, until the callback arrived.
@@ -228,7 +232,9 @@
     const observer = new ResizeObserver(() => {
       headHeight = measureHead();
     });
-    for (const element of elements) observer.observe(element);
+    for (const element of elements) {
+      observer.observe(element);
+    }
     return () => observer.disconnect();
   });
 
@@ -240,11 +246,15 @@
   // same reason as before: the point is that the row is *there* when the grid appears.
   $effect(() => {
     const slug = focusSlug;
-    if (slug === null) return;
+    if (slug === null) {
+      return;
+    }
     const mark = boundElement(laneMarks, slug);
     const head = boundElement(laneHeads, slug);
     const container = grid;
-    if (mark === null || head === null || container === null) return;
+    if (mark === null || head === null || container === null) {
+      return;
+    }
     // The head is measured here rather than read from `headHeight`, because this effect can run
     // before the observer has reported for the first time — and it does exactly that on the path the
     // landing exists for: 「このプロジェクトのレーンへ」 mounts the grid with `focusSlug` already set,
@@ -411,7 +421,9 @@
       onanimationend={(event) => {
         // Only the fade's own end takes the class off: `animationend` bubbles, and a child's
         // animation ending must not cut the emphasis short.
-        if (event.target === event.currentTarget) landedSlug = null;
+        if (event.target === event.currentTarget) {
+          landedSlug = null;
+        }
       }}
     >
       {#if rowFoldable(row)}

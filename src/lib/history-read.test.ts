@@ -68,7 +68,9 @@ function historyWith(summary: string): TaskHistory {
 }
 
 function summaryOf(read: HistoryRead | null): string | null {
-  if (read?.value.state !== "loaded") return null;
+  if (read?.value.state !== "loaded") {
+    return null;
+  }
   const commits = read.value.history.commits;
   return commits.state === "searched" ? (commits.commits[0]?.summary ?? null) : null;
 }
@@ -207,7 +209,9 @@ describe("one task's Git history read never lands on another's panel", () => {
     await settle();
 
     const value = current()?.value;
-    if (value?.state !== "failed") throw new Error("expected the read to be reported as failed");
+    if (value?.state !== "failed") {
+      throw new Error("expected the read to be reported as failed");
+    }
     expect(value.detail).toContain("projectNotOpen");
   });
 });

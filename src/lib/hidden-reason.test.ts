@@ -33,7 +33,9 @@ const DEFINES_RULE = /^\s*[^\n{}]*\.unseen\b[^\n{}]*\{/m;
 
 function styleBlock(source: string): string {
   const start = source.indexOf("<style");
-  if (start === -1) return "";
+  if (start === -1) {
+    return "";
+  }
   const open = source.indexOf(">", start);
   const end = source.indexOf("</style>", open);
   return open === -1 || end === -1 ? "" : source.slice(open + 1, end);

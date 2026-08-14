@@ -127,7 +127,9 @@
 
   async function pickProjectRoot(): Promise<void> {
     const picked = await onpickDirectory("プロジェクトルートを選択");
-    if (picked === null) return;
+    if (picked === null) {
+      return;
+    }
     input.projectRoot = picked;
     await readDefaultSlug();
   }
@@ -139,7 +141,9 @@
    */
   async function pickBacklogRoot(): Promise<void> {
     const picked = await onpickDirectory("Backlog ルートを選択");
-    if (picked === null) return;
+    if (picked === null) {
+      return;
+    }
     input.backlogRoot = picked;
     if (input.projectRoot.trim() === "") {
       const parent = parentPath(picked);
@@ -151,7 +155,9 @@
   }
 
   async function submit(): Promise<void> {
-    if (!canRegister) return;
+    if (!canRegister) {
+      return;
+    }
     report = null;
     // `submitting` is not set here: the shell raises it around the same call, because it also has to
     // turn the モーダル's own exits away for as long as this is unresolved (`Settings` の save と同型).

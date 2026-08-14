@@ -242,7 +242,9 @@
   let message = $state<{ tone: "ok" | "warn" | "undetectable"; text: string } | null>(null);
 
   function tone(outcome: IssueOutcome): "ok" | "warn" | "undetectable" {
-    if (outcome.state === "applied") return "ok";
+    if (outcome.state === "applied") {
+      return "ok";
+    }
     return outcome.state === "uncheckable" ? "undetectable" : "warn";
   }
 
@@ -318,13 +320,17 @@
     const picked = await onpickDirectory(
       field === "projectRoot" ? "プロジェクトルートを選択" : "Backlog ルートを選択",
     );
-    if (picked === null) return;
+    if (picked === null) {
+      return;
+    }
     edit[field] = picked;
   }
 
   async function save(): Promise<void> {
     const request = updateRequest;
-    if (saveControl.state !== "ready" || request === null) return;
+    if (saveControl.state !== "ready" || request === null) {
+      return;
+    }
     entryReport = null;
     overviewNotice = null;
     // Raised *before* the await, not after it (review [P1] round 2). The cleanup below cannot be the
@@ -428,7 +434,9 @@
    * 区画's 発行 waits for one — but the roots cannot move here, so no session is closed afterwards.
    */
   async function redetectGitRemote(): Promise<void> {
-    if (redetect.state !== "ready") return;
+    if (redetect.state !== "ready") {
+      return;
+    }
     entryReport = null;
     overviewNotice = null;
     redetecting = true;
@@ -453,14 +461,18 @@
   }
 
   async function unregister(): Promise<void> {
-    if (unregisterReason !== null) return;
+    if (unregisterReason !== null) {
+      return;
+    }
     entryReport = null;
     // Held for the same reason a save is: the boundary closes this project's session on the way,
     // and an issue made while that is in flight would be aimed at a project Atlas no longer reads.
     ledgerSaving = true;
     try {
       const result = await onremove(entry.slug);
-      if (result.state === "refused") entryReport = result.report;
+      if (result.state === "refused") {
+        entryReport = result.report;
+      }
       // Closing this screen on success is the shell's job (`removeProject`). Calling `onback` from
       // here would meet the 破棄前確認 and ask whether to keep input for a registration that is gone.
     } finally {
@@ -480,7 +492,9 @@
    * move, and this action names files by the ids of the root as it was read.
    */
   async function issue(action: UpdateOperation[], done: string): Promise<IssueOutcome | null> {
-    if (project === null || ledgerSaving) return null;
+    if (project === null || ledgerSaving) {
+      return null;
+    }
     busy = true;
     message = null;
     try {
@@ -501,7 +515,9 @@
   let taskIssue = $derived(availability(taskPlan));
 
   async function createTask(): Promise<void> {
-    if (taskIssue.state !== "ready" || taskPlan.state !== "ready") return;
+    if (taskIssue.state !== "ready" || taskPlan.state !== "ready") {
+      return;
+    }
     const outcome = await issue(taskPlan.action, "タスクを作成しました。");
     // Cleared only on success: a failed create keeps its input so it can be corrected and retried.
     if (outcome?.state === "applied") {
@@ -556,19 +572,29 @@
   let docPane = $state<HTMLDivElement | undefined>(undefined);
 
   async function createDoc(): Promise<void> {
-    if (docCreateIssue.state !== "ready" || docCreatePlan.state !== "ready") return;
+    if (docCreateIssue.state !== "ready" || docCreatePlan.state !== "ready") {
+      return;
+    }
     const outcome = await issue(docCreatePlan.action, "文書を作成しました。");
-    if (outcome?.state === "applied") docInput = { ...EMPTY_DOC_CREATE };
+    if (outcome?.state === "applied") {
+      docInput = { ...EMPTY_DOC_CREATE };
+    }
   }
 
   async function updateDoc(): Promise<void> {
     const session = docSession;
     const plan = docUpdatePlan;
-    if (session === null || plan === null || plan.state !== "ready") return;
-    if (docUpdateIssue.state !== "ready") return;
+    if (session === null || plan === null || plan.state !== "ready") {
+      return;
+    }
+    if (docUpdateIssue.state !== "ready") {
+      return;
+    }
     const submittedDoc = plan.submitted;
     const outcome = await issue(plan.action, "文書を更新しました。");
-    if (outcome?.state !== "applied") return;
+    if (outcome?.state !== "applied") {
+      return;
+    }
     // 防げない喪失の事後通知 (doc-9 §5): the re-read has already landed, so the document below is
     // the post-update one. `--content` full-replaces the body (doc-5 §3.1), which is why this
     // comparison matters more for a document than for anything else on screen.
@@ -599,7 +625,9 @@
   function selectDocument(document: Document): void {
     // Already the selected one: re-pressing must not restart anything. While its editor is open this
     // would otherwise drop the input without asking; while only 閲覧 is open there is nothing to do.
-    if (docSelection === document.id) return;
+    if (docSelection === document.id) {
+      return;
+    }
     if (docEditorDirty) {
       pendingDocument = { document };
       return;
@@ -619,7 +647,9 @@
   /** 編集への切替 (doc-10 §5): the one place a 文書の編集セッション opens. */
   async function startDocEdit(): Promise<void> {
     const document = selectedDocument;
-    if (document === null || issuing) return;
+    if (document === null || issuing) {
+      return;
+    }
     docSession = startDocSession(document);
     newTag = "";
     await resetDocPane();
@@ -648,13 +678,17 @@
    */
   async function resetDocPane(): Promise<void> {
     await tick();
-    if (docPane !== undefined) docPane.scrollTop = 0;
+    if (docPane !== undefined) {
+      docPane.scrollTop = 0;
+    }
   }
 
   function leaveConfirmed(): void {
     const target = pendingDocument;
     pendingDocument = null;
-    if (target === null) return;
+    if (target === null) {
+      return;
+    }
     if (target.document === null) {
       void discardEditor();
       return;
@@ -663,7 +697,9 @@
   }
 
   function setDoc<K extends keyof DocDraft>(key: K, value: DocDraft[K]): void {
-    if (docSession === null) return;
+    if (docSession === null) {
+      return;
+    }
     docSession = setDocField(docSession, key, value);
   }
 
@@ -674,9 +710,13 @@
   let milestoneIssue = $derived(availability(milestonePlan));
 
   async function addMilestone(): Promise<void> {
-    if (milestoneIssue.state !== "ready" || milestonePlan.state !== "ready") return;
+    if (milestoneIssue.state !== "ready" || milestonePlan.state !== "ready") {
+      return;
+    }
     const outcome = await issue(milestonePlan.action, "マイルストーンを作成しました。");
-    if (outcome?.state === "applied") milestoneInput = { ...EMPTY_MILESTONE_ADD };
+    if (outcome?.state === "applied") {
+      milestoneInput = { ...EMPTY_MILESTONE_ADD };
+    }
   }
 
   /**
@@ -731,7 +771,9 @@
   function selectMilestone(milestone: Milestone): void {
     // Already the selected one: re-pressing must not restart anything. While its editor is open this
     // would otherwise drop the input without asking; while only 閲覧 is open there is nothing to do.
-    if (milestoneSelection === milestone.id) return;
+    if (milestoneSelection === milestone.id) {
+      return;
+    }
     if (milestoneDirty) {
       pendingMilestone = { milestone };
       return;
@@ -754,7 +796,9 @@
 
   /** 編集への切替 (doc-10 §6): the one place a マイルストーンの編集セッション opens. */
   async function startMilestoneEdit(): Promise<void> {
-    if (selectedMilestone === null || issuing) return;
+    if (selectedMilestone === null || issuing) {
+      return;
+    }
     milestoneEditing = true;
     await resetMilestonePane();
   }
@@ -787,13 +831,17 @@
    */
   async function resetMilestonePane(): Promise<void> {
     await tick();
-    if (milestonePane !== undefined) milestonePane.scrollTop = 0;
+    if (milestonePane !== undefined) {
+      milestonePane.scrollTop = 0;
+    }
   }
 
   function milestoneLeaveConfirmed(): void {
     const target = pendingMilestone;
     pendingMilestone = null;
-    if (target === null) return;
+    if (target === null) {
+      return;
+    }
     if (target.milestone === null) {
       void discardMilestoneEdit();
       return;
@@ -826,7 +874,9 @@
 
   /** The plan the open operation would issue, or `null` when none is open. */
   function milestoneOpPlan(milestone: Milestone): IssuePlan | null {
-    if (milestoneSelection !== milestone.id || milestoneOp === null) return null;
+    if (milestoneSelection !== milestone.id || milestoneOp === null) {
+      return null;
+    }
     switch (milestoneOp) {
       case "rename":
         return buildMilestoneRename(milestone, renameInput);
@@ -855,8 +905,12 @@
 
   async function runMilestoneOp(milestone: Milestone, done: string): Promise<void> {
     const plan = milestoneOpPlan(milestone);
-    if (plan === null || plan.state !== "ready") return;
-    if (availability(plan).state !== "ready") return;
+    if (plan === null || plan.state !== "ready") {
+      return;
+    }
+    if (availability(plan).state !== "ready") {
+      return;
+    }
     const outcome = await issue(plan.action, done);
     // Closed on success only: the milestone the input names is gone (removed/archived) or renamed,
     // so keeping the form open would offer a second issue against a stale operand. A failure or a
@@ -866,7 +920,9 @@
     // exists. 改称 keeps the id (v1.49.3 does not change it, doc-9 §4.2.1) so the selection stands
     // and the pane lands on 閲覧; 削除・アーカイブ take the milestone out of the re-read, which the
     // effect below turns into a dropped selection, on every read rather than only here.
-    if (outcome?.state === "applied") await discardMilestoneEdit();
+    if (outcome?.state === "applied") {
+      await discardMilestoneEdit();
+    }
   }
 
   /**
@@ -880,10 +936,16 @@
    */
   async function saveMilestoneDescription(milestone: Milestone): Promise<void> {
     const plan = buildMilestoneDescribe(milestone, milestoneDescriptionText);
-    if (plan.state !== "ready") return;
-    if (availability(plan).state !== "ready") return;
+    if (plan.state !== "ready") {
+      return;
+    }
+    if (availability(plan).state !== "ready") {
+      return;
+    }
     const outcome = await issue(plan.action, `${milestone.id} の説明を更新しました`);
-    if (outcome?.state === "applied") await discardMilestoneEdit();
+    if (outcome?.state === "applied") {
+      await discardMilestoneEdit();
+    }
   }
 
   /**
@@ -947,8 +1009,12 @@
    * it makes is the same one that press used to make.
    */
   $effect(() => {
-    if (project === null || docSelection === null || selectedDocument !== null) return;
-    if (docSession !== null) return;
+    if (project === null || docSelection === null || selectedDocument !== null) {
+      return;
+    }
+    if (docSession !== null) {
+      return;
+    }
     docSelection = null;
     void resetDocPane();
   });
@@ -1009,7 +1075,9 @@
    * the user is still typing.
    */
   $effect(() => {
-    if (project === null || milestoneSelection === null || selectedMilestone !== null) return;
+    if (project === null || milestoneSelection === null || selectedMilestone !== null) {
+      return;
+    }
     milestoneSelection = null;
     milestoneEditing = false;
     closeMilestoneOp();
@@ -1220,7 +1288,9 @@
    * 破棄して閉じる for input that is at this moment being written to a management file.
    */
   function requestCreateClose(): void {
-    if (issuing) return;
+    if (issuing) {
+      return;
+    }
     if (createDirty) {
       createCloseAsked = true;
       return;
@@ -1251,8 +1321,11 @@
    * rather than on the leftovers of a session the user walked away from.
    */
   function closeCreate(): void {
-    if (createOpen === "document") docInput = { ...EMPTY_DOC_CREATE };
-    else if (createOpen === "milestone") milestoneInput = { ...EMPTY_MILESTONE_ADD };
+    if (createOpen === "document") {
+      docInput = { ...EMPTY_DOC_CREATE };
+    } else if (createOpen === "milestone") {
+      milestoneInput = { ...EMPTY_MILESTONE_ADD };
+    }
     createCloseAsked = false;
     layerOpen = null;
   }

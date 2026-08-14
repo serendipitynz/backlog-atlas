@@ -26,7 +26,9 @@ function harness(options: { initial?: AppSettings | null; fail?: boolean } = {})
     save: (settings) => {
       written.push(settings);
       const loaded: LoadedSettings = { settings, status: { state: "stored" } };
-      if (options.fail === true) return Promise.reject({ kind: "settings", detail: "disk is full" });
+      if (options.fail === true) {
+        return Promise.reject({ kind: "settings", detail: "disk is full" });
+      }
       return new Promise<LoadedSettings>((resolve) => {
         pending.push(() => resolve(loaded));
       });
@@ -37,7 +39,9 @@ function harness(options: { initial?: AppSettings | null; fail?: boolean } = {})
 
   /** Let the queued work reach its next await — a write is issued on a microtask, not on the call. */
   const settle = async (): Promise<void> => {
-    for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
+    for (let turn = 0; turn < 6; turn += 1) {
+      await Promise.resolve();
+    }
   };
 
   return {

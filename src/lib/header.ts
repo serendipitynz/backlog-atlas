@@ -127,7 +127,9 @@ export const NO_PROJECTS_REASON = "登録済みプロジェクトがありませ
  * no reason cannot be told from a broken one.
  */
 export function showAllProjectsHeld(projectCount: number, hiddenCount: number): string | null {
-  if (projectCount === 0) return NO_PROJECTS_REASON;
+  if (projectCount === 0) {
+    return NO_PROJECTS_REASON;
+  }
   return hiddenCount > 0
     ? null
     : SHOW_ALL_PROJECTS_HELD_REASON;

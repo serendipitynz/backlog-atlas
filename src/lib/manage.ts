@@ -96,9 +96,15 @@ export function issueAvailability(
   // holds; a hold outranks the form for the same reason (it is about the target, not the input);
   // and a form still filling in is the user's own next step.
   const degraded = readinessReason(context.readiness);
-  if (degraded !== null) return { state: "blocked", reason: degraded };
-  if (context.hold != null) return { state: "blocked", reason: context.hold };
-  if (context.busy) return { state: "blocked", reason: ISSUE_BUSY_REASON };
+  if (degraded !== null) {
+    return { state: "blocked", reason: degraded };
+  }
+  if (context.hold != null) {
+    return { state: "blocked", reason: context.hold };
+  }
+  if (context.busy) {
+    return { state: "blocked", reason: ISSUE_BUSY_REASON };
+  }
   return plan.state === "ready" ? { state: "ready" } : { state: "blocked", reason: plan.reason };
 }
 
@@ -173,7 +179,9 @@ export function hasTaskCreateInput(input: TaskCreateInput): boolean {
 /** Turn the form into the `task create` operation doc-5 §3 maps it to (AC #1). */
 export function buildTaskCreate(input: TaskCreateInput): IssuePlan {
   const title = input.title.trim();
-  if (title === "") return { state: "blocked", reason: TASK_TITLE_REQUIRED_REASON };
+  if (title === "") {
+    return { state: "blocked", reason: TASK_TITLE_REQUIRED_REASON };
+  }
 
   const labels = cleaned(input.labels);
   const badLabel = firstWithComma(labels);
@@ -184,13 +192,25 @@ export function buildTaskCreate(input: TaskCreateInput): IssuePlan {
   const operation: Extract<UpdateOperation, { op: "taskCreate" }> = { op: "taskCreate", title };
   // Each optional field is *omitted* when unset rather than sent empty: an empty `--status` would
   // ask the CLI to set a status of "", where leaving it out is what makes `default_status` apply.
-  if (input.description.trim() !== "") operation.description = input.description;
-  if (input.status !== "") operation.status = input.status;
-  if (labels.length > 0) operation.labels = labels;
-  if (input.priority !== "") operation.priority = input.priority;
-  if (input.milestone !== "") operation.milestone = input.milestone;
+  if (input.description.trim() !== "") {
+    operation.description = input.description;
+  }
+  if (input.status !== "") {
+    operation.status = input.status;
+  }
+  if (labels.length > 0) {
+    operation.labels = labels;
+  }
+  if (input.priority !== "") {
+    operation.priority = input.priority;
+  }
+  if (input.milestone !== "") {
+    operation.milestone = input.milestone;
+  }
   const ac = cleaned(input.acceptanceCriteria);
-  if (ac.length > 0) operation.acceptanceCriteria = ac;
+  if (ac.length > 0) {
+    operation.acceptanceCriteria = ac;
+  }
 
   return { state: "ready", action: [operation] };
 }
@@ -220,11 +240,17 @@ export function hasDocCreateInput(input: DocCreateInput): boolean {
 
 export function buildDocCreate(input: DocCreateInput): IssuePlan {
   const title = input.title.trim();
-  if (title === "") return { state: "blocked", reason: DOC_TITLE_REQUIRED_REASON };
+  if (title === "") {
+    return { state: "blocked", reason: DOC_TITLE_REQUIRED_REASON };
+  }
 
   const operation: Extract<UpdateOperation, { op: "docCreate" }> = { op: "docCreate", title };
-  if (input.docType !== "") operation.docType = input.docType;
-  if (input.path.trim() !== "") operation.path = input.path.trim();
+  if (input.docType !== "") {
+    operation.docType = input.docType;
+  }
+  if (input.path.trim() !== "") {
+    operation.path = input.path.trim();
+  }
   return { state: "ready", action: [operation] };
 }
 
@@ -341,7 +367,9 @@ export type DocUpdatePlan =
  */
 export function buildDocUpdate(session: DocSession): DocUpdatePlan {
   const dirty = docDirtyFields(session);
-  if (dirty.length === 0) return { state: "blocked", reason: DOC_NOTHING_TO_UPDATE_REASON };
+  if (dirty.length === 0) {
+    return { state: "blocked", reason: DOC_NOTHING_TO_UPDATE_REASON };
+  }
 
   const draft = session.draft;
   const update: DocUpdate = {};
@@ -349,7 +377,9 @@ export function buildDocUpdate(session: DocSession): DocUpdatePlan {
   for (const field of dirty) {
     switch (field) {
       case "title":
-        if (draft.title.trim() === "") return { state: "blocked", reason: DOC_TITLE_EMPTY_REASON };
+        if (draft.title.trim() === "") {
+          return { state: "blocked", reason: DOC_TITLE_EMPTY_REASON };
+        }
         update.title = draft.title.trim();
         submitted.title = update.title;
         break;
@@ -372,7 +402,9 @@ export function buildDocUpdate(session: DocSession): DocUpdatePlan {
         // absent from `dirty`, so the flag is not emitted at all and someone else's tags survive.
         const tags = cleaned(draft.tags);
         const bad = firstWithComma(tags);
-        if (bad !== undefined) return { state: "blocked", reason: commaReason("タグ", bad) };
+        if (bad !== undefined) {
+          return { state: "blocked", reason: commaReason("タグ", bad) };
+        }
         update.tags = tags;
         submitted.tags = tags;
         break;
@@ -399,10 +431,14 @@ export function buildDocUpdate(session: DocSession): DocUpdatePlan {
  * own normalization as someone else's change would make the notice untrustworthy.
  */
 export function docDivergence(submitted: DocSubmitted, document: Document | null): string[] {
-  if (document === null) return ["文書（再読込結果に見当たりません）"];
+  if (document === null) {
+    return ["文書（再読込結果に見当たりません）"];
+  }
   const diverged: string[] = [];
   const text = (label: string, sent: string | undefined, got: string | null) => {
-    if (sent !== undefined && sent.trim() !== (got ?? "").trim()) diverged.push(label);
+    if (sent !== undefined && sent.trim() !== (got ?? "").trim()) {
+      diverged.push(label);
+    }
   };
   text("title", submitted.title, document.title);
   text("本文", submitted.content, document.body);
@@ -438,9 +474,13 @@ export function hasMilestoneAddInput(input: MilestoneAddInput): boolean {
 
 export function buildMilestoneAdd(input: MilestoneAddInput): IssuePlan {
   const name = input.name.trim();
-  if (name === "") return { state: "blocked", reason: MILESTONE_NAME_REQUIRED_REASON };
+  if (name === "") {
+    return { state: "blocked", reason: MILESTONE_NAME_REQUIRED_REASON };
+  }
   const operation: Extract<UpdateOperation, { op: "milestoneAdd" }> = { op: "milestoneAdd", name };
-  if (input.description.trim() !== "") operation.description = input.description;
+  if (input.description.trim() !== "") {
+    operation.description = input.description;
+  }
   return { state: "ready", action: [operation] };
 }
 
@@ -464,7 +504,9 @@ export function referencingTasks(
   const id = milestone.id.trim().toLowerCase();
   const title = milestone.title.trim().toLowerCase();
   return tasks.filter((view) => {
-    if (view.task.storageState !== "active") return false;
+    if (view.task.storageState !== "active") {
+      return false;
+    }
     const value = view.task.milestone?.trim().toLowerCase();
     return value !== undefined && (value === id || value === title);
   });
@@ -508,7 +550,9 @@ export function buildMilestoneRename(
   input: MilestoneRenameInput,
 ): IssuePlan {
   const to = input.to.trim();
-  if (to === "") return { state: "blocked", reason: MILESTONE_RENAME_REQUIRED_REASON };
+  if (to === "") {
+    return { state: "blocked", reason: MILESTONE_RENAME_REQUIRED_REASON };
+  }
   // The CLI compares titles ignoring case and surrounding space (doc-9 §4.2.1), so a rename that
   // differs only there would be issued as a change and land as none.
   if (to.toLowerCase() === milestone.title.trim().toLowerCase()) {

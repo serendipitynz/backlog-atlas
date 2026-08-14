@@ -277,15 +277,23 @@ function shiftLabel(mac: boolean): string {
 
 /** The key's own name, spelled as a keyboard is labelled rather than as the DOM reports it. */
 function keyLabel(key: string): string {
-  if (key === "Escape") return "Esc";
-  if (key === " ") return "Space";
+  if (key === "Escape") {
+    return "Esc";
+  }
+  if (key === " ") {
+    return "Space";
+  }
   return key.length === 1 ? key.toUpperCase() : key;
 }
 
 function spell(chord: Chord, mac: boolean, shift: boolean): string {
   const parts: string[] = [];
-  if (chord.mod === true) parts.push(modifierLabel(mac));
-  if (shift) parts.push(shiftLabel(mac));
+  if (chord.mod === true) {
+    parts.push(modifierLabel(mac));
+  }
+  if (shift) {
+    parts.push(shiftLabel(mac));
+  }
   parts.push(keyLabel(chord.key));
   // Apple writes chords without separators (⌘N); the Ctrl platforms write them with a plus (Ctrl+N).
   return mac ? parts.join("") : parts.join("+");
@@ -384,18 +392,24 @@ export interface ShortcutContext {
 }
 
 function chordMatches(chord: Chord, event: ShortcutKeyEvent, mac: boolean): boolean {
-  if (chord.key.toLowerCase() !== event.key.toLowerCase()) return false;
+  if (chord.key.toLowerCase() !== event.key.toLowerCase()) {
+    return false;
+  }
   if (chord.mod === true) {
     // 共通修飾キー: this OS's modifier alone. Not the other platform's — on macOS Control+letter moves
     // the caret in a text field, and these chords fire in text fields — and not both at once, which is
     // a chord of its own that this list does not take.
-    if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return false;
+    if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) {
+      return false;
+    }
   } else if (event.metaKey || event.ctrlKey) {
     // A bare-key assignment takes no modifier at all: ⌘F and Ctrl+F belong to whatever else uses them,
     // not to the bare-key 絞り込み.
     return false;
   }
-  if (chord.shift !== "either" && (chord.shift === true) !== event.shiftKey) return false;
+  if (chord.shift !== "either" && (chord.shift === true) !== event.shiftKey) {
+    return false;
+  }
   // No assignment uses Alt, so holding it is a different chord and not this one. Checked here rather
   // than left out, because ⌥ is how macOS types characters (⌥f is ƒ) and swallowing those presses
   // would take letters away from the very fields §2.1 protects.
@@ -419,11 +433,19 @@ export function matchShortcut(
 ): ShortcutBinding | null {
   // IME の composition 中はいずれのショートカットも発火させない (doc-7 §2.1). First, and for every
   // assignment including the modifier ones: the composition owns the keyboard until it ends.
-  if (event.isComposing || event.keyCode === 229) return null;
+  if (event.isComposing || event.keyCode === 229) {
+    return null;
+  }
   for (const binding of SHORTCUTS) {
-    if (!context.scopes.includes(binding.scope)) continue;
-    if (context.textEntry && !binding.firesInTextEntry) continue;
-    if (chordMatches(binding.chord, event, context.mac)) return binding;
+    if (!context.scopes.includes(binding.scope)) {
+      continue;
+    }
+    if (context.textEntry && !binding.firesInTextEntry) {
+      continue;
+    }
+    if (chordMatches(binding.chord, event, context.mac)) {
+      return binding;
+    }
   }
   return null;
 }

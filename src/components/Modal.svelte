@@ -121,7 +121,9 @@
 
   function focusable(): HTMLElement[] {
     const box = dialog;
-    if (box === null) return [];
+    if (box === null) {
+      return [];
+    }
     return [...box.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       // Rendered, rather than merely present: a control inside a closed `details` or behind `hidden`
       // cannot take focus, and Tab landing on it would look like the trap dropped the press.
@@ -134,7 +136,9 @@
   // makes focusable, so focus is never left outside even before anything is rendered inside.
   $effect(() => {
     const box = dialog;
-    if (box === null) return;
+    if (box === null) {
+      return;
+    }
     const first = focusable()[0];
     (first ?? box).focus();
   });
@@ -151,8 +155,12 @@
       textEntry: textEntryFocused(document.activeElement),
       mac: MAC_KEYBOARD,
     });
-    if (binding === null) return;
-    if (binding.preventsDefault !== null) event.preventDefault();
+    if (binding === null) {
+      return;
+    }
+    if (binding.preventsDefault !== null) {
+      event.preventDefault();
+    }
     // The press is spent on the innermost open layer, so it does not also reach the window handler
     // behind it (`FilterPopover` consumes its Escape the same way).
     event.stopPropagation();
@@ -161,8 +169,11 @@
       // that is the question, not the modal: Escape withdraws the request it raised rather than
       // raising it a second time. 編集に戻る is what withdrawing it means, so this is that answer and
       // not a third one — and it is the reason the question is answerable without reaching for Tab.
-      if (confirmDiscard !== null) confirmDiscard.onkeep();
-      else onclose();
+      if (confirmDiscard !== null) {
+        confirmDiscard.onkeep();
+      } else {
+        onclose();
+      }
       return;
     }
     const items = focusable();

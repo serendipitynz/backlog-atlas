@@ -506,8 +506,11 @@
    */
   $effect(() => {
     const chosen = themeAttribute(settings?.settings.theme ?? null);
-    if (chosen === null) delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = chosen;
+    if (chosen === null) {
+      delete document.documentElement.dataset.theme;
+    } else {
+      document.documentElement.dataset.theme = chosen;
+    }
   });
   /**
    * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
@@ -631,7 +634,9 @@
    */
   let laneCreateEntry = $derived.by(() => {
     const at = laneCreateAt;
-    if (at === null) return null;
+    if (at === null) {
+      return null;
+    }
     const load = loadBySlug[at.slug];
     return load?.state === "loaded"
       ? laneCreate(load.project.createStatusCandidates, at.column)
@@ -663,13 +668,17 @@
   // The open task, resolved against the *current* read of its root, so a reload refreshes the
   // panel instead of leaving it on the version the card was clicked from.
   let selectedSnapshot = $derived.by(() => {
-    if (selectedRef === null) return null;
+    if (selectedRef === null) {
+      return null;
+    }
     const load = loadBySlug[selectedRef.slug];
     return load?.state === "loaded" ? load.project : null;
   });
   let selectedView = $derived.by(() => {
     const path = selectedRef?.sourcePath;
-    if (path === undefined) return null;
+    if (path === undefined) {
+      return null;
+    }
     return selectedSnapshot?.tasks.find((view) => view.task.sourcePath === path) ?? null;
   });
   let selectedEntry = $derived(
@@ -694,8 +703,9 @@
    */
   let retained = $state<{ view: TaskView; snapshot: ProjectSnapshot } | null>(null);
   $effect(() => {
-    if (selectedRef === null) retained = null;
-    else if (selectedView !== null && selectedSnapshot !== null) {
+    if (selectedRef === null) {
+      retained = null;
+    } else if (selectedView !== null && selectedSnapshot !== null) {
       retained = { view: selectedView, snapshot: selectedSnapshot };
     }
   });
@@ -705,7 +715,9 @@
    * and with it the 編集セッション this exists to keep.
    */
   let shown = $derived.by(() => {
-    if (selectedRef === null) return null;
+    if (selectedRef === null) {
+      return null;
+    }
     if (selectedView !== null && selectedSnapshot !== null) {
       return { view: selectedView, snapshot: selectedSnapshot, missing: false };
     }
@@ -745,7 +757,9 @@
   );
   /** The read belonging to the *current* selection; anything else counts as not yet read. */
   let history = $derived.by((): HistoryState => {
-    if (selectedView !== null && selectedView.task.id === null) return { state: "noTaskId" };
+    if (selectedView !== null && selectedView.task.id === null) {
+      return { state: "noTaskId" };
+    }
     return historyRead !== null && historyRead.key === historyKey
       ? historyRead.value
       : { state: "loading" };
@@ -823,7 +837,9 @@
     // Best-effort: the watches would end with the process anyway, but a dev-server reload
     // leaves the Rust side running, and a second start would otherwise be a no-op on a stale
     // watch.
-    for (const slug of order) void projectWatchStop(slug).catch(() => {});
+    for (const slug of order) {
+      void projectWatchStop(slug).catch(() => {});
+    }
   });
 
   async function load(): Promise<void> {
@@ -842,7 +858,9 @@
       // 継続検出 (doc-9 §3) for every root that opened: the boundary pushes each re-read on
       // `project-reloaded`, which is what keeps the cards' 安定並び in step with the files
       // (doc-7 §7). Idempotent, so a retry can call it again.
-      for (const slug of Object.keys(next)) void startWatch(slug);
+      for (const slug of Object.keys(next)) {
+        void startWatch(slug);
+      }
     } catch (error) {
       fatal = unreadableDetail(asCommandError(error));
     } finally {
@@ -876,8 +894,12 @@
     const orderUntouched = cardOrder === previousOrder;
     const first = settings === null;
     settings = next;
-    if (first) placement = next.settings.default_detail_placement;
-    if (untouched) filter = withStorage(filter, next.settings.default_storage_filter);
+    if (first) {
+      placement = next.settings.default_detail_placement;
+    }
+    if (untouched) {
+      filter = withStorage(filter, next.settings.default_storage_filter);
+    }
     if (orderUntouched) {
       cardOrder = next.settings.default_card_order;
     }
@@ -982,7 +1004,9 @@
     } finally {
       settingsSaving = false;
     }
-    if (failure !== null) return failure;
+    if (failure !== null) {
+      return failure;
+    }
     // **The probes are deliberately not awaited.** What 保存する waits on is the save — the write and
     // the applying of it, both inside the guard above — and `Settings.svelte` closes the モーダル when
     // this resolves. Anything awaited past this point holds the close open for as long as it takes,
@@ -1110,7 +1134,9 @@
    * of what happened, and `settingsSaved` is its own way out.
    */
   function closeSettings(fateStated: boolean): void {
-    if (settingsSaving) return;
+    if (settingsSaving) {
+      return;
+    }
     guardDiscard(settingsDirty && !fateStated, dropSettingsModal);
   }
 
@@ -1146,7 +1172,9 @@
    * whatever has been typed, so both come through the one gate.
    */
   function closeRegister(): void {
-    if (registerSubmitting) return;
+    if (registerSubmitting) {
+      return;
+    }
     guardDiscard(registerDirty, dropRegisterModal);
   }
 
@@ -1161,9 +1189,13 @@
     const issued = (settingsDirectoryProbe += 1);
     try {
       const present = await settingsDirectoryPresent();
-      if (issued === settingsDirectoryProbe) settingsDirectory = present;
+      if (issued === settingsDirectoryProbe) {
+        settingsDirectory = present;
+      }
     } catch {
-      if (issued === settingsDirectoryProbe) settingsDirectory = null;
+      if (issued === settingsDirectoryProbe) {
+        settingsDirectory = null;
+      }
     }
   }
 
@@ -1186,12 +1218,17 @@
   /** Bring every registered root's watch in line with 継続検出の可否 (doc-9 §3.1). */
   async function reconcileWatches(): Promise<void> {
     for (const slug of order) {
-      if (watchEnabled) await startWatch(slug);
-      else await projectWatchStop(slug).catch(() => {});
+      if (watchEnabled) {
+        await startWatch(slug);
+      } else {
+        await projectWatchStop(slug).catch(() => {});
+      }
     }
     // Nothing is watched while the setting is off, so per-root failures recorded earlier no longer
     // describe anything: `unwatchedRows` already covers every row from the setting alone.
-    if (!watchEnabled) unwatched = [];
+    if (!watchEnabled) {
+      unwatched = [];
+    }
   }
 
   /**
@@ -1204,14 +1241,18 @@
     // 継続検出を切っている間は張らない (doc-9 §3.1). Reported as "not watching" without a notice: the
     // user chose it, and `unwatchedRows` already carries every row while the setting is off, so the
     // 帯 states the reason once instead of once per root.
-    if (!watchEnabled) return false;
+    if (!watchEnabled) {
+      return false;
+    }
     try {
       await projectWatchStart(slug);
       unwatched = unwatched.filter((candidate) => candidate !== slug);
       return true;
     } catch (error) {
       notice = `${slug}: 変更監視を開始できません（${unreadableDetail(asCommandError(error))}）`;
-      if (!unwatched.includes(slug)) unwatched = [...unwatched, slug];
+      if (!unwatched.includes(slug)) {
+        unwatched = [...unwatched, slug];
+      }
       return false;
     }
   }
@@ -1250,7 +1291,9 @@
    * they read the same disks.
    */
   async function rereadUnwatched(): Promise<void> {
-    for (const slug of unwatchedRows) await rereadRow(slug);
+    for (const slug of unwatchedRows) {
+      await rereadRow(slug);
+    }
   }
 
   /**
@@ -1262,7 +1305,9 @@
   async function move(slug: string, direction: -1 | 1): Promise<void> {
     const visible = order.filter((candidate) => !hidden.includes(candidate));
     const neighbour = visible[visible.indexOf(slug) + direction];
-    if (neighbour === undefined) return;
+    if (neighbour === undefined) {
+      return;
+    }
     // A reorder writes the ledger like any other operation, so it queues behind one in flight
     // (`ledgerBusy`) rather than racing it. Reported rather than dropped: the row visibly did not
     // move, and the neighbour it would have passed may be different by the time the other finishes.
@@ -1318,7 +1363,9 @@
    * in exactly that position — nothing has been read for it yet.
    */
   async function registerProject(request: RegisterRequest): Promise<LedgerActionResult> {
-    if (ledgerBusy) return LEDGER_BUSY_RESULT;
+    if (ledgerBusy) {
+      return LEDGER_BUSY_RESULT;
+    }
     ledgerBusy = true;
     // Raised here rather than in the form: the モーダル's two exits have to be turned away for as long
     // as this is unresolved, and neither of them is the form's control (`closeRegister`).
@@ -1342,7 +1389,9 @@
    * slug, which would otherwise keep a row — and a バージョン不整合 mark — for a project Atlas no longer reads.
    */
   async function removeProject(slug: string): Promise<LedgerActionResult> {
-    if (ledgerBusy) return LEDGER_BUSY_RESULT;
+    if (ledgerBusy) {
+      return LEDGER_BUSY_RESULT;
+    }
     ledgerBusy = true;
     try {
       applyLedger(await ledgerRemove(slug));
@@ -1363,7 +1412,9 @@
       // in the shell so that unmounting the grid does not lose it (see `laneCreateAt`), and a title
       // left standing for an unregistered slug would reappear in a cell if that slug were registered
       // again — input the user typed for a different project.
-      if (laneCreateAt?.slug === slug) closeLaneCreate();
+      if (laneCreateAt?.slug === slug) {
+        closeLaneCreate();
+      }
       // The プロジェクト詳細画面 of a project that is no longer registered has nothing left to name,
       // so it is closed here rather than by the screen itself — and closed *without* the 破棄前確認,
       // because asking "keep your input?" about a registration that has just been removed offers a
@@ -1402,14 +1453,18 @@
   }
 
   async function updateProject(request: UpdateRequest): Promise<LedgerActionResult> {
-    if (ledgerBusy) return LEDGER_BUSY_RESULT;
+    if (ledgerBusy) {
+      return LEDGER_BUSY_RESULT;
+    }
     ledgerBusy = true;
     try {
       applyLedger(await ledgerUpdate(request));
       const reorderOnly = Object.keys(request).every(
         (key) => key === "slug" || key === "new_index",
       );
-      if (!reorderOnly) await retry(request.slug);
+      if (!reorderOnly) {
+        await retry(request.slug);
+      }
       return { state: "done", slug: request.slug };
     } catch (error) {
       return { state: "refused", report: refusalReport(asCommandError(error)) };
@@ -1434,8 +1489,11 @@
    * the same ones, and a second gate is how the same loss would come to be described two ways.
    */
   function guardDiscard(dirty: boolean, proceed: () => void): void {
-    if (dirty) pendingDiscard = proceed;
-    else proceed();
+    if (dirty) {
+      pendingDiscard = proceed;
+    } else {
+      proceed();
+    }
   }
 
   /**
@@ -1461,7 +1519,9 @@
    */
   function askIssue(confirmation: IssueConfirmation, proceed: () => void): void {
     const path = issueSubject;
-    if (path === null) return;
+    if (path === null) {
+      return;
+    }
     // 被せ層 は 1 枚だけ (see `raiseModal`), and an unanswered 破棄前確認 from behind lapses under the layer
     // about to cover it — the reason `detailOverlay` and `openEntry` do the same: which layer draws a
     // question is decided by which one is frontmost (doc-11 §7). Dropping it discards nothing.
@@ -1495,7 +1555,9 @@
    * task is selected, and the user would meet a question they never asked twice over.
    */
   $effect(() => {
-    if (pendingIssue !== null && pendingIssue.path !== issueSubject) pendingIssue = null;
+    if (pendingIssue !== null && pendingIssue.path !== issueSubject) {
+      pendingIssue = null;
+    }
   });
 
   /** Take the exit the user just confirmed, discarding the panel's 未保存入力 (doc-8 §6.3). */
@@ -1519,13 +1581,18 @@
    * panel is unmounted on the way, so the input is gone as surely as if another task had been opened.
    */
   function goToScreen(next: Screen, slug: string | null = null): void {
-    if (next === screen && slug === detailSlug) return;
+    if (next === screen && slug === detailSlug) {
+      return;
+    }
     guardDiscard(dirtyOn(screen), () => {
       // The panel holding the input is unmounted from here, so its `ondirty` will not run again to
       // retract the flag. The task selection itself is kept: coming back reopens the task, with a
       // fresh 編集セッション.
-      if (screen === "swimlane") detailDirty = false;
-      else projectDirty = false;
+      if (screen === "swimlane") {
+        detailDirty = false;
+      } else {
+        projectDirty = false;
+      }
       detailSlug = slug;
       screen = next;
     });
@@ -1590,7 +1657,9 @@
    */
   function viewAt(target: ConflictTarget): TaskView | null {
     const load = loadBySlug[target.slug];
-    if (load?.state !== "loaded") return null;
+    if (load?.state !== "loaded") {
+      return null;
+    }
     return load.project.tasks.find((view) => view.task.sourcePath === target.sourcePath) ?? null;
   }
 
@@ -1722,7 +1791,9 @@
   /** Open the entry on one cell, replacing whichever cell held it. Its input starts empty, and its
    * status at the column's first declared candidate (resolved by `laneCreateStatusToPass`). */
   function openLaneCreate(slug: string, column: StatusColumn): void {
-    if (laneCreateAt?.slug === slug && laneCreateAt.column === column) return;
+    if (laneCreateAt?.slug === slug && laneCreateAt.column === column) {
+      return;
+    }
     laneCreateAt = { slug, column };
     laneCreateTitle = "";
     laneCreateHeldStatus = "";
@@ -1746,7 +1817,9 @@
   async function submitLaneCreate(): Promise<void> {
     const at = laneCreateAt;
     const plan = laneCreatePlan;
-    if (at === null || plan.state !== "ready" || laneCreateBlocked !== null) return;
+    if (at === null || plan.state !== "ready" || laneCreateBlocked !== null) {
+      return;
+    }
     const column = CANONICAL_COLUMN_LABEL[at.column];
     // The row's task files as of now, so the one the create adds can be told apart afterwards.
     const before = new Set(tasksOf(at.slug).map((view) => view.task.sourcePath));
@@ -1773,7 +1846,9 @@
           ? null
           : outcomeMessage(outcome, `${at.slug} の ${column} 列にタスクを作成しました。`) +
             (outOfFilter ?? "");
-      if (outcome.state === "applied") laneCreateTitle = "";
+      if (outcome.state === "applied") {
+        laneCreateTitle = "";
+      }
     } finally {
       laneCreateBusy = false;
     }
@@ -1797,7 +1872,9 @@
    */
   async function openExternally(method: LaunchMethod): Promise<OpenOutcome> {
     const ref = selectedRef;
-    if (ref === null) return { state: "failed", detail: "対象タスクを特定できません" };
+    if (ref === null) {
+      return { state: "failed", detail: "対象タスクを特定できません" };
+    }
     // Read before the await: whether the panel had already told the user that nothing will bring the
     // save back. It is the difference between a warning they have read and one that appears with the
     // editor (doc-8 §7 エディタを開いてから初めて知る形にしない).
@@ -1860,7 +1937,9 @@
     }
     const view = untrack(() => selectedView);
     const inputs = untrack(() => historyInputs);
-    if (view === null || view.task.id === null || inputs === null) return;
+    if (view === null || view.task.id === null || inputs === null) {
+      return;
+    }
     void historyLoader.load(view.task.project, view.task.id, inputs);
   });
 
@@ -1891,7 +1970,9 @@
    * has a second job — naming the refusal (doc-11 §5) — which this one does not do.
    */
   function toggleColumnFold(column: GridColumn): void {
-    if (!columnFoldable(collapsedColumns, column)) return;
+    if (!columnFoldable(collapsedColumns, column)) {
+      return;
+    }
     collapsedColumns = collapsedColumns.includes(column)
       ? collapsedColumns.filter((candidate) => candidate !== column)
       : [...collapsedColumns, column];
@@ -1939,7 +2020,9 @@
    */
   function detailOverlay(open: boolean): void {
     detailModalOpen = open;
-    if (!open) return;
+    if (!open) {
+      return;
+    }
     // 被せ層 は 1 枚だけ (see `raiseModal`).
     menuOpen = false;
     filterPopoverOpen = false;
@@ -1962,8 +2045,9 @@
     // it, leaving the モーダル standing over a screen that had changed underneath. Dropping it
     // discards nothing: the request lapses and the 未保存入力 it was about stays where it is.
     pendingDiscard = null;
-    if (id === "register") registerOpen = true;
-    else {
+    if (id === "register") {
+      registerOpen = true;
+    } else {
       settingsOpen = true;
       // Not awaited: the モーダル goes up now, and the answer lands in the 区画 when it arrives. Until
       // then 場所を開く holds the previous answer, or says it has not been confirmed on the first open
@@ -1994,7 +2078,9 @@
   function setFilterPopover(open: boolean): void {
     filterPopoverOpen = open;
     // 被せ層 は 1 枚だけ (see `raiseModal`).
-    if (open) menuOpen = false;
+    if (open) {
+      menuOpen = false;
+    }
   }
 
   /**
@@ -2047,7 +2133,9 @@
 
   /** 直前の絞り込みを 1 件戻す (doc-7 §5.2) — the operation the フィルタ帯's button issues, by key. */
   function undoFilter(): void {
-    if (lastCondition(filter) === null) return;
+    if (lastCondition(filter) === null) {
+      return;
+    }
     filter = removeLastCondition(filter);
   }
 
@@ -2077,18 +2165,24 @@
       // Only a repeat continues the press that set `heldKey`, so any other keydown ends it. Done here
       // rather than on `keyup`, because a keyup can be missed — the window can lose focus mid-press —
       // and a stale key would stop a default the user does want.
-      if (!event.repeat) heldKey = null;
+      if (!event.repeat) {
+        heldKey = null;
+      }
       // A press this handler answered stays its own until the key comes up, so its default is stopped
       // ahead of everything below. Ahead of the 被せ層 check as well: a layer owns the presses that
       // start under it, not the tail of the press that opened it — ⌘N's repeats reached the WebView
       // because the register modal the first press opened made this handler return before stopping
       // them. Not a `return` of its own, because a held press that still matches (Backspace) has to
       // go on running its operation below.
-      if (continuesHeldPress(event, heldKey)) event.preventDefault();
+      if (continuesHeldPress(event, heldKey)) {
+        event.preventDefault();
+      }
       // 被せ層 answer their own keys where they are and consume the press (`Modal.svelte`,
       // `HeaderMenu.svelte`, `FilterPopover.svelte`). A モーダル additionally keeps focus inside itself,
       // so while one is up the shell offers no 適用範囲 and leaves the keyboard to it.
-      if (modalOpen) return;
+      if (modalOpen) {
+        return;
+      }
       const scopes: ShortcutScope[] =
         screen === "swimlane" ? ["bothScreens", "swimlane"] : ["bothScreens"];
       const binding = matchShortcut(event, {
@@ -2099,7 +2193,9 @@
       // A repeat whose row stopped matching lands here — `addFilter` moved focus into the 値一覧's
       // 検索欄, so §2.1 withholds the row from the caret's new position — and its default is already
       // stopped above.
-      if (binding === null) return;
+      if (binding === null) {
+        return;
+      }
       // Stopped for a matched press whatever happens next: the key is Atlas's from here on, and letting
       // the WebView act on it as well is how ⌘N would open a modal *and* a window.
       if (binding.preventsDefault !== null) {
@@ -2114,8 +2210,11 @@
           openEntry("settings");
           break;
         case "toggleMenu":
-          if (menuOpen) closeMenu();
-          else openMenu();
+          if (menuOpen) {
+            closeMenu();
+          } else {
+            openMenu();
+          }
           break;
         case "addFilter":
           setFilterPopover(true);

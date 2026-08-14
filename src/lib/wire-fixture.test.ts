@@ -120,7 +120,9 @@ function fixture<T>(name: string): T {
 
 /** The keys a recorded object actually carries, sorted so the assertion is order-independent. */
 function keysOf(value: unknown): string[] {
-  if (value === null || typeof value !== "object") throw new Error("not an object");
+  if (value === null || typeof value !== "object") {
+    throw new Error("not an object");
+  }
   return Object.keys(value as Record<string, unknown>).sort();
 }
 
@@ -156,8 +158,12 @@ function keysOfType<T extends object>() {
 type Shape = string | Shape[] | { [key: string]: Shape };
 
 function shapeOf(value: unknown): Shape {
-  if (value === null) return "null";
-  if (Array.isArray(value)) return value.length === 0 ? [] : [shapeOf(value[0])];
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0 ? [] : [shapeOf(value[0])];
+  }
   if (typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, held]) => [key, shapeOf(held)]),
@@ -180,7 +186,9 @@ function shapeOf(value: unknown): Shape {
  * mismatch class this exists for: a field whose non-null type moved.
  */
 function shapeMismatches(recorded: Shape, expected: Shape, at = ""): string[] {
-  if (recorded === "null" || expected === "null") return [];
+  if (recorded === "null" || expected === "null") {
+    return [];
+  }
   if (Array.isArray(recorded) || Array.isArray(expected)) {
     if (!Array.isArray(recorded) || !Array.isArray(expected)) {
       return [`${at}: ${JSON.stringify(recorded)} vs ${JSON.stringify(expected)}`];
@@ -543,7 +551,9 @@ const HISTORY_EXEMPLAR: TaskHistory = {
 const LOADED = fixture<ProjectLoad>("project_load_loaded.json");
 
 function snapshotOf(load: ProjectLoad): ProjectSnapshot {
-  if (load.state !== "loaded") throw new Error(`expected a loaded root, got ${load.state}`);
+  if (load.state !== "loaded") {
+    throw new Error(`expected a loaded root, got ${load.state}`);
+  }
   return load.project;
 }
 
@@ -646,7 +656,9 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       keysOfType<UnknownSection>()("name", "body"),
     );
     const mapping = view.interpretation.status;
-    if (mapping === null) throw new Error("the recorded task has no status mapping");
+    if (mapping === null) {
+      throw new Error("the recorded task has no status mapping");
+    }
     expect(keysOf(mapping)).toEqual(keysOfType<StatusMapping>()("raw", "column", "declaration"));
     expect(keysOf(view.interpretation.types[0])).toEqual(
       keysOfType<TypeValue>()("value", "known"),
@@ -739,9 +751,13 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       keysOfType<PrRelation>()("pullRequest", "outcome"),
     );
     const remote = history.remote;
-    if (remote === null) throw new Error("the recorded history has no remote");
+    if (remote === null) {
+      throw new Error("the recorded history has no remote");
+    }
     expect(keysOf(remote)).toEqual(keysOfType<RemoteHost>()("kind", "owner", "repo"));
-    if (history.commits.state !== "searched") throw new Error("expected a searched commit list");
+    if (history.commits.state !== "searched") {
+      throw new Error("expected a searched commit list");
+    }
     expect(keysOf(history.commits.commits[0])).toEqual(
       keysOfType<Commit>()("id", "shortId", "summary", "date", "author"),
     );
@@ -889,7 +905,9 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
     // value every test and fake reads.
     const errors = fixture<CommandError[]>("command_errors.json");
     const unavailable = errors.find((error) => error.kind === "updatesUnavailable");
-    if (unavailable?.kind !== "updatesUnavailable") throw new Error("no updatesUnavailable recorded");
+    if (unavailable?.kind !== "updatesUnavailable") {
+      throw new Error("no updatesUnavailable recorded");
+    }
     if (unavailable.readiness.state !== "unsupported") {
       throw new Error("the recorded updatesUnavailable is the unsupported case");
     }
@@ -1172,7 +1190,9 @@ describe("記録した payload を画面の関数がそのまま読める", () =
     expect(rows).toHaveLength(1);
     const row = rows[0];
     expect(row.slug).toBe("atlas");
-    if (row.state !== "loaded") throw new Error(`expected a loaded row, got ${row.state}`);
+    if (row.state !== "loaded") {
+      throw new Error(`expected a loaded row, got ${row.state}`);
+    }
     expect(row.projectName).toBe("Atlas");
     // The two recorded tasks land where their recorded statuses interpret to: one in 進行中, and the
     // 解析不能 one in 未分類 — the placement rule reading the payload, not a restatement of it.
@@ -1218,7 +1238,9 @@ describe("記録した payload を画面の関数がそのまま読める", () =
     const duplicate = errors.find(
       (error) => error.kind === "ledgerRefused" && error.reason.reason === "duplicateSlug",
     );
-    if (duplicate === undefined) throw new Error("the duplicate-slug refusal is not recorded");
+    if (duplicate === undefined) {
+      throw new Error("the duplicate-slug refusal is not recorded");
+    }
 
     // doc-3 §3.1 asks the screen to send the user back to the field that gets them past the refusal,
     // so the mapping from the payload to a field name is the contract — not just the message.
@@ -1232,7 +1254,9 @@ describe("記録した payload を画面の関数がそのまま読める", () =
 
     // `readOnly` carries a `version`, and the notice prints it — a renamed payload field would show
     // the sentence with a hole in it rather than failing.
-    if (loaded.status.state !== "readOnly") throw new Error("the recording is the readOnly case");
+    if (loaded.status.state !== "readOnly") {
+      throw new Error("the recording is the readOnly case");
+    }
     expect(statusNotice(loaded.status)).toContain(String(loaded.status.version));
     expect(saveAvailability(loaded.status).enabled).toBe(false);
     expect(editorArgsText(loaded.settings.external_editor)).toBe("-w");

@@ -46,7 +46,9 @@ let pending: Promise<AceApi> | null = null;
  * for every field the user opens.
  */
 export function loadAce(): Promise<AceApi> {
-  if (pending !== null) return pending;
+  if (pending !== null) {
+    return pending;
+  }
   pending = new Promise<AceApi>((resolve, reject) => {
     const script = document.createElement("script");
     script.src = ACE_SRC;

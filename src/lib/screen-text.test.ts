@@ -87,7 +87,9 @@ describe("画面に置く文 (doc-11 §8)", () => {
     const found: string[] = [];
     for (const path of scanned) {
       screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
-        if (DESIGN_REFERENCE.test(line)) found.push(`${path}:${index + 1}: ${line.trim()}`);
+        if (DESIGN_REFERENCE.test(line)) {
+          found.push(`${path}:${index + 1}: ${line.trim()}`);
+        }
       });
     }
     expect(found).toEqual([]);
@@ -126,7 +128,9 @@ describe("画面に置く文 (doc-11 §8)", () => {
     const found: string[] = [];
     for (const path of scanned) {
       screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
-        if (SPELLED_VERSION.test(line)) found.push(`${path}:${index + 1}: ${line.trim()}`);
+        if (SPELLED_VERSION.test(line)) {
+          found.push(`${path}:${index + 1}: ${line.trim()}`);
+        }
       });
     }
     expect(found).toEqual([]);

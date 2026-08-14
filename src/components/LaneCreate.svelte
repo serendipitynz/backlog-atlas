@@ -63,7 +63,9 @@
   let titleInput = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
-    if (open) titleInput?.focus();
+    if (open) {
+      titleInput?.focus();
+    }
   });
 
   /**
@@ -83,11 +85,17 @@
       textEntry: true,
       mac: MAC_KEYBOARD,
     });
-    if (binding?.action !== "submitLaneCreate") return;
-    if (binding.preventsDefault !== null) event.preventDefault();
+    if (binding?.action !== "submitLaneCreate") {
+      return;
+    }
+    if (binding.preventsDefault !== null) {
+      event.preventDefault();
+    }
     // Withheld for the same reason the button is (doc-11 §5): the chord is not a way past a 縮退 or a
     // 発行中. The reason is already on screen below the button, so pressing it says nothing new.
-    if (blocked === null) onsubmit();
+    if (blocked === null) {
+      onsubmit();
+    }
   }
 </script>
 

@@ -45,7 +45,9 @@ export function isCommandError(value: unknown): value is CommandError {
 
 /** A rejection as a `CommandError`, wrapping anything that is not already one. */
 export function asCommandError(value: unknown): CommandError {
-  if (isCommandError(value)) return value;
+  if (isCommandError(value)) {
+    return value;
+  }
   return { kind: "ledger", detail: String(value) };
 }
 

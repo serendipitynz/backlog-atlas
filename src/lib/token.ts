@@ -209,13 +209,17 @@ function periodEnd(filter: CardFilter, end: PeriodEnd): string {
 
 /** Add one condition, recording where it lands in 追加順. Adding a held condition changes nothing. */
 export function addCondition(filter: CardFilter, condition: FilterCondition): CardFilter {
-  if (hasCondition(filter, condition)) return filter;
+  if (hasCondition(filter, condition)) {
+    return filter;
+  }
   return withOrder(applyCondition(filter, condition, true), condition, true);
 }
 
 /** Take one condition back — the × on a token, and what 直前の 1 つを戻す calls. */
 export function removeCondition(filter: CardFilter, condition: FilterCondition): CardFilter {
-  if (!hasCondition(filter, condition)) return filter;
+  if (!hasCondition(filter, condition)) {
+    return filter;
+  }
   return withOrder(applyCondition(filter, condition, false), condition, false);
 }
 
@@ -288,7 +292,9 @@ function withOrder(
   condition: FilterCondition,
   add: boolean | null,
 ): CardFilter {
-  if (add === null) return filter;
+  if (add === null) {
+    return filter;
+  }
   const key = conditionKey(condition);
   const without = filter.order.filter((held) => held !== key);
   return { ...filter, order: add ? [...without, key] : without };
@@ -348,7 +354,9 @@ export function lastCondition(filter: CardFilter): FilterCondition | null {
   const byKey = new Map(heldConditions(filter).map((condition) => [conditionKey(condition), condition]));
   for (let index = filter.order.length - 1; index >= 0; index -= 1) {
     const condition = byKey.get(filter.order[index]);
-    if (condition !== undefined) return condition;
+    if (condition !== undefined) {
+      return condition;
+    }
   }
   return null;
 }
@@ -398,22 +406,34 @@ function heldConditions(filter: CardFilter): FilterCondition[] {
   for (const facet of FACET_ORDER) {
     switch (facet) {
       case "storage":
-        for (const value of filter.storage) held.push({ facet, value });
+        for (const value of filter.storage) {
+          held.push({ facet, value });
+        }
         break;
       case "type":
-        for (const value of filter.types) held.push({ facet, value });
+        for (const value of filter.types) {
+          held.push({ facet, value });
+        }
         break;
       case "label":
-        for (const value of filter.labels) held.push({ facet, value });
+        for (const value of filter.labels) {
+          held.push({ facet, value });
+        }
         break;
       case "priority":
-        for (const value of filter.priorities) held.push({ facet, value });
+        for (const value of filter.priorities) {
+          held.push({ facet, value });
+        }
         break;
       case "assignee":
-        for (const value of filter.assignees) held.push({ facet, value });
+        for (const value of filter.assignees) {
+          held.push({ facet, value });
+        }
         break;
       case "inconsistent":
-        if (filter.inconsistentOnly) held.push({ facet });
+        if (filter.inconsistentOnly) {
+          held.push({ facet });
+        }
         break;
       case "updated":
         for (const end of PERIOD_ENDS) {
@@ -427,12 +447,16 @@ function heldConditions(filter: CardFilter): FilterCondition[] {
   }
   // Not in `FACET_ORDER` because it has no token to draw, but it is a condition: it counts, it holds
   // a place in 追加順, and 直前の 1 つを戻す can take it back.
-  if (filter.text.trim() !== "") held.push({ facet: "text", value: filter.text });
+  if (filter.text.trim() !== "") {
+    held.push({ facet: "text", value: filter.text });
+  }
 
   const seen = new Set<string>();
   return held.filter((condition) => {
     const key = conditionKey(condition);
-    if (seen.has(key)) return false;
+    if (seen.has(key)) {
+      return false;
+    }
     seen.add(key);
     return true;
   });

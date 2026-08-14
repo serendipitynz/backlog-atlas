@@ -74,7 +74,9 @@ export function historyKeyOf(slug: string, taskId: string, inputs: HistoryInputs
  */
 function newGeneration(): string {
   const uuid = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
-  if (uuid) return uuid();
+  if (uuid) {
+    return uuid();
+  }
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -122,7 +124,9 @@ export function createHistoryLoader(ports: HistoryLoaderPorts): HistoryLoader {
   let running: string | null = null;
 
   function stopRunning(): void {
-    if (running === null) return;
+    if (running === null) {
+      return;
+    }
     // Not awaited: the screen's next read must not queue behind a round trip whose only purpose is
     // to stop something. A rejection is nothing to report either — the read is being abandoned, and
     // an unhandled rejection here would be noise about a call whose answer nobody wanted.
@@ -148,11 +152,15 @@ export function createHistoryLoader(ports: HistoryLoaderPorts): HistoryLoader {
       } catch (error) {
         value = { state: "failed", detail: ports.describeError(error) };
       }
-      if (running === readId) running = null;
+      if (running === readId) {
+        running = null;
+      }
 
       // Every call stamps the record before awaiting, so "the stored token is still mine" is exactly
       // "no later call has started" — including a later call for the same task.
-      if (ports.peek()?.token === token) ports.store({ key, token, value });
+      if (ports.peek()?.token === token) {
+        ports.store({ key, token, value });
+      }
     },
     abandon: stopRunning,
   };

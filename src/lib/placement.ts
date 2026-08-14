@@ -382,7 +382,9 @@ export function placementPersistence(
   stored: DetailPlacement,
   failure: string | null,
 ): PlacementPersistence {
-  if (failure !== null) return { state: "refused", reason: failure };
+  if (failure !== null) {
+    return { state: "refused", reason: failure };
+  }
   return current === stored ? { state: "default" } : { state: "notDefault", stored };
 }
 

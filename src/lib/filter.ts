@@ -231,7 +231,9 @@ function matchesStorage(view: TaskView, storage: readonly StorageSelection[]): b
 }
 
 function matchesTypes(view: TaskView, selections: readonly TypeSelection[]): boolean {
-  if (selections.length === 0) return true;
+  if (selections.length === 0) {
+    return true;
+  }
   const types = view.interpretation.types;
   return selections.some((selection) => {
     switch (selection.kind) {
@@ -263,7 +265,9 @@ function matchesAny(selected: readonly string[], values: readonly string[]): boo
 
 function matchesText(view: TaskView, text: string): boolean {
   const needle = text.trim().toLowerCase();
-  if (needle === "") return true;
+  if (needle === "") {
+    return true;
+  }
   const title = view.task.title ?? "";
   return (
     cardIdentity(view).toLowerCase().includes(needle) || title.toLowerCase().includes(needle)
@@ -321,18 +325,30 @@ export function collectFacets(
 
   for (const view of views) {
     const values = view.interpretation.types;
-    if (values.length === 0) bumpType(types, "unset", { kind: "unset" });
+    if (values.length === 0) {
+      bumpType(types, "unset", { kind: "unset" });
+    }
     // A task carrying two Type values counts under both, which is what 複数 Type のタスクはいずれか
     // 一致で残す makes true of the selection as well.
     for (const type of values) {
       bumpType(types, `value:${type.value}`, { kind: "value", value: type.value });
     }
-    if (values.some((type) => !type.known)) bumpType(types, "unknown", { kind: "unknown" });
-    for (const label of view.task.labels) bump(labels, label);
-    if (view.task.priority !== null) bump(priorities, normalizePriority(view.task.priority));
-    for (const assignee of view.task.assignee) bump(assignees, assignee);
+    if (values.some((type) => !type.known)) {
+      bumpType(types, "unknown", { kind: "unknown" });
+    }
+    for (const label of view.task.labels) {
+      bump(labels, label);
+    }
+    if (view.task.priority !== null) {
+      bump(priorities, normalizePriority(view.task.priority));
+    }
+    for (const assignee of view.task.assignee) {
+      bump(assignees, assignee);
+    }
     bump(storage, view.task.storageState ?? "indeterminate");
-    if (inconsistent(view)) inconsistentCount += 1;
+    if (inconsistent(view)) {
+      inconsistentCount += 1;
+    }
   }
 
   return {
@@ -359,8 +375,11 @@ function bumpType(
   value: TypeSelection,
 ): void {
   const held = types.get(key);
-  if (held === undefined) types.set(key, { value, count: 1 });
-  else held.count += 1;
+  if (held === undefined) {
+    types.set(key, { value, count: 1 });
+  } else {
+    held.count += 1;
+  }
 }
 
 function sortByValue(
@@ -388,7 +407,9 @@ function sortTypeSelections(
 ): FacetValue<TypeSelection>[] {
   const order = { value: 0, unset: 1, unknown: 2 } as const;
   return selections.sort(({ value: a }, { value: b }) => {
-    if (a.kind !== b.kind) return order[a.kind] - order[b.kind];
+    if (a.kind !== b.kind) {
+      return order[a.kind] - order[b.kind];
+    }
     return a.kind === "value" && b.kind === "value" ? a.value.localeCompare(b.value) : 0;
   });
 }

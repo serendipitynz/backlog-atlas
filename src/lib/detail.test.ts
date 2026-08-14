@@ -134,7 +134,9 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
     const older = commit("bbbbbbbbbb", "TASK-35 first", "2026-07-20T09:00:00+09:00");
     const view = commitList(loaded(history({ commits: { state: "searched", commits: [newest, older] } })));
 
-    if (view.state !== "commits") throw new Error("expected a commit list");
+    if (view.state !== "commits") {
+      throw new Error("expected a commit list");
+    }
     expect(view.commits.map((c) => c.shortId)).toEqual(["aaaaaaa", "bbbbbbb"]);
   });
 
@@ -173,7 +175,9 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
       state: "loading",
     });
     const notRead = relationAvailability(entry("atlas"), { state: "noTaskId" });
-    if (notRead.state !== "notRead") throw new Error("expected an unattempted read");
+    if (notRead.state !== "notRead") {
+      throw new Error("expected an unattempted read");
+    }
     expect(notRead.detail).toContain("TASK-ID");
   });
 
