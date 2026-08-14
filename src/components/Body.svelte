@@ -207,7 +207,13 @@
       margin-bottom: 0;
     }
 
-    // 見出し (doc-11 §14.1): two sizes, and the段 is the weight and the space above it.
+    // 見出し (doc-11 §14.1): two sizes, and the 段 is the weight, the space above it, and — since
+    // TASK-164 — the size as well.
+    //
+    // Both steps moved up one rung. Before, h1/h2 sat 1.054× the 本文 and h3 and below took the 本文's
+    // own step, so the only段 the reader could see was the space above; the owner accepted that on
+    // 2026-08-11 and asked for it widened on 2026-08-14. **The upper bound is still §14.1's** — 整形表示
+    // の見出し must not compete with タスク title (`--text-2xl`), and `--text-xl` stays below it.
     :global(h1),
     :global(h2),
     :global(h3),
@@ -221,14 +227,14 @@
 
     :global(h1),
     :global(h2) {
-      font-size: 0.78rem;
+      font-size: var(--text-xl);
     }
 
     :global(h3),
     :global(h4),
     :global(h5),
     :global(h6) {
-      font-size: 0.74rem;
+      font-size: var(--text-lg);
     }
 
     :global(p) {
