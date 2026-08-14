@@ -29,7 +29,7 @@ const SOURCES: Record<string, string> = import.meta.glob("../**/*.svelte", {
 /**
  * doc-11 §2.2 の 文字寸法段階 の行。**この行が段の値の正本である。**
  *
- * The six numbers are not written into this file. They are the design document's, and a test that
+ * The step values are not written into this file. They are the design document's, and a test that
  * spelled them would be a third copy of the values beside the doc and `app.scss` — the shape TASK-164
  * removed. Reading them out of the doc is instead what makes `app.scss` answer to it, which is the
  * form AGENTS gives the confirmed CLI version (one source, everything else derives from it).
@@ -141,7 +141,7 @@ describe("文字寸法段階 (doc-11 §2.2)", () => {
     expect(new Set(values).size).toBe(values.length);
   });
 
-  // **doc-11 §2.2 の値そのものと突き合わせる。** 昇順・幅一定・6 段だけを見ていた版は、梯子ごと平行移動
+  // **doc-11 §2.2 の値そのものと突き合わせる。** 昇順・幅一定・段の数だけを見ていた版は、梯子ごと平行移動
   // されても通り、そのとき doc-11 の表と、その表を基準に測った §13・§14.1 の実測がまとめて偽になる
   // (PR #118 のレビュー指摘)。**期待値はこのファイルに書かない** — 書けば doc と `app.scss` に並ぶ 3 つ目の
   // 写しになるので、doc の行から読んで比べる。

@@ -284,7 +284,7 @@ $themes: (
 :root {
   @include theme-vars(map.get($themes, "atlas-light"));
 
-  // 文字寸法段階 (doc-11 §2.2). **The app's every font-size comes from these six and nowhere else**
+  // 文字寸法段階 (doc-11 §2.2). **The app's every font-size comes from these seven and nowhere else**
   // — the same shape decision-12 gives colour, and for the same reason: before TASK-164 there were
   // 186 declarations across 18 files spelling 18 different rem values between .62 and 1, none of them
   // sharing a variable, so no screen could be said to take the size the design table names.
@@ -309,11 +309,16 @@ $themes: (
   // 地の 1rem (doc-11 §2.2). 110% of the engine's default rather than a pixel count, so an OS text
   // size the user has raised still multiplies through — a `px` here would be Atlas overriding it.
   //
-  // **This is the whole of TASK-164's readability change**: the 段階 above keep the rem numbers the
-  // design table already had, and this one line makes each of them 1.1× longer, so every rem-stated
-  // 余白・角丸・フォーム部品の高さ・行長上限 48rem moves with the text instead of crowding it. Raising
-  // the 段階 instead was measured on 2026-08-14 and crowds: at ×1.18 the カード's 印 and priority チップ
-  // dropped onto separate lines, because the padding around them did not follow.
+  // **This one line answers the whole-screen half of TASK-164** — 「全体的にテキストサイズが小さい」
+  // (2026-08-13 の目視): the 段階 above keep the rem numbers the design table already had, and this makes
+  // each of them 1.1× longer, so every rem-stated 余白・角丸・フォーム部品の高さ・行長上限 48rem moves
+  // with the text instead of crowding it. Raising the 段階 instead was measured on 2026-08-14 and
+  // crowds: at ×1.18 the カード's 印 and priority チップ dropped onto separate lines, because the padding
+  // around them did not follow.
+  //
+  // **It is not the whole of the task.** The 2026-08-14 目視 asked for 整形表示 specifically, and that
+  // took a step of its own plus wider 余白 (doc-11 §2.2 の 段の役割表・§14) — the ground did not move
+  // again for it, because the same 目視 said the cards were right as they were.
   font-size: 110%;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.5;

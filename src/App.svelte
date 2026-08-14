@@ -2699,7 +2699,8 @@
     h2 {
       margin: 0 0 0.45rem;
       padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
-      // 画面見出し .92rem / 650 (doc-11 §2.2 のタイポ).
+      // 画面見出し (doc-11 §2.2 の 段の役割表). 段は変数が持つので、ここでは数を書かない —
+      // 2026-08-14 に .92rem から 1 段上がったとき、この註だけが古い数のまま残った。
       font-size: var(--text-3xl);
       font-weight: 650;
     }

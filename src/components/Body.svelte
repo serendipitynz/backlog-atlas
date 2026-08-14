@@ -210,10 +210,16 @@
     // 見出し (doc-11 §14.1): two sizes, and the 段 is the weight, the space above it, and — since
     // TASK-164 — the size as well.
     //
-    // Both steps moved up one rung. Before, h1/h2 sat 1.054× the 本文 and h3 and below took the 本文's
-    // own step, so the only段 the reader could see was the space above; the owner accepted that on
-    // 2026-08-11 and asked for it widened on 2026-08-14. **The upper bound is still §14.1's** — 整形表示
-    // の見出し must not compete with タスク title (`--text-2xl`), and `--text-xl` stays below it.
+    // Both steps have moved up twice. They started at 1.054× the 本文 with h3 and below taking the
+    // 本文's own step, so the only 段 a reader could see was the space above; the owner accepted that on
+    // 2026-08-11, asked for it widened on 2026-08-14, and in the same day's 並置目視 asked for the whole
+    // 整形表示 to be larger again.
+    //
+    // **The upper bound is §14.1's, and it is the heading of the panel this body sits inside** —
+    // `--text-3xl`, which タスク title and プロジェクト名 both take. It is not 区画見出し: that bound was
+    // in §14.1 for a long time and the implementation never met it (a prose h1 measured 15.14px against
+    // 11.97px on タスク詳細 and 14.08px on プロジェクト詳細, before this task touched anything), so §14.1
+    // now says what actually separates a 区画見出し — its rule line, its letter-spacing and `--muted`.
     :global(h1),
     :global(h2),
     :global(h3),
