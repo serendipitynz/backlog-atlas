@@ -131,7 +131,11 @@ Functions・API documentation comments の 4 つの規則群は所有者個人�
 - **設定ファイルは `biome.jsonc` であって `biome.json` ではない。** Biome は後者を厳密な JSON として
   読むので、コメントを含む `biome.json` は**読み込みに失敗する。そして失敗は停止ではなく、既定値で
   全ツリーを走査する黙った縮退である** — 実際に一度そうなり、`_sandbox/` と `src-tauri/target/` を
-  舐めて 49,056 件を報告した。`files.includes` は `src/**` と `scripts/**` を正の側で名指ししてある。
+  舐めて 49,056 件を報告した。`files.includes` は走査対象を正の側で名指ししてある — `src/**`・
+  `scripts/**` と、ルートの `vite.config.ts`・`vitest.config.ts`・`svelte.config.js` である。
+  **ルートの 3 つは glob ではなく 1 つずつ挙げる**（将来別のツールが置く設定を読まないまま
+  取り込まないため）。**初版はこの 3 つを落としており**、規約を書いたその PR が編集した
+  `vitest.config.ts` が、規約の効かない唯一のファイルになっていた。
 - **`recommended` を有効にすると壊れる。** 上の 391 件が出るうえ、その修正提案はマークアップで
   使っている import の削除である。`biome.jsonc` にその実測を書いてあるが、**プリセットを足す変更は
   この項を読んでから行う。**

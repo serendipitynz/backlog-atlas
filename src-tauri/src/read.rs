@@ -1181,14 +1181,18 @@ ordinal: 1000\n\
             .iter()
             .map(|f| f.source_path.display().to_string())
             .collect();
-        assert_eq!(
-            paths,
-            [
-                "milestones/m-9 - c.md",
-                "docs/doc-1 - a.md",
-                "docs/doc-2 - b.md"
-            ]
-        );
+        // Joined rather than written with `/`, because `display()` prints the platform's separator
+        // and a slashed literal asserts the ordering on Windows against `docs\doc-1 - a.md`. The
+        // order is what this test is about; the separator is not.
+        let expected: Vec<String> = [
+            ("milestones", "m-9 - c.md"),
+            ("docs", "doc-1 - a.md"),
+            ("docs", "doc-2 - b.md"),
+        ]
+        .iter()
+        .map(|(dir, name)| Path::new(dir).join(name).display().to_string())
+        .collect();
+        assert_eq!(paths, expected);
     }
 
     // --- TASK-88 / decision-24: non-task management files keep their failures ------------------

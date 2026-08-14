@@ -2089,7 +2089,15 @@ mod tests {
                 command.env("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1");
             }
             let out = command.output().unwrap();
-            assert!(!out.status.success(), "the probe was supposed to fail");
+            // Only the plain-directory probe is guaranteed to fail. Whether the `dubious` one does
+            // is up to this Git honouring `GIT_TEST_ASSUME_DIFFERENT_OWNER`, which a release build
+            // need not — the caller below already tolerates a Git that ignores it, and asserting
+            // here would deny it the chance (measured: it fails on the GitHub macOS and Windows
+            // runners, and succeeds on a Homebrew Git).
+            assert!(
+                dubious || !out.status.success(),
+                "the probe was supposed to fail"
+            );
             String::from_utf8_lossy(&out.stderr).into_owned()
         };
 

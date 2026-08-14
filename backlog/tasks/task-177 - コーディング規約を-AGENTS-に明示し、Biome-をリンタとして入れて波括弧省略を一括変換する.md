@@ -4,7 +4,7 @@ title: コーディング規約を AGENTS に明示し、Biome をリンタと�
 status: In Review
 assignee: []
 created_date: '2026-08-14 22:22'
-updated_date: '2026-08-14 22:59'
+updated_date: '2026-08-14 23:46'
 labels: []
 dependencies: []
 ordinal: 168700
@@ -13,7 +13,7 @@ ordinal: 168700
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-decision-32 の実施。規約はこれまで所有者個人のグローバル設定にしかなく、AGENTS.md は持っていなかったため、Codex など他のエージェントには効いていなかった。規約の 4 群のうち Control flow だけが機械で検査でき、木には 372 箇所の波括弧省略があった。
+decision-32 の実施。規約はこれまで所有者個人のグローバル設定にしかなく、AGENTS.md は持っていなかったため、Codex など他のエージェントには効いていなかった。規約の 4 群のうち Control flow だけが機械で検査でき、木には行単位の走査で 372 箇所の波括弧省略が見つかった (うち 1 件は placement.test.ts の誤検出で、実際の対象は 371 箇所。decision-32 §7)。
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

@@ -164,8 +164,12 @@ decision-7 が持ち、次の 5 つは表記についての規則である。
 
 ### リンタが持つ範囲と、持たない範囲
 
-`pnpm run lint` は Biome を `src/` と `scripts/` に対して走らせる。有効なルールはちょうど 1 つ、
-`style/useBlockStatements` — 上の 制御フロー の規則である。**コメント・関数・API ドキュメント
+`pnpm run lint` は Biome を `src/`・`scripts/`・および 3 つのルート設定
+（`vite.config.ts`・`vitest.config.ts`・`svelte.config.js`）に対して走らせる。有効なルールは
+ちょうど 1 つ、`style/useBlockStatements` — 上の 制御フロー の規則である。**この集合が、この木の
+手書きソースのすべてである。** 集合は `biome.jsonc` の `files.includes` が名指ししており、
+ルート設定を 1 つずつ列挙してあるのは、将来別のツールが置く設定を読まないまま取り込まないため
+である。両者は一緒に変える。**コメント・関数・API ドキュメント
 コメントには機械の検査が無く、レビューが持つ。** この節が設定ファイルとは別に要るのは、この
 3 群のためである。
 

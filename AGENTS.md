@@ -182,8 +182,11 @@ why the tooling below stops where it does, is decision-32.
 
 ### What the linter holds, and what it does not
 
-`pnpm run lint` runs Biome over `src/` and `scripts/` with exactly one rule enabled,
-`style/useBlockStatements` — the Control flow rule above. **Comments, Functions and API
+`pnpm run lint` runs Biome over `src/`, `scripts/`, and the three root configs — `vite.config.ts`,
+`vitest.config.ts`, `svelte.config.js` — with exactly one rule enabled,
+`style/useBlockStatements` — the Control flow rule above. **That set is every hand-written source
+in the tree**, and it is named in `biome.jsonc`'s `files.includes`; the root configs are listed
+one by one there so a future tool's config is not swept in unread. Change the two together. **Comments, Functions and API
 documentation comments have no machine check and are held by review.** That is the whole reason
 this section exists rather than only the config.
 
