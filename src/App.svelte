@@ -2488,7 +2488,7 @@
 
     h1 {
       margin: 0;
-      font-size: 1rem;
+      font-size: var(--text-3xl);
     }
   }
 
@@ -2508,7 +2508,7 @@
   // read on its own, and `tabular-nums` so a changing count does not shift the words after it.
   .totals {
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -2527,7 +2527,7 @@
     border-radius: 4px;
     background: transparent;
     color: inherit;
-    font-size: 1rem;
+    font-size: var(--text-3xl);
     cursor: pointer;
   }
 
@@ -2555,7 +2555,7 @@
     border-bottom: 1px solid var(--line);
     border-left: 4px solid var(--family);
     background: var(--panel);
-    font-size: 0.75rem;
+    font-size: var(--text-md);
 
     // 折り返さない: a wrapping band would grow the top of the screen past「フィルタ帯 1 行 ＋ 上部帯
     // 6 本」, which is the ceiling doc-11 §4 relies on. The text is already 縮約 (`band.ts`), so this
@@ -2578,7 +2578,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
       cursor: pointer;
     }
 
@@ -2597,7 +2597,7 @@
       position: relative;
       flex: none;
       margin-left: auto;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
 
       summary {
         cursor: pointer;
@@ -2651,7 +2651,7 @@
   .status {
     margin: 0;
     padding: 0.4rem 0.75rem;
-    font-size: 0.78rem;
+    font-size: var(--text-lg);
   }
 
   .fatal {
@@ -2694,13 +2694,14 @@
    */
   .issue-confirm {
     padding: 0.75rem;
-    font-size: 0.75rem;
+    font-size: var(--text-md);
 
     h2 {
       margin: 0 0 0.45rem;
       padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
-      // 画面見出し .92rem / 650 (doc-11 §2.2 のタイポ).
-      font-size: 0.92rem;
+      // 画面見出し (doc-11 §2.2 の 段の役割表). 段は変数が持つので、ここでは数を書かない —
+      // 2026-08-14 に .92rem から 1 段上がったとき、この註だけが古い数のまま残った。
+      font-size: var(--text-3xl);
       font-weight: 650;
     }
 
@@ -2729,7 +2730,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.72rem;
+      font-size: var(--text-md);
       cursor: pointer;
 
       // hover は 枠線 --line → --line-strong (doc-11 §2.3); the rest is already `--line-strong`, so what
@@ -2753,7 +2754,7 @@
     width: min(30rem, 45vw);
     padding: 0.6rem 0.75rem;
     border-left: 1px solid var(--line);
-    font-size: 0.75rem;
+    font-size: var(--text-md);
 
     p {
       margin: 0;
@@ -2766,7 +2767,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
       cursor: pointer;
     }
   }

@@ -326,12 +326,12 @@
     // No bottom padding: the 発行の行 below is pinned to the bottom of the scrolling region, and a
     // padding here would hold it that far off the edge it is pinned to.
     padding: 0.7rem 0.75rem 0;
-    font-size: 0.8rem;
+    font-size: var(--text-lg);
   }
 
   h2 {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: var(--text-3xl);
   }
 
   // 読み取り専用縮退 (doc-3 §2.2) is not one of decision-6's 印の族 — nothing is degraded about the
@@ -341,7 +341,7 @@
     margin: 0;
     padding: 0.35rem 0.5rem;
     background: color-mix(in srgb, var(--info) 12%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-md);
   }
 
   label {
@@ -351,7 +351,7 @@
   }
 
   .caption {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     opacity: 0.7;
   }
 
@@ -378,7 +378,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.75rem;
+      font-size: var(--text-md);
     }
   }
 
@@ -420,7 +420,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     cursor: pointer;
     // 無効化提示 lives in one place in app.scss (doc-11 §5); a `:disabled` rule here would outrank it.
 
@@ -432,7 +432,7 @@
 
   .hint {
     margin: 0;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     opacity: 0.75;
   }
 
@@ -441,14 +441,14 @@
   .problem {
     margin: 0;
     color: var(--mark-inconsistent);
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1).
   .blocked-note {
     margin: 0;
     color: var(--muted);
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   // doc-11 §5 の 2 つ目の形: 可視から外しても、`aria-describedby` の指す先はツリーに残す。

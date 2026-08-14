@@ -228,7 +228,7 @@
     // 1em はこの箱の font-size に従う (doc-11 §2.4). .8rem は隣の 横断タスクID (.72rem) と
     // カード title (.85rem) の間で、印チップ の .65rem ではない — 語を持たない図形は、同じ高さの
     // 文字より小さく見えるためである。アイコン専用の寸法つまみは足していない。
-    font-size: 0.8rem;
+    font-size: var(--text-lg);
     // `.line` は baseline 揃えで、`Icon.svelte` の SVG は `display: block` なので baseline を
     // 持たない（行末で揃えられ、文字より下がって見える）。この 1 つだけ中央で揃える。
     align-self: center;
@@ -243,7 +243,7 @@
   }
 
   .identity {
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     font-variant-numeric: tabular-nums;
     opacity: 0.75;
   }
@@ -262,7 +262,7 @@
     line-clamp: var(--title-lines);
     overflow: hidden;
     overflow-wrap: anywhere;
-    font-size: 0.85rem;
+    font-size: var(--text-xl);
     line-height: 1.3;
   }
 
@@ -286,7 +286,7 @@
     border: 1px solid var(--line);
     border-radius: 3px;
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
     text-transform: uppercase;
     letter-spacing: 0.02em;
 
@@ -318,7 +318,7 @@
   .assignee,
   .status,
   .storage {
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
     padding: 0 0.3rem;
   }
 

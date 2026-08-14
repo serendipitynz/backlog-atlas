@@ -66,14 +66,14 @@
   h2 {
     // 画面見出し (doc-11 §2.2).
     margin: 0;
-    font-size: 0.92rem;
+    font-size: var(--text-3xl);
     font-weight: 650;
   }
 
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
   }
 
   th,

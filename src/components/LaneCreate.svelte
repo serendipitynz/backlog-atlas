@@ -188,7 +188,7 @@
   .absent {
     margin: 0.2rem 0 0;
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
     line-height: 1.25;
   }
 
@@ -209,7 +209,7 @@
     background: transparent;
     color: var(--muted);
     font: inherit;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     cursor: pointer;
 
     &:hover:not([aria-disabled="true"]),
@@ -242,7 +242,7 @@
       background: var(--bg);
       color: inherit;
       font: inherit;
-      font-size: 0.75rem;
+      font-size: var(--text-md);
     }
   }
 
@@ -252,11 +252,11 @@
     align-items: center;
     margin: 0;
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
 
     code {
       color: var(--fg);
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
     }
   }
 
@@ -264,7 +264,7 @@
   // button's own label is the entry, and `aria-keyshortcuts` carries the chord for assistive tech.
   .hint {
     color: var(--muted);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 
@@ -282,7 +282,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
       cursor: pointer;
       // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a `:disabled` rule here would outrank it.
     }
@@ -291,7 +291,7 @@
   .reason {
     margin: 0;
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
     line-height: 1.25;
   }
 </style>

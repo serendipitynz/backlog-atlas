@@ -181,12 +181,12 @@
   .body-block {
     margin: 0;
     // The frame the 本文 had before it was rendered: くぼみ面 with a 罫線 (doc-12 §3 の原文, doc-11 §2.1).
-    padding: 0.35rem 0.45rem;
+    padding: 0.6rem 0.75rem;
     border: 1px solid var(--line);
     border-radius: 4px;
     background: var(--inset);
     font-family: inherit;
-    font-size: 0.74rem;
+    font-size: var(--text-lg);
     line-height: 1.5;
     // doc-8 §2.1 の行長上限 48rem。The value is the caller's `--prose-max-width` so this component holds
     // no second 48 (doc-10 §5 takes the same line).
@@ -207,42 +207,58 @@
       margin-bottom: 0;
     }
 
-    // 見出し (doc-11 §14.1): two sizes, and the段 is the weight and the space above it.
+    // 見出し (doc-11 §14.1): two sizes, and the 段 is the weight, the space above it, and — since
+    // TASK-164 — the size as well.
+    //
+    // Both steps have moved up twice. They started at 1.054× the 本文 with h3 and below taking the
+    // 本文's own step, so the only 段 a reader could see was the space above; the owner accepted that on
+    // 2026-08-11, asked for it widened on 2026-08-14, and in the same day's 並置目視 asked for the whole
+    // 整形表示 to be larger again.
+    //
+    // **The upper bound is §14.1's, and it is the heading of the panel this body sits inside** —
+    // `--text-3xl`, which タスク title and プロジェクト名 both take. It is not 区画見出し: that bound stood
+    // in §14.1 for a long time and the implementation never met it. Before TASK-164 these headings were
+    // `.78rem` against a 区画見出し's `.68rem`, already above it at the 16px ground, and they are 16.19px
+    // against 11.97px now. So §14.1 says what actually separates a 区画見出し — its rule line, its
+    // letter-spacing and `--muted` — rather than a size bound nothing has held to.
+    //
+    // **プロジェクト詳細's pane heading is a different case and §14.1 spells it out**: before TASK-164 it
+    // and these headings were both `.78rem`, so "never met" is true of 区画見出し and not of that one.
     :global(h1),
     :global(h2),
     :global(h3),
     :global(h4),
     :global(h5),
     :global(h6) {
-      margin: 0.6rem 0 0.16rem;
+      margin: 0.75rem 0 0.25rem;
       font-weight: 650;
       line-height: 1.35;
     }
 
     :global(h1),
     :global(h2) {
-      font-size: 0.78rem;
+      font-size: var(--text-2xl);
     }
 
     :global(h3),
     :global(h4),
     :global(h5),
     :global(h6) {
-      font-size: 0.74rem;
+      font-size: var(--text-xl);
     }
 
     :global(p) {
-      margin: 0.3rem 0;
+      margin: 0.6rem 0;
     }
 
     :global(ul),
     :global(ol) {
-      margin: 0.3rem 0;
+      margin: 0.45rem 0;
       padding-left: 1rem;
     }
 
     :global(li) {
-      margin: 0.16rem 0;
+      margin: 0.25rem 0;
     }
 
     // 本文リンク (doc-11 §14.3): only the ones the screen opens are drawn as links at all, so the colour
@@ -264,7 +280,7 @@
 
     // コード (doc-11 §14.2). The ground stays the block's; the 罫線 is what separates it.
     :global(code) {
-      padding: 0 0.16rem;
+      padding: 0 0.25rem;
       border: 1px solid var(--line);
       border-radius: 3px;
       font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -272,8 +288,8 @@
     }
 
     :global(pre) {
-      margin: 0.3rem 0;
-      padding: 0.25rem 0.3rem;
+      margin: 0.45rem 0;
+      padding: 0.3rem 0.45rem;
       border: 1px solid var(--line);
       border-radius: 3px;
       // No wrapping; it scrolls inside its own block instead (doc-11 §14.2): a fence's lines carry
@@ -294,13 +310,13 @@
     :global(table) {
       display: block;
       overflow-x: auto;
-      margin: 0.3rem 0;
+      margin: 0.45rem 0;
       border-collapse: collapse;
     }
 
     :global(th),
     :global(td) {
-      padding: 0.16rem 0.3rem;
+      padding: 0.25rem 0.45rem;
       border: 1px solid var(--line);
       text-align: left;
     }
@@ -310,14 +326,14 @@
     }
 
     :global(blockquote) {
-      margin: 0.3rem 0;
-      padding-left: 0.45rem;
+      margin: 0.45rem 0;
+      padding-left: 0.6rem;
       border-left: 2px solid var(--line);
       color: var(--muted);
     }
 
     :global(hr) {
-      margin: 0.6rem 0;
+      margin: 0.75rem 0;
       border: 0;
       border-top: 1px solid var(--line);
     }
@@ -350,7 +366,7 @@
 
     // 作図結果 (doc-11 §14.5): bounded by the block, scrolling inside itself when it cannot be.
     :global(.body-figure-drawn) {
-      margin: 0.3rem 0;
+      margin: 0.45rem 0;
       overflow-x: auto;
     }
 

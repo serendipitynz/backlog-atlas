@@ -352,7 +352,7 @@
     border-radius: 6px;
     background: var(--panel);
     box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 18%, transparent);
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     text-align: left;
   }
 
@@ -363,7 +363,7 @@
   }
 
   .caption {
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 
@@ -387,7 +387,7 @@
     background: var(--bg);
     color: inherit;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   // スクロール (doc-7 §5.2): the list is what grows with the workspace, so the height is capped here
@@ -408,7 +408,7 @@
 
   h3 {
     margin: 0;
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-weight: 650;
     letter-spacing: 0.05em;
     color: var(--muted);
@@ -424,7 +424,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     text-align: left;
     cursor: pointer;
 
@@ -461,14 +461,14 @@
   .count {
     flex: none;
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
   .none {
     margin: 0;
     color: var(--muted);
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
   }
 
   .dash {
@@ -494,7 +494,7 @@
   .selected {
     margin-right: auto;
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -505,7 +505,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     cursor: pointer;
   }
 
@@ -538,7 +538,7 @@
     background: var(--bg);
     color: var(--fg);
     font: inherit;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -556,7 +556,7 @@
     // 副次 (doc-11 §2.1): the row that builds a 始端 is quieter than the two ends themselves, which
     // are what actually filter.
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
 
     label {
       display: inline-flex;
@@ -566,7 +566,7 @@
 
     input[type="number"] {
       width: 2.8rem;
-      font-size: 0.65rem;
+      font-size: var(--text-sm);
     }
 
     select {
@@ -576,7 +576,7 @@
       background: var(--bg);
       color: var(--fg);
       font: inherit;
-      font-size: 0.65rem;
+      font-size: var(--text-sm);
     }
 
     // 同じ行に並ぶ押しボタンはフォーム部品である (doc-11 §1・§2.2). This row is `center`, so it hands
@@ -584,14 +584,14 @@
     .plain {
       height: 1.4rem;
       margin-left: auto;
-      font-size: 0.65rem;
+      font-size: var(--text-sm);
     }
 
     // 理由はホバーせずに読める (doc-11 §5). It takes the whole row below the controls rather than
     // sitting between them, so appearing does not move the three above it sideways.
     .blocked {
       flex-basis: 100%;
-      font-size: 0.62rem;
+      font-size: var(--text-xs);
     }
   }
 </style>

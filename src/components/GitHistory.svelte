@@ -214,7 +214,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     cursor: pointer;
     // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a `:disabled` rule here would outrank it.
   }
@@ -232,7 +232,7 @@
       flex-wrap: wrap;
       align-items: baseline;
       gap: 0.4rem;
-      font-size: 0.72rem;
+      font-size: var(--text-md);
     }
   }
 
@@ -246,7 +246,7 @@
     padding: 0 0.3rem;
     border: 1px solid var(--line-strong);
     border-radius: 999px;
-    font-size: 0.66rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -262,7 +262,7 @@
     li {
       display: flex;
       flex-direction: column;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
     }
   }
 
@@ -289,14 +289,14 @@
 
     h4 {
       margin: 0.2rem 0 0;
-      font-size: 0.72rem;
+      font-size: var(--text-md);
       opacity: 0.8;
     }
   }
 
   p {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   // 正常な不在は中立、設定・未設定は中間、失敗はエラー (decision-6 エラー提示方針). The families are

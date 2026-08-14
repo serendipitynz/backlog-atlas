@@ -687,7 +687,7 @@
     // No bottom padding: the 下部操作行 pins to the bottom of the scrolling region, and a padding here
     // would hold it that far off the edge it pins to.
     padding: 0.6rem 0 0;
-    font-size: 0.8rem;
+    font-size: var(--text-lg);
   }
 
   header,
@@ -722,7 +722,7 @@
 
     h2 {
       margin: 0;
-      font-size: 0.95rem;
+      font-size: var(--text-3xl);
     }
   }
 
@@ -735,7 +735,7 @@
 
     h3 {
       margin: 0;
-      font-size: 0.8rem;
+      font-size: var(--text-lg);
     }
   }
 
@@ -777,7 +777,7 @@
       background: var(--inset);
       color: inherit;
       font: inherit;
-      font-size: 0.75rem;
+      font-size: var(--text-md);
     }
 
     input[type="text"],
@@ -790,7 +790,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.75rem;
+      font-size: var(--text-md);
     }
   }
 
@@ -832,7 +832,7 @@
     // Stacked rather than a label column: a path is one unbreakable token near the モーダル's own
     // width, so a column beside it would wrap every value onto a second line anyway.
     dt {
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
       opacity: 0.7;
     }
 
@@ -871,7 +871,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.75rem;
+    font-size: var(--text-md);
     cursor: pointer;
     // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5): a `:disabled` rule written here would outrank
     // the global one and take this screen back out of step with the rest.
@@ -879,13 +879,13 @@
 
   .hint {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     opacity: 0.75;
   }
 
   .path {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     // パス は ui-monospace (doc-11 §2.2).
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     // The path is one long unbroken token; without this it widens the モーダル rather than wrapping.
@@ -910,7 +910,7 @@
     }
 
     .name {
-      font-size: 0.78rem;
+      font-size: var(--text-lg);
     }
 
     // 解決できない ときだけ色を持つ (doc-11 §2.4 の 印グリフ)。CLI 縮退帯 ② が同じ理由で借りている
@@ -930,7 +930,7 @@
     .mark {
       display: inline-flex;
       align-items: center;
-      font-size: 0.85rem;
+      font-size: var(--text-xl);
     }
 
     .help {
@@ -941,7 +941,7 @@
       border-radius: 4px;
       background: none;
       color: var(--muted);
-      font-size: 0.85rem;
+      font-size: var(--text-xl);
       cursor: pointer;
 
       &:hover {
@@ -957,7 +957,7 @@
       padding: 0.3rem 0.4rem;
       border-radius: 3px;
       background: var(--inset);
-      font-size: 0.72rem;
+      font-size: var(--text-md);
       // パス は ui-monospace (doc-11 §2.2) だが、この文は散文とパスが混じるので地の書体のまま。
       overflow-wrap: anywhere;
     }
@@ -970,7 +970,7 @@
     padding: 0.3rem 0.4rem;
     border-radius: 3px;
     background: color-mix(in srgb, var(--info) 12%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-md);
   }
 
   // The last section in the body; the 下部操作行's own top border is the rule under it.
