@@ -1,10 +1,10 @@
 ---
 id: TASK-163
 title: Linux パッケージの Description のエスケープ崩れと空の Categories を直す
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-08-13 07:03'
-updated_date: '2026-08-13 07:05'
+updated_date: '2026-08-14 00:06'
 labels:
   - release
   - 'kind:chore'
@@ -36,7 +36,31 @@ TASK-101 のリリースワークフローが 3 OS のバンドルを組むの�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Cargo.toml の description に由来する Description が、.desktop の Comment と .deb の control の両方でリテラルのエスケープを含まない（dpkg -I と dpkg -l で確認）
-- [ ] #2 .desktop の Categories が空でない。値は bundle.category から来ている
-- [ ] #3 bundle.category を設定した影響が macOS 実機で確認されている（バンドルの分類が意図どおり）
+- [x] #1 Cargo.toml の description に由来する Description が、.desktop の Comment と .deb の control の両方でリテラルのエスケープを含まない（dpkg -I と dpkg -l で確認）
+- [x] #2 .desktop の Categories が空でない。値は bundle.category から来ている
+- [x] #3 bundle.category を設定した影響が macOS 実機で確認されている（バンドルの分類が意図どおり）
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-14 の実測。macOS 側はこの作業機、Linux 側はユーザーの Ubuntu 実機 (arm64)。
+
+**`.deb` の control** — `dpkg -I` が `Description: Backlog Atlas - a multi-root Backlog.md client` を返す。
+
+**`dpkg -l`（AC #1 が名指す 2 つ目のコマンド）** — 同版どうしなので、入れ替わったことを版番号では言えない。`dpkg -i` の出力自身が `Unpacking backlog-atlas (0.1.0) over (0.1.0)` と述べており、そのうえで `dpkg -l backlog-atlas` の説明欄が `Backlog Atlas - a multi-root Backlog.md client` になっている。**元の症状はこの行に `\u2014` の 6 文字が出ていたもので、同じ観測点で消えたことを確かめた。**
+
+**`.desktop`** — `dpkg-deb -x` で展開した `usr/share/applications/Backlog Atlas.desktop`:
+
+    [Desktop Entry]
+    Categories=Development;
+    Comment=Backlog Atlas - a multi-root Backlog.md client
+    Exec=backlog-atlas
+    StartupWMClass=backlog-atlas
+    Icon=backlog-atlas
+    Name=Backlog Atlas
+    Terminal=false
+    Type=Application
+
+**macOS 側** — ビルドした `.app` の `Info.plist` が `LSApplicationCategoryType => public.app-category.developer-tools`。**これで `DeveloperTool` の展開先は両プラットフォームとも実測になった**（AGENTS 和英「バンドルの metadata」節がその値を持つ）。
+<!-- SECTION:NOTES:END -->
