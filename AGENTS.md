@@ -110,9 +110,9 @@ Move the state through Backlog CLI calls, like every other task update.
   `package.json` pins pnpm. There is deliberately no `.nvmrc` and no `engines.node` —
   one pin per tool, so there is nowhere for two pins to drift apart.
 - pnpm is the only package manager here. Install with `pnpm install`, and run every
-  script through it: `pnpm test`, `pnpm run check`, `pnpm run build`, `pnpm tauri dev`,
-  `pnpm tauri build`. Do not run npm or yarn in this repository — either would write a
-  second lockfile beside `pnpm-lock.yaml`.
+  script through it: `pnpm test`, `pnpm run check`, `pnpm run lint`, `pnpm run build`,
+  `pnpm tauri dev`, `pnpm tauri build`. Do not run npm or yarn in this repository — either
+  would write a second lockfile beside `pnpm-lock.yaml`.
 - The Rust side keeps its own commands, run from `src-tauri/`: `cargo test`,
   `cargo fmt`, `cargo clippy`.
 - **Building on Linux needs Ubuntu 24.04 or newer.** The WebView is a system library
@@ -143,6 +143,62 @@ Move the state through Backlog CLI calls, like every other task update.
   `icon.icns` is not, because its elements are written in a different order each run
   (same element set, same payloads, constant total size). Treat an `icon.icns`-only diff
   after a re-run as no change.
+
+## Coding style
+
+These rules bind code being written or changed. **Do not delete, rewrite, or reshape pre-existing
+comments or untouched code just to satisfy them** — raise it instead. Why the rules are these, and
+why the tooling below stops where it does, is decision-32.
+
+### Comments
+
+- Don't write comments by default. Prefer clear naming and structure.
+- When a comment is warranted, prefer ones that explain **why** and, when relevant, **why not** —
+  the reasoning behind the chosen approach, including why obvious alternatives were rejected.
+- Use comments only for information that cannot be expressed clearly by the code itself, such as
+  intent, constraints, invariants, external requirements, or non-obvious trade-offs.
+- Never use comments merely to restate what the code does.
+- API documentation comments follow the same principle: don't document what is already clear from
+  names, types, and signatures. Document only caller-relevant contracts that cannot be expressed
+  clearly in code, such as behavioral guarantees, preconditions, side effects, error semantics, or
+  compatibility constraints.
+
+### Control flow
+
+- Always use explicit block syntax for control-flow bodies where the language allows omission.
+- **The form is three lines** — the opening brace ends the condition's line, the body sits one
+  step in on the next, and the closing brace returns to the condition's column. `else` cuddles:
+  `} else {`. This is not a preference to re-decide per file; it is what all 384 pre-existing
+  blocks do, and TASK-177 brought the remaining 371 sites to it.
+
+### Functions
+
+- Extract a function when a block represents a coherent, nameable responsibility.
+- Extraction should improve abstraction, readability, or testability — not merely reduce line count.
+- Call count is not a criterion in either direction: two call sites do not by themselves justify
+  extraction, and a single call site does not by itself rule it out.
+- Keep tightly coupled, trivial operations local when extraction would reduce locality or introduce
+  unnecessary indirection.
+
+### What the linter holds, and what it does not
+
+`pnpm run lint` runs Biome over `src/` and `scripts/` with exactly one rule enabled,
+`style/useBlockStatements` — the Control flow rule above. **Comments, Functions and API
+documentation comments have no machine check and are held by review.** That is the whole reason
+this section exists rather than only the config.
+
+Two gaps to keep in mind.
+
+- **Biome does not read Svelte markup**, so control flow inside an inline handler in a `.svelte`
+  template is invisible to it — TASK-177 found one such site that the lint pass had missed. **A
+  clean `pnpm run lint` is not proof of compliance.**
+- **`biome lint --write --unsafe` writes `if (c) { body }` on one line**, which is not the form
+  above. There is deliberately no fix script; write the three-line form by hand.
+
+Do not enable Biome's formatter, and do not add a rule preset. `biome.jsonc` records beside each
+the measurement that rules it out — the formatter flattens a `.svelte` `<script>` block to column
+zero, and the `recommended` preset reports Svelte-only bindings as unused and offers to delete
+them.
 
 ## Tests
 
@@ -406,6 +462,8 @@ of copying `.env.signing`.
   than as bold. Every Japanese sentence that ends inside the emphasis hits this, which is
   most of them. It applies wherever the Markdown is rendered: the READMEs, and task and
   document bodies, which Atlas draws with `markdown-it` (decision-25).
-- After implementation, run the relevant tests, formatter, and static analysis.
-  Report anything that cannot be run, with the reason.
+- After implementation, run the relevant checks and report anything that cannot be run, with the
+  reason. **There is no formatter here** — the frontend's are `pnpm test`, `pnpm run check` and
+  `pnpm run lint`, and the Rust side's are `cargo test`, `cargo fmt` and `cargo clippy` from
+  `src-tauri/`. Why no formatter is decision-32.
 - Do not commit, rewrite history, or push to a remote without an explicit request.
