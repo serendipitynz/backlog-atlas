@@ -212,11 +212,15 @@ export interface ProjectSnapshot {
   slug: string;
   config: Config;
   tasks: TaskView[];
+  /** The three non-task kinds, each in id order (doc-4 §7). **The screen draws them as they
+   *  arrive** — 一覧の並び (doc-10 §1) is not decided again on this side, and a list rendered from
+   *  any of these three needs no sort of its own. */
   milestones: Milestone[];
   documents: Document[];
   decisions: Decision[];
-  /** 写せなかったファイル across all three non-task kinds, in scan order (decision-24). Each 区画
-   *  filters it to its own kind and draws it below its cards (doc-10 §5・§6・§10). */
+  /** 写せなかったファイル across all three non-task kinds, in scan order (decision-24) — they carry
+   *  no id, so the ordering above does not reach them (doc-4 §7). Each 区画 filters it to its own
+   *  kind and draws it below its cards (doc-10 §5・§6・§10). */
   unmappedFiles: UnmappedFile[];
   /** 列の作成時 status 候補, one entry per canonical column (doc-7 §4.1). */
   createStatusCandidates: ColumnCreateStatuses[];

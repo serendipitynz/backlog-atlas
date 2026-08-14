@@ -184,8 +184,14 @@ function compareText(a: string, b: string): number {
 }
 
 /**
- * Compare two identifiers with their digit runs read as numbers (doc-7 §5.4): `TASK-2` before
- * `TASK-10`, `m-2` before `m-10`.
+ * Compare two identifiers with their digit runs read as numbers: `TASK-2` before `TASK-10`,
+ * `m-2` before `m-10`.
+ *
+ * **The rule is doc-4 §7's, not this screen's** — TASK-165 moved it out of doc-7 §5.4 when the
+ * project detail screen's three lists came to need the same comparison. The read layer implements
+ * it a second time (`read::id_order`) for those lists; §7 states which part of the answer the two
+ * implementations owe each other, and it is the digit runs. `id-order.test.ts` reads §7's 昇順の例
+ * for this side and `read::id_order`'s tests read the same line for the other.
  *
  * **No locale is consulted.** `Intl.Collator(…, { numeric: true })` answers this correctly and
  * agreed across en/ja/de/tr/sv when measured, but its result is a function of the runtime's default
@@ -197,7 +203,7 @@ function compareText(a: string, b: string): number {
  * and stable one; what the contract needs of the non-numeric part is only that it never disagrees
  * with itself.
  */
-function compareNumberAware(a: string, b: string): number {
+export function compareNumberAware(a: string, b: string): number {
   let i = 0;
   let j = 0;
   while (i < a.length && j < b.length) {
