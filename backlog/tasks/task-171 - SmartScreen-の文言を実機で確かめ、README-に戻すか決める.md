@@ -1,9 +1,10 @@
 ---
 id: TASK-171
 title: SmartScreen の文言を実機で確かめ、README に戻すか決める
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-08-14 02:22'
+updated_date: '2026-08-14 04:00'
 labels:
   - docs
   - 'kind:improvement'
@@ -27,6 +28,19 @@ TASK-102 (2026-08-14) 由来。**README 和英の「導入」に足した未署�
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 v0.1.0 の .msi を Windows 実機で開き、SmartScreen が出す文言と操作のラベルを記録した
-- [ ] #2 記録した文言に基づいて README 和英の導入節を更新した（戻さないと決めた場合はその理由を書いた）
+- [x] #1 v0.1.0 の .msi を Windows 実機で開き、SmartScreen が出す文言と操作のラベルを記録した
+- [x] #2 記録した文言に基づいて README 和英の導入節を更新した（戻さないと決めた場合はその理由を書いた）
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## 実機測定 (AC #1。2026-08-14、オーナーの Windows 実機・英語 UI・Edge、v0.1.0 の .msi)
+
+- **SmartScreen の青い画面「Windows protected your PC」(More info → Run anyway) は出なかった。** README 初稿が引用しかけ、PR #116 の [P3] で落としたラベルは、この実機では現れないダイアログのものだった — 戻さないのは「確かめられなかった」ではなく「確かめたら出なかった」による。
+- 実際に出た警告は 2 つ:
+  1. **ダウンロード時にブラウザが警告** — Edge は「isn't commonly downloaded. Make sure you trust ... before you open it.」と告げ、**Keep**、続けて **Keep anyway** の選択を複数回要した。
+  2. **msi 起動後の管理者権限 (UAC) ダイアログが発行元を Publisher Unknown と表示** (secure desktop 上のためスクリーンショットは無し。オーナーの読み上げによる記録)。
+
+README 和英の導入節は AC #2 として、この実測の形 (ダウンロード警告 + 発行元不明) に書き直した。SmartScreen 画面を一般論として書いていた旧文は、この実機で偽だったので落とした。測定は 1 台・英語 UI・Edge に限る — 他の環境でダイアログが出ないことまでは主張しない (README も「この実測ではこうだった」の形で書いてある)。
+<!-- SECTION:NOTES:END -->
