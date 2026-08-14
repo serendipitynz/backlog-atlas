@@ -94,17 +94,28 @@ const customProperties = () => {
  * check passed, because the alias case only looked at names containing `text`. A name is not what makes
  * a reference safe — where it leads is.
  */
-const resolvesToAStep = (value: string, defined: Map<string, string[]>, seen = new Set<string>()): boolean => {
+const resolvesToAStep = (value: string, defined: Map<string, string[]>, seen: readonly string[] = []): boolean => {
   const reference = value.match(/^var\((--[a-z0-9-]+)(?:\s*,[\s\S]*)?\)$/);
-  if (reference === null) return false;
+  if (reference === null) {
+    return false;
+  }
   const name = reference[1];
-  if (STEP_NAMES.includes(name)) return true;
+  if (STEP_NAMES.includes(name)) {
+    return true;
+  }
   // A cycle cannot reach a step, and must not hang the test either.
-  if (seen.has(name)) return false;
-  seen.add(name);
+  //
+  // **`seen` is the current path, not everything visited.** A `Set` shared across the sibling calls
+  // below made the second definition that routed through an already-crossed alias look like a cycle,
+  // so two definitions both reaching a step by the same safe intermediate were rejected (found in the
+  // 2R review of PR #118, and the case below is that shape).
+  if (seen.includes(name)) {
+    return false;
+  }
+  const path = [...seen, name];
   const definitions = defined.get(name) ?? [];
   // **Every** definition has to reach a step: one screen redefining the alias to a number is the hole.
-  return definitions.length > 0 && definitions.every((next) => resolvesToAStep(next, defined, seen));
+  return definitions.length > 0 && definitions.every((next) => resolvesToAStep(next, defined, path));
 };
 
 describe("走査する対象", () => {
@@ -160,8 +171,12 @@ describe("文字寸法段階 (doc-11 §2.2)", () => {
     const offenders: string[] = [];
     for (const [path, source] of componentSources()) {
       for (const value of declarationsIn(source)) {
-        if (RELATIVE.test(value)) continue;
-        if (resolvesToAStep(value, defined)) continue;
+        if (RELATIVE.test(value)) {
+          continue;
+        }
+        if (resolvesToAStep(value, defined)) {
+          continue;
+        }
         offenders.push(`${path}: ${value}`);
       }
     }
@@ -186,6 +201,23 @@ describe("文字寸法段階 (doc-11 §2.2)", () => {
     expect(resolvesToAStep("var(--a)", new Map([["--a", ["var(--b)"]], ["--b", ["var(--a)"]]]))).toBe(false);
     // 別名が 2 か所で定義され、片方だけが段を指す形も通さない。
     expect(resolvesToAStep("var(--a)", new Map([["--a", ["var(--text-md)", "0.5rem"]]]))).toBe(false);
+    // **同じ安全な中継を 2 本とも通る形は通す。** `seen` を枝の間で共有していた版は、2 本目を循環と
+    // 読んで false を返した — 正しい実装を落とす向きの誤りである (PR #118 の 2R)。
+    expect(
+      resolvesToAStep("var(--a)", new Map([["--a", ["var(--mid)", "var(--mid)"]], ["--mid", ["var(--text-md)"]]])),
+    ).toBe(true);
+    // 枝が別々に安全な中継を持つ形も通す。
+    expect(
+      resolvesToAStep(
+        "var(--a)",
+        new Map([
+          ["--a", ["var(--m1)", "var(--m2)"]],
+          ["--m1", ["var(--shared)"]],
+          ["--m2", ["var(--shared)"]],
+          ["--shared", ["var(--text-lg)"]],
+        ]),
+      ),
+    ).toBe(true);
   });
 });
 
