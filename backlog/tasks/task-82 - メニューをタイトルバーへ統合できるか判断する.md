@@ -1,10 +1,10 @@
 ---
 id: TASK-82
 title: メニューをタイトルバーへ統合できるか判断する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:32'
-updated_date: '2026-08-14 13:54'
+updated_date: '2026-08-14 20:00'
 labels:
   - ui
   - swimlane
