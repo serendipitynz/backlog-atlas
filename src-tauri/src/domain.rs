@@ -336,11 +336,15 @@ pub struct ProjectModel {
     pub slug: String,
     pub config: Config,
     pub tasks: Vec<Task>,
+    /// The three non-task kinds, each in id order (doc-4 §7) — [`crate::read::read_project`]
+    /// sorts them, and no screen decides the order again. `tasks` is deliberately not sorted:
+    /// its card order is the user's choice (doc-7 §5.4).
     pub milestones: Vec<Milestone>,
     pub documents: Vec<Document>,
     pub decisions: Vec<Decision>,
-    /// 写せなかったファイル across all three non-task kinds, in scan order (decision-24). Held
-    /// as one list rather than one per collection because the kind is already on the record and
+    /// 写せなかったファイル across all three non-task kinds, in scan order (decision-24) — with no
+    /// id there is nothing for doc-4 §7's comparison to read, so these keep the scan's path order.
+    /// Held as one list rather than one per collection because the kind is already on the record and
     /// each screen filters to its own — splitting it would make the three lists disagree about
     /// what counts as a failure.
     pub unmapped_files: Vec<UnmappedFile>,
