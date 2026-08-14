@@ -329,6 +329,10 @@ pub struct Task {
 /// documents, cross-referenced by id within this project (doc-4 §3.2, AC #1). Ids are unique
 /// only within a project; cross-project reference goes through the ledger's cross-task-id, not
 /// this type.
+///
+/// **`milestones`, `documents` and `decisions` are in id order** (doc-4 §7):
+/// [`crate::read::read_project`] sorts them, and no screen decides the order again. `tasks` is
+/// deliberately not sorted — its card order is the user's choice (doc-7 §5.4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectModel {
@@ -339,8 +343,9 @@ pub struct ProjectModel {
     pub milestones: Vec<Milestone>,
     pub documents: Vec<Document>,
     pub decisions: Vec<Decision>,
-    /// 写せなかったファイル across all three non-task kinds, in scan order (decision-24). Held
-    /// as one list rather than one per collection because the kind is already on the record and
+    /// 写せなかったファイル across all three non-task kinds, in scan order (decision-24) — with no
+    /// id there is nothing for doc-4 §7's comparison to read, so these keep the scan's path order.
+    /// Held as one list rather than one per collection because the kind is already on the record and
     /// each screen filters to its own — splitting it would make the three lists disagree about
     /// what counts as a failure.
     pub unmapped_files: Vec<UnmappedFile>,

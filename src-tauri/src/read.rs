@@ -26,6 +26,7 @@
 //! reason. Either way the fact survives; before TASK-88 the non-task side was four silent
 //! `continue`s and the file simply left the model.
 
+pub mod id_order;
 pub mod parse;
 pub mod scan;
 
@@ -98,10 +99,22 @@ pub fn read_project(slug: &str, source: &dyn ScanSource) -> Result<ProjectModel,
     // could assemble is kept as a 写せなかったファイル rather than dropped, and the collection
     // it was meant for simply does not gain an entry.
     let mut unmapped = Vec::new();
-    let milestones = read_milestones(source, &mut unmapped)?;
-    let documents = read_documents(source, &mut unmapped)?;
-    let decisions = read_decisions(source, &mut unmapped)?;
+    let mut milestones = read_milestones(source, &mut unmapped)?;
+    let mut documents = read_documents(source, &mut unmapped)?;
+    let mut decisions = read_decisions(source, &mut unmapped)?;
     let mut tasks = read_tasks(source, slug, &config)?;
+
+    // doc-4 §7: the three non-task collections leave this layer in id order, so no screen decides
+    // it again. Sorting here rather than where they are built keeps the three visibly under one
+    // rule; sorting at all is this layer's job because `ProjectModel` is assembled in this one
+    // place, while the frontend receives a read through several separate calls.
+    //
+    // `sort_by` is stable, which is what leaves two files carrying the *same* id in 読み取り順 —
+    // the scan's path order (`scan::WorkingTree::list`) — instead of swapping them between reads.
+    // Tasks are deliberately not sorted: their card order is the user's choice (doc-7 §5.4).
+    milestones.sort_by(|a, b| id_order::compare_ids(&a.id, &b.id));
+    documents.sort_by(|a, b| id_order::compare_ids(&a.id, &b.id));
+    decisions.sort_by(|a, b| id_order::compare_ids(&a.id, &b.id));
 
     resolve_references(
         &mut tasks,
@@ -1060,6 +1073,122 @@ ordinal: 1000\n\
         assert_eq!(decision.status.as_deref(), Some("accepted"));
         // A decision must not answer a documentation lookup (doc-4 §3.2).
         assert!(model.document("decision-3").is_none());
+    }
+
+    // --- TASK-165 / doc-4 §7: the three non-task collections leave this layer in id order -------
+
+    /// One management file of `kind`, named and identified by `id`.
+    ///
+    /// The path is `<id> - …`, which is how Backlog names them, so the source's listing order is
+    /// the lexicographic one a real `scan::WorkingTree::list` hands over — the order these tests
+    /// have to disagree with to mean anything.
+    fn identified(source: MemorySource, dir: ScanDir, id: &str) -> MemorySource {
+        source.file(
+            dir,
+            &format!("{id} - title.md"),
+            &format!("---\nid: {id}\ntitle: \"{id}\"\n---\nbody\n"),
+        )
+    }
+
+    #[test]
+    fn the_three_collections_come_out_in_id_order_rather_than_path_order() {
+        // Listed the way the filesystem scan lists them: `decision-1`, `decision-10`, `decision-2`
+        // — the dictionary order the screen was showing before this task (2026-08-13 の実機目視).
+        let mut source = MemorySource::new();
+        for id in ["decision-1", "decision-10", "decision-2"] {
+            source = identified(source, ScanDir::Decisions, id);
+        }
+        for id in ["doc-1", "doc-11", "doc-2"] {
+            source = identified(source, ScanDir::Docs, id);
+        }
+        for id in ["m-1", "m-10", "m-2"] {
+            source = identified(source, ScanDir::Milestones, id);
+        }
+
+        let model = read(&source);
+        assert_eq!(
+            model
+                .decisions
+                .iter()
+                .map(|d| d.id.as_str())
+                .collect::<Vec<_>>(),
+            ["decision-1", "decision-2", "decision-10"]
+        );
+        assert_eq!(
+            model
+                .documents
+                .iter()
+                .map(|d| d.id.as_str())
+                .collect::<Vec<_>>(),
+            ["doc-1", "doc-2", "doc-11"]
+        );
+        assert_eq!(
+            model
+                .milestones
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            ["m-1", "m-2", "m-10"]
+        );
+    }
+
+    /// 同じ id を持つ 2 件 (doc-4 §7): the comparison answers 0 and the stable sort leaves them in
+    /// 読み取り順, so the pair does not swap between two reads of the same root.
+    ///
+    /// **This pins the answer, not the sort's stability.** Swapping `sort_by` for
+    /// `sort_unstable_by` still passes here (measured), because Rust's unstable sort falls back to
+    /// insertion sort on a slice this short. Two files sharing an id is the only way to observe
+    /// the difference at all, and a root large enough to make an unstable sort actually reorder
+    /// them would be a fixture pinned to one implementation's internals.
+    #[test]
+    fn two_files_carrying_the_same_id_keep_the_read_order() {
+        let source = MemorySource::new()
+            .file(
+                ScanDir::Docs,
+                "doc-3 - first.md",
+                "---\nid: doc-3\ntitle: first\n---\nbody\n",
+            )
+            .file(
+                ScanDir::Docs,
+                "doc-3 - second.md",
+                "---\nid: doc-3\ntitle: second\n---\nbody\n",
+            );
+
+        let titles: Vec<String> = read(&source)
+            .documents
+            .iter()
+            .map(|d| d.title.clone())
+            .collect();
+        assert_eq!(titles, ["first", "second"]);
+    }
+
+    /// 写せなかったファイル carry no id, so they are outside the id comparison and stay in the
+    /// scan's path order — across the three kinds as well, which is the order the three reads run
+    /// in (doc-4 §7, decision-24).
+    #[test]
+    fn unmapped_files_stay_in_scan_order() {
+        let source = MemorySource::new()
+            .file(ScanDir::Docs, "doc-1 - a.md", "no frontmatter here\n")
+            .file(ScanDir::Docs, "doc-2 - b.md", "---\ntitle: no id\n---\n")
+            .file(
+                ScanDir::Milestones,
+                "m-9 - c.md",
+                "---\ntitle: no id\n---\n",
+            );
+
+        let paths: Vec<String> = read(&source)
+            .unmapped_files
+            .iter()
+            .map(|f| f.source_path.display().to_string())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                "milestones/m-9 - c.md",
+                "docs/doc-1 - a.md",
+                "docs/doc-2 - b.md"
+            ]
+        );
     }
 
     // --- TASK-88 / decision-24: non-task management files keep their failures ------------------

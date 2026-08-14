@@ -208,6 +208,13 @@ export interface ColumnCreateStatuses {
   statuses: string[];
 }
 
+/**
+ * One project (one Backlog root) as the read layer built it.
+ *
+ * **`milestones`, `documents` and `decisions` arrive in id order** (doc-4 §7) — 一覧の並び
+ * (doc-10 §1) is not decided again on this side, so a list rendered from any of the three needs no
+ * sort of its own. `tasks` arrives unsorted: its card order is the user's choice (doc-7 §5.4).
+ */
 export interface ProjectSnapshot {
   slug: string;
   config: Config;
@@ -215,8 +222,9 @@ export interface ProjectSnapshot {
   milestones: Milestone[];
   documents: Document[];
   decisions: Decision[];
-  /** 写せなかったファイル across all three non-task kinds, in scan order (decision-24). Each 区画
-   *  filters it to its own kind and draws it below its cards (doc-10 §5・§6・§10). */
+  /** 写せなかったファイル across all three non-task kinds, in scan order (decision-24) — they carry
+   *  no id, so the ordering above does not reach them (doc-4 §7). Each 区画 filters it to its own
+   *  kind and draws it below its cards (doc-10 §5・§6・§10). */
   unmappedFiles: UnmappedFile[];
   /** 列の作成時 status 候補, one entry per canonical column (doc-7 §4.1). */
   createStatusCandidates: ColumnCreateStatuses[];
