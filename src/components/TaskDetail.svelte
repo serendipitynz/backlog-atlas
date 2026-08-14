@@ -1944,7 +1944,7 @@
      * same two numbers (TASK-72 moved 前後移動 into this row).
      */
     --frame-control: 1.4rem;
-    --frame-text: 0.7rem;
+    --frame-text: var(--text-sm);
 
     position: sticky;
     top: 0;
@@ -1959,7 +1959,7 @@
 
     h2 {
       margin: 0;
-      font-size: 0.95rem;
+      font-size: var(--text-2xl);
       line-height: 1.35;
     }
   }
@@ -2101,7 +2101,7 @@
     .hint {
       margin: 0;
       text-align: center;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
     }
   }
 
@@ -2165,7 +2165,7 @@
   }
 
   .position {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     opacity: 0.7;
@@ -2177,7 +2177,7 @@
     flex: 1 1 0;
     min-width: 4rem;
     overflow: hidden;
-    font-size: 0.75rem;
+    font-size: var(--text-md);
     font-variant-numeric: tabular-nums;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2194,7 +2194,7 @@
     width: 1.35rem;
     height: 1.35rem;
     padding: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-md);
     // No transition at rest. `color` is the property the 成功色 and its fade both move (the figure is
     // `currentColor`, doc-11 §2.4), and a standing `transition: color` on this button animates *every*
     // change of it — 表示テーマ の切り替え included, which measured as this one control easing to its
@@ -2309,7 +2309,7 @@
     grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 0.15rem 0.5rem;
     margin: 0;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
 
     // 値は列の幅に従う。値が列を押し広げると、押し広げた分だけパネルが横へスクロールする。
     select {
@@ -2369,7 +2369,7 @@
 
     h3 {
       margin: 0;
-      font-size: 0.8rem;
+      font-size: var(--text-lg);
     }
   }
 
@@ -2380,7 +2380,7 @@
     border-radius: 4px;
     background: var(--inset);
     font-family: inherit;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
     line-height: 1.5;
     // Long lines wrap instead of scrolling the panel sideways; newlines are kept as written.
     white-space: pre-wrap;
@@ -2394,7 +2394,7 @@
     margin: 0;
     padding: 0;
     list-style: none;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
   }
 
   // Same rule as the card's (doc-11 §3), so the two screens do not draw the same distinction two
@@ -2440,7 +2440,7 @@
     margin: 0;
     padding: 0;
     list-style: none;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
   }
 
   .ac li {
@@ -2480,7 +2480,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.74rem;
+      font-size: var(--text-md);
       text-align: left;
       cursor: pointer;
 
@@ -2508,14 +2508,14 @@
   }
 
   .meta {
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     opacity: 0.6;
   }
 
   .mark {
     padding: 0 0.3rem;
     border-radius: 3px;
-    font-size: 0.66rem;
+    font-size: var(--text-sm);
   }
 
   // 不整合印 (decision-22): 印グリフ なので族の色は図形自身が持ち、背景も枠も無い。カードと同じ扱いで、
@@ -2526,7 +2526,7 @@
     align-items: center;
     align-self: center;
     color: var(--mark-inconsistent);
-    font-size: 0.8rem;
+    font-size: var(--text-lg);
     cursor: help;
   }
 
@@ -2562,7 +2562,7 @@
 
   p {
     margin: 0;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
   }
 
   // 正常な不在は `--faint` (doc-11 §2.1・§6), the same 弱 as 空セル の `—` and the Git 履歴欄's 該当なし.
@@ -2596,7 +2596,7 @@
     }
 
     details {
-      font-size: 0.72rem;
+      font-size: var(--text-md);
     }
   }
 
@@ -2699,14 +2699,14 @@
     background: var(--inset);
     color: inherit;
     font: inherit;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
   }
 
   .field {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
 
     span {
       opacity: 0.6;
@@ -2720,7 +2720,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     cursor: pointer;
     // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5). Nothing here may add a `:disabled` rule: a
     // component-scoped one outranks the global selector and would put this screen's blocked controls
@@ -2733,7 +2733,7 @@
   }
 
   button.mini {
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
   }
 
   button.mini.on {
@@ -2747,7 +2747,7 @@
   .ac .box {
     display: block;
     flex: none;
-    font-size: 0.8rem;
+    font-size: var(--text-lg);
   }
 
   .ac button.box {
@@ -2768,7 +2768,7 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
   }
 
   .transition-list li,
@@ -2781,17 +2781,17 @@
 
   .effect {
     flex-basis: 100%;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     opacity: 0.6;
   }
 
   .hint {
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     opacity: 0.65;
   }
 
   .ok {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     opacity: 0.8;
   }
 
@@ -2803,7 +2803,7 @@
   .undetectable {
     padding: 0.3rem 0.4rem;
     border-left: 3px solid;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   .warn {

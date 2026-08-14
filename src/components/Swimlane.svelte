@@ -652,7 +652,7 @@
     padding: 0.4rem 0.5rem;
     border-bottom: 1px solid var(--line-strong);
     background: var(--bg);
-    font-size: 0.8rem;
+    font-size: var(--text-lg);
     font-weight: 600;
 
     .label {
@@ -669,7 +669,7 @@
     &.folded {
       gap: 0.16rem;
       padding: 0.4rem 0.25rem;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
     }
   }
 
@@ -753,7 +753,7 @@
     border-radius: 3px;
     background: color-mix(in srgb, var(--family) 12%, transparent);
     color: var(--family);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
 
     // 印は `cursor: help` と説明を伴う (doc-11 §3), keyed on the explanation being there — the same
     // rule the card and the detail heading use, so one chip does not promise more than another.
@@ -790,7 +790,7 @@
     color: inherit;
     overflow: hidden;
     font: inherit;
-    font-size: 0.85rem;
+    font-size: var(--text-xl);
     font-weight: 600;
     text-align: left;
     text-overflow: ellipsis;
@@ -808,13 +808,13 @@
   .slug {
     flex: none;
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
   }
 
   .count {
     flex: none;
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -833,7 +833,7 @@
   .fold-count {
     display: inline-flex;
     gap: 0.25rem;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
 
     .name {
       color: var(--muted);
@@ -848,7 +848,7 @@
   // (doc-11 §2.1) — the same colour TASK-48 moved the withheld reasons of the Git 履歴欄 to.
   .withheld {
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
     font-weight: 400;
     line-height: 1.25;
   }
@@ -869,7 +869,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     cursor: pointer;
   }
 
@@ -893,7 +893,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
       cursor: pointer;
       // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a `:disabled` rule here would outrank it.
     }
@@ -907,7 +907,7 @@
     padding: 0.3rem 0.5rem;
     border-bottom: 1px solid var(--line);
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
   }
 
   .row-message {
@@ -919,7 +919,7 @@
     // for the message to sit beside (doc-7 §2.3).
     grid-column: 1 / -1;
     padding: 0.5rem;
-    font-size: 0.8rem;
+    font-size: var(--text-lg);
 
     button {
       padding: 0.1rem 0.5rem;
@@ -928,7 +928,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.75rem;
+      font-size: var(--text-md);
       cursor: pointer;
     }
   }

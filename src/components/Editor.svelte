@@ -147,7 +147,7 @@
     background: var(--inset);
     color: inherit;
     font: inherit;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
     line-height: 1.5;
     resize: vertical;
   }
@@ -176,7 +176,7 @@
 
   .fallback {
     margin: 0;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     opacity: 0.7;
   }
 </style>

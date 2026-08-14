@@ -2955,7 +2955,7 @@
     flex: 1;
     flex-direction: column;
     min-height: 0;
-    font-size: 0.78rem;
+    font-size: var(--text-lg);
   }
 
   // 控えの群 (doc-11 §2.2): ← スイムレーン and このプロジェクトのレーンへ are the two ways off this
@@ -2990,7 +2990,7 @@
   }
 
   .name {
-    font-size: 0.95rem;
+    font-size: var(--text-2xl);
     font-weight: 600;
   }
 
@@ -2998,7 +2998,7 @@
   .slug,
   .counts {
     color: var(--muted);
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   .unreadable-count {
@@ -3152,7 +3152,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     white-space: nowrap;
     cursor: pointer;
 
@@ -3205,13 +3205,13 @@
 
     .id {
       font-family: ui-monospace, monospace;
-      font-size: 0.72rem;
+      font-size: var(--text-md);
     }
 
     .meta {
       display: block;
       color: var(--muted);
-      font-size: 0.68rem;
+      font-size: var(--text-sm);
     }
 
     .card-head .meta {
@@ -3221,7 +3221,7 @@
     .card-title {
       display: block;
       margin-top: 0.1rem;
-      font-size: 0.75rem;
+      font-size: var(--text-md);
       font-weight: 600;
       overflow-wrap: anywhere;
     }
@@ -3234,7 +3234,7 @@
     border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
     border-radius: 3px;
     color: var(--info);
-    font-size: 0.66rem;
+    font-size: var(--text-sm);
   }
 
   // The pane beside a 一覧列 — 文書ペイン (doc-10 §5), マイルストーンペイン (§6), 決定事項ペイン
@@ -3269,12 +3269,12 @@
 
   h2 {
     margin: 0 0 0.5rem;
-    font-size: 0.88rem;
+    font-size: var(--text-xl);
   }
 
   h3 {
     margin: 0 0 0.35rem;
-    font-size: 0.78rem;
+    font-size: var(--text-lg);
   }
 
   .field {
@@ -3286,7 +3286,7 @@
   }
 
   .label {
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     opacity: 0.85;
   }
 
@@ -3296,7 +3296,7 @@
     align-items: center;
     gap: 0.35rem;
     margin-bottom: 0.55rem;
-    font-size: 0.75rem;
+    font-size: var(--text-md);
   }
 
   .row {
@@ -3367,7 +3367,7 @@
     background: var(--inset);
     color: inherit;
     font: inherit;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
   }
 
   .row-inline input[type="text"] {
@@ -3382,13 +3382,13 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
     cursor: pointer;
     // 無効化提示 lives in one place in app.scss (doc-11 §5); a `:disabled` rule here would outrank it.
 
     &.mini {
       padding: 0 0.3rem;
-      font-size: 0.68rem;
+      font-size: var(--text-sm);
     }
 
     &.primary {
@@ -3452,7 +3452,7 @@
     border-radius: 4px;
 
     legend {
-      font-size: 0.72rem;
+      font-size: var(--text-md);
       opacity: 0.8;
     }
   }
@@ -3466,7 +3466,7 @@
     border-radius: 4px;
 
     legend {
-      font-size: 0.72rem;
+      font-size: var(--text-md);
       opacity: 0.8;
     }
 
@@ -3485,7 +3485,7 @@
 
     h4 {
       margin: 0 0 0.25rem;
-      font-size: 0.72rem;
+      font-size: var(--text-md);
       opacity: 0.85;
     }
   }
@@ -3493,7 +3493,7 @@
   .paths {
     margin: 0 0 0.25rem;
     padding-left: 1rem;
-    font-size: 0.72rem;
+    font-size: var(--text-md);
     word-break: break-all;
   }
 
@@ -3525,7 +3525,7 @@
   // 宣言集合なし, where the alias works without a declaration behind it, out of that mark.
   .alias-effect {
     color: var(--muted);
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
 
     &.ineffective {
       color: var(--mark-inconsistent);
@@ -3535,7 +3535,7 @@
   .alias-note {
     margin: 0 0 0.35rem;
     color: var(--muted);
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
 
     &.ineffective {
       color: var(--mark-inconsistent);
@@ -3560,7 +3560,7 @@
       align-items: baseline;
       gap: 0.35rem;
       padding: 0.12rem 0;
-      font-size: 0.72rem;
+      font-size: var(--text-md);
     }
 
     .from {
@@ -3582,7 +3582,7 @@
 
     p {
       margin: 0 0 0.4rem;
-      font-size: 0.74rem;
+      font-size: var(--text-md);
     }
   }
 
@@ -3593,7 +3593,7 @@
     display: block;
     margin: 0.1rem 0 0;
     color: var(--muted);
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     word-break: break-all;
   }
 
@@ -3629,7 +3629,7 @@
     gap: 0.5rem;
     margin: 0.1rem 0 0;
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
 
     .id {
       color: var(--fg);
@@ -3654,7 +3654,7 @@
     align-items: center;
     align-self: center;
     color: var(--mark-inconsistent);
-    font-size: 0.8rem;
+    font-size: var(--text-lg);
     cursor: help;
   }
 
@@ -3666,7 +3666,7 @@
     margin: 0.35rem 0 0;
     padding-left: 1.1rem;
     color: var(--mark-inconsistent);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
 
     li {
       margin-bottom: 0.15rem;
@@ -3685,7 +3685,7 @@
 
     h3 {
       margin: 0 0 0.25rem;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
     }
 
     ul {
@@ -3700,14 +3700,14 @@
 
     code {
       display: block;
-      font-size: 0.66rem;
+      font-size: var(--text-sm);
       word-break: break-all;
     }
   }
 
   .reason-line {
     display: block;
-    font-size: 0.66rem;
+    font-size: var(--text-sm);
   }
 
   // The 未保存入力 mark (doc-10 §5・§6). Not one of decision-6's 印の族 — nothing is degraded and nothing
@@ -3718,7 +3718,7 @@
     border-radius: 3px;
     background: color-mix(in srgb, var(--info) 12%, transparent);
     color: var(--info);
-    font-size: 0.66rem;
+    font-size: var(--text-sm);
   }
 
   .sub-panel {
@@ -3770,7 +3770,7 @@
       padding: 0.1rem 0.3rem;
       border: 1px solid var(--line-strong);
       border-radius: 3px;
-      font-size: 0.72rem;
+      font-size: var(--text-md);
     }
   }
 
@@ -3801,13 +3801,13 @@
   .blocked-note {
     margin: 0.2rem 0 0;
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
   }
 
   .neutral {
     margin: 0.2rem 0;
     color: var(--muted);
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   // A correctable input problem. decision-6's unreadable hue is deliberately not reused: this is
@@ -3815,14 +3815,14 @@
   .problem {
     margin: 0.15rem 0;
     color: var(--mark-inconsistent);
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   // ルート読取不能 (doc-7 §6, decision-6): never drawn the same way as an empty list.
   .unreadable {
     margin: 0.3rem 0;
     color: var(--mark-unreadable);
-    font-size: 0.74rem;
+    font-size: var(--text-md);
   }
 
   // 破棄前確認 (doc-10 §5・§6): the question above the two columns. Its two answers are a 控えの群
@@ -3835,7 +3835,7 @@
     gap: 0.4rem;
     padding: 0.4rem;
     background: color-mix(in srgb, var(--info) 12%, transparent);
-    font-size: 0.74rem;
+    font-size: var(--text-md);
 
     button {
       height: 1.75rem;
@@ -3845,7 +3845,7 @@
   .ok {
     margin: 0.4rem 0;
     color: var(--muted);
-    font-size: 0.74rem;
+    font-size: var(--text-md);
   }
 
   // 照合不能 is neither a conflict nor a failure (doc-9 §4.2/§5): its own family's colour, so it
@@ -3855,7 +3855,7 @@
     margin: 0.4rem 0;
     padding: 0.35rem 0.45rem;
     border-left: 3px solid;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
   }
 
   .warn {
@@ -3887,7 +3887,7 @@
     border: 0;
     background: none;
     color: var(--muted);
-    font-size: 0.82rem;
+    font-size: var(--text-lg);
     line-height: 1;
     cursor: pointer;
 

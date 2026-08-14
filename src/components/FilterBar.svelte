@@ -291,7 +291,7 @@
     gap: var(--bar-gap);
     padding: 0.3rem 0.75rem;
     border-bottom: 1px solid var(--line);
-    font-size: 0.72rem;
+    font-size: var(--text-md);
   }
 
   // 操作に属さないアイコン (doc-11 §2.4). No size of its own: the figure is 1em, so the bar's own
@@ -313,7 +313,7 @@
     background: var(--bg);
     color: inherit;
     font: inherit;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
   }
 
   .add {
@@ -355,7 +355,7 @@
     // rather than the 3px it gives chips.
     border-radius: 4px;
     background: var(--inset);
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     white-space: nowrap;
 
     // 保存区分's 既定 was not chosen by anyone, so it is drawn a shade quieter than the conditions
@@ -368,7 +368,7 @@
 
   .facet {
     color: var(--muted);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
   }
 
   .value {
@@ -389,7 +389,7 @@
     background: transparent;
     color: var(--muted);
     font: inherit;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     line-height: 1;
     cursor: pointer;
 
@@ -421,7 +421,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     // A fixed height cannot absorb a wrapped label — the second line would leave the 22.39px box.
     // The same reason `.token` carries it; these controls only gained a fixed height here.
     white-space: nowrap;
@@ -431,14 +431,14 @@
   // 解除の 2 つは、条件を足す ＋ 絞り込み より一段静かに置く (画面設計案 03 案A が 既定に戻す に
   // 与えた大きさ)。帯で先に読まれるべきなのは、いま効いている条件と、条件を足す入口である。
   .actions .control {
-    font-size: 0.66rem;
+    font-size: var(--text-sm);
   }
 
   // The chord beside its operation (doc-7 §2.1 / AC #4). Quiet, and outside the accessible name — the
   // control's own label is the entry, and `aria-keyshortcuts` carries the chord as data.
   .hint {
     color: var(--muted);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 
@@ -459,7 +459,7 @@
   // rather than on one of its own, so stating it costs the grid no height.
   .blocked-note {
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
   }
 
   // 並び順 (doc-7 §5.4). Takes the bar's own height like every other control here — 帯の高さは 1 行
@@ -477,7 +477,7 @@
       // 副次 (doc-11 §2.1), like the トークン's 属性名: the word names the control, the value is what
       // is read.
       color: var(--muted);
-      font-size: 0.64rem;
+      font-size: var(--text-xs);
     }
 
     select {
@@ -490,13 +490,13 @@
       background: var(--bg);
       color: var(--fg);
       font: inherit;
-      font-size: 0.66rem;
+      font-size: var(--text-sm);
     }
   }
 
   .order-failure {
     color: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-sm);
   }
 
 </style>

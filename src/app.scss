@@ -284,6 +284,33 @@ $themes: (
 :root {
   @include theme-vars(map.get($themes, "atlas-light"));
 
+  // 文字寸法段階 (doc-11 §2.2). **The app's every font-size comes from these six and nowhere else**
+  // — the same shape decision-12 gives colour, and for the same reason: before TASK-164 there were
+  // 186 declarations across 18 files spelling 18 different rem values between .62 and 1, none of them
+  // sharing a variable, so no screen could be said to take the size the design table names.
+  //
+  // A ladder rather than one property per role, because §2.2's role table cannot cover every box that
+  // carries text — 余白段階 and 角丸 have been that shape since the table was written, and §2.2 says
+  // outright that choosing which step a surface takes belongs to the screen.
+  // 段の幅は一定の 0.06rem である。**一定にしたのは、狭い段が段として働かないためである** — 置き換えた
+  // 18 値には .74/.75 (0.01 差) や .92/.95 (0.03 差) の組があり、隣り合う 2 つを別の大きさとして読める
+  // 画面は無かった。0.06rem は地の 110% で 1.06px にあたる。
+  --text-xs: 0.62rem;
+  --text-sm: 0.68rem;
+  --text-md: 0.74rem;
+  --text-lg: 0.8rem;
+  --text-xl: 0.86rem;
+  --text-2xl: 0.92rem;
+
+  // 地の 1rem (doc-11 §2.2). 110% of the engine's default rather than a pixel count, so an OS text
+  // size the user has raised still multiplies through — a `px` here would be Atlas overriding it.
+  //
+  // **This is the whole of TASK-164's readability change**: the 段階 above keep the rem numbers the
+  // design table already had, and this one line makes each of them 1.1× longer, so every rem-stated
+  // 余白・角丸・フォーム部品の高さ・行長上限 48rem moves with the text instead of crowding it. Raising
+  // the 段階 instead was measured on 2026-08-14 and crowds: at ×1.18 the カード's 印 and priority チップ
+  // dropped onto separate lines, because the padding around them did not follow.
+  font-size: 110%;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.5;
 }

@@ -166,7 +166,7 @@
     border-radius: 6px;
     background: var(--panel);
     box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 18%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-md);
     overflow-y: auto;
   }
 
@@ -201,7 +201,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.75rem;
+    font-size: var(--text-md);
     text-align: left;
     cursor: pointer;
     // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5); a rule here would outrank it.
@@ -244,7 +244,7 @@
   .hint {
     flex: none;
     color: var(--muted);
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -254,7 +254,7 @@
   .held {
     margin: 0 0.35rem 0.2rem;
     color: var(--muted);
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     line-height: 1.3;
   }
 

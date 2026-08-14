@@ -133,7 +133,7 @@
     align-items: center;
     gap: 0.3rem;
     margin: 0;
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     font-weight: 650;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -155,7 +155,7 @@
     gap: 0.3rem;
     // 開閉印 の 1em を決めるのはこの箱で (doc-11 §2.4), 隣の 区画名 と同じ寸法でなければならない —
     // `<h3>` が自分で `.68rem` を取るので、ここを既定のままにすると図形だけ 16px で描かれる.
-    font-size: 0.68rem;
+    font-size: var(--text-sm);
     // The UA marker is what TASK-73 replaces; leaving it would print two 開閉印 side by side.
     // Both properties are needed — WebKit answers to the pseudo-element, Chromium to `list-style`.
     list-style: none;
@@ -183,7 +183,7 @@
   }
 
   .count {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
     letter-spacing: normal;
     text-transform: none;

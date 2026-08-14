@@ -358,7 +358,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.9rem;
+    font-size: var(--text-2xl);
     cursor: pointer;
 
     // hover は 枠線 --line → --line-strong (doc-11 §2.3). At rest the border is transparent rather
@@ -416,7 +416,7 @@
     border-radius: calc(var(--modal-dialog-radius) - var(--modal-dialog-border))
       calc(var(--modal-dialog-radius) - var(--modal-dialog-border)) 0 0;
     background: var(--panel);
-    font-size: 0.75rem;
+    font-size: var(--text-md);
 
     // 折り返さない, as the 帯 does not (doc-11 §4): the answers keep their place at the end of the row
     // whatever the question's length and the window's width.
@@ -439,7 +439,7 @@
       background: transparent;
       color: inherit;
       font: inherit;
-      font-size: 0.7rem;
+      font-size: var(--text-sm);
       cursor: pointer;
 
       &:focus-visible {

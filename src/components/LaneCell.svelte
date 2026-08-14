@@ -190,7 +190,7 @@
 
   .count {
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -200,6 +200,6 @@
   .empty {
     padding: 0.2rem 0.1rem;
     color: var(--faint);
-    font-size: 0.75rem;
+    font-size: var(--text-md);
   }
 </style>

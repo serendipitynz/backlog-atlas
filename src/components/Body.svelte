@@ -186,7 +186,7 @@
     border-radius: 4px;
     background: var(--inset);
     font-family: inherit;
-    font-size: 0.74rem;
+    font-size: var(--text-md);
     line-height: 1.5;
     // doc-8 §2.1 の行長上限 48rem。The value is the caller's `--prose-max-width` so this component holds
     // no second 48 (doc-10 §5 takes the same line).
