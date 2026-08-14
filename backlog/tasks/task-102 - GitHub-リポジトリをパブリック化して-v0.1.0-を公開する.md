@@ -1,10 +1,10 @@
 ---
 id: TASK-102
 title: GitHub リポジトリをパブリック化して v0.1.0 を公開する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:35'
-updated_date: '2026-08-14 00:30'
+updated_date: '2026-08-14 02:21'
 labels:
   - release
   - 'kind:chore'
@@ -37,7 +37,7 @@ m-2 の最後。リポジトリをパブリックにし、v0.1.0 タグを打っ
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 リポジトリがパブリックになっている
-- [ ] #2 v0.1.0 タグからリリースが公開され、各プラットフォームのバンドルが取得できる
+- [x] #2 v0.1.0 タグからリリースが公開され、各プラットフォームのバンドルが取得できる
 - [x] #3 _sandbox/ の一時成果物がリポジトリに含まれていない
 - [x] #4 リポジトリ説明とトピックが設定されている
 <!-- AC:END -->
