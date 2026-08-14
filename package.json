@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "lint": "biome lint",
     "test": "vitest run",
     "tauri": "tauri"
   },
@@ -19,6 +20,7 @@
     "mermaid": "^11.16.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.8",
     "@sveltejs/vite-plugin-svelte": "^5",
     "@tauri-apps/cli": "^2",
     "jsdom": "^30.0.1",
