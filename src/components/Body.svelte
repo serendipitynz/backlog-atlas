@@ -216,10 +216,14 @@
     // 整形表示 to be larger again.
     //
     // **The upper bound is §14.1's, and it is the heading of the panel this body sits inside** —
-    // `--text-3xl`, which タスク title and プロジェクト名 both take. It is not 区画見出し: that bound was
-    // in §14.1 for a long time and the implementation never met it (a prose h1 measured 15.14px against
-    // 11.97px on タスク詳細 and 14.08px on プロジェクト詳細, before this task touched anything), so §14.1
-    // now says what actually separates a 区画見出し — its rule line, its letter-spacing and `--muted`.
+    // `--text-3xl`, which タスク title and プロジェクト名 both take. It is not 区画見出し: that bound stood
+    // in §14.1 for a long time and the implementation never met it. Before TASK-164 these headings were
+    // `.78rem` against a 区画見出し's `.68rem`, already above it at the 16px ground, and they are 16.19px
+    // against 11.97px now. So §14.1 says what actually separates a 区画見出し — its rule line, its
+    // letter-spacing and `--muted` — rather than a size bound nothing has held to.
+    //
+    // **プロジェクト詳細's pane heading is a different case and §14.1 spells it out**: before TASK-164 it
+    // and these headings were both `.78rem`, so "never met" is true of 区画見出し and not of that one.
     :global(h1),
     :global(h2),
     :global(h3),
