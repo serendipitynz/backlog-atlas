@@ -35,6 +35,8 @@ import type {
   LaunchMethod,
 } from "./wire";
 import { commandErrorDetail, type IssueConfirmation } from "./edit";
+import { launchRefusalText } from "./failure";
+import { msg } from "./messages";
 
 /**
  * What became of one launch, as the shell reports it back to the panel. Mirrors `ApplyOutcome`: the
@@ -239,14 +241,14 @@ export function launchFailureDetail(error: CommandError): string {
         "（外部での移動・削除の可能性）。タスクを開き直してください。"
       );
     case "editorUnavailable":
-      return `外部エディタを起動できません: ${error.detail}`;
+      return `外部エディタを起動できません: ${msg().failure.editorUnavailable}`;
     case "editorLaunchFailed":
       // 「で開けませんでした」rather than 「を起動できませんでした」, and the correction follows the method:
       // `program` may be `ShellExecuteW` (Windows' association launcher), whose failures are things like
       // "nothing is registered for this extension" — pointing that user at VISUAL・EDITOR would name the
       // one thing that has no bearing on it.
       return (
-        `${error.program} で開けませんでした: ${error.detail}。` +
+        `${error.program} で開けませんでした: ${launchRefusalText(error.reason, error.detail)}。` +
         (error.method === "association"
           ? ".md に関連付けられたアプリケーションが OS に登録されているか確認してください" +
             "（アプリ設定・$VISUAL・$EDITOR での起動は使えます）。"

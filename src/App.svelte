@@ -55,6 +55,7 @@
   } from "./lib/commands";
   import { REGISTERING_REASON, refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
+  import type { RemoteLine } from "./lib/git-remote-read";
   import { topBands } from "./lib/band";
   import { SHORTCUT_HELP_LABEL, headerMenu, type HeaderEntryId, type MenuItem } from "./lib/header";
   import {
@@ -139,7 +140,6 @@
     CliReadiness,
     DetailPlacement,
     EditorReadiness,
-    GitRemoteRead,
     LaunchMethod,
     ColumnCreateStatuses,
     LedgerResponse,
@@ -1576,15 +1576,15 @@
    * touches neither, so it only reorders the rows.
    */
   /**
-   * The 概要区画's remote 現在値 (doc-10 §4.1). Resolves to a `GitRemoteRead` even when the command
+   * The 概要区画's remote 現在値 (doc-10 §4.1). Resolves to a `RemoteLine` even when the command
    * rejects: what the line says differs between「remote が無い」and「読めなかった」(decision-6), so a
    * rejection becomes the second rather than being folded into an absence nobody observed.
    */
-  async function readGitRemote(slug: string): Promise<GitRemoteRead> {
+  async function readGitRemote(slug: string): Promise<RemoteLine> {
     try {
       return await gitRemoteRead(slug);
     } catch (error) {
-      return { state: "unreadable", detail: commandErrorDetail(asCommandError(error)) };
+      return { state: "unaskable", detail: commandErrorDetail(asCommandError(error)) };
     }
   }
 

@@ -154,7 +154,29 @@ pub enum ProbeOutcome {
     /// `MIN_VERSION` (decision-7). Parsing a version here would be a second, unenforced opinion.
     Launched { report: String },
     /// It could not be started, or started and failed. This is TASK-156's symptom made visible.
-    Failed { detail: String },
+    Failed {
+        reason: ProbeFailure,
+        detail: String,
+    },
+}
+
+/// 失敗理由符号 (decision-35 §3) for a `--version` probe that did not report a version.
+///
+/// **The three are told apart by what was observed**, not by what the program wrote: a probe that
+/// exited with an empty stderr and one that wrote a line are the same observation, and the screen
+/// says the same thing about both — the line, when there is one, is added after that sentence rather
+/// than replacing it. Deciding it here is what keeps one 失敗理由符号 from having two sentences.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "reason", rename_all = "camelCase")]
+pub enum ProbeFailure {
+    /// The program could not be started. Names it, because the errno alone does not say which one
+    /// was not found and that is the whole content of the answer here.
+    SpawnFailed { program: String },
+    /// It ran and exited unsuccessfully. Its first stderr line is the `detail`, and may be empty.
+    Exited,
+    /// The bounded wait ended without it answering. Whatever the wait noticed is the `detail`, and
+    /// is usually empty.
+    NoResponse,
 }
 
 /// How long one 解決結果の表示 probe may take. Far below doc-5 §5's 30-second CLI 終了期限, because
@@ -193,15 +215,18 @@ pub fn probe_program(
             report: first_line(&completed.stdout),
         },
         Ok(completed) => ProbeOutcome::Failed {
-            detail: failure_detail(&completed.stderr),
+            reason: ProbeFailure::Exited,
+            detail: first_line(&completed.stderr),
         },
-        // The errno alone does not say which program was not found, and that is the whole content of
-        // the answer here — so the program is named (subprocess::Stopped::Spawn's own contract).
         Err(subprocess::Stopped::Spawn(e)) => ProbeOutcome::Failed {
-            detail: format!("{} を起動できません（{e}）", program.display()),
+            reason: ProbeFailure::SpawnFailed {
+                program: program.display().to_string(),
+            },
+            detail: e.to_string(),
         },
         Err(subprocess::Stopped::Ended { detail }) => ProbeOutcome::Failed {
-            detail: detail.unwrap_or_else(|| "応答がありません".to_string()),
+            reason: ProbeFailure::NoResponse,
+            detail: detail.unwrap_or_default(),
         },
     };
     ExternalProgramReport {
@@ -214,15 +239,6 @@ pub fn probe_program(
 
 fn first_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().trim().to_string()
-}
-
-fn failure_detail(stderr: &str) -> String {
-    let line = first_line(stderr);
-    if line.is_empty() {
-        "実行に失敗しました".to_string()
-    } else {
-        line
-    }
 }
 
 #[cfg(test)]

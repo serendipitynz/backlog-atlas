@@ -210,7 +210,7 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
         relations: [
           relation(PR_URL, { state: "resolved", commitIds: ["a1"] }),
           relation(`${PR_URL}1`, { state: "resolved", commitIds: [] }),
-          relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
+          relation(`${PR_URL}2`, { state: "lookupFailed", reason: { reason: "queryFailed" }, detail: "offline" }),
           relation(`${PR_URL}3`, { state: "hostUnsupported" }),
         ],
       }),
@@ -265,7 +265,7 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
         relations: [
           relation(PR_URL, { state: "resolved", commitIds: ["a1", "b2"] }),
           relation(`${PR_URL}1`, { state: "resolved", commitIds: ["b2"] }),
-          relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
+          relation(`${PR_URL}2`, { state: "lookupFailed", reason: { reason: "queryFailed" }, detail: "offline" }),
         ],
       }),
     );
@@ -283,7 +283,7 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
           relations: [
             relation(PR_URL, { state: "resolved", commitIds: ["a1"] }),
             relation(`${PR_URL}1`, { state: "resolved", commitIds: [] }),
-            relation(`${PR_URL}2`, { state: "lookupFailed", reason: "queryFailed", detail: "offline" }),
+            relation(`${PR_URL}2`, { state: "lookupFailed", reason: { reason: "queryFailed" }, detail: "offline" }),
             relation(`${PR_URL}3`, { state: "hostUnsupported" }),
           ],
         }),
@@ -312,16 +312,18 @@ describe("AC #4 Git 履歴欄: コミット一覧と 0 件の扱い", () => {
         loaded(history({ relations: [relation(PR_URL, { state: "lookupFailed", reason, detail: "x" })] })),
       )[0].text;
 
-    expect(accountFor("toolMissing")).toContain("gh を導入すれば解消できます");
-    expect(accountFor("invalidReference")).toContain("References の URL を直せば解消できます");
+    expect(accountFor({ reason: "toolMissing" })).toContain("gh を導入すれば解消できます");
+    expect(accountFor({ reason: "invalidReference", value: ".." })).toContain(
+      "References の URL を直せば解消できます",
+    );
     // The one case whose cause is undecidable here must not claim 認証・ネットワークが回復すれば解消.
-    const query = accountFor("queryFailed");
+    const query = accountFor({ reason: "queryFailed" });
     expect(query).toContain("この結果からは分かりません");
     expect(query).not.toContain("すれば解消できます");
     // 照会期限到達 (decision-19) is the fourth: Atlas ended the 照会 itself, so unlike `queryFailed`
     // it can say what happened — and unlike the first two it still promises no fix, only that a
     // retry may answer differently.
-    const timedOut = accountFor("timedOut");
+    const timedOut = accountFor({ reason: "timedOut", afterSecs: 15 });
     expect(timedOut).toContain("Atlas が照会を打ち切りました");
     expect(timedOut).toContain("再取得で解消することがあります");
     expect(timedOut).not.toContain("すれば解消できます");

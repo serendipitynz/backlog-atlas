@@ -1199,9 +1199,14 @@ pub enum UpdateOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateFailure {
-    /// The 写像先 that failed — a sub-command name like `"task edit"`, or [`MILESTONE_DESCRIBE`] for
-    /// the 直接書き込み操作, which has no sub-command to name (doc-5 §1/§3).
-    pub command: String,
+    /// The 写像先 that failed — a sub-command name like `"task edit"`. **`None` for the
+    /// 直接書き込み操作**, which has no sub-command to name (doc-5 §1/§3): what failed there is said
+    /// by [`FailureKind::Write`], which no other 写像先 produces, so the screen words it rather than
+    /// printing a name this crate wrote (decision-35 §3).
+    ///
+    /// A sub-command name is *not* screen text held back by that rule: `task edit` is the CLI's own
+    /// identifier, and decision-35 §5 leaves identifiers as they are.
+    pub command: Option<String>,
     /// Why it failed, and its stderr as the failure reason shown to the user (doc-5 §5).
     pub kind: FailureKind,
     pub stderr: String,
@@ -1237,11 +1242,6 @@ pub enum FailureKind {
     /// only failure that is *never* 要再読込 on its own — 一時ファイル置換 leaves the old file whole.
     Write,
 }
-
-/// What [`UpdateFailure::command`] says when the 直接書き込み操作 fails. Named after the doc-5 §3
-/// operation rather than invented, and Japanese because the screen reads it in a Japanese sentence
-/// (`… が失敗しました`) exactly where a sub-command name would go.
-pub const MILESTONE_DESCRIBE: &str = "マイルストーン説明の更新";
 
 /// The seam the 直接書き込み操作 reaches the disk through (doc-5 §1, decision-21).
 ///
@@ -1393,7 +1393,7 @@ fn execute(
             Mapped::WriteMilestoneDescription { name, description } => {
                 if let Err(failure) = writer.write_milestone_description(name, description) {
                     return UpdateOutcome::Failed(UpdateFailure {
-                        command: MILESTONE_DESCRIBE.to_string(),
+                        command: None,
                         kind: FailureKind::Write,
                         stderr: failure.detail,
                         // 一時ファイル置換 leaves the whole old file under the destination's name
@@ -1423,7 +1423,7 @@ fn execute(
                     ),
                 };
                 return UpdateOutcome::Failed(UpdateFailure {
-                    command: inv.command_name(),
+                    command: Some(inv.command_name()),
                     kind,
                     stderr: error.to_string(),
                     completed_before: i,
@@ -1435,7 +1435,7 @@ fn execute(
                 // left unchanged (doc-5 §5), and any earlier invocation's effect is reconciled by
                 // reload (doc-5 §6).
                 return UpdateOutcome::Failed(UpdateFailure {
-                    command: inv.command_name(),
+                    command: Some(inv.command_name()),
                     kind: FailureKind::NonZero { code: run.code },
                     stderr: run.stderr,
                     completed_before: i,
@@ -2780,7 +2780,7 @@ mod tests {
         .unwrap();
         match outcome {
             UpdateOutcome::Failed(f) => {
-                assert_eq!(f.command, "task complete");
+                assert_eq!(f.command.as_deref(), Some("task complete"));
                 assert_eq!(f.kind, FailureKind::NonZero { code: Some(1) });
                 assert!(f.stderr.contains("is not Done"));
                 assert_eq!(f.completed_before, 0);
@@ -2850,7 +2850,7 @@ mod tests {
         .unwrap();
         match outcome {
             UpdateOutcome::Failed(f) => {
-                assert_eq!(f.command, "task complete");
+                assert_eq!(f.command.as_deref(), Some("task complete"));
                 assert_eq!(f.completed_before, 1);
                 assert!(f.reload_required);
             }
@@ -2940,7 +2940,9 @@ mod tests {
         .unwrap();
         match outcome {
             UpdateOutcome::Failed(failure) => {
-                assert_eq!(failure.command, MILESTONE_DESCRIBE);
+                // The 直接書き込み操作 names no sub-command; `FailureKind::Write` is what says
+                // which 写像先 failed (decision-35 §3).
+                assert_eq!(failure.command, None);
                 assert_eq!(failure.kind, FailureKind::Write);
                 assert!(failure.stderr.contains("Description"));
                 // 一時ファイル置換 leaves the old file whole, so a first-step write failure is not
@@ -3150,7 +3152,7 @@ mod tests {
         assert_eq!(ok["state"], "succeeded");
 
         let failed = serde_json::to_value(UpdateOutcome::Failed(UpdateFailure {
-            command: "task edit".to_string(),
+            command: Some("task edit".to_string()),
             kind: FailureKind::NonZero { code: Some(1) },
             stderr: "boom".to_string(),
             completed_before: 1,
@@ -3168,7 +3170,7 @@ mod tests {
         assert!(failed.get("reload_required").is_none());
 
         let timed_out = serde_json::to_value(UpdateOutcome::Failed(UpdateFailure {
-            command: "task edit".to_string(),
+            command: Some("task edit".to_string()),
             kind: FailureKind::TimedOut { after_ms: 30_000 },
             stderr: "terminated".to_string(),
             completed_before: 0,

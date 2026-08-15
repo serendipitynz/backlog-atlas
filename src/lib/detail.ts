@@ -48,6 +48,7 @@ import type {
   TaskHistory,
   TaskView,
 } from "./wire";
+import { lookupFailureText } from "./failure";
 
 /**
  * Why 横断タスクID のコピー (doc-8 §2.2) cannot be offered for this task: the read layer could not get a
@@ -357,7 +358,7 @@ export function relationAccounts(history: HistoryState): RelationAccount[] {
           // 「関連が無い」ではなく「今は確かめられない」であることは 4 つの原因に共通し、解消の
           // 手掛かりだけが原因ごとに違う (doc-8 §5). 解消経路を payload から確定できない
           // `queryFailed` に、確定できるかのような文言を当てない。
-          text: `参照不能: ${outcome.detail}。今は確かめられないだけで、関連が無いという意味ではありません。${lookupRemedy(outcome.reason)}`,
+          text: `参照不能: ${lookupFailureText(outcome.reason, outcome.detail)}。今は確かめられないだけで、関連が無いという意味ではありません。${lookupRemedy(outcome.reason)}`,
           kind: "failure" as const,
         };
     }
@@ -366,7 +367,7 @@ export function relationAccounts(history: HistoryState): RelationAccount[] {
 
 /** その原因が解消できるかどうか (doc-8 §5), per [`LookupFailure`]. */
 function lookupRemedy(reason: LookupFailure): string {
-  switch (reason) {
+  switch (reason.reason) {
     case "toolMissing":
       return "参照手段を起動できていないため、gh を導入すれば解消できます。";
     case "invalidReference":

@@ -64,8 +64,8 @@
 
 use crate::domain::{Config, Decision, Document, Milestone, ProjectModel, Task, UnmappedFile};
 use crate::editor::{
-    self, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment, LaunchMethod,
-    Launcher, SystemEnv, SystemLauncher,
+    self, BodyLinkRefusal, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment,
+    LaunchMethod, LaunchRefusal, Launcher, SystemEnv, SystemLauncher,
 };
 use crate::external::{self, ExternalProgram, ExternalProgramReport, ExternalProgramSource};
 use crate::history::{
@@ -364,13 +364,17 @@ pub enum CommandError {
     UnknownTaskFile { slug: String, path: PathBuf },
     /// The chosen launch method has no launcher here (doc-8 §7): `VISUAL`/`EDITOR` are unset. Not a
     /// failure of the file or the project — the other method may still work.
-    EditorUnavailable { detail: String },
+    ///
+    /// **Carries nothing**: 起動指定の解決順 has one way of coming up empty, so this token is the whole
+    /// 失敗理由符号 and the screen words it from the token alone (decision-35 §3).
+    EditorUnavailable,
     /// The launcher was reached and the OS refused (a missing program, a permission fault, no
     /// association for the extension). Names what was tried, and by which method — the correction is
     /// the 起動指定 for one and the OS's association for the other.
     EditorLaunchFailed {
         method: LaunchMethod,
         program: String,
+        reason: LaunchRefusal,
         detail: String,
     },
     /// 履歴読取の取消 (decision-19): the screen cancelled this read, so there is no answer. Not a
@@ -381,13 +385,15 @@ pub enum CommandError {
     /// 既定ブラウザ起動 (doc-8 §9.3) did not open the 本文リンク: the URL was refused, or the OS call ran
     /// and opened nothing.
     ///
-    /// **One variant for both causes**, unlike the editor route above. Typing a failure buys the screen
-    /// a different action to take, and there is none here — doc-8 §9.3 draws only `http`/`https` as
-    /// links, so a refusal means the screen and this boundary disagree, which the user can do nothing
-    /// about; both causes reach ⑤ 通知 with their sentence (doc-11 §4). Carrying no `program` either: the
-    /// message names it when there was one (`BrowserError`'s `Display`), and a field that is absent for
-    /// one of two causes would be a `null` the screen has to branch on for no gain.
-    BodyLinkFailed { detail: String },
+    /// **The causes used to be one variant with one sentence**, on the reasoning that typing a failure
+    /// buys the screen a different action and there is none here — both reach ⑤ 通知 (doc-11 §4).
+    /// decision-35 §3 ends that: the sentence is the screen's to write now, so the cause arrives as a
+    /// [`BodyLinkRefusal`]. `program` rides inside it, on the one variant that has one, rather than
+    /// beside it as a `null` the screen would branch on for the other two.
+    BodyLinkFailed {
+        reason: BodyLinkRefusal,
+        detail: String,
+    },
 }
 
 /// Which ledger operation refusal happened (doc-3 §3.1/§3.3/§4). One variant per refusal
@@ -469,7 +475,8 @@ impl From<SettingsError> for CommandError {
 impl From<editor::BrowserError> for CommandError {
     fn from(error: editor::BrowserError) -> Self {
         CommandError::BodyLinkFailed {
-            detail: error.to_string(),
+            reason: error.reason,
+            detail: error.detail,
         }
     }
 }
@@ -477,14 +484,16 @@ impl From<editor::BrowserError> for CommandError {
 impl From<EditorError> for CommandError {
     fn from(error: EditorError) -> Self {
         match error {
-            EditorError::Unavailable { detail } => CommandError::EditorUnavailable { detail },
+            EditorError::Unavailable => CommandError::EditorUnavailable,
             EditorError::LaunchFailed {
                 method,
                 program,
+                reason,
                 detail,
             } => CommandError::EditorLaunchFailed {
                 method,
                 program,
+                reason,
                 detail,
             },
         }
@@ -2357,7 +2366,10 @@ ordinal: 1000\n\
 
         /// The boundary's tests all use `LaunchMethod::Configured`, which is a spawn on every platform;
         /// which OS call the association method takes is `editor`'s decision and is asserted there.
-        fn shell_execute(&self, _target: &std::ffi::OsStr) -> std::io::Result<()> {
+        fn shell_execute(
+            &self,
+            _target: &std::ffi::OsStr,
+        ) -> Result<(), crate::editor::LaunchFailure> {
             unreachable!("the boundary's tests launch the configured editor, which is a spawn")
         }
 

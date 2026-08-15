@@ -54,6 +54,8 @@ import type {
   UpdateOperation,
 } from "./wire";
 import { commaReason, firstWithComma } from "./comma";
+import { bodyLinkRefusalText, launchRefusalText } from "./failure";
+import { msg } from "./messages";
 import { refusalReport } from "./ledger";
 
 // --- 未保存入力 (doc-8 §1/§6.3) ------------------------------------------------------------
@@ -779,7 +781,10 @@ export type SaveState =
  */
 export function failureDetail(failure: UpdateFailure): string {
   const how = failureCause(failure.kind);
-  return `${failure.command} が失敗しました（${how}）${reloadNote(failure)}: ${failure.stderr.trim()}`;
+  // 直接書き込み操作 names no sub-command (decision-35 §3): `kind` is what says it was that one,
+  // so the subject comes from the 文言表 rather than from a name the boundary wrote.
+  const what = failure.command ?? msg().failure.milestoneDescribe;
+  return `${what} が失敗しました（${how}）${reloadNote(failure)}: ${failure.stderr.trim()}`;
 }
 
 function failureCause(kind: FailureKind): string {
@@ -848,9 +853,9 @@ export function commandErrorDetail(error: CommandError): string {
     case "unknownTaskFile":
       return `${error.path} は現在の読み取り結果のタスクファイルではありません（移動・削除の可能性）`;
     case "editorUnavailable":
-      return `外部エディタを起動できません: ${error.detail}`;
+      return `外部エディタを起動できません: ${msg().failure.editorUnavailable}`;
     case "editorLaunchFailed":
-      return `${error.program} を起動できません: ${error.detail}`;
+      return `${error.program} を起動できません: ${launchRefusalText(error.reason, error.detail)}`;
     // A 台帳操作 refusal (doc-3 §4) reaching this screen is second-hand — the 台帳管理画面 is where
     // these are acted on — so the wording is taken from there rather than written a second time.
     case "ledgerRefused":
@@ -873,7 +878,7 @@ export function commandErrorDetail(error: CommandError): string {
     // program that failed). Prefixed rather than passed through, so ⑤ 通知 says which press it belongs
     // to: nothing else on screen changed when the browser failed to come forward.
     case "bodyLinkFailed":
-      return `リンクを開けませんでした: ${error.detail}`;
+      return `リンクを開けませんでした: ${bodyLinkRefusalText(error.reason, error.detail)}`;
   }
 }
 

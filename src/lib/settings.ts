@@ -39,6 +39,8 @@ import type {
   StorageSelection,
 } from "./wire";
 import { commandErrorDetail } from "./edit";
+import { launchRefusalText, probeFailureText } from "./failure";
+import { msg } from "./messages";
 
 export const CARD_DENSITY_LABEL: Record<CardDensity, string> = {
   s: "S（ID・priority・印・title 1 行）",
@@ -210,12 +212,20 @@ export function programSourceLabel(source: ExternalProgramSource): string {
 }
 
 /**
- * One 解決結果 as a sentence, for the row's `?` (decision-29). The failure keeps the boundary's own
- * detail: it is the only text that distinguishes "not installed" from "installed where this process
- * cannot see it", which is the distinction TASK-156 was raised about.
+ * One 解決結果 as a sentence, for the row's `?` (decision-29). The failure states why: it is the only
+ * text that distinguishes "not installed" from "installed where this process cannot see it", which is
+ * the distinction TASK-156 was raised about.
+ *
+ * **It goes through `probeFailureText` rather than printing `detail`.** Since decision-35 §3 the
+ * boundary sends a 失敗理由符号 and no sentence, and the two ordinary failures here — a `--version`
+ * that does not answer inside the probe's bound, and a program that exits writing nothing to stderr —
+ * carry an empty `detail`. Printed raw, both would read 「起動できません（）」, which is the one thing
+ * this line exists not to say.
  */
 export function probeSummary(outcome: ProbeOutcome): string {
-  return outcome.state === "launched" ? outcome.report : `起動できません（${outcome.detail}）`;
+  return outcome.state === "launched"
+    ? outcome.report
+    : `起動できません（${probeFailureText(outcome.reason, outcome.detail)}）`;
 }
 
 /**
@@ -353,9 +363,9 @@ export function openLocationAvailability(
 export function openLocationFailure(error: CommandError): string {
   switch (error.kind) {
     case "editorLaunchFailed":
-      return `${error.program} で開けませんでした: ${error.detail}。`;
+      return `${error.program} で開けませんでした: ${launchRefusalText(error.reason, error.detail)}。`;
     case "editorUnavailable":
-      return `場所を開けませんでした: ${error.detail}`;
+      return `場所を開けませんでした: ${msg().failure.editorUnavailable}`;
     default:
       return commandErrorDetail(error);
   }

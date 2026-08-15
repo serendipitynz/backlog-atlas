@@ -222,6 +222,7 @@ describe("launchFailureDetail", () => {
       kind: "editorLaunchFailed",
       method: "configured",
       program: "definitely-not-installed",
+      reason: { reason: "osRefused" },
       detail: "No such file or directory (os error 2)",
     });
     expect(detail).toContain("definitely-not-installed");
@@ -235,7 +236,9 @@ describe("launchFailureDetail", () => {
       kind: "editorLaunchFailed",
       method: "association",
       program: "ShellExecuteW",
-      detail: "この拡張子に関連付けられたアプリケーションがありません (SE_ERR_NOASSOC)",
+      // SE_ERR_NOASSOC arrives as its number now; the sentence is this side's (decision-35 §3).
+      reason: { reason: "shellExecute", code: 31 },
+      detail: "",
     });
     expect(detail).toContain("ShellExecuteW");
     expect(detail).toContain("関連付けられたアプリケーション");

@@ -109,12 +109,11 @@
   // 行長上限 (doc-8 §2.1, TASK-113). Borrowed rather than restated: the number is one measurement,
   // and a second `48` here would let the two drift while both docs still call it 行長上限.
   import { PROSE_MAX_WIDTH_REM } from "../lib/placement";
-  import { createGitRemoteReader } from "../lib/git-remote-read";
+  import { createGitRemoteReader, type RemoteLine } from "../lib/git-remote-read";
   import type {
     CliReadiness,
     Decision,
     Document,
-    GitRemoteRead,
     Milestone,
     ProjectEntry,
     ProjectLoad,
@@ -143,7 +142,7 @@
      * `GitRemoteRead` state of its own, because what the line has to say differs between「remote が
      * 無い」and「読めなかった」(decision-6).
      */
-    onreadGitRemote: (slug: string) => Promise<GitRemoteRead>;
+    onreadGitRemote: (slug: string) => Promise<RemoteLine>;
     onremove: (slug: string) => Promise<LedgerActionResult>;
     /** Issue one 更新操作 (doc-5 §3, doc-9 §4). The re-read belongs to the shell. */
     onissue: (slug: string, action: UpdateOperation[]) => Promise<IssueOutcome>;
@@ -401,7 +400,7 @@
    * remote 現在値 (doc-10 §4.1). `null` until the read lands: 未取得 is not 不在 (decision-6), and
    * `gitRemoteLine` is what keeps the two apart on screen.
    */
-  let gitRemote = $state<GitRemoteRead | null>(null);
+  let gitRemote = $state<RemoteLine | null>(null);
 
   /**
    * Every read goes through this, so only the newest one reaches the line — including the one

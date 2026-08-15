@@ -162,9 +162,10 @@ pub struct EditorLaunch {
 /// `LaunchFailed` means the launcher was reached and the OS refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorError {
-    Unavailable {
-        detail: String,
-    },
+    /// 起動指定の解決順 came up empty, so nothing was started. Carries nothing: that order has one
+    /// way of yielding no program, so the variant *is* the whole reason and the screen words it from
+    /// the variant alone.
+    Unavailable,
     LaunchFailed {
         /// Which method was tried. Carried because the correction differs: a failed 起動指定 means the
         /// program named in アプリ設定/`VISUAL`/`EDITOR` is wrong, while a failed association means the OS
@@ -172,22 +173,67 @@ pub enum EditorError {
         /// one place that has no bearing on it.
         method: LaunchMethod,
         program: String,
+        reason: LaunchRefusal,
         detail: String,
     },
 }
 
-impl std::fmt::Display for EditorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EditorError::Unavailable { detail } => write!(f, "{detail}"),
-            // 「で開けません」rather than 「を起動できません」: `program` may be `ShellExecuteW`, and that
-            // call's own failures are things like "nothing is associated with this extension" — the API
-            // ran, so saying it could not be started would name the wrong thing.
-            EditorError::LaunchFailed {
-                program, detail, ..
-            } => {
-                write!(f, "{program} で開けません: {detail}")
-            }
+/// 失敗理由符号 for a launch that reached the OS and did not open its target.
+///
+/// **One set for both routes.** The ways an OS call can fail to open something do not depend on
+/// whether the target is a management file (doc-8 §7) or a 本文リンク (doc-8 §9.3), so
+/// [`BodyLinkRefusal`] nests this rather than restating it. Not every route produces every variant —
+/// only 既定ブラウザ起動 watches its helper, so `Exited` is that route's alone — and the whole set is
+/// declared regardless: a token no route produces today is still one the screen has to be able to
+/// word, and `wire_tokens.json` records the complete set either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "reason", rename_all = "camelCase")]
+pub enum LaunchRefusal {
+    /// The OS refused the call and described it. The description is the `detail` beside this.
+    OsRefused,
+    /// The launcher started and exited unsuccessfully while [`Launcher::spawn_observed`] watched;
+    /// its exit status is the `detail`.
+    Exited,
+    /// `ShellExecuteW` returned one of its own codes rather than a Win32 one (`SE_ERR_*`, and 0 for
+    /// out of memory). **The number travels, not a sentence** — what this replaces was already a
+    /// `match` on the number, so the screen keeps the same table on its side.
+    ShellExecute { code: i32 },
+    /// `CoInitializeEx` left the thread with no apartment, so the call it exists for was not made.
+    /// `hresult` is what it returned, as the API returns it: negative as an `i32`, and the screen is
+    /// what renders it in the `0x` form a Windows reader looks up.
+    ComInit { hresult: i32 },
+    /// `ShellExecuteW` was reached on a platform whose association launcher is not that call — a
+    /// state no plan produces, reported rather than panicked (see [`Launcher::shell_execute`]).
+    ShellExecuteAbsent,
+}
+
+/// One launch that did not open its target: the 失敗理由符号 and the text that goes with it.
+///
+/// **`detail` may be empty**, and a reader must not treat that as a missing value: a refusal the OS
+/// never described (`ShellExecuteAbsent`, `ShellExecute`) has nothing to put there. The screen does
+/// not choose its sentence by looking at it — it words the sentence from `reason` and adds a
+/// non-empty `detail` after it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchFailure {
+    pub reason: LaunchRefusal,
+    pub detail: String,
+}
+
+impl LaunchFailure {
+    /// A failure the OS described. The only conversion from [`std::io::Error`] in this module, so a
+    /// spawn error cannot reach the wire under any other 失敗理由符号.
+    fn os(error: std::io::Error) -> LaunchFailure {
+        LaunchFailure {
+            reason: LaunchRefusal::OsRefused,
+            detail: error.to_string(),
+        }
+    }
+
+    /// A refusal the OS did not describe.
+    const fn bare(reason: LaunchRefusal) -> LaunchFailure {
+        LaunchFailure {
+            reason,
+            detail: String::new(),
         }
     }
 }
@@ -227,7 +273,12 @@ pub trait Launcher {
     /// a management file's path (doc-8 §7) and a 本文リンク's URL (doc-8 §9.3). Typing it as a path
     /// would make the URL case a lie, and typing it as `&str` would force a lossy conversion on the
     /// path case — a managed file name is not guaranteed to be UTF-8.
-    fn shell_execute(&self, target: &OsStr) -> std::io::Result<()>;
+    ///
+    /// Returns a [`LaunchFailure`] rather than a [`std::io::Error`], because two of the ways this
+    /// call fails are not errno at all: `ShellExecuteW`'s own codes collide with unrelated Win32
+    /// ones, and a platform without the call has no OS error to report. An `io::Error` could only
+    /// carry either as a sentence, which is the thing the screen has to word itself.
+    fn shell_execute(&self, target: &OsStr) -> Result<(), LaunchFailure>;
 
     /// Start `program` with `args`, watch it for a moment, and say whether it failed in that time:
     /// `Ok(None)` when it is still running or exited successfully, `Ok(Some(detail))` when it exited
@@ -280,7 +331,7 @@ impl Launcher for SystemLauncher {
     /// name*. That is the entire reason this is not `cmd /c start`: an interpreter re-parses its command
     /// tail, and `Command::args` guarantees argv boundaries *to* a child, not *through* one.
     #[cfg(target_os = "windows")]
-    fn shell_execute(&self, target: &OsStr) -> std::io::Result<()> {
+    fn shell_execute(&self, target: &OsStr) -> Result<(), LaunchFailure> {
         use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::UI::Shell::ShellExecuteW;
         use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -322,10 +373,8 @@ impl Launcher for SystemLauncher {
     /// no launch on another platform reaches this. Reported rather than `panic!`ed: an unreachable state
     /// is still better surfaced to the user than made to abort the app.
     #[cfg(not(target_os = "windows"))]
-    fn shell_execute(&self, _target: &OsStr) -> std::io::Result<()> {
-        Err(std::io::Error::other(
-            "ShellExecuteW はこのプラットフォームにありません",
-        ))
+    fn shell_execute(&self, _target: &OsStr) -> Result<(), LaunchFailure> {
+        Err(LaunchFailure::bare(LaunchRefusal::ShellExecuteAbsent))
     }
 
     fn spawn_observed(&self, program: &str, args: &[String]) -> std::io::Result<Option<String>> {
@@ -442,7 +491,7 @@ impl ComApartment {
     /// initialization exists to prevent. `AlreadyOtherModel` is an `Ok` that owes nothing: the thread has
     /// an apartment, and only the Shell extensions that specifically require an STA can fail in it, so
     /// refusing to open the file there would be the worse answer.
-    fn enter() -> std::io::Result<ComApartment> {
+    fn enter() -> Result<ComApartment, LaunchFailure> {
         use windows_sys::Win32::System::Com::{
             CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
         };
@@ -458,9 +507,7 @@ impl ComApartment {
             ComInit::Owed => true,
             ComInit::AlreadyOtherModel => false,
             ComInit::Failed => {
-                return Err(std::io::Error::other(format!(
-                    "COM の初期化に失敗しました (CoInitializeEx が HRESULT 0x{hr:08X} を返しました)"
-                )))
+                return Err(LaunchFailure::bare(LaunchRefusal::ComInit { hresult: hr }))
             }
         };
         Ok(ComApartment {
@@ -482,27 +529,23 @@ impl Drop for ComApartment {
     }
 }
 
-/// What a `ShellExecuteW` failure means, in the terms the panel states it in.
+/// Which 失敗理由符号 a `ShellExecuteW` return code becomes.
 ///
 /// The low half of the range is Win32 error codes, which the OS can describe itself. `SE_ERR_*`
 /// (26–32) are not — they are ShellExecute's own, and they collide with unrelated Win32 codes, so
 /// `from_raw_os_error` would name the wrong thing for exactly the failure a user is most likely to
 /// meet: 31 is "nothing is associated with this extension", not "a device attached to the system is
-/// not functioning".
+/// not functioning". 0 is in the same position: the API's own "out of memory", not errno 0.
+///
+/// The split is the whole of the decision made here. **Which sentence each code deserves is the
+/// screen's**, which is why this hands over the number (decision-35 §3).
 #[cfg(target_os = "windows")]
-fn shell_execute_error(code: i32) -> std::io::Error {
-    let named = match code {
-        0 => "OS のメモリ・リソースが不足しています",
-        26 => "共有違反です (SE_ERR_SHARE)",
-        27 => "関連付けが不完全です (SE_ERR_ASSOCINCOMPLETE)",
-        28 => "DDE の処理がタイムアウトしました (SE_ERR_DDETIMEOUT)",
-        29 => "DDE の処理に失敗しました (SE_ERR_DDEFAIL)",
-        30 => "他の DDE 処理が進行中です (SE_ERR_DDEBUSY)",
-        31 => "この拡張子に関連付けられたアプリケーションがありません (SE_ERR_NOASSOC)",
-        32 => "関連付け先の DLL が見つかりません (SE_ERR_DLLNOTFOUND)",
-        _ => return std::io::Error::from_raw_os_error(code),
-    };
-    std::io::Error::other(named)
+fn shell_execute_error(code: i32) -> LaunchFailure {
+    if matches!(code, 0 | 26..=32) {
+        LaunchFailure::bare(LaunchRefusal::ShellExecute { code })
+    } else {
+        LaunchFailure::os(std::io::Error::from_raw_os_error(code))
+    }
 }
 
 /// The launch methods this environment has (doc-8 §7). Called per open rather than cached: a
@@ -707,31 +750,35 @@ fn association_call(platform: Platform, target: String) -> AssociationCall {
     }
 }
 
-/// Why a 既定ブラウザ起動 did not happen (doc-8 §9.3).
+/// Why a 既定ブラウザ起動 did not happen (doc-8 §9.3): the 失敗理由符号 and the text that goes with it.
 ///
-/// Two causes, one type: a URL this route may not open, and an OS call that ran and opened nothing.
-/// **Not two typed variants at the command boundary** — the screen does the same thing with either
-/// (⑤ 通知 with the detail, doc-11 §4), and this boundary types a failure only where the screen has to
-/// act differently on it (see `CommandError`). The distinction lives in the message.
-#[derive(Debug)]
-pub enum BrowserError {
-    /// The URL is not one 既定ブラウザ起動 may open. Reaching this means the screen offered a link it
-    /// should not have: doc-8 §9.3 has the screen draw only `http`/`https` as links, and this check is
-    /// the boundary's own — the second of the two, not the only one.
-    Refused { detail: String },
-    /// The OS call ran and did not open anything.
-    LaunchFailed { program: String, detail: String },
+/// **The distinction used to live in the message**, on the reasoning that the screen does the same
+/// thing with either cause (⑤ 通知, doc-11 §4). decision-35 §3 removes that option rather than that
+/// reasoning: the message is now the screen's to write, so the cause has to arrive as a value.
+///
+/// `detail` may be empty — see [`LaunchFailure`], whose contract this shares.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrowserError {
+    pub reason: BodyLinkRefusal,
+    pub detail: String,
 }
 
-impl std::fmt::Display for BrowserError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BrowserError::Refused { detail } => write!(f, "{detail}"),
-            BrowserError::LaunchFailed { program, detail } => {
-                write!(f, "{program} で開けません: {detail}")
-            }
-        }
-    }
+/// 失敗理由符号 for a 本文リンク that was not opened (doc-8 §9.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "reason", rename_all = "camelCase")]
+pub enum BodyLinkRefusal {
+    /// The URL's scheme is not one 既定ブラウザ起動 may open. Reaching this means the screen offered a
+    /// link it should not have: doc-8 §9.3 has the screen draw only `http`/`https` as links, and this
+    /// check is the boundary's own — the second of the two, not the only one.
+    SchemeNotAllowed,
+    /// The URL carries an ASCII control character, which RFC 3986 cannot express un-escaped.
+    ControlCharacter,
+    /// The OS call ran and did not open anything. `launch` is the same 失敗理由符号 the 外部エディタ経路
+    /// reports, because the ways an OS call fails do not depend on what it was handed.
+    LaunchFailed {
+        program: String,
+        launch: LaunchRefusal,
+    },
 }
 
 /// The URL a 既定ブラウザ起動 may be given, or why it may not (doc-8 §9.3 の scheme 検査).
@@ -752,13 +799,15 @@ pub fn browser_url(raw: &str) -> Result<&str, BrowserError> {
         .iter()
         .any(|scheme| raw.len() > scheme.len() && raw[..scheme.len()].eq_ignore_ascii_case(scheme));
     if !scheme_ok {
-        return Err(BrowserError::Refused {
-            detail: "http:// と https:// のリンクだけを開きます".to_string(),
+        return Err(BrowserError {
+            reason: BodyLinkRefusal::SchemeNotAllowed,
+            detail: String::new(),
         });
     }
     if raw.chars().any(|c| c.is_ascii_control()) {
-        return Err(BrowserError::Refused {
-            detail: "URL に制御文字が入っています".to_string(),
+        return Err(BrowserError {
+            reason: BodyLinkRefusal::ControlCharacter,
+            detail: String::new(),
         });
     }
     Ok(raw)
@@ -789,17 +838,20 @@ fn open_url_on(platform: Platform, launcher: &dyn Launcher, url: &str) -> Result
     // this is the one launch whose helper exits, so its exit code is available and is the only report
     // there is. `ShellExecuteW` already answers — above 32 means the launch started (decision-15).
     let observed = match call {
-        OsCall::Spawn => launcher.spawn_observed(&program, &args),
+        OsCall::Spawn => launcher
+            .spawn_observed(&program, &args)
+            .map_err(LaunchFailure::os),
         OsCall::ShellExecute => launcher.shell_execute(OsStr::new(url)).map(|()| None),
     };
-    match observed {
-        Ok(None) => Ok(()),
-        Ok(Some(detail)) => Err(BrowserError::LaunchFailed { program, detail }),
-        Err(error) => Err(BrowserError::LaunchFailed {
-            program,
-            detail: error.to_string(),
-        }),
-    }
+    let (launch, detail) = match observed {
+        Ok(None) => return Ok(()),
+        Ok(Some(status)) => (LaunchRefusal::Exited, status),
+        Err(failure) => (failure.reason, failure.detail),
+    };
+    Err(BrowserError {
+        reason: BodyLinkRefusal::LaunchFailed { program, launch },
+        detail,
+    })
 }
 
 /// What a launch would do, without doing it (doc-8 §7). Separate from [`open`] so the decision — which
@@ -835,10 +887,7 @@ fn planned(
     let path = file.to_string_lossy().into_owned();
     match method {
         LaunchMethod::Configured => {
-            let editor = resolve(settings, env).ok_or_else(|| EditorError::Unavailable {
-                detail: "アプリ設定の外部エディタ指定・VISUAL・EDITOR のいずれも設定されていません"
-                    .to_string(),
-            })?;
+            let editor = resolve(settings, env).ok_or(EditorError::Unavailable)?;
             let mut args = editor.args;
             args.push(path);
             Ok(Planned {
@@ -927,13 +976,16 @@ fn open_on(
 ) -> Result<EditorLaunch, EditorError> {
     let Planned { launch, call } = planned(platform, settings, env, method, file)?;
     match call {
-        OsCall::Spawn => launcher.spawn(&launch.program, &launch.args),
+        OsCall::Spawn => launcher
+            .spawn(&launch.program, &launch.args)
+            .map_err(LaunchFailure::os),
         OsCall::ShellExecute => launcher.shell_execute(file.as_os_str()),
     }
-    .map_err(|error| EditorError::LaunchFailed {
+    .map_err(|failure| EditorError::LaunchFailed {
         method,
         program: launch.program.clone(),
-        detail: error.to_string(),
+        reason: failure.reason,
+        detail: failure.detail,
     })?;
     Ok(launch)
 }
@@ -985,10 +1037,10 @@ mod tests {
             }
         }
 
-        fn shell_execute(&self, target: &OsStr) -> std::io::Result<()> {
+        fn shell_execute(&self, target: &OsStr) -> Result<(), LaunchFailure> {
             self.shell_executes.borrow_mut().push(target.to_os_string());
             match self.fail {
-                Some(kind) => Err(std::io::Error::new(kind, "no such file")),
+                Some(kind) => Err(LaunchFailure::os(std::io::Error::new(kind, "no such file"))),
                 None => Ok(()),
             }
         }
@@ -1133,7 +1185,7 @@ mod tests {
             Path::new("/roots/a.md"),
         )
         .expect_err("unavailable");
-        assert!(matches!(error, EditorError::Unavailable { .. }));
+        assert!(matches!(error, EditorError::Unavailable));
     }
 
     /// The whole point of the second method: a machine with no EDITOR can still open the file. Asserted
@@ -1292,7 +1344,10 @@ mod tests {
             let launcher = FakeLauncher::default();
             let error = open_url_on(platform, &launcher, "javascript:alert(1)")
                 .expect_err("refused before any OS call");
-            assert!(matches!(error, BrowserError::Refused { .. }));
+            assert!(matches!(
+                error.reason,
+                BodyLinkRefusal::SchemeNotAllowed | BodyLinkRefusal::ControlCharacter
+            ));
             assert!(launcher.spawns.borrow().is_empty(), "{platform:?}");
             assert!(launcher.shell_executes.borrow().is_empty(), "{platform:?}");
         }
@@ -1309,10 +1364,11 @@ mod tests {
         };
         let error = open_url_on(Platform::Freedesktop, &launcher, "https://example.com")
             .expect_err("the helper reported a failure");
-        match &error {
-            BrowserError::LaunchFailed { program, detail } => {
+        match &error.reason {
+            BodyLinkRefusal::LaunchFailed { program, launch } => {
                 assert_eq!(program, "xdg-open");
-                assert!(detail.contains('3'), "{detail}");
+                assert_eq!(*launch, LaunchRefusal::Exited);
+                assert!(error.detail.contains('3'), "{}", error.detail);
             }
             other => panic!("expected a launch failure, got {other:?}"),
         }
@@ -1340,8 +1396,8 @@ mod tests {
     }
 
     /// A failed 既定ブラウザ起動 names the program it tried, so ⑤ 通知 can say what did not open
-    /// (doc-11 §4). The message is the whole of what the screen gets — this route has no typed variants
-    /// to branch on.
+    /// (doc-11 §4). The program travels inside the 失敗理由符号 rather than in the sentence, which is
+    /// what lets the screen word the sentence itself (decision-35 §3).
     #[test]
     fn a_failed_browser_launch_names_the_program() {
         let launcher = FakeLauncher {
@@ -1350,11 +1406,13 @@ mod tests {
         };
         let error = open_url_on(Platform::Freedesktop, &launcher, "https://example.com")
             .expect_err("the launcher failed");
-        match &error {
-            BrowserError::LaunchFailed { program, .. } => assert_eq!(program, "xdg-open"),
+        match &error.reason {
+            BodyLinkRefusal::LaunchFailed { program, launch } => {
+                assert_eq!(program, "xdg-open");
+                assert_eq!(*launch, LaunchRefusal::OsRefused);
+            }
             other => panic!("expected a launch failure, got {other:?}"),
         }
-        assert!(error.to_string().contains("xdg-open"));
     }
 
     /// TASK-44 AC #1/#3, as far as a non-Windows host can assert it: Windows' association launch goes to
@@ -1505,10 +1563,7 @@ mod tests {
             Path::new("/roots/settings.toml"),
         )
         .expect_err("nothing names a program");
-        assert!(
-            matches!(error, EditorError::Unavailable { .. }),
-            "{error:?}"
-        );
+        assert!(matches!(error, EditorError::Unavailable), "{error:?}");
     }
 
     /// The `$EDITOR` method is unaffected by the platform: it was the fallback Windows had while the
@@ -1570,22 +1625,29 @@ mod tests {
         );
     }
 
-    /// A `ShellExecuteW` failure names what went wrong rather than the API. `SE_ERR_NOASSOC` is the one a
-    /// user actually meets — a `.md` with nothing registered for it — and it must not be reported through
-    /// `from_raw_os_error`, whose text for 31 is about a malfunctioning device.
+    /// A `ShellExecuteW` failure keeps its own identity rather than being read as a Win32 code.
+    /// `SE_ERR_NOASSOC` is the one a user actually meets — a `.md` with nothing registered for it —
+    /// and `from_raw_os_error`'s text for 31 is about a malfunctioning device.
+    ///
+    /// **The split is what this holds, not the sentence**: since decision-35 §3 the number travels
+    /// and the wording is the screen's (`src/lib/failure.test.ts` holds that half).
     #[cfg(target_os = "windows")]
     #[test]
     fn a_shell_execute_failure_is_reported_in_its_own_terms() {
-        let error = shell_execute_error(31);
-        assert!(
-            error.to_string().contains("SE_ERR_NOASSOC"),
-            "expected the association failure to be named, got {error}"
-        );
-        // Below the SE_ERR_* range the OS's own text is right, so it is used.
         assert_eq!(
-            shell_execute_error(2).kind(),
-            std::io::ErrorKind::NotFound,
+            shell_execute_error(31).reason,
+            LaunchRefusal::ShellExecute { code: 31 }
+        );
+        // Below the SE_ERR_* range the OS's own description is right, so it is what travels.
+        let below = shell_execute_error(2);
+        assert_eq!(
+            below.reason,
+            LaunchRefusal::OsRefused,
             "ERROR_FILE_NOT_FOUND is a real Win32 code and stays one"
+        );
+        assert!(
+            !below.detail.is_empty(),
+            "the OS's description is the whole reason for this one"
         );
     }
 

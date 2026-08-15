@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  probeSummary,
   CARD_DENSITY_LABEL,
   CARD_DENSITY_NOTE,
   STORAGE_SELECTIONS,
@@ -114,6 +115,7 @@ describe("場所を開く (TASK-75)", () => {
       kind: "editorLaunchFailed",
       method: "association",
       program: "xdg-open",
+      reason: { reason: "osRefused" },
       detail: "No such file or directory (os error 2)",
     });
     expect(failure).toContain("xdg-open");
@@ -321,5 +323,37 @@ describe("フォームの外からの書き手（既定の詳細配置・既定�
       expect(commandPathOf(blank), JSON.stringify(blank)).toBeUndefined();
     }
     expect(commandPathOf("  /opt/git/bin/git  ")).toBe("/opt/git/bin/git");
+  });
+});
+
+describe("解決結果の表示 (decision-29)", () => {
+  it("states a reason for the two failures that carry no diagnostic text", () => {
+    // Since decision-35 §3 the boundary sends a 失敗理由符号 and no sentence, and both of these
+    // arrive with an empty `detail`: a `--version` that does not answer inside the probe's bound,
+    // and a program that exits writing nothing to stderr. Printing `detail` raw would render
+    // 「起動できません（）」 — no reason at all, where the row's whole job is to tell "not installed"
+    // from "installed where this process cannot see it" (TASK-156).
+    for (const reason of [{ reason: "noResponse" }, { reason: "exited" }] as const) {
+      const text = probeSummary({ state: "failed", reason, detail: "" });
+      expect(text, JSON.stringify(reason)).not.toContain("（）");
+      expect(text).toContain("起動できません");
+    }
+  });
+
+  it("keeps the program's own words when it wrote some", () => {
+    expect(probeSummary({ state: "failed", reason: { reason: "exited" }, detail: "gh: not logged in" }))
+      .toContain("gh: not logged in");
+    // The spawn failure names the program, which rides inside the code rather than in `detail`.
+    expect(
+      probeSummary({
+        state: "failed",
+        reason: { reason: "spawnFailed", program: "/opt/gh" },
+        detail: "No such file or directory (os error 2)",
+      }),
+    ).toContain("/opt/gh");
+  });
+
+  it("shows what a launched program reported, untouched", () => {
+    expect(probeSummary({ state: "launched", report: "git version 2.51.0" })).toBe("git version 2.51.0");
   });
 });
