@@ -1,10 +1,10 @@
 ---
 id: TASK-182
 title: crate が組み立てる失敗の理由を 失敗理由符号 にする
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-15 20:58'
-updated_date: '2026-08-15 23:15'
+updated_date: '2026-08-15 23:46'
 labels:
   - i18n
   - 'kind:feature'
