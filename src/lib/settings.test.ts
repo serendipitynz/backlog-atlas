@@ -24,6 +24,7 @@ import type { AppSettings, SettingsStatus } from "./wire";
 const DEFAULTS: AppSettings = {
   schema_version: 1,
   theme: null,
+  language: null,
   card_density: "m",
   default_storage_filter: ["active"],
   default_detail_placement: "sidebar",
@@ -180,6 +181,34 @@ describe("isDirty", () => {
     expect(isDirty(DEFAULTS, { ...DEFAULTS, default_storage_filter: ["active", "draft"] })).toBe(
       true,
     );
+  });
+
+  it("sees a 表示言語 change (decision-35)", () => {
+    // `normalize`'s field list is what this reads, and a new item left out of it is invisible to
+    // `pnpm run check` — the type is satisfied by a shorter list. Without this, choosing a language
+    // would leave 保存 withheld for having nothing to save.
+    expect(isDirty(DEFAULTS, { ...DEFAULTS, language: "en" })).toBe(true);
+    expect(isDirty({ ...DEFAULTS, language: "en" }, { ...DEFAULTS, language: "en" })).toBe(false);
+  });
+});
+
+describe("表示言語 の下書き (decision-35)", () => {
+  it("keeps the user's language when another writer re-seeds the settings", () => {
+    // アプリ設定 has writers outside the form (doc-8 §2.2, doc-7 §5.4). A language the user picked
+    // but has not saved is theirs, and the incoming write must not take it.
+    const baseline = { ...DEFAULTS };
+    const draft = { ...DEFAULTS, language: "en" };
+    const next = { ...DEFAULTS, default_card_order: "task_id_asc" as const };
+    const merged = mergeDraft(baseline, draft, next);
+    expect(merged.language).toBe("en");
+    expect(merged.default_card_order).toBe("task_id_asc");
+  });
+
+  it("adopts an incoming language the user has not touched", () => {
+    const baseline = { ...DEFAULTS };
+    const draft = { ...DEFAULTS };
+    const merged = mergeDraft(baseline, draft, { ...DEFAULTS, language: "ja" });
+    expect(merged.language).toBe("ja");
   });
 });
 

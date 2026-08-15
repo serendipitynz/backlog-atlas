@@ -1,7 +1,8 @@
 {
   "settings": {
-    "schema_version": 4,
+    "schema_version": 5,
     "theme": "nord",
+    "language": "en",
     "card_density": "l",
     "default_storage_filter": [
       "active",
@@ -22,6 +23,6 @@
   },
   "status": {
     "state": "readOnly",
-    "version": 5
+    "version": 6
   }
 }

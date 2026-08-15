@@ -6,6 +6,7 @@ import type { AppSettings, LoadedSettings } from "./wire";
 const DEFAULTS: AppSettings = {
   schema_version: 1,
   theme: null,
+  language: null,
   card_density: "m",
   default_storage_filter: ["active"],
   default_detail_placement: "sidebar",

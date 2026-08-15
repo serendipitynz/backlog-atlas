@@ -515,6 +515,7 @@ const SETTINGS_EXEMPLAR: LoadedSettings = {
   settings: {
     schema_version: 1,
     theme: "nord",
+    language: "en",
     card_density: "l",
     default_storage_filter: ["active", "indeterminate"],
     default_detail_placement: "modal",
@@ -731,6 +732,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       keysOfType<AppSettings>()(
         "schema_version",
         "theme",
+        "language",
         "card_density",
         "default_storage_filter",
         "default_detail_placement",

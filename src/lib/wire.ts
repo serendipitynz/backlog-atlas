@@ -741,6 +741,12 @@ export interface AppSettings {
   schema_version: number;
   /** 表示テーマ (decision-12). `null` = 未選択, i.e. follow the OS's light/dark. */
   theme: string | null;
+  /**
+   * 表示言語 (decision-35). `null` = 言語未選択, i.e. follow the OS's language. Typed as `string`
+   * rather than as this build's `Language` union because the file is hand-editable: a value from a
+   * later build has to arrive and be resolved to a default (`resolveLanguage`), not fail to type.
+   */
+  language: string | null;
   card_density: CardDensity;
   /** 既定の保存区分 — the selection the filter starts with (doc-7 §5.2). */
   default_storage_filter: StorageSelection[];

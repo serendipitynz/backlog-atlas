@@ -112,6 +112,8 @@
   } from "./lib/history-read";
   import { SAVING_REASON, openLocationFailure } from "./lib/settings";
   import { createSettingsWriter } from "./lib/settings-write";
+  import { provideMessages } from "./lib/messages-context";
+  import { osLanguage, resolveLanguage, setLanguage } from "./lib/messages";
   import { themeAttribute } from "./lib/theme";
   import {
     DEFAULT_FILTER,
@@ -547,6 +549,21 @@
     } else {
       document.documentElement.dataset.theme = chosen;
     }
+  });
+  /**
+   * 表示言語 (decision-35), resolved for every path a language can change by — the same three the
+   * theme effect above covers. 言語未選択 resolves against the OS here rather than being left unset,
+   * because unlike the theme there is no stylesheet fallback to defer to: some language has to be
+   * drawn.
+   *
+   * `lang` on `<html>` as well as the 文言表, so the webview hyphenates and the OS reads the page in
+   * the right language.
+   */
+  let language = $derived(resolveLanguage(settings?.settings.language ?? null, osLanguage()));
+  provideMessages(() => language);
+  $effect(() => {
+    setLanguage(language);
+    document.documentElement.lang = language;
   });
   /**
    * 総件数 into the window's own title, on every platform but macOS (decision-31). There the 帯 is drawn

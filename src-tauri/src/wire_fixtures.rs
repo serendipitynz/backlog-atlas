@@ -501,6 +501,7 @@ fn loaded_settings_is_recorded() {
             settings: AppSettings {
                 schema_version: KNOWN_SCHEMA_VERSION,
                 theme: Some("nord".to_string()),
+                language: Some("en".to_string()),
                 card_density: CardDensity::L,
                 default_storage_filter: vec![
                     StorageSelection::Active,

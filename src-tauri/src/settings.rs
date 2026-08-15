@@ -12,6 +12,7 @@
 //! | decision-13 アプリ設定 | [`AppSettings`] | the defaults decision-13's item table lists, plus the schema version |
 //! | decision-13 アプリ設定ファイル | `settings.toml` under the app-config dir | the single file this module reads and writes |
 //! | decision-12 表示テーマ | [`AppSettings::theme`] | the chosen colour set's name; `None` means OS の明暗に従う (TASK-47) |
+//! | decision-35 表示言語 | [`AppSettings::language`] | which language the screen text is drawn in; `None` means OS の言語に従う (TASK-103) |
 //! | doc-7 §3 カード情報量 | [`CardDensity`] | which column of doc-7 §3's assignment table a card is drawn from |
 //! | doc-7 §5.2 既定の保存区分 | [`AppSettings::default_storage_filter`] | the 保存区分 the filter starts with |
 //! | doc-8 §2.1 詳細配置 | [`DetailPlacement`] | 併置サイドバー / 中央モーダル / 全面シングルビュー |
@@ -53,13 +54,14 @@ use std::path::{Path, PathBuf};
 /// ledger follows (doc-3 §2.2), which decision-13 asks the two files to keep in step.
 ///
 /// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16), to 3 when `default_card_order`
-/// was (TASK-132), and to 4 when `git_cli` and `gh_cli` joined them (TASK-156, decision-29).
+/// was (TASK-132), to 4 when `git_cli` and `gh_cli` joined them (TASK-156, decision-29), and to 5
+/// when `language` did (TASK-103, decision-35).
 /// decision-13 puts 項目の追加 under this version's management, and the read-only
 /// degrade is what the raise buys: left where it was, a build predating the field would read the newer
 /// file as its own version, let serde drop the key it does not know, and delete the value on its next
 /// save. Older files are unaffected — a *lower* version loads with the missing keys defaulted, and the
 /// next save writes this version.
-pub const KNOWN_SCHEMA_VERSION: u32 = 4;
+pub const KNOWN_SCHEMA_VERSION: u32 = 5;
 
 /// カード情報量 (doc-7 §3): which column of the card assignment table is in force.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -155,6 +157,16 @@ pub struct AppSettings {
     /// representable rather than being spelled as some theme's name.
     #[serde(default)]
     pub theme: Option<String>,
+    /// 表示言語 (decision-35). `None` = 言語未選択, which means OS の言語に従う. Held as an option for
+    /// 表示テーマ's reason: the OS-following state is the default and an explicit choice overrides it,
+    /// so "not chosen" must be representable rather than being spelled as one of the two languages.
+    ///
+    /// The crate neither reads nor honours this value — it decides no text, because decision-35 moved
+    /// every failure reason it used to word into a 失敗理由符号 the frontend renders. It is stored here
+    /// because decision-13 makes this file the home for 読んだものをどう見せるか, and travels to the
+    /// screen with the rest of the settings.
+    #[serde(default)]
+    pub language: Option<String>,
     #[serde(default)]
     pub card_density: CardDensity,
     /// 既定の保存区分 (doc-7 §5.2 既定は active のみ). Stored as the selection list rather than a flag
@@ -217,6 +229,7 @@ impl Default for AppSettings {
         AppSettings {
             schema_version: KNOWN_SCHEMA_VERSION,
             theme: None,
+            language: None,
             card_density: CardDensity::default(),
             default_storage_filter: default_storage_filter(),
             default_detail_placement: DetailPlacement::default(),
@@ -446,6 +459,7 @@ mod tests {
         let settings = AppSettings {
             schema_version: KNOWN_SCHEMA_VERSION,
             theme: Some("Atlas Dark".into()),
+            language: Some("en".into()),
             card_density: CardDensity::L,
             default_storage_filter: vec![StorageSelection::Active, StorageSelection::Draft],
             default_detail_placement: DetailPlacement::Full,
@@ -490,6 +504,7 @@ mod tests {
         AppSettings {
             schema_version: KNOWN_SCHEMA_VERSION,
             theme: Some("Atlas Dark".into()),
+            language: Some("en".into()),
             card_density: CardDensity::L,
             default_storage_filter: vec![StorageSelection::Active, StorageSelection::Draft],
             default_detail_placement: DetailPlacement::Full,
