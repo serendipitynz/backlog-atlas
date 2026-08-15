@@ -47,7 +47,7 @@
  * Where an assignment is answered. A closed set: a seventh place would need a row in the doc's list
  * before it could have a key, which is what keeps 一覧 = 実装.
  *
- * - `bothScreens` … スイムレーンとプロジェクト詳細画面のどちらでも (the fixed header is on both).
+ * - `bothScreens` … スイムレーンとプロジェクト詳細画面のどちらでも (the ☰'s menu is on both).
  * - `swimlane` … スイムレーンのみ (the grid and its フィルタ帯 have to be on screen).
  * - `overlay` … 被せ層の内側 (モーダル・メニュー・ポップオーバー).
  * - `modal` … モーダルの内側のみ.

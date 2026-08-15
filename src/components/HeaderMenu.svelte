@@ -1,9 +1,9 @@
 <script lang="ts">
-  // 固定ヘッダのメニュー (doc-7 §2.1, TASK-56). Two things live here and nowhere else:
+  // ☰ のメニュー (doc-7 §2.1, TASK-56). Two things live here and nowhere else:
   //
   // - **The 共通入口 themselves.** They had a button apiece on the header until TASK-66 folded those
   //   away, so this is now the only place either is drawn. §2.1's ヘッダに出している操作はメニューにも
-  //   同じものを置く is met by there being nothing on the header that is not here; each entry's own
+  //   同じものを置く is met by there being nothing on the 帯 that is not here; each entry's own
   //   one-line 説明 came along with it, as the line's `title`.
   // - **The プロジェクト一覧 (doc-7 §2.1).** Every registered project, one 表示切替行 apiece, with a
   //   tick on the rows the grid is drawing. Since TASK-131 this is the only place 行非表示 is reached
@@ -39,7 +39,7 @@
   let root = $state<HTMLDivElement | null>(null);
 
   // Opened by a press, so the first line takes focus: the menu exists to be walked with the keyboard
-  // when the header is too narrow to show its entries, and focus left behind on the ☰ would put the
+  // when the 帯 is too narrow to show its entries, and focus left behind on the ☰ would put the
   // next keystroke nowhere the user can see.
   $effect(() => {
     root?.querySelector<HTMLElement>("button")?.focus();

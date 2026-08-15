@@ -27,7 +27,7 @@ function project(slug: string, shown = true, name: string | null = `${slug} プ�
 describe("共通入口 (doc-7 §2.1)", () => {
   /**
    * doc-7 §2.1: 1 プロジェクトに閉じた操作（台帳エントリの編集・登録解除・文書・マイルストーン・詳細な
-   * 新規タスク作成）は固定ヘッダに置かず、プロジェクト詳細画面へ集める。The header's メニュー draws this
+   * 新規タスク作成）は共通入口に置かず、プロジェクト詳細画面へ集める。The menu behind the ☰ draws this
    * list and only this list, so the check is that the list stays the two ledger-wide entries.
    */
   it("holds the two 全プロジェクトに効く入口 and nothing per-project", () => {
