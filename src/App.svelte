@@ -562,9 +562,10 @@
    * component's markup, and the title has to follow every path 総件数 or the current screen can change
    * by — a filter, a hide, a re-read, a move onto プロジェクト詳細画面 and back.
    *
-   * **A refusal is reported** (⑤ 通知, doc-11 §4) rather than swallowed. Windows is the one platform
-   * where the title is the only place 総件数 goes — macOS and Linux draw the 帯 — so a write it refuses
-   * leaves the ratios nowhere, and doc-11 §5's refusal of a 理由の無い無効化 is the same principle.
+   * **A refusal is reported** (⑤ 通知, doc-11 §4) rather than swallowed. **Windows is the only platform
+   * this line reaches the screen on** — macOS draws the 帯, and Linux shows the ratios nowhere at all
+   * (decision-31 の Linux の改訂) — so a write it refuses leaves them with no destination, and doc-11
+   * §5's refusal of a 理由の無い無効化 is the same principle.
    *
    * **Whether the title was *applied* is not checked, and that is a decision** (decision-31 の Linux の
    * 改訂). It was, until the platform it was written for turned out to accept the write and read the new
