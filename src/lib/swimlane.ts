@@ -567,7 +567,7 @@ export function swimlaneTotals(
 }
 
 /**
- * 総件数 as the one line the 固定ヘッダ prints (doc-7 §2.1).
+ * 総件数 as the one line the タイトルバー prints (doc-7 §2.1, decision-31).
  *
  * 画面設計案 01 writes the lane side as a single `{laneCount} レーン`; this puts a ratio there instead,
  * which the user chose on 2026-08-01 knowing the difference (doc-7 §2.1 records why). The word is

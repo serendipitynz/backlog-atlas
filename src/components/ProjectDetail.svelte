@@ -5,7 +5,7 @@
   // project's documents, milestones and new tasks) put two different granularities side by side, so
   // working on a single project meant moving between them. This levels the granularity at one
   // project; neither of the old screens remains. 登録 is the one ledger-wide operation and moved to
-  // the fixed header instead (doc-3 §4, doc-7 §2.1).
+  // the 共通入口 instead (doc-3 §4, doc-7 §2.1).
   //
   // Where each 区画 writes differs. 概要 writes the ledger file alone (doc-3 §2.1); 文書・マイル
   // ストーン・新規タスク write the target project's management files through the Backlog 更新アダプター
@@ -16,7 +16,7 @@
   // `lib/ledger.ts` / `lib/manage.ts` (building the request values); this component is layout, local
   // form state and callbacks. Text inputs bind to local state and are never rewritten while the user
   // is typing — the same IME rule the other screens follow.
-  import { tick, untrack } from "svelte";
+  import { tick, untrack, type Snippet } from "svelte";
   import Body from "./Body.svelte";
   import Editor from "./Editor.svelte";
   import Modal from "./Modal.svelte";
@@ -159,7 +159,7 @@
      *
      * The shell has to know, for two reasons that are both doc-7 §2.1's 被せ層 は 1 枚だけ: it answers
      * the screen-wide chords on `window`, and a chord that opened the 設定モーダル over this one would
-     * put two layers up; and its own メニュー is in the header above this screen, so it has to come
+     * put two layers up; and its own メニュー hangs off the ☰ this screen's ヘッダ行 carries, so it has to come
      * down. Reported rather than raised by the shell because the layer belongs to this screen — the
      * control it must hand focus back to on close is the 作成の入口, which only exists here.
      */
@@ -167,6 +167,13 @@
     /** 出口 (doc-10 §2). */
     onback: () => void;
     ontoLane: () => void;
+    /**
+     * The ☰ and its menu (decision-31), drawn by the shell and placed at the right end of this
+     * screen's ヘッダ行 (doc-10 §3). Since the 固定ヘッダ went it is the only visible way to 設定・
+     * プロジェクトを登録・キーボード操作一覧 while this screen is up — doc-10 §2 records why an entry
+     * reaching every project sits on a screen about one.
+     */
+    menu: Snippet;
   }
 
   let {
@@ -185,6 +192,7 @@
     onoverlay,
     onback,
     ontoLane,
+    menu,
   }: Props = $props();
 
   let section = $state<DetailSection>("overview");
@@ -1479,13 +1487,26 @@
   class="detail"
   style="--section-nav-width: {SECTION_NAV_WIDTH_REM}rem; --list-column-width: {LIST_COLUMN_WIDTH_REM}rem; --prose-max-width: {PROSE_MAX_WIDTH_REM}rem"
 >
-  <!-- ヘッダ (doc-10 §3): identity and the round trip only. Nothing here writes. The パンくず
-       (doc-12 §8) puts 「← スイムレーン」 at the top left — where a way back is looked for — with
-       the project name as the current place; the return that also lands (doc-10 §2) stays a
-       separate control at the right, since it does more than go back. -->
+  <!-- ヘッダ (doc-10 §3): identity, the round trip, and — since the 固定ヘッダ went — the ☰ at its right
+       end (decision-31). Nothing here writes. The パンくず (doc-12 §8) puts the way back at the top left
+       — where a way back is looked for — with the project name as the current place; the return that
+       also lands (doc-10 §2) stays a separate control at the right, since it does more than go back. -->
   <header class="head">
     <nav class="breadcrumb" aria-label="現在地">
-      <button type="button" onclick={onback}>← スイムレーン</button>
+      <!-- アイコンのみのボタン (doc-11 §2.4), and a deliberate deviation from that section's 語の中の記号
+           — the original is 「← スイムレーン」 (doc-12 §8), where §2.4 refuses to lift the arrow out
+           because doing so changes the word. decision-31 changes it knowingly; §2.4 records the
+           deviation. The 行き先の語 is in the `aria-label`, so nothing about where this goes is carried
+           by the figure alone. -->
+      <button
+        type="button"
+        class="back"
+        aria-label="スイムレーンへ戻る"
+        title="スイムレーンへ戻る"
+        onclick={onback}
+      >
+        <Icon name="arrow-left" />
+      </button>
       <span class="separator" aria-hidden="true">/</span>
       <span class="name">{project?.config.projectName ?? entry.slug}</span>
     </nav>
@@ -1504,6 +1525,9 @@
       {/if}
     </span>
     <button type="button" class="to-lane" onclick={ontoLane}>このプロジェクトのレーンへ</button>
+    <!-- 帯の右端 (decision-31). After 出口 rather than before it: the two exits are what this screen
+         offers, and the ☰ opens things that have nothing to do with this project. -->
+    {@render menu()}
   </header>
 
   <div class="body">
@@ -2889,7 +2913,7 @@
 <!--
   この画面が上げる被せ層 — 作成モーダル (doc-10 §1, TASK-117) と 注記モーダル (doc-10 §7, TASK-123).
   Outside the screen's own boxes because a 被せ層 is not a part of any 区画: `Modal.svelte` draws a
-  fixed backdrop over the window, and the layer covers the 上部帯 the same way the header's three do.
+  fixed backdrop over the window, and the layer covers the 上部帯 the same way the 共通入口's three do.
 
   One `Modal` for all three contents rather than one each: 被せ層 は 1 枚だけ (doc-7 §2.1), and
   `layerOpen` already makes that structural. It carries the same three obligations here as anywhere —
@@ -3036,6 +3060,11 @@
   // take — this is the screen's header, the same place タスク詳細 answers at 1.4rem, and the forms
   // are what the larger step is for.
   .head {
+    // 1 行の高さ, named rather than repeated per control — the ☰ the shell renders into this row
+    // (decision-31) reads it as well, and it is the one value that keeps that figure the same size as
+    // the words beside it. The number is what this header's buttons already stood at.
+    --bar-control: 1.4rem;
+
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -3045,7 +3074,7 @@
     background: var(--inset);
 
     button {
-      height: 1.4rem;
+      height: var(--bar-control);
     }
   }
 
@@ -3054,6 +3083,19 @@
     align-items: baseline;
     gap: 0.35rem;
     min-width: 0;
+  }
+
+  // アイコンのみのボタン (doc-11 §2.4): square on the row's own height, since there is no label for the
+  // horizontal padding of a worded button to sit beside. Centred rather than left on the row's
+  // `baseline` for the reason the ☰ is — a figure has no baseline of its own.
+  .back {
+    display: inline-flex;
+    width: var(--bar-control);
+    align-items: center;
+    align-self: center;
+    justify-content: center;
+    padding: 0;
+    font-size: var(--text-sm);
   }
 
   // 副次 (doc-11 §2.1): the separator is punctuation between the way back and the current place,

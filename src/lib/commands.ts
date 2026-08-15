@@ -12,6 +12,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import type {
   AppSettings,
@@ -293,6 +294,23 @@ export function bodyLinkOpen(url: string): Promise<void> {
 export function updateApply(slug: string, action: UpdateOperation[]): Promise<UpdateResult> {
   return invoke<UpdateResult>("update_apply", { slug, action });
 }
+
+/**
+ * Write the window's own title (decision-31), which is how Windows・Linux carry 総件数 — macOS draws
+ * the same line itself and never calls this (`OVERLAY_TITLE_BAR` in `platform.ts`).
+ *
+ * Not one of the crate's commands: the window is Tauri's own, and `core:window:allow-set-title` is the
+ * permission this adds for it. Kept here anyway, because this module is where the frontend's IPC is
+ * readable in one place.
+ */
+export async function windowTitleSet(title: string): Promise<void> {
+  // `async` so that a *synchronous* throw comes back as a rejection like every other call here does.
+  // `getCurrentWindow()` reads Tauri's injected metadata before any promise exists, so outside a Tauri
+  // window it throws where a caller is holding a `.catch()` — which is how `_sandbox/app-check`'s fake
+  // boundary took the whole screen down until this was measured (2026-08-15).
+  await getCurrentWindow().setTitle(title);
+}
+
 
 /** Subscribe to watch-triggered re-reads. Resolves to the unsubscribe function. */
 export function onProjectReloaded(

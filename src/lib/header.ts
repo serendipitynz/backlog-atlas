@@ -1,9 +1,9 @@
 /**
- * 固定ヘッダの入口とメニュー (doc-7 §2.1, TASK-56) as one derivation.
+ * 共通入口とメニュー (doc-7 §2.1, TASK-56) as one derivation.
  *
  * - **The menu is where the 共通入口 are.** TASK-66 folded the header's per-entry buttons away, so
  *   [`HEADER_ENTRIES`] now has exactly one place that draws it. §2.1's ヘッダに出している操作はメニューに
- *   も同じものを置く still holds — nothing is on the header that the menu lacks — and the list stays a
+ *   も同じものを置く still holds — nothing is on the 帯 that the menu lacks — and the list stays a
  *   list rather than two literals because the chord for each entry has to name the same operation the
  *   menu line does, and the 割り当て一覧 check below is what keeps those in step.
  * - **1 プロジェクトに閉じた操作を置かない** (they belong to プロジェクト詳細画面, doc-10). Being a
@@ -16,7 +16,7 @@
  *
  * | term | here | is |
  * |---|---|---|
- * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the fixed header offers through its メニュー — 登録 and 設定 |
+ * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the ☰'s メニュー offers — 登録 and 設定 |
  * | doc-7 §2.1 メニュー | [`MenuItem`] + [`headerMenu`] | メニュー項目: one line of the menu, and the whole list in order |
  * | doc-7 §2.1 キーボード操作一覧（メニュー内） | [`SHORTCUT_HELP_LABEL`] + the `shortcutHelp` item | the menu line that opens the 一覧モーダル, where the 割り当て一覧's 画面に出す列 are drawn. The 一覧 itself is `shortcuts.ts`, which §2.1 holds apart from that table |
  * | doc-7 §2.1 プロジェクト一覧（メニュー内） | [`MenuProject`] + the `toggleProject` items | 登録済みプロジェクトを台帳の並び順に 1 行ずつ並べた群 |
@@ -54,7 +54,7 @@ export interface HeaderEntry {
   /** The assignment that opens it, so the chord and the menu item name the same operation. */
   action: ShortcutAction;
   /**
-   * What the entry reaches, in one line — the `title` on the menu line. It sat on the header button
+   * What the entry reaches, in one line — the `title` on the menu line. It sat on the entry's own button
    * until TASK-66 folded that button away; moving it rather than dropping it is why the entries can
    * lose their buttons without the screen losing what they said.
    */
@@ -62,7 +62,7 @@ export interface HeaderEntry {
 }
 
 /**
- * 共通入口とは、固定ヘッダのメニューに必ず現れる入口 (プロジェクトを登録・設定) の列を指す。
+ * 共通入口とは、☰ のメニューに必ず現れる入口 (プロジェクトを登録・設定) の列を指す。
  * Ordered as doc-7 §2.1 lists them: 登録 (台帳全体) then 設定 (アプリ設定).
  */
 export const HEADER_ENTRIES: readonly HeaderEntry[] = [
@@ -224,7 +224,7 @@ export function startsGroup(items: readonly MenuItem[], index: number): boolean 
 }
 
 /**
- * The menu in order: the 共通入口 first (they are what the header itself offers), then the line to the
+ * The menu in order: the 共通入口 first (they are what this list is about), then the line to the
  * 一覧モーダル, then the プロジェクト一覧 — すべてのプロジェクトを表示, then one line per registered project
  * in ledger order (doc-3 §2.2, which is the order the grid draws its rows in).
  *

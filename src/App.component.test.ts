@@ -1347,7 +1347,7 @@ describe("プロジェクト詳細が自分で上げる被せ層", () => {
     // そしてシェルの離脱確認はこれを数えない (`ProjectDetail` の `dirty`)。作成フォームの入力は
     // 層と一緒に消えるので、画面を離れられるどの瞬間にも残っていない — TASK-117 がその項を
     // `dirty` から外した根拠が、ここで観測できる形になっている。
-    click(byText(host, "button", "← スイムレーン"));
+    click(byLabel(host, "button.back", "スイムレーンへ戻る"));
     expect(confirmBand(host)).toBeNull();
     expect(host.querySelector("button.card")).not.toBeNull();
   });
@@ -1505,7 +1505,7 @@ describe("プロジェクト詳細の離脱", () => {
   it("未保存のままスイムレーンへ戻ると確認を経る", async () => {
     const host = await withUnsavedProjectInput();
 
-    click(byText(host, "button", "← スイムレーン"));
+    click(byLabel(host, "button.back", "スイムレーンへ戻る"));
 
     // The same one gate as the task panel's: doc-8 §6.3 gives 破棄前確認 one wording, so neither
     // screen grows its own — and this screen holds all four 区画's input in one component, so
@@ -1516,7 +1516,7 @@ describe("プロジェクト詳細の離脱", () => {
 
   it("破棄して続けるとスイムレーンへ戻る", async () => {
     const host = await withUnsavedProjectInput();
-    click(byText(host, "button", "← スイムレーン"));
+    click(byLabel(host, "button.back", "スイムレーンへ戻る"));
     click(byText(host, ".band button", "破棄して続ける"));
 
     expect(host.querySelector('input[placeholder="atlas"]')).toBeNull();
@@ -1574,7 +1574,7 @@ describe("プロジェクト詳細の離脱", () => {
       false,
     );
 
-    click(byText(host, "button", "← スイムレーン"));
+    click(byLabel(host, "button.back", "スイムレーンへ戻る"));
     expect(confirmBand(host)).toBeNull();
     expect(host.querySelector("button.card")).not.toBeNull();
   });
@@ -1611,7 +1611,7 @@ describe("プロジェクト詳細の離脱", () => {
       false,
     );
 
-    click(byText(host, "button", "← スイムレーン"));
+    click(byLabel(host, "button.back", "スイムレーンへ戻る"));
     expect(confirmBand(host)).toBeNull();
     expect(host.querySelector("button.card")).not.toBeNull();
   });
@@ -1690,7 +1690,7 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
     // 戻すのも同じ 1 か所から、グリッドが立っていなくてもできる。
     toggle(host, "Atlas");
     press(only(host, MENU), "Escape");
-    click(byText(host, "button", "← スイムレーン"));
+    click(byLabel(host, "button.back", "スイムレーンへ戻る"));
     await settled();
     expect(host.querySelector('[title="Atlas のプロジェクト詳細画面を開きます"]')).not.toBeNull();
   });
@@ -1853,7 +1853,7 @@ describe("折畳み 2 種は画面を移っても効いたまま", () => {
     // is on screen to be read back.
     expect(host.querySelector(".lane-head")).toBeNull();
 
-    click(byText(host, "button", "← スイムレーン"));
+    click(byLabel(host, "button.back", "スイムレーンへ戻る"));
     await settled();
 
     expect(foldedRows(host)).toEqual(["atlas"]);

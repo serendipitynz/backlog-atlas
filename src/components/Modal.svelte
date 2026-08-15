@@ -97,7 +97,7 @@
   /**
    * 閉じたら開く前の操作へフォーカスを戻す (doc-7 §2.1). Read while the component initialises, which is
    * still inside the press that opened it, so it is the control the user came from — a button in the
-   * fixed header or a line of the menu. Read later (in an effect) it would already be the modal's own
+   * 帯 (the ☰) or a line of the menu. Read later (in an effect) it would already be the modal's own
    * first control.
    */
   const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
