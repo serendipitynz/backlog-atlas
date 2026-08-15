@@ -10,15 +10,19 @@
  * | decision-35 表示言語 | [`Language`] / [`activeLanguage`] | which of the two languages the screen is drawn in right now |
  * | decision-35 言語未選択 | [`resolveLanguage`] called with `null` | no choice stored, so the OS's language decides |
  * | decision-35 文言表 | [`Catalog`] / [`CATALOGS`] | one language's whole set of strings |
- * | decision-35 文言鍵 | [`MessageKey`] | the path a screen indexes the 文言表 with |
+ * | decision-35 文言鍵 | the property path into [`Catalog`] (`settings.languageHeading`) | what a screen indexes the 文言表 with — **no type names it**, and `keyof Catalog` would be the group name alone |
  *
  * ## Why a plain module and not a rune
  *
  * The `unit` Vitest project runs in `node` with no Svelte compiler (`vitest.config.ts`), and most of
  * the modules that word a sentence are tested there. A `$state` in a `.svelte.ts` would put the whole
  * pure-logic half of the suite behind the compiler. So the active language is a plain module-level
- * value, and the shell re-renders on a change by re-keying its tree — a language change happens once,
- * on a settings save, so there is nothing here for finer-grained reactivity to buy.
+ * value.
+ *
+ * Being plain, it is not what redraws a component — `messages-context.ts` is, through an accessor
+ * over the shell's own derived language. **Re-keying the shell's tree is the rejected alternative**,
+ * not the mechanism: it would destroy every component's state, so changing the language mid-edit
+ * would discard the detail panel's 編集セッション, which doc-8 §6.4 forbids for the same reason.
  *
  * ## Why the catalog is data with typed shape, not `t("some.key")`
  *
@@ -42,9 +46,6 @@ export const LANGUAGES: Language[] = ["ja", "en"];
  * the Japanese string that key stands for.
  */
 export type Catalog = typeof ja;
-
-/** A path into the 文言表. Exported for the checks that compare the two catalogs' key sets. */
-export type MessageKey = keyof Catalog;
 
 export const CATALOGS: Record<Language, Catalog> = { ja, en: EN };
 
@@ -93,16 +94,16 @@ export function activeLanguage(): Language {
 }
 
 /**
- * Set the 表示言語. The shell calls this before it draws, and again when a settings save changes the
- * value; nothing else should. Returns whether the language actually changed, which is what tells the
- * shell whether it has to re-render.
+ * Set the 表示言語; nothing outside the shell should call it.
+ *
+ * **It has to be called during initialisation, before the first render**, and `provideMessages` is
+ * what does that. An effect alone would not: effects run after their subtree is created, so through
+ * the whole first render pass this module would still answer with its initialiser — and a sentence a
+ * pure module worded in that pass would keep the wrong language, since `msg()` is not reactive and
+ * nothing would recompute the `$derived` holding it. The shell's effect covers the *later* changes.
  */
-export function setLanguage(language: Language): boolean {
-  if (active === language) {
-    return false;
-  }
+export function setLanguage(language: Language): void {
   active = language;
-  return true;
 }
 
 /**

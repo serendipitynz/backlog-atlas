@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { provideMessages } from "./messages-context";
 import {
   CATALOGS,
   LANGUAGES,
@@ -51,15 +52,22 @@ describe("resolveLanguage (decision-35 表示言語 / 言語未選択)", () => {
 describe("表示言語 の切替", () => {
   it("changes which 文言表 msg() answers with", () => {
     expect(msg()).toBe(CATALOGS.ja);
-    expect(setLanguage("en")).toBe(true);
+    setLanguage("en");
     expect(activeLanguage()).toBe("en");
     expect(msg()).toBe(CATALOGS.en);
   });
 
-  it("reports no change when the language is already in force", () => {
-    // What the shell reads to decide whether anything has to be redrawn.
-    setLanguage("en");
-    expect(setLanguage("en")).toBe(false);
+  it("is set by provideMessages, ahead of the context it also puts in place", () => {
+    // The ordering the first render pass depends on: an effect runs after its subtree is created,
+    // so a language set only from there would leave every sentence a pure module worded in that
+    // pass on the initial language — and `msg()` is not reactive, so nothing would recompute it.
+    //
+    // Asserted through the throw because `setContext` is only legal during a component's
+    // initialisation, and this runs outside one. That the language is already changed when the
+    // throw arrives is precisely the ordering being pinned; swapping the two lines fails this.
+    setLanguage("ja");
+    expect(() => provideMessages(() => "en")).toThrow();
+    expect(activeLanguage()).toBe("en");
   });
 });
 

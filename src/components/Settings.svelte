@@ -236,6 +236,13 @@
    * the next save. Such a name paints as 未選択 (`theme.ts` の `themeAttribute`), which is what the
    * marked option tells the user rather than leaving them with a selection that does nothing.
    */
+  let themeChoices = $derived.by(() => {
+    const stored = draft?.theme ?? null;
+    return stored === null || RECORDED_THEME_IDS.includes(stored)
+      ? RECORDED_THEME_IDS
+      : [stored, ...RECORDED_THEME_IDS];
+  });
+
   /** The 文言表 in force (decision-35), read through the accessor so a language change redraws. */
   const t = messages();
 
@@ -247,13 +254,6 @@
   let languageChoices = $derived.by(() => {
     const stored = draft?.language ?? null;
     return stored === null || isLanguage(stored) ? LANGUAGES : [stored, ...LANGUAGES];
-  });
-
-  let themeChoices = $derived.by(() => {
-    const stored = draft?.theme ?? null;
-    return stored === null || RECORDED_THEME_IDS.includes(stored)
-      ? RECORDED_THEME_IDS
-      : [stored, ...RECORDED_THEME_IDS];
   });
 
   /**

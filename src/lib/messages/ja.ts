@@ -24,8 +24,9 @@ export const ja = {
     /**
      * What each language is called in the list. Endonyms in both catalogs on purpose: a reader
      * looking for their own language finds it under the name they know, whichever language the
-     * screen happens to be in at the time. Identical entries in the two files is what keeps this
-     * out of the scan as an exception — there is nothing here to except.
+     * screen happens to be in at the time. So `en.ts` carries 日本語 as a value it is right to leave
+     * untranslated — which is one of the reasons decision-35 §4 exempts **both** catalog files from
+     * the leftover-Japanese scan rather than this one alone.
      */
     languageName: { ja: "日本語", en: "English" },
     /**
