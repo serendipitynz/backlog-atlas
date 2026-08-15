@@ -1,10 +1,10 @@
 ---
 id: TASK-176
 title: 固定ヘッダを廃し、総件数をタイトルバーへ・メニューを各画面の最上段の帯へ移す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-14 13:21'
-updated_date: '2026-08-15 10:03'
+updated_date: '2026-08-15 10:47'
 labels:
   - ui
   - 'kind:feature'
