@@ -82,6 +82,14 @@
     laneCreateStatus,
   } from "./lib/lane-create";
   import {
+    buildLaneStatusEdit,
+    laneDragHold,
+    laneDrop,
+    laneDropStatus,
+    type DragSource,
+    type LaneDrop,
+  } from "./lib/lane-drop";
+  import {
     WATCH_STOPPED_BEFORE_LAUNCH,
     launchFailureDetail,
     type OpenOutcome,
@@ -129,6 +137,7 @@
     EditorReadiness,
     GitRemoteRead,
     LaunchMethod,
+    ColumnCreateStatuses,
     LedgerResponse,
     ExternalProgramReport,
     LoadedSettings,
@@ -664,6 +673,36 @@
    * disables the entry under 縮退, not merely its 発行.
    */
   let laneCreateHeld = $derived(laneCreateHold({ readiness, busy: laneCreateBusy }));
+
+  // --- 列間ドロップ (doc-7 §4.2, decision-34) ------------------------------------------------
+
+  /** The 候補選択の問い's accessible name — what the layer is, in the words doc-7 §4.2 names it with. */
+  const DROP_ASK_LABEL = "渡す status を選ぶ";
+
+  /**
+   * The card being dragged, or `null`. Held here rather than in the grid for the same reason
+   * 列内新規タスク入力's input is: the grid is unmounted when a task opens in 全面シングルビュー, and a
+   * drag that survived that would land on a grid it did not start on.
+   */
+  let dragSource = $state<DragSource | null>(null);
+  /** 候補選択の問い (doc-7 §4.2), or `null`. The 被せ層 the shell raises for a 候補 2 件以上 受け先. */
+  let dropAsk = $state<{ source: DragSource; column: StatusColumn; drop: LaneDrop } | null>(null);
+  let dropHeldStatus = $state("");
+  /** The task file whose `task edit -s` has not returned — 発行中のカード (doc-7 §4.2). */
+  let dropIssuingPath = $state<string | null>(null);
+
+  /**
+   * Why no card may be picked up, or `null` — つまめないカード (doc-7 §4.2). A 列内新規タスク入力 in
+   * flight holds it too: `busy` is doc-5 §5's「発行中」and there is one CLI per project, so a second
+   * issue started from the grid would queue behind the first with nothing on screen saying so.
+   */
+  let dragHeld = $derived(
+    laneDragHold({ readiness, busy: laneCreateBusy || dropIssuingPath !== null }),
+  );
+  /** The candidate the 問い will pass, resolved against the 受け先's current 候補 (doc-7 §4.2). */
+  let dropStatusToPass = $derived(
+    dropAsk === null ? "" : laneDropStatus(dropAsk.drop, dropHeldStatus),
+  );
 
   // The open task, resolved against the *current* read of its root, so a reload refreshes the
   // panel instead of leaving it on the version the card was clicked from.
@@ -1854,6 +1893,107 @@
     }
   }
 
+  // --- 列間ドロップ の発行 (doc-7 §4.2) --------------------------------------------------------
+
+  /** One row's 列の作成時 status 候補 as the current read has them; empty for a row that is not loaded. */
+  function candidatesOf(slug: string): ColumnCreateStatuses[] {
+    const load = loadBySlug[slug];
+    return load?.state === "loaded" ? load.project.createStatusCandidates : [];
+  }
+
+  /**
+   * Pick a card up (doc-7 §4.2). A task whose TASK-ID could not be read is not picked up at all: the
+   * id is what `task edit` addresses, so a drag that started without one could only end in a refusal
+   * after the drop — and doc-7 §4.2 refuses by not taking the card, before the gesture.
+   */
+  function startCardDrag(view: TaskView): void {
+    const taskId = view.task.id;
+    if (dragHeld !== null || taskId === null) {
+      return;
+    }
+    dragSource = {
+      slug: view.task.project,
+      taskId,
+      sourcePath: view.task.sourcePath,
+      column: view.interpretation.status?.column ?? null,
+    };
+  }
+
+  function endCardDrag(): void {
+    dragSource = null;
+  }
+
+  /**
+   * A card was released over one cell (doc-7 §4.2). The 受け先 test runs again here rather than
+   * trusting the cell that raised the event: `dragSource` is cleared first, so anything that reaches
+   * the issue below has been checked against the row and the 候補 as they are at the drop.
+   */
+  function dropCard(slug: string, column: StatusColumn): void {
+    const source = dragSource;
+    dragSource = null;
+    const drop = laneDrop(source, slug, column, candidatesOf(slug));
+    if (source === null || drop.state === "ignored") {
+      return;
+    }
+    if (drop.state === "ask") {
+      dropAsk = { source, column, drop };
+      dropHeldStatus = "";
+      return;
+    }
+    void issueCardDrop(source, column, drop.status);
+  }
+
+  function cancelDropAsk(): void {
+    dropAsk = null;
+    dropHeldStatus = "";
+  }
+
+  function confirmDropAsk(): void {
+    const ask = dropAsk;
+    const status = dropStatusToPass;
+    dropAsk = null;
+    dropHeldStatus = "";
+    if (ask !== null && status !== "") {
+      void issueCardDrop(ask.source, ask.column, status);
+    }
+  }
+
+  /**
+   * Issue the drop's `task edit -s` (doc-5 §3), through the same `issue` every other 更新操作 goes
+   * through — so the root is re-read and the card appears in its new column without this path having
+   * a reload, a card position, or a conflict check of its own (doc-7 §4.2).
+   *
+   * 通った事実そのものは ⑤ 通知 に載せない (doc-11 §4): the card is in the cell it was dropped on, so a
+   * 帯 would repeat the screen. What is stated is every outcome that is not 通った, and the one
+   * 帰結 the screen cannot show — a card the filter takes away the moment the new status is read.
+   */
+  async function issueCardDrop(
+    source: DragSource,
+    column: StatusColumn,
+    status: string,
+  ): Promise<void> {
+    dropIssuingPath = source.sourcePath;
+    try {
+      const outcome = await issue(source.slug, buildLaneStatusEdit(source.taskId, status));
+      const moved = tasksOf(source.slug).find((view) => view.task.sourcePath === source.sourcePath);
+      const outOfFilter =
+        outcome.state === "applied" &&
+        moved !== undefined &&
+        !matchesFilter(moved, filter, inconsistentView)
+          ? "（今の絞り込みでは表示されないため、カードは出ていません。フィルタ帯で条件を外すと出ます）"
+          : null;
+      notice =
+        outcome.state === "applied" && outOfFilter === null
+          ? null
+          : outcomeMessage(
+              outcome,
+              `${source.taskId} の status を ${status} にしました。`,
+            ) + (outOfFilter ?? "");
+    } finally {
+      dropIssuingPath = null;
+    }
+  }
+
   /**
    * Open the selected task's management file in the user's editor (doc-8 §7). The shell owns this for
    * the same reason as `apply`: the boundary resolves the file from the (slug, path) the selection is
@@ -2347,6 +2487,42 @@
     </Modal>
   {/if}
 
+  {#if dropAsk !== null}
+    <!-- 候補選択の問い (doc-7 §4.2): a 候補 2 件以上 受け先 has no 入力欄 for the value to be read from,
+         which is what §4.1 keeps for the 入口. **Not doc-11 §12's 実行前確認** — that one asks whether to
+         act and has two answers; this asks which value travels and has as many as the column declares.
+         What is borrowed is the 被せ層 の作法 (同時に 1 枚, kept by this file), not §12's rules. -->
+    <Modal label={DROP_ASK_LABEL} onclose={cancelDropAsk}>
+      <section class="drop-ask">
+        <h2>{DROP_ASK_LABEL}</h2>
+        <p>
+          {dropAsk.source.taskId} を {CANONICAL_COLUMN_LABEL[dropAsk.column]} 列へ移します。この列には
+          status が {dropAsk.drop.state === "ask" ? dropAsk.drop.candidates.length : 0} 件宣言されています。
+        </p>
+        <!-- 渡す値は常に読める (doc-7 §4.1 の要求を §4.2 が引く): the chosen candidate is the string the
+             `-s` will carry, so the control shows the project's own spelling and never the 正準列名. -->
+        <label>
+          <span>渡す status</span>
+          <select
+            value={dropStatusToPass}
+            onchange={(event) => (dropHeldStatus = event.currentTarget.value)}
+          >
+            {#if dropAsk.drop.state === "ask"}
+              {#each dropAsk.drop.candidates as candidate (candidate)}
+                <option value={candidate}>{candidate}</option>
+              {/each}
+            {/if}
+          </select>
+        </label>
+        <!-- 進む → 戻る, the order every other layer on this screen answers in (doc-11 §12). -->
+        <div class="answers">
+          <button type="button" onclick={confirmDropAsk}>この status で移す</button>
+          <button type="button" onclick={cancelDropAsk}>{ISSUE_CONFIRM_CANCEL}</button>
+        </div>
+      </section>
+    </Modal>
+  {/if}
+
   {#if pendingIssue !== null}
     <!-- 実行前確認 (doc-11 §12): a 被せ層 of its own, so the answer is not at the coordinates the press
          was — which is the whole of 連打で素通りできない. Raised here rather than by the 区画 that asked,
@@ -2497,6 +2673,12 @@
           oncreateTitle={(value) => (laneCreateTitle = value)}
           oncreateStatus={(value) => (laneCreateHeldStatus = value)}
           oncreateSubmit={submitLaneCreate}
+          {dragSource}
+          {dragHeld}
+          issuingPath={dropIssuingPath}
+          ondragstart={startCardDrag}
+          ondragend={endCardDrag}
+          ondropcard={dropCard}
           onrowFold={toggleRowFold}
           oncolumnFold={toggleColumnFold}
           onselect={open}
@@ -2791,6 +2973,46 @@
    * The heading keeps its right end clear of the ×, using the two numbers `Modal.svelte` declares for
    * it — a long act name (an editor command among them) would otherwise run under the control.
    */
+  // 候補選択の問い (doc-7 §4.2). Shares the 実行前確認's proportions because both are one question in a
+  // 被せ層 with its answers below it; what differs is the control between them, which the other layer
+  // has none of. **Not `@extend`d from it** — the two would then move together, and doc-7 §4.2 is
+  // explicit that this is not doc-11 §12's 実行前確認.
+  .drop-ask {
+    padding: 0.75rem;
+    font-size: var(--text-md);
+
+    h2 {
+      margin: 0 0 0.45rem;
+      padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
+      // 画面見出し (doc-11 §2.2 の 段の役割表). 段は変数が持つので、ここでは数を書かない。
+      font-size: var(--text-3xl);
+      font-weight: 650;
+    }
+
+    p {
+      margin: 0 0 0.6rem;
+    }
+
+    // 渡す値は常に読める (doc-7 §4.1 の要求を §4.2 が引く), so the label and the value sit together
+    // rather than the value standing alone above the answers.
+    label {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+
+    // 進む → 戻る, the order every other layer on this screen answers in (doc-11 §12).
+    .answers {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.8rem;
+
+      button {
+        height: 1.75rem;
+      }
+    }
+  }
+
   .issue-confirm {
     padding: 0.75rem;
     font-size: var(--text-md);

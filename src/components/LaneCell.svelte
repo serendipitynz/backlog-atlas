@@ -37,6 +37,21 @@
      * the position, which is what doc-7 §4.1 fixes.
      */
     createEntry?: Snippet;
+    /**
+     * 受け先 (doc-7 §4.2): whether this cell takes the card currently being dragged. Decided by the
+     * grid, not here — it depends on the dragged card's row and column and on the project's 列の作成時
+     * status 候補, none of which a cell knows. `false` covers all four refusals doc-7 §4.2 lists,
+     * which share one presentation: the cell does not take the card. **Not a 無効化** (doc-11 §5) —
+     * there is no control here to disable, and the one sentence that is owed (候補 0 件) is already
+     * written by the 入口 below the cards.
+     */
+    dropTarget?: boolean;
+    ondropcard?: () => void;
+    /** 発行中のカード (doc-7 §4.2), by task file — the shell's record, looked up rather than copied. */
+    issuingPath?: string | null;
+    dragHeld: string | null;
+    ondragstart: (view: TaskView) => void;
+    ondragend: () => void;
   }
 
   let {
@@ -50,7 +65,37 @@
     conflictOf,
     onselect,
     createEntry,
+    dropTarget = false,
+    ondropcard,
+    issuingPath = null,
+    dragHeld,
+    ondragstart,
+    ondragend,
   }: Props = $props();
+
+  /**
+   * Take the drag over this cell (doc-7 §4.2). `preventDefault` is what makes a cell a drop target at
+   * all in HTML5 drag and drop, so the 受け先 decision and the browser's own notion of one are the
+   * same fact rather than two that could disagree — a cell that is not a 受け先 never calls it, and
+   * the pointer keeps the "no drop" cursor the engine draws for it.
+   */
+  function overCell(event: DragEvent): void {
+    if (!dropTarget) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer !== null) {
+      event.dataTransfer.dropEffect = "move";
+    }
+  }
+
+  function dropOnCell(event: DragEvent): void {
+    if (!dropTarget) {
+      return;
+    }
+    event.preventDefault();
+    ondropcard?.();
+  }
 
   // One derivation for both the figures and the count's accessible name (decision-23): the shape a
   // sighted user reads and the words a screen reader hears describe the same distribution because
@@ -58,7 +103,15 @@
   let groups = $derived(priorityTally(tasks));
 </script>
 
-<div class="cell" class:unmapped class:collapsed>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="cell"
+  class:unmapped
+  class:collapsed
+  class:drop-target={dropTarget}
+  ondragover={overCell}
+  ondrop={dropOnCell}
+>
   {#if collapsed}
     <!-- 畳んだ列は、カード 1 枚を小さな四角 1 つに置き換えて並べ、その下に件数を出す (doc-7 §2.2).
          The squares are how much work is in the cell at a glance — the reading a 5rem band cannot give
@@ -103,6 +156,10 @@
           showRawStatus={unmapped}
           selected={selectedPath === view.task.sourcePath}
           conflict={conflictOf(view)}
+          {dragHeld}
+          issuing={issuingPath === view.task.sourcePath}
+          {ondragstart}
+          {ondragend}
           {onselect}
         />
       {/each}
@@ -127,6 +184,15 @@
   .unmapped {
     border-left: 2px dashed var(--line-strong);
     background: var(--inset);
+  }
+
+  // 受け先 (doc-7 §4.2), while a card is over the grid. Only the cells that will take the card are
+  // marked, so the four refusals need no mark of their own — an unmarked cell is one that will not
+  // take it, which is what doc-7 §4.2 asks the screen to show without a sentence per refusal.
+  // `--sel` is the selection ink, the same one the grid already uses for "this is the one".
+  .drop-target {
+    background: var(--inset);
+    box-shadow: inset 0 0 0 2px var(--sel);
   }
 
   // 畳んだ列 (doc-7 §2.2). Centred so the numbers of a band line up down the grid, and
