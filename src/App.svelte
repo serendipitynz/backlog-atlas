@@ -579,11 +579,24 @@
   // a reactive latch would run a second time on its own write — one extra write of the same title.
   let titleWriteChecked = false;
   const titlesAsked = new Set<string>();
+  /**
+   * Whether the set above has a reader. Only the one confirmation ever reads it, so recording past that
+   * would grow a set per 絞り込み keystroke for the rest of the run with nothing to consult it.
+   */
+  let recordingTitles = true;
 
   /** Every title this shell has issued, so the confirmation can recognise whichever one lands. */
   function writeTitle(line: string): Promise<void> {
-    titlesAsked.add(line);
+    if (recordingTitles) {
+      titlesAsked.add(line);
+    }
     return windowTitleSet(line);
+  }
+
+  /** The set's whole life, ended wherever the confirmation ends — including the write that rejected. */
+  function stopRecordingTitles(): void {
+    recordingTitles = false;
+    titlesAsked.clear();
   }
 
   $effect(() => {
@@ -597,24 +610,27 @@
     }
     titleWriteChecked = true;
     void (async () => {
+      // One `finally` for both exits, so the rejection below — which reports and returns — leaves
+      // nothing recording either.
       try {
-        await writeTitle(line);
-      } catch (error) {
-        notice = `ウィンドウのタイトルに総件数を出せません（${unreadableDetail(asCommandError(error))}）`;
-        return;
-      }
-      // A read that fails on its own terms proves nothing either way, so it ends the check rather than
-      // becoming a second report about a title that may well be correct.
-      const found = await confirmTitleApplied(
-        windowTitleRead,
-        () => titlesAsked,
-        (ms) => new Promise((resume) => setTimeout(resume, ms)),
-      ).catch(() => null);
-      // Kept only while the confirmation needs it — afterwards every write is a plain one, and a set
-      // that went on growing with each 絞り込み keystroke would be a leak with no reader.
-      titlesAsked.clear();
-      if (found !== null) {
-        notice = `ウィンドウのタイトルに総件数を出せません（このデスクトップ環境が題を「${found}」のままにしています）`;
+        try {
+          await writeTitle(line);
+        } catch (error) {
+          notice = `ウィンドウのタイトルに総件数を出せません（${unreadableDetail(asCommandError(error))}）`;
+          return;
+        }
+        // A read that fails on its own terms proves nothing either way, so it ends the check rather
+        // than becoming a second report about a title that may well be correct.
+        const found = await confirmTitleApplied(
+          windowTitleRead,
+          () => titlesAsked,
+          (ms) => new Promise((resume) => setTimeout(resume, ms)),
+        ).catch(() => null);
+        if (found !== null) {
+          notice = `ウィンドウのタイトルに総件数を出せません（このデスクトップ環境が題を「${found}」のままにしています）`;
+        }
+      } finally {
+        stopRecordingTitles();
       }
     })();
   });
