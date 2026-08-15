@@ -24,10 +24,13 @@
 <div class="title-bar" data-tauri-drag-region>
   <!-- 帯の語 (decision-31): the app's name, and on the swimlane 総件数 after it. Not a heading — there
        is no 画面名 any more, and a level-1 heading whose text is the product would put the window's
-       identity into the document outline where the screen's used to be. `aria-hidden` because what it
-       says is the window's title, which the OS already exposes as one; announcing it again would make
-       the first thing on every screen a line the reader cannot act on. -->
-  <span class="line" aria-hidden="true" data-tauri-drag-region>{title}</span>
+       identity into the document outline where the screen's used to be.
+
+       **Not `aria-hidden`, though it looks like window chrome.** On this platform the window's own title
+       is left as `tauri.conf.json` set it — the app's name, nothing more — so this line is the only
+       place 総件数 exists at all, and hiding it would put both ratios out of a screen reader's reach
+       rather than merely repeating what the OS says. -->
+  <span class="line" data-tauri-drag-region>{title}</span>
 </div>
 
 <style lang="scss">
