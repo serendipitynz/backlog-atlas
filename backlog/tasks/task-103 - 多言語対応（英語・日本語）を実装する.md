@@ -1,10 +1,10 @@
 ---
 id: TASK-103
 title: 多言語対応（英語・日本語）を実装する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:35'
-updated_date: '2026-08-15 21:45'
+updated_date: '2026-08-15 21:55'
 labels:
   - i18n
   - 'kind:feature'
