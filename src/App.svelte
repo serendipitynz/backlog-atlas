@@ -2560,7 +2560,13 @@
             disabled={dropAskCandidates.length === 0}
             onchange={(event) => (dropHeldStatus = event.currentTarget.value)}
           >
-            {#each dropAskCandidates as candidate (candidate)}
+            <!-- Unkeyed, for the reason `LaneCreate.svelte` states at the 入口's own select: the
+                 options are static text, and `config.yml` is hand-written and may declare the same
+                 status twice — nothing on the path from `read.rs` through `create_status_candidates`
+                 treats a repeat as invalid, so a keyed each would throw `each_key_duplicate` on a
+                 project the 入口 renders without complaint. The two read one list; they must not
+                 disagree about what it may contain. -->
+            {#each dropAskCandidates as candidate}
               <option value={candidate}>{candidate}</option>
             {/each}
           </select>
