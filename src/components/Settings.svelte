@@ -47,6 +47,8 @@
     toggleStorage,
   } from "../lib/settings";
   import { CARD_ORDER_CHOICES } from "../lib/swimlane";
+  import { LANGUAGES, isLanguage } from "../lib/messages";
+  import { messages } from "../lib/messages-context";
   import {
     RECORDED_THEME_IDS,
     THEME_UNSET_LABEL,
@@ -234,6 +236,19 @@
    * the next save. Such a name paints as 未選択 (`theme.ts` の `themeAttribute`), which is what the
    * marked option tells the user rather than leaving them with a selection that does nothing.
    */
+  /** The 文言表 in force (decision-35), read through the accessor so a language change redraws. */
+  const t = messages();
+
+  /**
+   * The 表示言語 to offer, built the same way `themeChoices` is and for the same reason: a stored
+   * value this build has no 文言表 for stays in the list, marked, so saving does not silently drop
+   * it. Such a value draws in the OS's language until it is changed (`resolveLanguage`).
+   */
+  let languageChoices = $derived.by(() => {
+    const stored = draft?.language ?? null;
+    return stored === null || isLanguage(stored) ? LANGUAGES : [stored, ...LANGUAGES];
+  });
+
   let themeChoices = $derived.by(() => {
     const stored = draft?.theme ?? null;
     return stored === null || RECORDED_THEME_IDS.includes(stored)
@@ -426,6 +441,26 @@
             {#each themeChoices as name (name)}
               <option value={name}>
                 {themeLabel(name) ?? `${name}（このビルドには収録されていません）`}
+              </option>
+            {/each}
+          </select>
+        </label>
+      </section>
+
+      <!-- 表示言語 (decision-35). Beside 表示テーマ because the two are the same kind of item — both
+           govern how the whole screen is drawn rather than what any one 区画 shows — and because
+           their 未選択 options have to read alike, which is easiest to keep true when they are
+           adjacent. -->
+      <section>
+        <h3>{t().settings.languageHeading}</h3>
+        <label>
+          <select bind:value={draft.language}>
+            <option value={null}>{t().settings.languageUnset}</option>
+            {#each languageChoices as name (name)}
+              <option value={name}>
+                {isLanguage(name)
+                  ? t().settings.languageName[name]
+                  : t().settings.languageUnrecorded(name)}
               </option>
             {/each}
           </select>

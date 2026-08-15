@@ -388,6 +388,7 @@ export function mergeDraft(
   const merged: AppSettings = {
     schema_version: next.schema_version,
     theme: pick(draft.theme, baseline.theme, next.theme),
+    language: pick(draft.language, baseline.language, next.language),
     card_density: pick(draft.card_density, baseline.card_density, next.card_density),
     default_storage_filter: pick(
       draft.default_storage_filter,
@@ -455,6 +456,7 @@ function normalize(settings: AppSettings): unknown {
   return [
     settings.schema_version,
     settings.theme,
+    settings.language,
     settings.card_density,
     settings.default_storage_filter,
     settings.default_detail_placement,
