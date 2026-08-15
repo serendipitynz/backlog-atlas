@@ -20,6 +20,7 @@
   import ShortcutHelp from "./components/ShortcutHelp.svelte";
   import Swimlane from "./components/Swimlane.svelte";
   import TaskDetail from "./components/TaskDetail.svelte";
+  import TitleBar from "./components/TitleBar.svelte";
   import Icon from "./lib/icons/Icon.svelte";
   import {
     asCommandError,
@@ -49,6 +50,7 @@
     taskHistoryRead,
     taskHistoryCancel,
     updateApply,
+    windowTitleSet,
     workspaceOpen,
   } from "./lib/commands";
   import { REGISTERING_REASON, refusalReport, type LedgerActionResult } from "./lib/ledger";
@@ -63,7 +65,8 @@
     textEntryFocused,
     type ShortcutScope,
   } from "./lib/shortcuts";
-  import { MAC_KEYBOARD } from "./lib/platform";
+  import { MAC_KEYBOARD, OVERLAY_TITLE_BAR } from "./lib/platform";
+  import { windowTitle } from "./lib/title";
   import {
     DISCARD_CONFIRM_KEEP,
     DISCARD_CONFIRM_PROCEED,
@@ -125,7 +128,6 @@
     columnFoldable,
     laneNeighbours,
     swimlaneTotals,
-    totalsLabel,
     unreadableDetail,
     type GridColumn,
   } from "./lib/swimlane";
@@ -156,7 +158,7 @@
    * 利用者向け画面 (doc-7・doc-10). Two, not four: TASK-55 folded the 台帳管理画面 and the
    * 文書・マイルストーン管理画面 into one プロジェクト詳細画面 per project, because the two used to
    * put「全プロジェクトの台帳」and「1 プロジェクトの文書・マイルストーン」side by side at different
-   * granularities. 登録 is the one ledger-wide operation left, and it opens from the fixed header
+   * granularities. 登録 is the one ledger-wide operation left, and it opens from the ☰'s menu
    * (doc-3 §4・doc-7 §2.1) rather than being a screen of its own.
    */
   type Screen = "swimlane" | "project";
@@ -170,7 +172,7 @@
   let screen = $state<Screen>("swimlane");
   /** Which project プロジェクト詳細画面 is showing. `null` while the swimlane is up. */
   let detailSlug = $state<string | null>(null);
-  /** Whether the fixed header's 「プロジェクトを登録」 modal is open (doc-7 §2.1). */
+  /** Whether the menu's 「プロジェクトを登録」 modal is open (doc-7 §2.1). */
   let registerOpen = $state(false);
   /**
    * Whether the 登録 form holds 未保存入力 — what makes the モーダル's exits ask first (doc-8 §6.3,
@@ -187,11 +189,11 @@
    * モーダル closed for a write it is not reporting would give a reason that is not the one that held.
    */
   let registerSubmitting = $state(false);
-  /** Whether the fixed header's メニュー is open (doc-7 §2.1). */
+  /** Whether the ☰'s メニュー is open (doc-7 §2.1). */
   let menuOpen = $state(false);
   /**
    * What プロジェクト詳細画面 last reported through its `onoverlay` — whether its 作成モーダル
-   * (doc-10 §1) is up. Held beside the header's own three because `modalOpen` reads all four, but it
+   * (doc-10 §1) is up. Held beside the menu's own three because `modalOpen` reads all four, but it
    * is not one of them: this screen raises it, and `detailOverlay` is the whole of the shell's part.
    */
   let detailModalOpen = $state(false);
@@ -205,7 +207,7 @@
   /**
    * The ☰ and the box it hangs off, so the menu can be closed back onto the control it came from.
    *
-   * The ☰ is also what a モーダル hands focus back to (`raiseModal`). It is the header's only control, so
+   * The ☰ is also what a モーダル hands focus back to (`raiseModal`). It is on every screen's topmost bar, so
    * it is on screen whichever route was taken into the modal — unlike the menu line that was pressed,
    * which the modal unmounts on its way up.
    */
@@ -270,7 +272,7 @@
    * 確認できていません while the モーダル is up. Not `$state`: nothing renders from it.
    */
   let settingsDirectoryProbe = 0;
-  /** Whether the 設定画面 is open. Opened from the fixed header's 設定 (doc-7 §2.1). */
+  /** Whether the 設定画面 is open. Opened from the menu's 設定 (doc-7 §2.1). */
   let settingsOpen = $state(false);
   /**
    * Whether a 設定 save is still unresolved. Held here rather than in the form, because it has to close
@@ -491,10 +493,16 @@
   );
   let facets = $derived(collectFacets(allViews, inconsistentView));
   /**
-   * 総件数 for the 固定ヘッダ, beside the 画面名 (doc-7 §2.1). `order` rather than `rows` for the lane
+   * 総件数 for the タイトルバー (doc-7 §2.1, decision-31). `order` rather than `rows` for the lane
    * side: the ledger is what 全件 counts, so a hidden row leaves 表示数 and stays in it.
    */
   let gridTotals = $derived(swimlaneTotals(rows, order.length));
+  /**
+   * The one line the title bar shows, whichever of decision-31's two halves this build is in.
+   * 総件数 only on the swimlane: both ratios describe the グリッド, so on プロジェクト詳細画面 they would
+   * be counting a screen that is not up (doc-7 §2.1).
+   */
+  let titleLine = $derived(windowTitle(screen === "swimlane" ? gridTotals : null));
   /** 既定の保存区分 (decision-13) — the state 既定に戻す returns the filter to. */
   let defaultStorage = $derived(
     settings?.settings.default_storage_filter ?? DEFAULT_FILTER.storage,
@@ -539,6 +547,27 @@
     } else {
       document.documentElement.dataset.theme = chosen;
     }
+  });
+  /**
+   * 総件数 into the window's own title, for the platforms where the OS draws the title bar
+   * (decision-31). macOS is the other half — `OVERLAY_TITLE_BAR` is true there, `TitleBar.svelte`
+   * draws the same line, and this leaves the window's title as `tauri.conf.json` set it, which is what
+   * Mission Control and the 窓の一覧 show.
+   *
+   * From an effect, like the theme above and for the same reason: the window is outside this
+   * component's markup, and the title has to follow every path 総件数 or the current screen can change
+   * by — a filter, a hide, a re-read, a move onto プロジェクト詳細画面 and back.
+   *
+   * A refusal is swallowed rather than reported. It would mean the capability is missing, which is a
+   * property of the build rather than of anything the user just did, so it holds for every update from
+   * then on — a 通知帯 (doc-11 §4) would come back on each keystroke in the 絞り込み and say the same
+   * thing.
+   */
+  $effect(() => {
+    if (OVERLAY_TITLE_BAR) {
+      return;
+    }
+    void windowTitleSet(titleLine).catch(() => {});
   });
   /**
    * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
@@ -635,7 +664,7 @@
    * focus inside itself, and the modal is what answers Escape and Tab there (`Modal.svelte`).
    *
    * The fourth term is プロジェクト詳細画面's 作成モーダル (doc-10 §1), which that screen raises for
-   * itself — a 被せ層 is no longer only what the fixed header opens (doc-11 §7 as TASK-117 revised it),
+   * itself — a 被せ層 is no longer only what the 共通入口 open (doc-11 §7 as TASK-117 revised it),
    * so the shell has to be told rather than to know.
    *
    * `screen` is read with it as a second lock, not as the retraction: that screen retracts its own
@@ -2168,10 +2197,10 @@
       : [...collapsedColumns, column];
   }
 
-  // --- 固定ヘッダ・メニュー・ショートカット (doc-7 §2.1, TASK-56) -------------------------------
+  // --- 共通入口のメニューとショートカット (doc-7 §2.1, TASK-56) ---------------------------------
 
   /**
-   * What every モーダル this header opens does first. Two things, and both are the header's business
+   * What every モーダル the menu opens does first. Two things, and both are the shell's business
    * rather than the modal's:
    *
    * - 被せ層 は 1 枚だけ (`shortcuts.ts`): モーダル・メニュー・値一覧 all answer Escape where they are, so
@@ -2181,7 +2210,7 @@
    *   chord — the modal captures a control that is still on screen and hands focus back to it on close
    *   (doc-7 §2.1 閉じたら開く前の操作へフォーカスを戻す). The menu line the user pressed is unmounted by
    *   the line above, and a press of the chord from the grid would otherwise have nothing but `body` to
-   *   go back to. The ☰ is where these operations live in the header now, so returning there is
+   *   go back to. The ☰ is where these operations live, so returning there is
    *   returning to where the operation was taken from.
    *
    * Held in one function because a third modal (the 一覧モーダル) arrived with TASK-67 and the second copy
@@ -2195,8 +2224,8 @@
 
   /**
    * The same, for a 被せ層 プロジェクト詳細画面 raises itself — its 作成モーダル (doc-10 §1). Since
-   * TASK-117 a 被せ層 is defined by its form rather than by which header opened it (doc-11 §7), and
-   * this is the one the fixed header does not open.
+   * TASK-117 a 被せ層 is defined by its form rather than by which entry opened it (doc-11 §7), and
+   * this is the one the 共通入口 do not open.
    *
    * **Unlike `raiseModal` this moves no focus, and must not.** `raiseModal` focuses the ☰ because the
    * menu line the user pressed is unmounted by the opening, leaving the layer nothing on screen to
@@ -2205,7 +2234,7 @@
    * not redirect the opener — it would put focus outside the layer that is up, which is the opposite
    * of doc-7 §2.1's フォーカスを内側に留める.
    *
-   * What is left is the part that is genuinely the shell's: 被せ層 は 1 枚だけ, and the header's own
+   * What is left is the part that is genuinely the shell's: 被せ層 は 1 枚だけ, and the shell's own
    * メニュー sits above that screen.
    */
   function detailOverlay(open: boolean): void {
@@ -2343,7 +2372,7 @@
    * all. Which rows are considered is decided per press by the 適用範囲 passed in, so nothing here has to
    * recognise a chord — `shortcuts.ts` owns the whole contract (IME・単独キー・修飾キー).
    *
-   * Every operation reached here also has a visible control: the two 共通入口 are in the header and in the
+   * Every operation reached here also has a visible control: the two 共通入口 are in the ☰'s menu and in the
    * menu, the menu has its ☰, and the 絞り込み pair are buttons on the フィルタ帯 (doc-7 §2.1
    * ショートカットだけが入口の操作を作らない / AC #9).
    *
@@ -2423,54 +2452,58 @@
   });
 </script>
 
-<main class="screen">
-  <header class="top">
-    <h1>{screen === "swimlane" ? "プロジェクト別スイムレーン" : "プロジェクト詳細"}</h1>
-    {#if screen === "swimlane"}
-      <!-- 総件数 (doc-7 §2.1), beside the 画面名 and nowhere else: the フィルタ帯 used to carry the card
-           ratio as well, and two places printing the same numbers invite them to disagree. Only on the
-           swimlane, because both ratios describe the grid — on プロジェクト詳細画面 they would be
-           counting a screen that is not up. -->
-      <span class="totals">{totalsLabel(gridTotals)}</span>
-    {/if}
-    <!-- メニュー (doc-7 §2.1): the 共通入口, the line to the 一覧モーダル, and the プロジェクト一覧. It is the
-         header's only control — 登録 and 設定 no longer have a button of their own beside it, since the
-         menu already held both and a header that offers each entry twice spends its width saying the same thing.
-         Their chords still reach them directly, and the menu is the 併置 §2.1 requires of a shortcut.
+<!-- メニュー (decision-31): the 共通入口, the line to the 一覧モーダル, and the プロジェクト一覧. Since the
+     固定ヘッダ went, the ☰ stands at the right end of whichever bar is the screen's topmost row — the
+     フィルタ帯 (doc-7 §5.2) or プロジェクト詳細's ヘッダ行 (doc-10 §3). Written once here and handed to
+     both, because the menu's state, its items and the focus a モーダル comes back to are all this
+     shell's; two copies would be two ☰ that could disagree about whether the menu is up.
 
-         アイコンのみのボタン (doc-11 §2.4): the figure carries no words, so the button names itself with
-         `aria-label`, and its chord is 併記 in the `title` and as `aria-keyshortcuts` data — §2.1's form
-         for a control with no label to print beside. The 一覧モーダル the menu opens is where the chord
-         can also be read as text. -->
-    <div class="menu-anchor" bind:this={menuAnchor}>
-      <button
-        type="button"
-        class="header-entry"
-        bind:this={menuButton}
-        aria-label="メニュー"
-        aria-expanded={menuOpen}
-        aria-haspopup="dialog"
-        aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
-        title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— ヘッダの入口と、${SHORTCUT_HELP_LABEL}と、プロジェクトごとの表示・非表示をまとめて開きます`}
-        onclick={() => (menuOpen ? closeMenu() : openMenu())}
-      >
-        <Icon name="menu" />
-      </button>
-      {#if menuOpen}
-        <HeaderMenu
-          items={menuItems}
-          boundary={menuAnchor}
-          onchoose={chooseMenuItem}
-          onclose={closeMenu}
-        />
-      {/if}
-    </div>
-    <!-- 台帳読取専用 is the 上部帯 ③ (doc-11 §4) and not a badge up here: as a header badge it sat
-         above the 確認帯 ①, which is the ordering doc-11 §4 forbids. -->
-  </header>
+     アイコンのみのボタン (doc-11 §2.4): the figure carries no words, so the button names itself with
+     `aria-label`, and its chord is 併記 in the `title` and as `aria-keyshortcuts` data — doc-7 §2.1's
+     form for a control with no label to print beside. The 一覧モーダル the menu opens is where the
+     chord can also be read as text. -->
+{#snippet menuControl()}
+  <div class="menu-anchor" bind:this={menuAnchor}>
+    <button
+      type="button"
+      class="header-entry"
+      bind:this={menuButton}
+      aria-label="メニュー"
+      aria-expanded={menuOpen}
+      aria-haspopup="dialog"
+      aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
+      title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— 共通の入口と、${SHORTCUT_HELP_LABEL}と、プロジェクトごとの表示・非表示をまとめて開きます`}
+      onclick={() => (menuOpen ? closeMenu() : openMenu())}
+    >
+      <Icon name="menu" />
+    </button>
+    {#if menuOpen}
+      <HeaderMenu
+        items={menuItems}
+        boundary={menuAnchor}
+        onchoose={chooseMenuItem}
+        onclose={closeMenu}
+      />
+    {/if}
+  </div>
+{/snippet}
+
+<main class="screen">
+  {#if OVERLAY_TITLE_BAR}
+    <!-- タイトルバーの帯 (decision-31), macOS only: the OS bar is transparent there and this is what
+         stands in it. Everywhere else the same line is the window's own title, written by the effect
+         above, and nothing is drawn here.
+
+         総件数 only on the swimlane — both ratios describe the グリッド, so on プロジェクト詳細画面 they
+         would be counting a screen that is not up (doc-7 §2.1). -->
+    <TitleBar title={titleLine} />
+  {/if}
+
+  <!-- 台帳読取専用 is the 上部帯 ③ (doc-11 §4) and never a badge on a bar above it: as a header badge it
+       sat above the 確認帯 ①, which is the ordering doc-11 §4 forbids. -->
 
   {#if registerOpen}
-    <!-- 登録 (doc-3 §4.1) is the one ledger-wide operation left, so it opens from the header rather
+    <!-- 登録 (doc-3 §4.1) is the one ledger-wide operation left, so it opens from the 共通入口 rather
          than from the per-project detail screen (doc-3 §4) — and as a モーダル, which is where doc-7
          §2.1 puts it: モーダルの外に画面遷移を作らない (AC #2). -->
     <!-- Two exits rather than three (doc-11 §7): 登録 writes to the ledger without leaving the layer,
@@ -2619,6 +2652,7 @@
       onpopover={setFilterPopover}
       onchange={(next) => (filter = next)}
       oncardorder={(next) => void applyCardOrder(next)}
+      menu={menuControl}
     />
   {/if}
 
@@ -2668,12 +2702,19 @@
          management files through the 更新アダプター. Both routes go through callbacks this shell
          hands down. -->
     {#if detailEntry === null}
-      <p class="status">
-        このプロジェクトは登録されていません（別の画面で登録が外れた可能性）。
-        <button type="button" class="link" onclick={() => leaveProject(false)}>
-          スイムレーンへ戻る
-        </button>
-      </p>
+      <!-- The ☰ comes along even here. This state has no ヘッダ行 — プロジェクト詳細画面 is not mounted,
+           because there is no entry for it to be about — and doc-7 §2.1's ショートカットだけが入口の操作を
+           作らない holds on every screen, so without this row 設定・プロジェクトを登録・キーボード操作一覧
+           would have no visible way in for as long as the user stays here. -->
+      <div class="orphan">
+        <p class="status">
+          このプロジェクトは登録されていません（別の画面で登録が外れた可能性）。
+          <button type="button" class="link" onclick={() => leaveProject(false)}>
+            スイムレーンへ戻る
+          </button>
+        </p>
+        {@render menuControl()}
+      </div>
     {:else}
       {#key detailEntry.slug}
         <ProjectDetail
@@ -2692,6 +2733,7 @@
           onoverlay={detailOverlay}
           onback={() => leaveProject(false)}
           ontoLane={() => leaveProject(true)}
+          menu={menuControl}
         />
       {/key}
     {/if}
@@ -2702,7 +2744,7 @@
     <p class="status">読み込み中…</p>
   {:else if order.length === 0}
     <p class="status">
-      登録済みプロジェクトがありません。固定ヘッダの
+      登録済みプロジェクトがありません。フィルタ帯右端のメニューの
       <button type="button" class="link" onclick={() => openEntry("register")}>
         プロジェクトを登録
       </button>
@@ -2825,15 +2867,22 @@
     overflow: hidden;
   }
 
-  .top {
-    display: flex;
-    align-items: baseline;
-    gap: 0.6rem;
-    padding: 0.5rem 0.75rem;
+  // The one screen state with no 帯 of its own to hang the ☰ off (see the markup): a row that is the
+  // message and that control, and nothing else. 1 行の高さ is declared here for the same reason each
+  // 帯 declares its own — the ☰ reads `--bar-control` whichever row it is standing in, and a row that
+  // did not name one would size the figure by whatever it inherited.
+  .orphan {
+    --bar-control: 1.4rem;
 
-    h1 {
-      margin: 0;
-      font-size: var(--text-3xl);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding-right: 0.75rem;
+
+    // The message takes the row's free space, so the ☰ ends up at the right edge without a margin of
+    // its own (see `.menu-anchor`).
+    p {
+      flex: 1;
     }
   }
 
@@ -2849,43 +2898,46 @@
     cursor: pointer;
   }
 
-  // 総件数 (doc-7 §2.1). 副次 (doc-11 §2.1), because it describes the 画面名 beside it rather than being
-  // read on its own, and `tabular-nums` so a changing count does not shift the words after it.
-  .totals {
-    color: var(--muted);
-    font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums;
-  }
-
-  // The fixed header's one entry point (doc-7 §2.1): the ☰, which opens the menu holding 登録・設定・
-  // キーボード操作一覧. It opens a layer over the screen rather than switching to one, so it is drawn
-  // unlike a tab that says which screen is current.
+  // The ☰, which opens the menu holding 登録・設定・キーボード操作一覧 (doc-7 §2.1). It opens a layer
+  // over the screen rather than switching to one, so it is drawn unlike a tab that says which screen is
+  // current.
   //
-  // アイコンのみのボタン (doc-11 §2.4): `font-size` is what sizes the figure, since the icon draws at 1em —
-  // 1rem here, so the 24-unit drawing lands on a 16px box, which is the size the ☰ glyph it replaced
-  // read at. The padding is even on all four sides because there is no text for it to sit beside.
+  // **Sized by the row it is standing in** (decision-31): since the 固定ヘッダ went, the ☰ shares a line
+  // with the controls of whichever 帯 hosts it, so it takes that row's `--bar-control` as a square —
+  // the height doc-7 §5.2 keeps the フィルタ帯 to is what decides it, not this file. Its old 28.02px box
+  // with 8.8px above and below is what would not fit there.
+  //
+  // アイコンのみのボタン (doc-11 §2.4): `font-size` sizes the figure, since the icon draws at 1em. The
+  // 段 is the bar's own, the same one the two 解除 controls beside it take — a lone button's 1rem would
+  // make this the one figure on the row that is bigger than the rest.
   .header-entry {
     display: inline-flex;
+    width: var(--bar-control);
+    height: var(--bar-control);
     align-items: center;
-    padding: 0.25rem;
+    justify-content: center;
+    padding: 0;
     border: 1px solid var(--line-strong);
     border-radius: 4px;
     background: transparent;
     color: inherit;
-    font-size: var(--text-3xl);
+    font-size: var(--text-sm);
     cursor: pointer;
   }
 
   // The menu hangs off this box, so its own absolute position is against the ☰ and not the window — and
   // a press on the ☰ counts as inside, which is what keeps opening from closing it again.
   //
-  // Centred rather than left on the header's `baseline`: a button whose only child is an icon has no text
-  // to take a baseline from, so the row would align the box's bottom edge with the 画面名's baseline and
-  // hang the figure below the words.
+  // **No margin pushing it right.** Each 帯 already has something that takes the row's free space — the
+  // フィルタ帯's `.tokens` grows, プロジェクト詳細's このプロジェクトのレーンへ carries the `auto` — so an
+  // `auto` here would be a second claim on that space and the two would split it, leaving the ☰ short of
+  // the edge on one row and the 出口 adrift on the other.
+  //
+  // `align-self: center` because a row aligned on `baseline` has nothing to align this to: a button whose
+  // only child is an icon has no text to take a baseline from, so it would hang below the words beside it.
   .menu-anchor {
     position: relative;
     align-self: center;
-    margin-left: auto;
   }
 
   // 上部帯 (doc-11 §4). One rule for all six: 1 行に収め、折り返さず、族の色は左端 4px だけが持つ
@@ -3013,7 +3065,7 @@
     min-height: 0;
     align-items: stretch;
     // The 中央モーダル's layer is positioned against this box rather than the viewport, which is what
-    // keeps the fixed header and the 上部帯 outside it (doc-7 §5.3 の帯は隠さない).
+    // keeps the フィルタ帯 and the 上部帯 outside it (doc-7 §5.3 の帯は隠さない).
     position: relative;
   }
 

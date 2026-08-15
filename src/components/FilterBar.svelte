@@ -11,6 +11,7 @@
   //
   // 保存区分 is the one facet that starts from a 既定 rather than from "off" (doc-7 §5.2), so its
   // tokens are standing before the user has done anything — doc-12 §4 の常設トークン.
+  import type { Snippet } from "svelte";
   import FilterPopover from "./FilterPopover.svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import { defaultFilter, type CardFilter, type Facets } from "../lib/filter";
@@ -49,6 +50,13 @@
     onpopover: (open: boolean) => void;
     onchange: (filter: CardFilter) => void;
     oncardorder: (order: CardOrder) => void;
+    /**
+     * The ☰ and its menu (decision-31), drawn by the shell and placed here: this is スイムレーン's
+     * topmost row, and since the 固定ヘッダ went that is where the 共通入口 are reached from. Rendered
+     * rather than built here because the menu's items, its open state and the focus a モーダル returns
+     * to are all the shell's — this bar only says where on the row it goes.
+     */
+    menu: Snippet;
   }
 
   let {
@@ -61,6 +69,7 @@
     onpopover,
     onchange,
     oncardorder,
+    menu,
   }: Props = $props();
 
   // The text box keeps its own state and is bound (DOM → state), never written back on every
@@ -271,8 +280,13 @@
       <span class="order-failure">{cardOrderFailure}</span>
     {/if}
   </div>
-  <!-- 総計 is not here (doc-7 §5.2, TASK-66): it is beside the 画面名 in the 固定ヘッダ, which is the one
-       place that prints it. The per-row 内訳 on each レーンヘッダ行 stays where it is. -->
+  <!-- 総計 is not here (doc-7 §5.2, TASK-66): it is in the タイトルバー, which is the one place that
+       prints it (decision-31). The per-row 内訳 on each レーンヘッダ行 stays where it is. -->
+
+  <!-- 帯の右端 (decision-31): the ☰ is last on the row and pushes itself right, so it stays at the edge
+       however the 絞り込みトークン above have wrapped. It sits *after* 並び順 rather than among the two
+       解除 controls because it is not a control of this bar — what it opens reaches every screen. -->
+  {@render menu()}
 </div>
 
 <style lang="scss">
