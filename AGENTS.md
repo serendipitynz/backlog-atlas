@@ -322,7 +322,7 @@ whose notes GitHub generates from the merged Pull Requests (`.github/release.yml
 them). **Publishing the draft is a manual step and stays one**: the notes are meant to be
 read first, and a platform whose job failed leaves the draft short an asset.
 
-Five things about that workflow are decisions rather than details, and an edit undoing one
+Six things about that workflow are decisions rather than details, and an edit undoing one
 should say why.
 
 - **It refuses to build when the six macOS signing secrets are unregistered**, in the job
@@ -331,7 +331,7 @@ should say why.
   has already downloaded it by then.
 - **It checks that `THIRD-PARTY-LICENSES.txt` still describes the tagged tree**, in that
   same job and for the same reason: every bundle carries a copy, so a stale one is a defect
-  in all three assets at once rather than in the platform whose job noticed.
+  in every asset at once rather than in the platform whose job noticed.
 - **It does not run `pnpm test`.** m-3 TASK-150's intermittent component-test timeout would
   fail releases at random for a fault that is not in the build. Tests run before the Pull
   Request that produced the tag.
@@ -347,6 +347,18 @@ should say why.
   `.dmg` carries the same `.app`, so shipping it would keep an asset on the release page
   that README tells every reader to skip. v0.1.0 shipped it once; the owner deleted it on
   2026-08-14.
+- **It builds Linux twice, on `ubuntu-24.04` and on `ubuntu-24.04-arm`** (TASK-172). v0.1.0
+  shipped x86_64 alone, and the owner's Linux environment is a VM on Apple silicon, so that
+  release held nothing they could run. Each runner builds for its own architecture, so
+  nothing cross-compiles and neither row passes a `--target`; `ubuntu-24.04-arm` is a
+  GitHub-hosted label, free on public repositories, and carries the same Ubuntu the
+  Toolchain section's WebView requirement names. **The two rows' six assets cannot collide**
+  — tauri-bundler writes the architecture into every name: `amd64`/`arm64` for the `.deb`,
+  `x86_64`/`aarch64` for the `.rpm`, `amd64`/`aarch64` for the `.AppImage` (read out of the
+  bundler at @tauri-apps/cli 2.11.4, which also fetches an aarch64 linuxdeploy rather than
+  refusing the AppImage). **The Linux-only steps are keyed on the matrix's `linux` flag
+  rather than on a runner label**: with two Linux rows, a condition naming one label leaves
+  the other bundle's two checks unrun, and a skipped check is a green run that read nothing.
 
 ### Third-party notices
 
