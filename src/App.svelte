@@ -50,7 +50,6 @@
     taskHistoryRead,
     taskHistoryCancel,
     updateApply,
-    windowTitleRead,
     windowTitleSet,
     workspaceOpen,
   } from "./lib/commands";
@@ -66,8 +65,8 @@
     textEntryFocused,
     type ShortcutScope,
   } from "./lib/shortcuts";
-  import { MAC_KEYBOARD, OVERLAY_TITLE_BAR } from "./lib/platform";
-  import { confirmTitleApplied, windowTitle } from "./lib/title";
+  import { DRAWN_TITLE_BAR, MAC_KEYBOARD, OVERLAY_TITLE_BAR } from "./lib/platform";
+  import { windowTitle } from "./lib/title";
   import {
     DISCARD_CONFIRM_KEEP,
     DISCARD_CONFIRM_PROCEED,
@@ -550,89 +549,32 @@
     }
   });
   /**
-   * 総件数 into the window's own title, for the platforms where the OS draws the title bar
-   * (decision-31). macOS is the other half — `OVERLAY_TITLE_BAR` is true there, `TitleBar.svelte`
-   * draws the same line, and this leaves the window's title as `tauri.conf.json` set it, which is what
-   * Mission Control and the 窓の一覧 show.
+   * 総件数 into the window's own title, on every platform but macOS (decision-31). There the 帯 is drawn
+   * over the OS's own bar and the title is left as `tauri.conf.json` set it, which is what Mission
+   * Control and the 窓の一覧 show. **Linux gets both** — the write is harmless and window lists read it,
+   * while what reaches the screen is the 帯 (decision-31 の Linux の改訂).
    *
    * From an effect, like the theme above and for the same reason: the window is outside this
    * component's markup, and the title has to follow every path 総件数 or the current screen can change
    * by — a filter, a hide, a re-read, a move onto プロジェクト詳細画面 and back.
    *
-   * **A failure is reported, once** (⑤ 通知, doc-11 §4). The first write is also confirmed, because a
-   * write that is accepted and then not applied looks exactly like one that worked — which is the state
-   * Linux was found in on 2026-08-15, the title left at the app's name with nothing raised. Either way
-   * the user has lost 総件数 altogether on that platform, and doc-11 §5's refusal of a 理由の無い
-   * 無効化 is the same principle: what the screen cannot do, it says.
+   * **A refusal is reported** (⑤ 通知, doc-11 §4) rather than swallowed. Windows is the one platform
+   * where the title is the only place 総件数 goes — macOS and Linux draw the 帯 — so a write it refuses
+   * leaves the ratios nowhere, and doc-11 §5's refusal of a 理由の無い無効化 is the same principle.
    *
-   * **Confirming is not one read.** tao's Linux `set_title` queues a `WindowRequest::Title` and returns,
-   * so the setter resolves with the request still in flight; `confirmTitleApplied` (`title.ts`) is the
-   * rule for how long to keep asking and what counts as the answer, and it answers against every title
-   * `writeTitle` below has issued — the writer is the only place that sees all of them, and a title
-   * written between two of the confirmation's own reads is exactly the one a queued write returns.
-   *
-   * Once, and not per update: the causes are properties of the build or of the window manager, so they
-   * hold for every write from then on, and a 帯 raised per keystroke in the 絞り込み would say the same
-   * sentence over and over. `titleWriteChecked` is what spends it.
+   * **Whether the title was *applied* is not checked, and that is a decision** (decision-31 の Linux の
+   * 改訂). It was, until the platform it was written for turned out to accept the write and read the new
+   * value back while drawing the old one — so the check answered "applied" for the very defect it
+   * existed to name. With Linux carrying 総件数 in the 帯 and Windows measured to show the title, it had
+   * nothing left to protect.
    */
-  // Plain `let`/`Set`, not `$state`: nothing renders from either, and an effect that both read and wrote
-  // a reactive latch would run a second time on its own write — one extra write of the same title.
-  let titleWriteChecked = false;
-  const titlesAsked = new Set<string>();
-  /**
-   * Whether the set above has a reader. Only the one confirmation ever reads it, so recording past that
-   * would grow a set per 絞り込み keystroke for the rest of the run with nothing to consult it.
-   */
-  let recordingTitles = true;
-
-  /** Every title this shell has issued, so the confirmation can recognise whichever one lands. */
-  function writeTitle(line: string): Promise<void> {
-    if (recordingTitles) {
-      titlesAsked.add(line);
-    }
-    return windowTitleSet(line);
-  }
-
-  /** The set's whole life, ended wherever the confirmation ends — including the write that rejected. */
-  function stopRecordingTitles(): void {
-    recordingTitles = false;
-    titlesAsked.clear();
-  }
-
   $effect(() => {
     if (OVERLAY_TITLE_BAR) {
       return;
     }
-    const line = titleLine;
-    if (titleWriteChecked) {
-      void writeTitle(line).catch(() => {});
-      return;
-    }
-    titleWriteChecked = true;
-    void (async () => {
-      // One `finally` for both exits, so the rejection below — which reports and returns — leaves
-      // nothing recording either.
-      try {
-        try {
-          await writeTitle(line);
-        } catch (error) {
-          notice = `ウィンドウのタイトルに総件数を出せません（${unreadableDetail(asCommandError(error))}）`;
-          return;
-        }
-        // A read that fails on its own terms proves nothing either way, so it ends the check rather
-        // than becoming a second report about a title that may well be correct.
-        const found = await confirmTitleApplied(
-          windowTitleRead,
-          () => titlesAsked,
-          (ms) => new Promise((resume) => setTimeout(resume, ms)),
-        ).catch(() => null);
-        if (found !== null) {
-          notice = `ウィンドウのタイトルに総件数を出せません（このデスクトップ環境が題を「${found}」のままにしています）`;
-        }
-      } finally {
-        stopRecordingTitles();
-      }
-    })();
+    void windowTitleSet(titleLine).catch((error) => {
+      notice = `ウィンドウのタイトルに総件数を出せません（${unreadableDetail(asCommandError(error))}）`;
+    });
   });
   /**
    * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
@@ -2554,14 +2496,14 @@
 {/snippet}
 
 <main class="screen">
-  {#if OVERLAY_TITLE_BAR}
-    <!-- タイトルバーの帯 (decision-31), macOS only: the OS bar is transparent there and this is what
-         stands in it. Everywhere else the same line is the window's own title, written by the effect
-         above, and nothing is drawn here.
+  {#if DRAWN_TITLE_BAR}
+    <!-- タイトルバーの帯 (decision-31 と その Linux の改訂). macOS draws it over the OS's own bar,
+         Linux under it; Windows draws nothing here and reads the same line from the window's title,
+         written by the effect above.
 
          総件数 only on the swimlane — both ratios describe the グリッド, so on プロジェクト詳細画面 they
          would be counting a screen that is not up (doc-7 §2.1). -->
-    <TitleBar title={titleLine} />
+    <TitleBar title={titleLine} overlay={OVERLAY_TITLE_BAR} />
   {/if}
 
   <!-- 台帳読取専用 is the 上部帯 ③ (doc-11 §4) and never a badge on a bar above it: as a header badge it
