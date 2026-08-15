@@ -311,6 +311,18 @@ export async function windowTitleSet(title: string): Promise<void> {
   await getCurrentWindow().setTitle(title);
 }
 
+/**
+ * Read the window's title back (decision-31). `core:window:allow-title` is already in `core:default`,
+ * so this asks for no permission of its own.
+ *
+ * It exists because a write that is *accepted* and then not applied is indistinguishable from one that
+ * worked: on Linux the title stayed the app's name with `set_title` raising nothing (owner's machine,
+ * 2026-08-15). Reading back is the only way the app can tell the user which of the two happened.
+ */
+export async function windowTitleRead(): Promise<string> {
+  return await getCurrentWindow().title();
+}
+
 /** Subscribe to watch-triggered re-reads. Resolves to the unsubscribe function. */
 export function onProjectReloaded(
   handler: (event: ReloadEvent) => void,

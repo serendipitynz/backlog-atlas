@@ -4,7 +4,7 @@ title: 固定ヘッダを廃し、総件数をタイトルバーへ・メニュ�
 status: In Review
 assignee: []
 created_date: '2026-08-14 13:21'
-updated_date: '2026-08-15 06:18'
+updated_date: '2026-08-15 07:36'
 labels:
   - ui
   - 'kind:feature'
@@ -34,7 +34,7 @@ decision-31 の実装。固定ヘッダ（doc-7 §2.1）の行を無くし、そ
 - [x] #1 固定ヘッダの行が無くなり、画面名がどの画面にも出ていない
 - [x] #2 ☰ がスイムレーンではフィルタ帯の右端、プロジェクト詳細では doc-10 §3 のヘッダ行の右端にあり、モーダルを閉じたときのフォーカスが移設先の ☰ へ戻る
 - [x] #3 フィルタ帯の ☰ が帯の 1 行の高さ（--bar-control。doc-7 §5.2）を取っており、帯の高さが変更前と同じである — 現行の ☰ は 28.02 px に上下 8.8 px を持ち、36.16 px の帯にはその寸法では入らない
-- [ ] #4 macOS で総件数がタイトルバーの帯に出る（titleBarStyle: Overlay ＋ hiddenTitle。装飾は残り、信号機帯の下に文字が潜らない）
+- [x] #4 macOS で総件数がタイトルバーの帯に出る（titleBarStyle: Overlay ＋ hiddenTitle。装飾は残り、信号機帯の下に文字が潜らない）
 - [ ] #5 Windows・Linux で総件数が窓の題に出る。OS の分岐が cfg ではなく値で持たれている
 - [x] #6 プロジェクト詳細ではタイトルバーがアプリ名だけを出す（総件数はスイムレーン限定という doc-7 §2.1 の契約のまま）
 - [x] #7 プロジェクト詳細の 戻る が arrow-left のアイコンのみのボタンになり、行き先の語を aria-label が持つ
@@ -89,5 +89,20 @@ decision-31 の実装。固定ヘッダ（doc-7 §2.1）の行を無くし、そ
 
 `pnpm test`（909 passed / 37 files）・`pnpm run check`（0 errors）・`pnpm run lint`（clean）・`pnpm run build` 成功。`cargo test`（412 passed）・`cargo fmt --check`・`cargo clippy --all-targets -- -D warnings` clean。
 
-**未実施**: AC #4（macOS の帯の目視）・AC #5 の窓の題・AC #12（Windows・Linux 実機、macOS で帯をつかんで動かす／ダブルクリックで拡大）。
+## 実機（2026-08-15、オーナー）
+
+- **macOS OK** — 信号機の下に文字が潜らず、帯をつかんで窓が動き、ダブルクリックで拡大する（AC #4 と AC #12 の macOS 分）。
+- **Windows OK** — 題が `Backlog Atlas — 表示 181 / 181 件・2 / 2 プロジェクト` になる。
+- **Linux NG** — 題がアプリ名のままだった（GNOME on QEMU）。**原因は未特定である。** `titleBarStyle` と
+  `hiddenTitle` は `tauri-runtime-wry` の `with_config` が macOS だけに適用しており（実測: 該当ブロックが
+  `#[cfg(target_os = "macos")]`）、`plugin:window|set_title` は Linux でも登録されていて、tao の GTK 側も
+  `WindowRequest::Title` を `gtk_window_set_title` へ渡している。**残る候補は 2 つで、どちらかを測っていない** —
+  権限が拒否されたのか、受け取ったうえでデスクトップ環境が反映しなかったのか。
+
+**その切り分けを画面に出す形へ変えた。** 最初の 1 回だけ題を読み戻し、求めた文と違えば ⑤ 通知（doc-11 §4）で
+述べる。拒否も同じく述べる。**元は黙って捨てていた** — その判断が、この不具合の理由を利用者にもこちらにも
+残さなかった。読み戻しは `core:window:allow-title`（`core:default` に含まれる）なので、追加権限は 2 つのままである。
+失敗経路は Windows の user agent を渡した app-check で実際に立てて確かめた（帯が 1 本、理由を伴って出る）。
+
+**未実施**: AC #5 の Linux 分・AC #12 の Linux 分。**次の実機実行で ⑤ 通知が何を述べるかが、上の 2 候補を分ける。**
 <!-- SECTION:NOTES:END -->

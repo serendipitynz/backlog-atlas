@@ -50,6 +50,7 @@
     taskHistoryRead,
     taskHistoryCancel,
     updateApply,
+    windowTitleRead,
     windowTitleSet,
     workspaceOpen,
   } from "./lib/commands";
@@ -558,16 +559,44 @@
    * component's markup, and the title has to follow every path 総件数 or the current screen can change
    * by — a filter, a hide, a re-read, a move onto プロジェクト詳細画面 and back.
    *
-   * A refusal is swallowed rather than reported. It would mean the capability is missing, which is a
-   * property of the build rather than of anything the user just did, so it holds for every update from
-   * then on — a 通知帯 (doc-11 §4) would come back on each keystroke in the 絞り込み and say the same
-   * thing.
+   * **A failure is reported, once** (⑤ 通知, doc-11 §4). The first write is also read back, because a
+   * write that is accepted and then not applied looks exactly like one that worked — which is the state
+   * Linux was found in on 2026-08-15, the title left at the app's name with nothing raised. Either way
+   * the user has lost 総件数 altogether on this platform, and doc-11 §5's refusal of a 理由の無い
+   * 無効化 is the same principle: what the screen cannot do, it says.
+   *
+   * Once, and not per update: the causes are properties of the build or of the window manager, so they
+   * hold for every write from then on, and a 帯 raised per keystroke in the 絞り込み would say the same
+   * sentence over and over. `titleWriteChecked` is what spends it.
    */
+  // A plain `let`, not `$state`: nothing renders from it, and an effect that both read and wrote a
+  // reactive latch would run a second time on its own write — one extra write of the same title.
+  let titleWriteChecked = false;
   $effect(() => {
     if (OVERLAY_TITLE_BAR) {
       return;
     }
-    void windowTitleSet(titleLine).catch(() => {});
+    const line = titleLine;
+    if (titleWriteChecked) {
+      void windowTitleSet(line).catch(() => {});
+      return;
+    }
+    titleWriteChecked = true;
+    void (async () => {
+      try {
+        await windowTitleSet(line);
+      } catch (error) {
+        notice = `ウィンドウのタイトルに総件数を出せません（${unreadableDetail(asCommandError(error))}）`;
+        return;
+      }
+      // The read is allowed to fail on its own terms without becoming a report: what it would have
+      // proved is already the ordinary case, and a second sentence about a diagnostic the user did not
+      // ask for is noise on top of a title that may well be correct.
+      const written = await windowTitleRead().catch(() => line);
+      if (written !== line) {
+        notice = `ウィンドウのタイトルに総件数を出せません（このデスクトップ環境が題を「${written}」のままにしています）`;
+      }
+    })();
   });
   /**
    * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.

@@ -184,6 +184,12 @@ export const answers = {
    * hold could not tell a test that had wired them to one flag from one that had not.
    */
   ledgerRegisterHold: null as Deferred<void> | null,
+  /**
+   * What `window_title_read` answers with. Only the shell's first write is read back (decision-31), so
+   * this stands for the window manager's answer. `windowTitleSet` writes it, which is the
+   * platforms-that-work case; a test about the other one assigns it after the write.
+   */
+  windowTitle: "",
 };
 
 /** The `project-reloaded` subscribers currently registered, in subscription order. */
@@ -254,6 +260,7 @@ export function reset(): void {
   answers.externalProgramsHolds = [];
   answers.settingsSaveFails = false;
   answers.ledgerRegisterHold = null;
+  answers.windowTitle = "";
 }
 
 function record<T>(name: string, args: readonly unknown[], answer: () => T): T {
@@ -442,7 +449,13 @@ export const commandFakes = {
   // effect on the first paint, ahead of the 起動時の順序 the tests here fix. It carries no contract
   // those tests are about: what the title says is `title.ts`'s rule, and when it is written is
   // whenever 総件数 or the current screen changed.
-  windowTitleSet: (_title: string): Promise<void> => Promise.resolve(),
+  windowTitleSet: (title: string): Promise<void> => {
+    answers.windowTitle = title;
+    return Promise.resolve();
+  },
+
+  /** The read-back that decides whether the write was applied (decision-31). */
+  windowTitleRead: (): Promise<string> => Promise.resolve(answers.windowTitle),
 
   onProjectReloaded: (handler: (event: ReloadEvent) => void): Promise<() => void> =>
     record("on_project_reloaded", [], () => {
