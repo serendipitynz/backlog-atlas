@@ -133,7 +133,7 @@ jobs:
 
       # THIRD-PARTY-LICENSES.txt is generated from the lockfiles and committed,
       # and every bundle carries a copy (tauri.conf.json's bundle.resources). A
-      # stale one is therefore a defect in all three assets at once, which is why
+      # stale one is therefore a defect in every asset at once, which is why
       # this stops the run here — before the draft exists — rather than in a
       # platform job.
       #
@@ -212,9 +212,9 @@ jobs:
       # Every bundle already carries this file, so attaching it here is for the
       # reader who wants to know what is inside before downloading a hundred
       # megabytes — and for anyone auditing the release without installing it.
-      # Uploaded from this job rather than the matrix: the three platforms
-      # produce the same file, and three jobs racing to --clobber one asset is
-      # a race with nothing to win.
+      # Uploaded from this job rather than the matrix: every build produces the
+      # same file, and jobs racing to --clobber one asset is a race with nothing
+      # to win.
       - name: Attach the third-party notice to the draft release
         run: gh release upload "$RELEASE_TAG" THIRD-PARTY-LICENSES.txt --clobber -R "$GITHUB_REPOSITORY"
 

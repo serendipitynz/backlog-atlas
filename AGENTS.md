@@ -381,7 +381,8 @@ and commit it whenever an input changes — either lockfile, `THIRD-PARTY-NOTICE
 pnpm install
 cargo fetch --manifest-path src-tauri/Cargo.toml \
   --target aarch64-apple-darwin --target x86_64-apple-darwin \
-  --target x86_64-pc-windows-msvc --target x86_64-unknown-linux-gnu
+  --target x86_64-pc-windows-msvc --target x86_64-unknown-linux-gnu \
+  --target aarch64-unknown-linux-gnu
 node scripts/generate-third-party-licenses.mjs
 ```
 
@@ -401,15 +402,18 @@ Four things about the generator are decisions rather than details.
   into this tree and appear in neither lockfile, so no inventory built from one lists either.
   One file rather than two is what makes shipping the generated list without them impossible,
   instead of a rule someone has to remember at bundling time.
-- **The crate set is the union over the four release target triples**, one
+- **The crate set is the union over the five release target triples**, one
   `cargo metadata --filter-platform` pass each. The unfiltered graph is 442 crates against
   that union's 352: cargo resolves every platform the lockfile can describe, so the notice
   would claim the Android, wasm, Redox, iOS and GNU-ABI Windows crates ship inside these
-  bundles.
+  bundles. **The list follows the release's bundles, so the arm64 Linux row put
+  `aarch64-unknown-linux-gnu` in it** (TASK-172) — the two Linux triples resolve the same
+  crates today (measured 2026-08-15, the union unchanged at 352), so it is there against a
+  later `cfg(target_arch)` dependency going unlisted in the arm64 bundles.
 - **Crate texts are read out of the `.crate` tarballs in the cargo registry cache**, not out
   of the extracted sources beside them. `cargo fetch --target` fills the cache for a platform
   it never builds, but extraction happens at build time — so on any one machine the extracted
-  set covers the host alone, and this notice has to cover four triples at once (measured on
+  set covers the host alone, and this notice has to cover five triples at once (measured on
   2026-08-14: 58 of the tree's crates were cached and unextracted).
 
 **`.gitattributes` is load-bearing here, not housekeeping.** The digests are taken over the

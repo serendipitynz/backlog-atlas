@@ -355,7 +355,8 @@ stable を追い、`rust-toolchain.toml` も無い）ので、対処は固定で
 pnpm install
 cargo fetch --manifest-path src-tauri/Cargo.toml \
   --target aarch64-apple-darwin --target x86_64-apple-darwin \
-  --target x86_64-pc-windows-msvc --target x86_64-unknown-linux-gnu
+  --target x86_64-pc-windows-msvc --target x86_64-unknown-linux-gnu \
+  --target aarch64-unknown-linux-gnu
 node scripts/generate-third-party-licenses.mjs
 ```
 
@@ -375,15 +376,18 @@ node scripts/generate-third-party-licenses.mjs
   あり、どちらのロックファイルにも現れないので、ロックファイルから作った一覧には載らない。
   2 ファイルではなく 1 ファイルにしてあるのは、**生成した一覧だけを出荷することを不可能に
   するため**であって、同梱時に誰かが覚えている規則にしないためである。
-- **crate の集合は、リリースの 4 つのターゲットトリプルの和集合である。**
-  `cargo metadata --filter-platform` を 1 回ずつ、計 4 回通す。絞らない依存グラフは 442 件で、
+- **crate の集合は、リリースの 5 つのターゲットトリプルの和集合である。**
+  `cargo metadata --filter-platform` を 1 回ずつ、計 5 回通す。絞らない依存グラフは 442 件で、
   和集合の 352 件と食い違う — cargo はロックファイルが記述しうる全プラットフォームを解決
   するので、そのままだと Android・wasm・Redox・iOS・GNU ABI の Windows 用 crate が
-  このバンドルに入っていると通知が主張してしまう。
+  このバンドルに入っていると通知が主張してしまう。**この一覧はリリースのバンドルに従うので、
+  arm64 の Linux の行が `aarch64-unknown-linux-gnu` を足させた** (TASK-172)。Linux の
+  2 トリプルは現時点で同じ crate を解決する（2026-08-15 実測。和集合は 352 件のまま）ので、
+  足したのは後から `cfg(target_arch)` で入る依存が arm64 のバンドルで未掲載になるのを防ぐためである。
 - **crate の本文は、cargo registry cache の `.crate` tarball から読む。** 隣にある展開済み
   ソースからではない。`cargo fetch --target` はビルドしないプラットフォームのぶんも cache を
   埋めるが、**展開はビルド時に起きる** — つまり 1 台の機械で展開済みなのはホストのぶんだけで、
-  この通知は 4 トリプルを一度に覆う必要がある（2026-08-14 実測: この木の 58 crate が
+  この通知は 5 トリプルを一度に覆う必要がある（2026-08-14 実測: この木の 58 crate が
   取得済みかつ未展開だった）。
 
 **`.gitattributes` はここでは飾りではなく、仕組みを支えている。** ダイジェストはディスク上の

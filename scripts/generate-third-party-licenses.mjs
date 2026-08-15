@@ -6,7 +6,8 @@
 //   pnpm install
 //   cargo fetch --manifest-path src-tauri/Cargo.toml \
 //     --target aarch64-apple-darwin --target x86_64-apple-darwin \
-//     --target x86_64-pc-windows-msvc --target x86_64-unknown-linux-gnu
+//     --target x86_64-pc-windows-msvc --target x86_64-unknown-linux-gnu \
+//     --target aarch64-unknown-linux-gnu
 //   node scripts/generate-third-party-licenses.mjs
 //
 // and commit the result. `third-party-licenses.test.ts` fails when the file's
@@ -52,6 +53,12 @@ const TARGETS = [
   'x86_64-apple-darwin',
   'x86_64-pc-windows-msvc',
   'x86_64-unknown-linux-gnu',
+  // The release builds Linux on two architectures, and both bundles carry this
+  // notice. The two triples resolve the same crates today (measured 2026-08-15),
+  // so adding this one changes nothing in the output — it is here so that a
+  // dependency taken on under `cfg(target_arch)` later cannot go unlisted in
+  // the arm64 bundles without anything failing.
+  'aarch64-unknown-linux-gnu',
 ]
 
 const LICENSE_FILE = /^(licen[cs]e|copying|copyright|notice|unlicen[cs]e)/i
@@ -460,7 +467,7 @@ function render(packages) {
     `Sections 2 and 3 list the ${npm} npm packages and ${cargo} cargo crates resolved for a`,
     'release build. The npm side is the production dependency set — the build-only',
     'half of the tree (the bundler, the compiler, the test runner) reaches no bundle.',
-    'The cargo side is the union over the four target triples the release workflow',
+    'The cargo side is the union over the five target triples the release workflow',
     'builds, so this one file covers the macOS, Windows, and Linux bundles alike;',
     'dev-dependencies are excluded, build-dependencies are kept.',
     '',

@@ -4,7 +4,7 @@ title: Linux arm64 のバンドルをリリースへ追加する
 status: In Review
 assignee: []
 created_date: '2026-08-14 03:56'
-updated_date: '2026-08-15 11:19'
+updated_date: '2026-08-15 11:29'
 labels:
   - release
   - 'kind:improvement'
@@ -27,7 +27,7 @@ README 和英の導入節は TASK-170 で「Windows と Linux は x64/x86_64 の
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 リリースワークフローが Linux arm64 の .deb・.rpm・.AppImage をドラフトへ載せる
-- [x] #2 README 和英の導入節が Linux の対応アーキテクチャを実資産どおりに述べている
+- [ ] #2 README 和英の導入節が Linux の対応アーキテクチャを実資産どおりに述べている
 - [ ] #3 arm64 実機 (オーナーの VM) で起動を確認した
 <!-- AC:END -->
 
@@ -36,7 +36,9 @@ README 和英の導入節は TASK-170 で「Windows と Linux は x64/x86_64 の
 <!-- SECTION:NOTES:BEGIN -->
 実装 (2026-08-15): `release.yml` の build matrix へ `ubuntu-24.04-arm` の行を足し、Linux だけの 3 手順 (依存導入・.deb のアイコン検査・.deb の通知検査) の条件を matrix の `linux` 印へ移した。ラベル名で分岐したままだと、もう一方のバンドルの検査 2 つが走らずに緑になる。
 
-実測 (@tauri-apps/cli 2.11.4 の tauri-bundler を読んだ): aarch64 では `.deb` が `arm64`、`.rpm` と `.AppImage` が `aarch64`／`amd64` 側と別名になるので、6 資産は衝突しない。AppImage も aarch64 の linuxdeploy を取りにいく経路があり、拒まれない。`ubuntu-24.04-arm` は GitHub がホストするラベルで、パブリックリポジトリでは無償 (GitHub の runner 一覧で確認)。
+**第三者通知の対象トリプルにも arm64 の Linux を足した。** `scripts/generate-third-party-licenses.mjs` の `TARGETS` は「リリースが組むトリプルの和集合」を作る一覧で、arm64 のバンドルもこの通知を同梱する。Linux の 2 トリプルは現時点で同じ crate 集合を解決する (2026-08-15 実測。和集合は 352 件のまま) ので出力の中身は変わらないが、後から `cfg(target_arch)` で入る依存が arm64 のバンドルで未掲載になるのを防ぐ。
 
-未達の AC 2 件: AC #1 は次のタグ (v0.2.0) のリリース実行で初めて確かめられる。AC #3 はオーナーの arm64 VM が要る。どちらも「未測定」であって「不可能」ではない。
+実測 (@tauri-apps/cli 2.11.4 の tauri-bundler を読んだ): aarch64 では `.deb` が `arm64`、`.rpm` と `.AppImage` が `aarch64` で、`amd64`／`x86_64`／`amd64` 側と別名になるので 6 資産は衝突しない。AppImage も aarch64 の linuxdeploy を取りにいく経路があり、拒まれない。`pnpm-lock.yaml` は `@tauri-apps/cli-linux-arm64-gnu` を含むので `--frozen-lockfile` は arm64 でも通る。`ubuntu-24.04-arm` は GitHub がホストするラベルで、パブリックリポジトリでは無償。
+
+**AC 3 件はいずれも「arm64 の資産を初めて載せるタグ」で揃って満たされる。** AC #1 はそのリリース実行、AC #3 はオーナーの arm64 VM、AC #2 も同じ時点まで「実資産どおり」にならない (README は次のリリースを述べる形で先に書いてある。タスクの Description がこの PR で動かすと定めている)。どれも「未測定」であって「不可能」ではない。
 <!-- SECTION:NOTES:END -->
