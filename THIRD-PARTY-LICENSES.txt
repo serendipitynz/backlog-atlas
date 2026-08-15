@@ -19,7 +19,7 @@ without the other.
 Sections 2 and 3 list the 120 npm packages and 352 cargo crates resolved for a
 release build. The npm side is the production dependency set — the build-only
 half of the tree (the bundler, the compiler, the test runner) reaches no bundle.
-The cargo side is the union over the four target triples the release workflow
+The cargo side is the union over the five target triples the release workflow
 builds, so this one file covers the macOS, Windows, and Linux bundles alike;
 dev-dependencies are excluded, build-dependencies are kept.
 
@@ -31,7 +31,7 @@ Line endings are the only thing normalized. No text below is otherwise altered.
 
 Generated from these inputs (a digest that no longer matches means this file
 is stale — regenerate it with the command at the top of the generator):
-  scripts/generate-third-party-licenses.mjs       sha256 62e421a8cd25fed7044baf2597f1b5ceeadb08d525ecd35d181b89e1d6179011
+  scripts/generate-third-party-licenses.mjs       sha256 079876625b911dce93dd84e8c7fcf66adb7347ea3f4b8a8f258948c24383ab06
   pnpm-lock.yaml                                  sha256 948d2592104f09ac83c5f659ff938e20ef820c8928e6546129fec5846a9a4e0c
   src-tauri/Cargo.lock                            sha256 410895b389045d5ba54f6701328e04224b33bce0a3f32340d19177b238968243
   THIRD-PARTY-NOTICES.md                          sha256 622dc24de844b684d63eee93e654819af4114709340a9ac0c201d3fe776f3f9b

@@ -11,7 +11,7 @@
  * reads either lockfile.
  *
  * Re-running the generator here is not an option: it needs a populated `node_modules`, a cargo
- * registry cache holding every crate for four target triples, and the network to fill them. So the
+ * registry cache holding every crate for five target triples, and the network to fill them. So the
  * generator records a digest of each of its in-repo inputs in the file's own header, and this
  * compares those against the inputs as they are now. That covers a dependency bump (either
  * lockfile), an edit to the vendored notices, a new or changed standard licence text, and a change

@@ -48,7 +48,9 @@ Ubuntu なら 24.04 以降）。画面は日本語のみです。
 - **Windows** — `.msi`。`x64-setup.exe` は同じアプリを別のインストーラで入れるもので、
   どちらでも構いません。x64 のみです。
 - **Linux** — Debian・Ubuntu は `.deb`、Fedora・openSUSE は `.rpm`、それ以外は
-  `.AppImage` (インストール不要) です。x86_64 のみです。
+  `.AppImage` (インストール不要) です。x86_64 と arm64 の両方があるので、
+  ファイル名に自分のアーキテクチャが入っているもの (前者は `amd64` か `x86_64`、
+  後者は `arm64` か `aarch64`) を取ってください。
 
 macOS のビルドは署名と notarization を通してあるので、macOS に拒まれません。
 Windows と Linux のビルドは未署名です。Windows では、英語 UI の実機に v0.1.0 の `.msi` を

@@ -53,7 +53,9 @@ Which file to take:
 - **Windows** — the `.msi`. The `x64-setup.exe` installs the same app through a different
   installer; either works. x64 only.
 - **Linux** — the `.deb` on Debian and Ubuntu, the `.rpm` on Fedora and openSUSE, or the
-  `.AppImage` on any distribution, with no install step. x86_64 only.
+  `.AppImage` on any distribution, with no install step. x86_64 and arm64 both: take the
+  file whose name carries your architecture (`amd64` or `x86_64` for the former, `arm64`
+  or `aarch64` for the latter).
 
 The macOS builds are signed and notarized, so macOS does not refuse them. The Windows and
 Linux builds are unsigned. On Windows that surfaced in two places when the v0.1.0 `.msi`
