@@ -10,7 +10,7 @@ name: Release
 # publish it by hand. Nothing here publishes a release.
 #
 # `create-release` makes the draft once and hands its id to the `build` matrix,
-# so the three platform jobs upload to it instead of racing to create it.
+# so the platform jobs upload to it instead of racing to create it.
 #
 # The bundle carries neither a Backlog CLI sidecar (decision-26) nor an updater
 # (decision-30): `tauri.conf.json` declares no `externalBin`, no
@@ -221,7 +221,7 @@ jobs:
   build:
     needs: create-release
     strategy:
-      # One platform failing must not cancel the other two: their bundles are
+      # One build failing must not cancel the others: their bundles are
       # still worth having on the draft while the failure is looked at.
       fail-fast: false
       matrix:
@@ -229,6 +229,7 @@ jobs:
           # Apple Silicon runner; `universal-apple-darwin` lipo-merges an Intel
           # slice too, so one .dmg covers both architectures.
           - platform: macos-latest
+            linux: false
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
             tauri_args: --target universal-apple-darwin
           # Pinned, not ubuntu-latest: the bundle a runner builds cannot run on
@@ -237,9 +238,19 @@ jobs:
           # libsoup-3.0, which the lockfile binds). Following ubuntu-latest would
           # raise that floor above the documented one without anything failing.
           - platform: ubuntu-24.04
+            linux: true
+            rust_targets: ''
+            tauri_args: ''
+          # The same image on arm64, cross-compiling nothing: each runner builds
+          # for its own architecture, so neither needs a --target. v0.1.0 shipped
+          # x86_64 alone, which left the maintainer's own Linux environment — a
+          # VM on Apple silicon — with no asset it could run (TASK-172).
+          - platform: ubuntu-24.04-arm
+            linux: true
             rust_targets: ''
             tauri_args: ''
           - platform: windows-latest
+            linux: false
             rust_targets: ''
             tauri_args: ''
     runs-on: ${{ matrix.platform }}
@@ -259,8 +270,14 @@ jobs:
       # together. The runner image already carries the generic half
       # (build-essential, curl, wget, file, pkg-config, libssl-dev) — they are
       # repeated anyway so the two lists stay comparable line by line.
+      #
+      # Keyed on matrix.linux rather than on the runner label, here and in the
+      # two .deb checks below: with two Linux rows, a condition naming one label
+      # would leave the other's bundle unverified — and unlike this step, whose
+      # absence fails the build outright, a skipped check is a green run that
+      # read nothing.
       - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.linux
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
@@ -388,7 +405,7 @@ jobs:
           echo "LICENSE and THIRD-PARTY-LICENSES.txt in $app match the committed sources."
 
       - name: Verify the Linux .deb carries the app icon
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.linux
         run: |
           set -eu
           deb=$(find src-tauri/target/release/bundle/deb -name '*.deb' -print -quit 2>/dev/null || true)
@@ -428,7 +445,7 @@ jobs:
           echo "hicolor/128x128/apps/$name.png matches the committed source."
 
       - name: Verify the Linux .deb carries the third-party notice
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.linux
         run: |
           set -eu
           deb=$(find src-tauri/target/release/bundle/deb -name '*.deb' -print -quit 2>/dev/null || true)
