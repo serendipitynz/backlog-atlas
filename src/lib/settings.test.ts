@@ -114,6 +114,7 @@ describe("場所を開く (TASK-75)", () => {
       kind: "editorLaunchFailed",
       method: "association",
       program: "xdg-open",
+      reason: { reason: "osRefused" },
       detail: "No such file or directory (os error 2)",
     });
     expect(failure).toContain("xdg-open");

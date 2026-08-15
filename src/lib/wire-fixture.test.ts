@@ -28,6 +28,7 @@ import { statusNotice, saveAvailability, editorArgsText } from "./settings";
 import { buildSwimlane } from "./swimlane";
 import { inconsistencyReasons, isInconsistent } from "./mark";
 import { gitRemoteLine } from "./project-detail";
+import { probeFailureText } from "./failure";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import type {
   AcceptanceCriterion,
@@ -66,6 +67,10 @@ import type {
   LaunchMethod,
   LedgerRefusal,
   LookupFailure,
+  LaunchRefusal,
+  BodyLinkRefusal,
+  ProbeFailure,
+  RemoteReadFailure,
   ReferenceKind,
   RelationOutcome,
   RemoteHost,
@@ -306,11 +311,35 @@ const MANAGED_FILE_KINDS = unionValues<ManagedFileKind>()(
   "document",
   "decision",
 );
-const LOOKUP_FAILURES = unionValues<LookupFailure>()(
+// The 失敗理由符号 (decision-35 §3). Locked on the tag, like the variant tags below, because two of
+// these four carry the value the screen names and so are no longer bare strings.
+const LOOKUP_FAILURES = unionValues<LookupFailure["reason"]>()(
   "toolMissing",
   "invalidReference",
   "queryFailed",
   "timedOut",
+);
+const LAUNCH_REFUSALS = unionValues<LaunchRefusal["reason"]>()(
+  "osRefused",
+  "exited",
+  "shellExecute",
+  "comInit",
+  "shellExecuteAbsent",
+);
+const BODY_LINK_REFUSALS = unionValues<BodyLinkRefusal["reason"]>()(
+  "schemeNotAllowed",
+  "controlCharacter",
+  "launchFailed",
+);
+const PROBE_FAILURES = unionValues<ProbeFailure["reason"]>()(
+  "spawnFailed",
+  "exited",
+  "noResponse",
+);
+const REMOTE_READ_FAILURES = unionValues<RemoteReadFailure["reason"]>()(
+  "gitUnavailable",
+  "gitFailed",
+  "remoteUrlEmpty",
 );
 
 // The variant tags. A tag is the field every consumer switches on, so a moved one is the change that
@@ -574,7 +603,9 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       "editor_launch.json",
       "editor_readiness.json",
       "external_program_report.json",
+      "external_program_report_failed.json",
       "git_remote_read.json",
+      "git_remote_read_unreadable.json",
       "ledger_response.json",
       "loaded_settings.json",
       "project_load_loaded.json",
@@ -837,8 +868,8 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
   });
 
   it("GitRemoteRead", () => {
-    // remote 現在値 (doc-10 §4.1). The recorded sample is the one variant carrying fields; the other
-    // three reach here through `wire_tokens.json`, which is why both legs are needed.
+    // remote 現在値 (doc-10 §4.1). Two samples, because two variants carry fields; 不在 and 対象不在
+    // reach here through `wire_tokens.json`, which is why both legs are needed.
     const read = fixture<GitRemoteRead>("git_remote_read.json");
     sameValueTypes("git_remote_read", read, {
       state: "configured",
@@ -846,6 +877,20 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
       url: "git@github.com:serendipitynz/backlog-atlas.git",
     } satisfies GitRemoteRead);
     admits(GIT_REMOTE_STATES, read.state, "git_remote_read.state");
+
+    // The failing side, whose 失敗理由符号 carries the remote's name — and whose `detail` is empty,
+    // which the line has to word around rather than print.
+    const unreadable = fixture<GitRemoteRead>("git_remote_read_unreadable.json");
+    sameValueTypes("git_remote_read_unreadable", unreadable, {
+      state: "unreadable",
+      reason: { reason: "remoteUrlEmpty", name: "origin" },
+      detail: "d",
+    } satisfies GitRemoteRead);
+    if (unreadable.state === "unreadable") {
+      admits(REMOTE_READ_FAILURES, unreadable.reason.reason, "git_remote_read_unreadable.reason");
+      expect(gitRemoteLine(unreadable).text).toContain("origin");
+      expect(gitRemoteLine(unreadable).kind).toBe("failure");
+    }
     // The frontend's own function runs over the payload, so the recording reaches the screen's line
     // and not only the type — the leg a shape comparison cannot supply.
     expect(gitRemoteLine(read)).toEqual({
@@ -917,9 +962,9 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
   });
 
   it("ExternalProgramReport — 解決結果の表示", () => {
-    // The 外部コマンド指定 case is the recorded one, so `program` has a path to take a type from.
-    // The `onPath` source and the `failed` outcome are anchored through `wire_tokens.json` — the
-    // recording exercises only the variants it happens to carry.
+    // The 外部コマンド指定 case is the first recorded one, so `program` has a path to take a type
+    // from; the failed outcome is the second, below. A recording exercises only the variants it
+    // happens to carry, so what neither carries is anchored through `wire_tokens.json`.
     const report = fixture<ExternalProgramReport>("external_program_report.json");
     expect(keysOf(report)).toEqual(
       keysOfType<ExternalProgramReport>()("name", "program", "source", "outcome"),
@@ -932,6 +977,21 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
     } satisfies ExternalProgramReport);
     admits(EXTERNAL_PROGRAM_SOURCES, report.source, "external_program_report.source");
     admits(PROBE_OUTCOME_STATES, report.outcome.state, "external_program_report.outcome.state");
+
+    // The failed outcome, whose 失敗理由符号 carries a `program` no token list anchors the type of.
+    const failed = fixture<ExternalProgramReport>("external_program_report_failed.json");
+    sameValueTypes("external_program_report_failed", failed, {
+      name: "gh",
+      program: "gh",
+      source: "onPath",
+      outcome: { state: "failed", reason: { reason: "spawnFailed", program: "gh" }, detail: "d" },
+    } satisfies ExternalProgramReport);
+    if (failed.outcome.state === "failed") {
+      admits(PROBE_FAILURES, failed.outcome.reason.reason, "…_failed.outcome.reason");
+      // The frontend's own function over the recording: the 文言表 is what words it now, so a
+      // sentence coming out empty would mean the code reached no entry.
+      expect(probeFailureText(failed.outcome.reason, failed.outcome.detail)).toContain("gh");
+    }
   });
 
   it("CliReadiness と外部エディタ経路", () => {
@@ -968,7 +1028,26 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
       { kind: "taskNotFound", slug: "atlas", task_id: "TASK-99" },
       { kind: "unknownTaskFile", slug: "atlas", path: "/elsewhere/evil.md" },
       { kind: "historyCancelled", read_id: "3f2a1c-7" },
-      { kind: "editorLaunchFailed", method: "configured", program: "code", detail: "d" },
+      {
+        kind: "editorLaunchFailed",
+        method: "configured",
+        program: "code",
+        reason: { reason: "osRefused" },
+        detail: "d",
+      },
+      {
+        kind: "editorLaunchFailed",
+        method: "association",
+        program: "ShellExecuteW",
+        reason: { reason: "shellExecute", code: 1 },
+        detail: "d",
+      },
+      { kind: "editorUnavailable" },
+      {
+        kind: "bodyLinkFailed",
+        reason: { reason: "launchFailed", program: "p", launch: { reason: "exited" } },
+        detail: "d",
+      },
     ];
     expect(errors).toHaveLength(exemplars.length);
     errors.forEach((error, at) => sameValueTypes(`command_errors[${at}]`, error, exemplars[at]));
@@ -1019,6 +1098,10 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     SettingsStatus: SETTINGS_STATES,
     CommandError: ERROR_KINDS,
     LedgerRefusal: REFUSAL_REASONS,
+    LaunchRefusal: LAUNCH_REFUSALS,
+    BodyLinkRefusal: BODY_LINK_REFUSALS,
+    ProbeFailure: PROBE_FAILURES,
+    RemoteReadFailure: REMOTE_READ_FAILURES,
   };
 
   it("記録された union はすべてここで照合される", () => {
@@ -1109,7 +1192,11 @@ describe("記録した enum・variant tag の値が wire.ts の union に収ま�
     for (const [at, relation] of history.relations.entries()) {
       admits(RELATION_STATES, relation.outcome.state, `relations[${at}].outcome.state`);
       if (relation.outcome.state === "lookupFailed") {
-        admits(LOOKUP_FAILURES, relation.outcome.reason, `relations[${at}].outcome.reason`);
+        admits(
+          LOOKUP_FAILURES,
+          relation.outcome.reason.reason,
+          `relations[${at}].outcome.reason`,
+        );
       }
     }
     admits(

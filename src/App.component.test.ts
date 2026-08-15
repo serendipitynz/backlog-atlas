@@ -1478,7 +1478,11 @@ describe("本文リンク (doc-8 §9.3)", () => {
    */
   it("開けなければ ⑤ 通知 に出る", async () => {
     answers.bodyLink = () =>
-      Promise.reject({ kind: "bodyLinkFailed", detail: "xdg-open で開けません: not found" });
+      Promise.reject({
+        kind: "bodyLinkFailed",
+        reason: { reason: "launchFailed", program: "xdg-open", launch: { reason: "exited" } },
+        detail: "exit status: 3",
+      });
     const host = await openDetail();
     click(only(host, `.body-block .${BODY_LINK_CLASS}`));
     await settled();

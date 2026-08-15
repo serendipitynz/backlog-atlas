@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGitRemoteReader } from "./git-remote-read";
+import { createGitRemoteReader, type RemoteLine } from "./git-remote-read";
 import type { GitRemoteRead } from "./wire";
 
 /** A read whose completion the test decides, so completion order can be inverted at will. */
@@ -18,7 +18,7 @@ function deferred(): {
 }
 
 function reader(reads: Promise<GitRemoteRead>[]) {
-  let shown: GitRemoteRead | null = null;
+  let shown: RemoteLine | null = null;
   let index = 0;
   /** Every slug the reader actually asked about, in order. */
   const asked: string[] = [];
@@ -29,7 +29,7 @@ function reader(reads: Promise<GitRemoteRead>[]) {
     },
     show: (read) => (shown = read),
   });
-  return { load: built.load, refresh: built.refresh, current: (): GitRemoteRead | null => shown, asked };
+  return { load: built.load, refresh: built.refresh, current: (): RemoteLine | null => shown, asked };
 }
 
 /** Let every already-settled promise callback run. */

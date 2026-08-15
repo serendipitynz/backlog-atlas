@@ -206,7 +206,7 @@ describe("remote 現在値", () => {
       gitRemoteLine(null),
       gitRemoteLine({ state: "remoteAbsent" }),
       gitRemoteLine({ state: "noRepository" }),
-      gitRemoteLine({ state: "unreadable", detail: "git is unavailable" }),
+      gitRemoteLine({ state: "unreadable", reason: { reason: "gitFailed" }, detail: "git is unavailable" }),
     ];
     expect(new Set(texts.map((line) => line.text)).size).toBe(4);
     expect(texts.map((line) => line.kind)).toEqual(["neutral", "setting", "setting", "failure"]);
@@ -243,7 +243,7 @@ describe("記録と検出の食い違い", () => {
     // An unreadable read says nothing about whether a remote exists, so reporting a disagreement
     // from it would state a fact nobody observed.
     const recorded = registered({ git_remote_present: true });
-    expect(gitRemoteDisagreement(recorded, { state: "unreadable", detail: "x" })).toBeNull();
+    expect(gitRemoteDisagreement(recorded, { state: "unreadable", reason: { reason: "gitFailed" }, detail: "x" })).toBeNull();
     expect(gitRemoteDisagreement(recorded, null)).toBeNull();
   });
 });
