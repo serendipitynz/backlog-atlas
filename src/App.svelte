@@ -87,7 +87,6 @@
     laneDrop,
     laneDropStatus,
     type DragSource,
-    type LaneDrop,
   } from "./lib/lane-drop";
   import {
     WATCH_STOPPED_BEFORE_LAUNCH,
@@ -402,6 +401,25 @@
    * what makes 失効 decidable — the question is about the task the panel was pointed at when it was
    * asked (§12 の ③), and `shown` moving off that file takes the question with it.
    */
+  // --- 列間ドロップ の状態 (doc-7 §4.2) -------------------------------------------------------
+  // Declared with the other 被せ層 state rather than beside the drop's own functions, because
+  // `modalOpen` reads `dropAsk` — the 問い is one of the layers 同時に 1 枚 counts.
+  /**
+   * The card being dragged, or `null`. Held here rather than in the grid for the same reason
+   * 列内新規タスク入力's input is: the grid is unmounted when a task opens in 全面シングルビュー, and a
+   * drag that survived that would land on a grid it did not start on.
+   */
+  let dragSource = $state<DragSource | null>(null);
+  /**
+   * Which drop raised the 候補選択の問い (doc-7 §4.2), or `null`. **Only the card and the column** —
+   * what that drop *resolves to* is derived below from the current read, never captured here. The
+   * candidates come from `config.yml`, which 継続検出 can re-read while the layer stands (doc-9 §3),
+   * and a captured list would make `laneDropStatus`'s fallback compare a value against its own
+   * frozen copy — i.e. never fire. `laneCreateEntry` is derived per read for the same reason.
+   */
+  let dropAsk = $state<{ source: DragSource; column: StatusColumn } | null>(null);
+  let dropHeldStatus = $state("");
+
   let pendingIssue = $state<{
     path: string;
     confirmation: IssueConfirmation;
@@ -629,6 +647,7 @@
       settingsOpen ||
       shortcutHelpOpen ||
       pendingIssue !== null ||
+      dropAsk !== null ||
       (screen === "project" && detailModalOpen),
   );
 
@@ -656,53 +675,70 @@
     laneCreateEntry === null ? "" : laneCreateStatus(laneCreateEntry, laneCreateHeldStatus),
   );
   let laneCreatePlan = $derived(buildLaneTaskCreate(laneCreateTitle, laneCreateStatusToPass));
+  /** The task file whose `task edit -s` has not returned — 発行中のカード (doc-7 §4.2). Declared with
+   * the 列内新規タスク入力 holders rather than beside the rest of 列間ドロップ, because `gridBusy` below
+   * reads it and the holders read that. */
+  let dropIssuingPath = $state<string | null>(null);
+  /**
+   * Whether an issue started from the grid is in flight. One value for all four holders — the two
+   * 列内新規タスク入力 ones and the drag — because there is one CLI per project (decision-18) and both
+   * entries issue against the same root: holding only the path that started it would leave the other
+   * pressable, and the second call would queue behind the first with nothing on screen saying so.
+   */
+  let gridBusy = $derived(laneCreateBusy || dropIssuingPath !== null);
+
   /**
    * Why the lane's 作成 is withheld, or `null` (doc-5 §5). Through the same `issueAvailability` the
    * 新規タスク区画 uses, so CLI 縮退 (AC #4) and 発行中 read identically on both screens.
    */
   let laneCreateBlocked = $derived.by(() => {
-    const availability = issueAvailability(laneCreatePlan, {
-      readiness,
-      busy: laneCreateBusy,
-    });
+    const availability = issueAvailability(laneCreatePlan, { readiness, busy: gridBusy });
     return availability.state === "blocked" ? availability.reason : null;
   });
   /**
-   * Why every cell's entry is withheld, or `null` — CLI 縮退 (AC #4) or a create in flight. Separate
+   * Why every cell's entry is withheld, or `null` — CLI 縮退 (AC #4) or an issue in flight. Separate
    * from `laneCreateBlocked` because it is what the *closed* ＋新規 of every cell states: doc-7 §4.1
    * disables the entry under 縮退, not merely its 発行.
    */
-  let laneCreateHeld = $derived(laneCreateHold({ readiness, busy: laneCreateBusy }));
+  let laneCreateHeld = $derived(laneCreateHold({ readiness, busy: gridBusy }));
 
   // --- 列間ドロップ (doc-7 §4.2, decision-34) ------------------------------------------------
 
   /** The 候補選択の問い's accessible name — what the layer is, in the words doc-7 §4.2 names it with. */
   const DROP_ASK_LABEL = "渡す status を選ぶ";
+  /** Why the 問い can no longer be answered: the column stopped declaring anything the drop could pass
+   * while the layer stood (doc-9 §3 継続検出). A refusal rather than a silent close — the card was
+   * dropped deliberately, so the answer to that gesture is a sentence, not a layer that vanishes. */
+  const DROP_ASK_WITHDRAWN_REASON =
+    "この列に渡せる status が無くなりました。読み直した内容を確かめてからやり直してください。";
 
+  /** Why no card may be picked up, or `null` — つまめないカード (doc-7 §4.2). */
+  let dragHeld = $derived(laneDragHold({ readiness, busy: gridBusy }));
   /**
-   * The card being dragged, or `null`. Held here rather than in the grid for the same reason
-   * 列内新規タスク入力's input is: the grid is unmounted when a task opens in 全面シングルビュー, and a
-   * drag that survived that would land on a grid it did not start on.
+   * What the 問い's drop resolves to *now*. A column that lost a candidate while the layer stood
+   * narrows the select; one that lost its last turns the layer into a refusal, rather than offering
+   * a `-s` the CLI would refuse with exit code 1 (doc-5 §3).
    */
-  let dragSource = $state<DragSource | null>(null);
-  /** 候補選択の問い (doc-7 §4.2), or `null`. The 被せ層 the shell raises for a 候補 2 件以上 受け先. */
-  let dropAsk = $state<{ source: DragSource; column: StatusColumn; drop: LaneDrop } | null>(null);
-  let dropHeldStatus = $state("");
-  /** The task file whose `task edit -s` has not returned — 発行中のカード (doc-7 §4.2). */
-  let dropIssuingPath = $state<string | null>(null);
-
-  /**
-   * Why no card may be picked up, or `null` — つまめないカード (doc-7 §4.2). A 列内新規タスク入力 in
-   * flight holds it too: `busy` is doc-5 §5's「発行中」and there is one CLI per project, so a second
-   * issue started from the grid would queue behind the first with nothing on screen saying so.
-   */
-  let dragHeld = $derived(
-    laneDragHold({ readiness, busy: laneCreateBusy || dropIssuingPath !== null }),
-  );
+  let dropAskDrop = $derived.by(() => {
+    const ask = dropAsk;
+    if (ask === null) {
+      return null;
+    }
+    return laneDrop(ask.source, ask.source.slug, ask.column, candidatesOf(ask.source.slug));
+  });
+  /** The candidates the 問い offers — empty unless it is still a 候補 2 件以上 受け先. */
+  let dropAskCandidates = $derived(dropAskDrop?.state === "ask" ? dropAskDrop.candidates : []);
   /** The candidate the 問い will pass, resolved against the 受け先's current 候補 (doc-7 §4.2). */
   let dropStatusToPass = $derived(
-    dropAsk === null ? "" : laneDropStatus(dropAsk.drop, dropHeldStatus),
+    dropAskDrop === null ? "" : laneDropStatus(dropAskDrop, dropHeldStatus),
   );
+  /** Why the 問い cannot be answered, or `null` — the column stopped taking the card, or 縮退. */
+  let dropAskBlocked = $derived.by(() => {
+    if (dropAskDrop !== null && dropAskDrop.state === "ignored") {
+      return DROP_ASK_WITHDRAWN_REASON;
+    }
+    return dragHeld;
+  });
 
   // The open task, resolved against the *current* read of its root, so a reload refreshes the
   // panel instead of leaving it on the version the card was clicked from.
@@ -1936,7 +1972,7 @@
       return;
     }
     if (drop.state === "ask") {
-      dropAsk = { source, column, drop };
+      dropAsk = { source, column };
       dropHeldStatus = "";
       return;
     }
@@ -1948,14 +1984,25 @@
     dropHeldStatus = "";
   }
 
+  /**
+   * Answer the 問い (doc-7 §4.2). Everything is read *before* the layer is torn down, and the same
+   * re-check `dropCard` applies is applied again: the layer can stand across a 継続検出 re-read, so
+   * what was a 受け先 when the card landed need not still be one when the answer comes.
+   */
   function confirmDropAsk(): void {
     const ask = dropAsk;
+    const drop = dropAskDrop;
     const status = dropStatusToPass;
+    const blocked = dropAskBlocked;
+    if (ask === null || drop === null || drop.state === "ignored" || status === "") {
+      return;
+    }
+    if (blocked !== null) {
+      return;
+    }
     dropAsk = null;
     dropHeldStatus = "";
-    if (ask !== null && status !== "") {
-      void issueCardDrop(ask.source, ask.column, status);
-    }
+    void issueCardDrop(ask.source, ask.column, status);
   }
 
   /**
@@ -2497,28 +2544,36 @@
         <h2>{DROP_ASK_LABEL}</h2>
         <p>
           {dropAsk.source.taskId} を {CANONICAL_COLUMN_LABEL[dropAsk.column]} 列へ移します。この列には
-          status が {dropAsk.drop.state === "ask" ? dropAsk.drop.candidates.length : 0} 件宣言されています。
+          status が {dropAskCandidates.length} 件宣言されています。
         </p>
         <!-- 渡す値は常に読める (doc-7 §4.1 の要求を §4.2 が引く): the chosen candidate is the string the
-             `-s` will carry, so the control shows the project's own spelling and never the 正準列名. -->
+             `-s` will carry, so the control shows the project's own spelling and never the 正準列名.
+             The options are derived from the current read, so a candidate withdrawn from `config.yml`
+             while this stands leaves the list rather than staying selectable. -->
         <label>
           <span>渡す status</span>
           <select
             value={dropStatusToPass}
+            disabled={dropAskCandidates.length === 0}
             onchange={(event) => (dropHeldStatus = event.currentTarget.value)}
           >
-            {#if dropAsk.drop.state === "ask"}
-              {#each dropAsk.drop.candidates as candidate (candidate)}
-                <option value={candidate}>{candidate}</option>
-              {/each}
-            {/if}
+            {#each dropAskCandidates as candidate (candidate)}
+              <option value={candidate}>{candidate}</option>
+            {/each}
           </select>
         </label>
         <!-- 進む → 戻る, the order every other layer on this screen answers in (doc-11 §12). -->
         <div class="answers">
-          <button type="button" onclick={confirmDropAsk}>この status で移す</button>
+          <button type="button" disabled={dropAskBlocked !== null} onclick={confirmDropAsk}>
+            この status で移す
+          </button>
           <button type="button" onclick={cancelDropAsk}>{ISSUE_CONFIRM_CANCEL}</button>
         </div>
+        <!-- 無効化提示 (doc-11 §5): the reason is 常時表示 beside the control rather than a `title`,
+             which a disabled button cannot be reached through. -->
+        {#if dropAskBlocked !== null}
+          <p class="reason">{dropAskBlocked}</p>
+        {/if}
       </section>
     </Modal>
   {/if}
@@ -3010,6 +3065,13 @@
       button {
         height: 1.75rem;
       }
+    }
+
+    // 保留理由 (doc-11 §5): 常時表示 beside the control it explains, never a `title` alone.
+    .reason {
+      margin: 0.4rem 0 0;
+      color: var(--muted);
+      font-size: var(--text-sm);
     }
   }
 

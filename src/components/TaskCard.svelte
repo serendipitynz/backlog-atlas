@@ -116,14 +116,17 @@
      own left border, which is where TASK-77 freed the space (decision-22). Absent for priority 未設定
      と priority 未知 — the attribute is not written at all, so the card keeps its ordinary 1px 枠. -->
 <!-- `draggable` only while nothing holds it (doc-7 §4.2 の つまめないカード). The card keeps its press —
-     選択でタスク詳細を開く is not what a CLI 縮退 takes away — so this is the one capability that goes. -->
+     選択でタスク詳細を開く is not what a CLI 縮退 takes away — so this is the one capability that goes.
+     A task whose TASK-ID could not be read is not a drag source either: the id is what `task edit`
+     addresses, and doc-7 §4.2 refuses by not taking the card rather than by ending a gesture the
+     engine has already started (a 解析不能 file, doc-4 §5). -->
 <button
   type="button"
   class="card"
   class:selected
   class:issuing
   data-priority-edge={step}
-  draggable={dragHeld === null}
+  draggable={dragHeld === null && view.task.id !== null}
   ondragstart={beginDrag}
   {ondragend}
   onclick={() => onselect(view)}
