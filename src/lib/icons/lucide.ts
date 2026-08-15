@@ -65,7 +65,9 @@ export type IconName =
   | "circle-question-mark"
   | "check"
   | "square-check"
-  | "square";
+  | "square"
+  | "undo"
+  | "refresh-ccw";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -321,6 +323,24 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "m9 12 2 2 4-4" },
   ],
   square: [{ shape: "rect", width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+  // フィルタ帯の 2 つの解除 (doc-7 §5.2, TASK-175). Both became アイコンのみのボタン so that the bar
+  // would stop spending its width on the two words; which figure stands for which control is doc-7's,
+  // and nothing here knows what a 絞り込み is.
+  //
+  // `refresh-ccw` beside 既定に戻す is doc-11 §2.4's 同じ図形を別の操作へ与えない judged in that
+  // section's third sub-bullet, not a figure picked for looking like a reset: 再読込 holds no figure at
+  // all, so nothing is shared today, and what the judgment closes is that control's *later* choice —
+  // `refresh-cw` included, because the two would then be a 族 and the rule is applied at the family.
+  undo: [
+    { shape: "path", d: "M3 7v6h6" },
+    { shape: "path", d: "M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" },
+  ],
+  "refresh-ccw": [
+    { shape: "path", d: "M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" },
+    { shape: "path", d: "M3 3v5h5" },
+    { shape: "path", d: "M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" },
+    { shape: "path", d: "M16 16h5v5" },
+  ],
 };
 
 /**

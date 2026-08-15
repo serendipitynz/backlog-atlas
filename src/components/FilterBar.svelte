@@ -210,28 +210,40 @@
 
   <div class="actions">
     <!-- 末尾から 1 件ずつ解除 (doc-7 §5.2). Tokens carry an order, which is what makes 直前の 1 つ
-         a thing that can be pointed at at all. -->
+         a thing that can be pointed at at all.
+
+         アイコンのみのボタン (doc-11 §2.4, TASK-175): the name is the `aria-label` and carries no
+         chord, and the chord itself reaches the reader through `title` and `aria-keyshortcuts` — the
+         form doc-7 §2.1 states for this type, and the reason the printed hint beside it is gone. When
+         the control is blocked its `title` states the reason instead (doc-7 §2.1 again): naming the
+         chord there would advertise an operation that will not answer. -->
     <button
       type="button"
-      class="control"
+      class="control icon"
+      aria-label="直前の 1 つを戻す"
       aria-disabled={undoBlocked}
       aria-describedby={undoBlocked ? BLOCKED_ID : undefined}
       aria-keyshortcuts={ariaKeyShortcuts("undoFilter", MAC_KEYBOARD)}
-      title={undoBlocked ? (blockedReason ?? undefined) : "最後に足した条件を 1 件戻します"}
+      title={undoBlocked
+        ? (blockedReason ?? undefined)
+        : `最後に足した条件を 1 件戻します（${shortcutHint("undoFilter", MAC_KEYBOARD)}）`}
       onclick={() => !undoBlocked && onchange(removeLastCondition(filter))}
     >
-      直前の 1 つを戻す
-      <span class="hint" aria-hidden="true">{shortcutHint("undoFilter", MAC_KEYBOARD)}</span>
+      <Icon name="undo" />
     </button>
+    <!-- No chord to print (doc-7 §5.2 assigns this control none on purpose), so the `title` is the
+         operation alone — an アイコンのみのボタン without one would leave the figure as the only thing
+         a pointer can ask. -->
     <button
       type="button"
-      class="control"
+      class="control icon"
+      aria-label="既定に戻す"
       aria-disabled={clearBlocked}
       aria-describedby={clearBlocked ? BLOCKED_ID : undefined}
       title={clearBlocked ? (blockedReason ?? undefined) : "すべての条件を外し、保存区分を既定へ戻します"}
       onclick={() => !clearBlocked && onchange(defaultFilter(defaultStorage))}
     >
-      既定に戻す
+      <Icon name="refresh-ccw" />
     </button>
     <span class={reasonOnScreen ? "unseen" : "blocked-note"} id={BLOCKED_ID}>
       {blockedReason ?? ""}
@@ -432,8 +444,20 @@
 
   // 解除の 2 つは、条件を足す ＋ 絞り込み より一段静かに置く (画面設計案 03 案A が 既定に戻す に
   // 与えた大きさ)。帯で先に読まれるべきなのは、いま効いている条件と、条件を足す入口である。
+  // 図形になった後もこの段のままなのは、doc-11 §2.4 の寸法が箱の `font-size` を読むためで、単独の
+  // ボタンの既定 1rem をここで取ると、帯の中でこの 2 つだけが大きくなる (先頭の funnel と同じ理由で
+  // 帯の側が勝つ。トークンの解除も同じ段を取っている)。
   .actions .control {
     font-size: var(--text-sm);
+  }
+
+  // アイコンのみのボタン (doc-11 §2.4, TASK-175). `.control` の左右の余白は語のために取ってあるので、
+  // 図形へそのまま与えると図形より横に広い箱になり、帯の右端で 3 つ目の入力欄のように読める。幅を
+  // 高さに揃えて正方にする — 高さは `--bar-control` のままなので、帯の 1 行は変わらない。
+  .control.icon {
+    width: var(--bar-control);
+    justify-content: center;
+    padding: 0;
   }
 
   // The chord beside its operation (doc-7 §2.1 / AC #4). Quiet, and outside the accessible name — the
