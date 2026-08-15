@@ -356,7 +356,10 @@ should say why.
   — tauri-bundler writes the architecture into every name: `amd64`/`arm64` for the `.deb`,
   `x86_64`/`aarch64` for the `.rpm`, `amd64`/`aarch64` for the `.AppImage` (read out of the
   bundler at @tauri-apps/cli 2.11.4, which also fetches an aarch64 linuxdeploy rather than
-  refusing the AppImage). **The Linux-only steps are keyed on the matrix's `linux` flag
+  refusing the AppImage; **confirmed on an arm64 Ubuntu machine on 2026-08-16**, where a
+  local `pnpm tauri build` produced those three names and the app it built ran). **What is
+  still unmeasured is the `ubuntu-24.04-arm` runner itself** — the apt list and the build on
+  it — which the first tag carrying arm64 assets settles. **The Linux-only steps are keyed on the matrix's `linux` flag
   rather than on a runner label**: with two Linux rows, a condition naming one label leaves
   the other bundle's two checks unrun, and a skipped check is a green run that read nothing.
 

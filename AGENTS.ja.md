@@ -329,7 +329,10 @@ stable を追い、`rust-toolchain.toml` も無い）ので、対処は固定で
   WebView 要件が指すのと同じ Ubuntu を載せている。**2 行が出す 6 つの資産は衝突しない** —
   tauri-bundler がアーキテクチャを名前へ書くからで、`.deb` は `amd64`/`arm64`、`.rpm` は
   `x86_64`/`aarch64`、`.AppImage` は `amd64`/`aarch64` である (@tauri-apps/cli 2.11.4 の
-  bundler を読んで確かめた。AppImage も拒まれず、aarch64 の linuxdeploy を取りにいく)。
+  bundler を読んで確かめた。AppImage も拒まれず、aarch64 の linuxdeploy を取りにいく。
+  **2026-08-16 に arm64 の Ubuntu 実機で確認済み** — 手元の `pnpm tauri build` がその 3 つの
+  名前を出し、できたアプリは起動した)。**未測定として残るのは `ubuntu-24.04-arm` ランナーそのもの**
+  (その上での apt とビルド) で、arm64 の資産を初めて載せるタグが決着させる。
   **Linux だけの手順の条件は、ランナーのラベルではなく matrix の `linux` 印で書く** —
   Linux の行が 2 つある以上、片方のラベルを名指しする条件はもう一方のバンドルの検査 2 つを
   走らせずに終わり、走らなかった検査は「何も読まずに緑になった実行」だからである。

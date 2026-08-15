@@ -4,7 +4,7 @@ title: Linux arm64 のバンドルをリリースへ追加する
 status: In Review
 assignee: []
 created_date: '2026-08-14 03:56'
-updated_date: '2026-08-15 11:29'
+updated_date: '2026-08-15 12:13'
 labels:
   - release
   - 'kind:improvement'
@@ -28,7 +28,7 @@ README 和英の導入節は TASK-170 で「Windows と Linux は x64/x86_64 の
 <!-- AC:BEGIN -->
 - [ ] #1 リリースワークフローが Linux arm64 の .deb・.rpm・.AppImage をドラフトへ載せる
 - [ ] #2 README 和英の導入節が Linux の対応アーキテクチャを実資産どおりに述べている
-- [ ] #3 arm64 実機 (オーナーの VM) で起動を確認した
+- [x] #3 arm64 実機 (オーナーの VM) で起動を確認した
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -40,5 +40,7 @@ README 和英の導入節は TASK-170 で「Windows と Linux は x64/x86_64 の
 
 実測 (@tauri-apps/cli 2.11.4 の tauri-bundler を読んだ): aarch64 では `.deb` が `arm64`、`.rpm` と `.AppImage` が `aarch64` で、`amd64`／`x86_64`／`amd64` 側と別名になるので 6 資産は衝突しない。AppImage も aarch64 の linuxdeploy を取りにいく経路があり、拒まれない。`pnpm-lock.yaml` は `@tauri-apps/cli-linux-arm64-gnu` を含むので `--frozen-lockfile` は arm64 でも通る。`ubuntu-24.04-arm` は GitHub がホストするラベルで、パブリックリポジトリでは無償。
 
-**AC 3 件はいずれも「arm64 の資産を初めて載せるタグ」で揃って満たされる。** AC #1 はそのリリース実行、AC #3 はオーナーの arm64 VM、AC #2 も同じ時点まで「実資産どおり」にならない (README は次のリリースを述べる形で先に書いてある。タスクの Description がこの PR で動かすと定めている)。どれも「未測定」であって「不可能」ではない。
+**実機確認 (2026-08-16、オーナーの arm64 Linux VM): AC #3 達成。** 手元の `pnpm tauri build` が 3 形式とも通り、出た名前は `Backlog Atlas_0.1.0_arm64.deb`・`Backlog Atlas-0.1.0-1.aarch64.rpm`・`Backlog Atlas_0.1.0_aarch64.AppImage` で **bundler から導いた綴りと一致した。** ビルドしたアプリの起動も確認した。**これで AppImage が aarch64 で通ることは読みではなく実測になった。**
+
+**残る AC 2 件は「arm64 の資産を初めて載せるタグ」で揃って満たされる。** AC #1 はそのリリース実行、AC #2 も同じ時点まで「実資産どおり」にならない (README は次のリリースを述べる形で先に書いてある。タスクの Description がこの PR で動かすと定めている)。**未測定として残るのは `ubuntu-24.04-arm` ランナーそのもの** — 実機で通ったのは同じ arm64 でも手元のマシンである。
 <!-- SECTION:NOTES:END -->
