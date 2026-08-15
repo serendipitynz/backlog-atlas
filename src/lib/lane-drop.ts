@@ -99,6 +99,26 @@ export function laneDrop(
 }
 
 /**
+ * The candidates a 候補選択の問い puts on screen for one drop (doc-7 §4.2).
+ *
+ * **An `issue` contributes its one status rather than nothing.** A column that falls to exactly one
+ * candidate while the layer stands is still a valid 受け先 — [`laneDrop`] answers `issue` for it —
+ * and returning `[]` there would leave the screen stating no candidate and showing an empty control
+ * while [`laneDropStatus`] still passed that status: a value issued that the screen never showed,
+ * which is what doc-7 §4.1's 渡す値は常に読める forbids. Only `ignored` is empty, and a caller
+ * refuses the answer in that case.
+ *
+ * Held here rather than in the component so this stays one fact with [`laneDropStatus`]: what is
+ * shown and what is passed are the same list read twice.
+ */
+export function laneDropOptions(drop: LaneDrop | null): string[] {
+  if (drop === null || drop.state === "ignored") {
+    return [];
+  }
+  return drop.state === "ask" ? [...drop.candidates] : [drop.status];
+}
+
+/**
  * The candidate a 候補選択の問い will pass, honouring the held choice only while it is still a
  * candidate — the same rule `laneCreateStatus` follows, and for the same reason: `config.yml` can be
  * edited outside Atlas while the layer is open (doc-9 継続検出), and a value the project no longer

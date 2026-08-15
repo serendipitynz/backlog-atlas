@@ -10,6 +10,7 @@ import {
   buildLaneStatusEdit,
   laneDragHold,
   laneDrop,
+  laneDropOptions,
   laneDropStatus,
   laneDropTarget,
   type DragSource,
@@ -122,6 +123,42 @@ describe("渡る status", () => {
 
   it("passes nothing for a drop that is not on a 受け先", () => {
     expect(laneDropStatus({ state: "ignored" }, "Done")).toBe("");
+  });
+});
+
+describe("問いが出す候補", () => {
+  it("lists every candidate of a 候補 2 件以上 受け先 (AC #2)", () => {
+    expect(laneDropOptions(laneDrop(CARD, "atlas", "done", TWO_FOR_DONE))).toEqual([
+      "Closed",
+      "Cancelled",
+    ]);
+  });
+
+  it("still lists the one status when the 受け先 has fallen to a single candidate (AC #2)", () => {
+    // doc-9 継続検出 can narrow `config.yml` while the 問い stands. The drop stays valid, so what
+    // `laneDropStatus` would pass has to remain on screen — 渡す値は常に読める (doc-7 §4.1).
+    const narrowed = laneDrop(CARD, "atlas", "done", CREATE_STATUS_CANDIDATES);
+    expect(narrowed.state).toBe("issue");
+    expect(laneDropOptions(narrowed)).toEqual(["Done"]);
+    expect(laneDropOptions(narrowed)).toContain(laneDropStatus(narrowed, ""));
+  });
+
+  it("lists nothing once the 受け先 declares nothing at all", () => {
+    expect(laneDropOptions({ state: "ignored" })).toEqual([]);
+    expect(laneDropOptions(null)).toEqual([]);
+  });
+
+  it("never passes a status it does not also show (AC #2)", () => {
+    // The invariant the two functions exist to keep together, over every state a drop can be in.
+    for (const drop of [
+      laneDrop(CARD, "atlas", "done", TWO_FOR_DONE),
+      laneDrop(CARD, "atlas", "done", CREATE_STATUS_CANDIDATES),
+      laneDrop(CARD, "atlas", "inReview", INIT_DEFAULTS),
+    ]) {
+      const shown = laneDropOptions(drop);
+      const passed = laneDropStatus(drop, "");
+      expect(passed === "" || shown.includes(passed)).toBe(true);
+    }
   });
 });
 

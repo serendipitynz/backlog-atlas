@@ -85,6 +85,7 @@
     buildLaneStatusEdit,
     laneDragHold,
     laneDrop,
+    laneDropOptions,
     laneDropStatus,
     type DragSource,
   } from "./lib/lane-drop";
@@ -401,6 +402,11 @@
    * what makes 失効 decidable — the question is about the task the panel was pointed at when it was
    * asked (§12 の ③), and `shown` moving off that file takes the question with it.
    */
+  let pendingIssue = $state<{
+    path: string;
+    confirmation: IssueConfirmation;
+    proceed: () => void;
+  } | null>(null);
   // --- 列間ドロップ の状態 (doc-7 §4.2) -------------------------------------------------------
   // Declared with the other 被せ層 state rather than beside the drop's own functions, because
   // `modalOpen` reads `dropAsk` — the 問い is one of the layers 同時に 1 枚 counts.
@@ -420,11 +426,6 @@
   let dropAsk = $state<{ source: DragSource; column: StatusColumn } | null>(null);
   let dropHeldStatus = $state("");
 
-  let pendingIssue = $state<{
-    path: string;
-    confirmation: IssueConfirmation;
-    proceed: () => void;
-  } | null>(null);
   /**
    * 詳細配置 (doc-8 §2.1) in force. Held by the shell rather than the panel because the placement is
    * *where the panel goes*: beside the grid, over it, or instead of it — and only the shell can put it
@@ -716,8 +717,9 @@
   let dragHeld = $derived(laneDragHold({ readiness, busy: gridBusy }));
   /**
    * What the 問い's drop resolves to *now*. A column that lost a candidate while the layer stood
-   * narrows the select; one that lost its last turns the layer into a refusal, rather than offering
-   * a `-s` the CLI would refuse with exit code 1 (doc-5 §3).
+   * narrows the select — down to a single remaining one, which `dropAskCandidates` still shows — and
+   * one that lost its last turns the layer into a refusal, rather than offering a `-s` the CLI would
+   * refuse with exit code 1 (doc-5 §3).
    */
   let dropAskDrop = $derived.by(() => {
     const ask = dropAsk;
@@ -726,8 +728,9 @@
     }
     return laneDrop(ask.source, ask.source.slug, ask.column, candidatesOf(ask.source.slug));
   });
-  /** The candidates the 問い offers — empty unless it is still a 候補 2 件以上 受け先. */
-  let dropAskCandidates = $derived(dropAskDrop?.state === "ask" ? dropAskDrop.candidates : []);
+  /** The candidates the 問い offers — the rule, and why an `issue` still contributes one, are in
+   * `laneDropOptions`, beside the `laneDropStatus` it has to stay one fact with. */
+  let dropAskCandidates = $derived(laneDropOptions(dropAskDrop));
   /** The candidate the 問い will pass, resolved against the 受け先's current 候補 (doc-7 §4.2). */
   let dropStatusToPass = $derived(
     dropAskDrop === null ? "" : laneDropStatus(dropAskDrop, dropHeldStatus),
