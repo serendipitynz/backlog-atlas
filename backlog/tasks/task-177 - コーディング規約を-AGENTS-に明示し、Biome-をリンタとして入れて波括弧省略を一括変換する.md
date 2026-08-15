@@ -1,10 +1,10 @@
 ---
 id: TASK-177
 title: コーディング規約を AGENTS に明示し、Biome をリンタとして入れて波括弧省略を一括変換する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-14 22:22'
-updated_date: '2026-08-14 23:46'
+updated_date: '2026-08-15 00:18'
 labels: []
 dependencies: []
 ordinal: 168700

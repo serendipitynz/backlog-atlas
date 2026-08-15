@@ -1,10 +1,10 @@
 ---
 id: TASK-178
 title: PR ごとに走る CI を新設し、3 つの検査をマージ要件にする
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-14 22:42'
-updated_date: '2026-08-14 23:18'
+updated_date: '2026-08-15 00:18'
 labels: []
 dependencies: []
 ordinal: 169700
