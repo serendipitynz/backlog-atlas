@@ -48,40 +48,39 @@ export const TITLE_CONFIRM_WAITS: readonly number[] = [50, 100, 200, 400, 800];
  * Whether the window's title reached anything that was asked for. `null` means it did; a string is the
  * title actually found once the waits above ran out, which is what the user is told.
  *
- * **The question is whether writing works, not whether the newest write has landed yet.** So every
- * title `wanted` reports along the way is kept, and seeing *any* of them in the window ends the check:
- * the window carrying a title this app asked for is the whole of what the ⑤ 通知 would have denied.
+ * **The question is whether writing works, not whether the newest write has landed yet.** The window
+ * carrying *any* title this app asked for is the whole of what the ⑤ 通知 would have denied, so `asked`
+ * is the set of them and a read found in it ends the check.
  *
- * That is what makes a moving target harmless. 総件数 changes with every 絞り込み keystroke and again
- * when the workspace read lands, so a check that matched only the newest value would fail an older
- * write that was applied correctly a moment later — and giving each new value a fresh budget instead
- * would let a user typing steadily keep the check running with no bound at all. Here the budget is
- * fixed and the answer only gets easier to satisfy.
+ * That set is the caller's, filled where the writes are issued rather than sampled here. Sampling it at
+ * the polling instants would miss a title written between two polls, and on a platform where writes
+ * queue that missed title is exactly the one a later read can return — a warning about a write that
+ * worked. Matching only the newest value has the same fault from the other side, and handing each new
+ * value a fresh budget instead would let a user typing steadily in the 絞り込み keep the check running
+ * with no bound. Here the budget is fixed and the condition only gets easier to satisfy.
  *
  * It can miss one case, and that direction is deliberate: a window whose title already equals a value
  * this app would ask for reads as applied without anything having been written. The first check runs at
  * startup on スイムレーン, where the line carries 総件数 and the window's title is the bare app name, so
  * the two differ — and a missed report is a smaller wrong than a warning about a write that worked.
  *
- * The reader, the clock and the wanted value are all parameters: what this holds is the rule, and a
- * rule about waiting cannot be tested against a real one.
+ * The reader, the clock and the set are all parameters: what this holds is the rule, and a rule about
+ * waiting cannot be tested against a real clock.
  */
 export async function confirmTitleApplied(
   read: () => Promise<string>,
-  wanted: () => string,
+  asked: () => ReadonlySet<string>,
   wait: (ms: number) => Promise<void>,
   waits: readonly number[] = TITLE_CONFIRM_WAITS,
 ): Promise<string | null> {
-  const asked = new Set<string>([wanted()]);
   let found = await read();
-  if (asked.has(found)) {
+  if (asked().has(found)) {
     return null;
   }
   for (const ms of waits) {
     await wait(ms);
-    asked.add(wanted());
     found = await read();
-    if (asked.has(found)) {
+    if (asked().has(found)) {
       return null;
     }
   }

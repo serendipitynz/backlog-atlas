@@ -56,77 +56,74 @@ describe("confirmTitleApplied", () => {
   /** A clock that runs no timer: the rule is the sequence of reads, not how long each wait was. */
   const noWait = (): Promise<void> => Promise.resolve();
 
-  it("answers at once when the title is already what was asked for", async () => {
-    const reads: string[] = [];
+  const APPLIED = "Backlog Atlas — 表示 1 / 1 件 ・ 1 / 1 プロジェクト";
+
+  it("answers at once when the window already carries a title that was asked for", async () => {
+    let reads = 0;
     const read = (): Promise<string> => {
-      reads.push("read");
-      return Promise.resolve("Backlog Atlas — 表示 1 / 1 件 ・ 1 / 1 プロジェクト");
+      reads += 1;
+      return Promise.resolve(APPLIED);
     };
 
-    expect(
-      await confirmTitleApplied(read, () => "Backlog Atlas — 表示 1 / 1 件 ・ 1 / 1 プロジェクト", noWait),
-    ).toBeNull();
-    expect(reads).toHaveLength(1);
+    expect(await confirmTitleApplied(read, () => new Set([APPLIED]), noWait)).toBeNull();
+    expect(reads).toBe(1);
   });
 
   it("waits out a write that is still queued rather than calling it a failure", async () => {
     // tao's Linux `set_title` resolves while GTK still holds the request, so the first reads answer
     // with the title the window opened on. Nothing is wrong here and nothing may be reported.
-    const answers = ["Backlog Atlas", "Backlog Atlas", "Backlog Atlas — 表示 2 / 2 件 ・ 1 / 1 プロジェクト"];
+    const answers = ["Backlog Atlas", "Backlog Atlas", APPLIED];
     let index = 0;
-    const read = (): Promise<string> => Promise.resolve(answers[Math.min(index++, answers.length - 1)]);
+    const read = (): Promise<string> =>
+      Promise.resolve(answers[Math.min(index++, answers.length - 1)]);
 
-    expect(
-      await confirmTitleApplied(read, () => "Backlog Atlas — 表示 2 / 2 件 ・ 1 / 1 プロジェクト", noWait),
-    ).toBeNull();
+    expect(await confirmTitleApplied(read, () => new Set([APPLIED]), noWait)).toBeNull();
     expect(index).toBe(3);
   });
 
-  it("follows a newer title that landed mid-check instead of failing the older one", async () => {
-    // 総件数 moves with every 絞り込み keystroke. A wanted value captured at the first read would see
-    // the newer title in the window and report the window manager as broken.
-    let asked = "Backlog Atlas — 表示 9 / 9 件 ・ 1 / 1 プロジェクト";
+  it("accepts any title that was asked for, not only the newest", async () => {
+    // 総件数 moves with every 絞り込み keystroke and again when the workspace read lands. An older
+    // write applying afterwards proves the window manager works, so it ends the check.
+    const older = "Backlog Atlas — 表示 0 / 0 件 ・ 0 / 0 プロジェクト";
+    const asked = new Set([older]);
     let round = 0;
     const read = (): Promise<string> => {
       round += 1;
       if (round === 1) {
+        asked.add(APPLIED);
         return Promise.resolve("Backlog Atlas");
       }
-      asked = "Backlog Atlas — 表示 3 / 9 件 ・ 1 / 1 プロジェクト";
-      return Promise.resolve(asked);
+      return Promise.resolve(older);
     };
 
     expect(await confirmTitleApplied(read, () => asked, noWait)).toBeNull();
   });
 
-  it("reports the title actually found once the waits run out", async () => {
-    const read = (): Promise<string> => Promise.resolve("Backlog Atlas");
-
-    expect(await confirmTitleApplied(read, () => "Backlog Atlas — 表示 5 / 5 件 ・ 2 / 2 プロジェクト", noWait))
-      .toBe("Backlog Atlas");
-  });
-
-  it("accepts an earlier title that lands after the wanted one moved on", async () => {
-    // The shape a fresh budget per change was meant to fix, without the unbounded chase it brings:
-    // the target moves on the second-to-last attempt, and the write from *before* it lands on the
-    // last read. What that read proves is that writing works, so nothing may be reported.
-    const early = "Backlog Atlas — 表示 0 / 0 件 ・ 0 / 0 プロジェクト";
-    const late = "Backlog Atlas — 表示 7 / 7 件 ・ 2 / 2 プロジェクト";
-    let asked = early;
+  it("recognises a title written between two of its own reads", async () => {
+    // The writer fills the set, so a title issued while this function was waiting is in it even though
+    // no read of its own ever sampled that moment. Under a queueing platform that is the very title a
+    // later read returns.
+    const between = "Backlog Atlas — 表示 4 / 9 件 ・ 2 / 2 プロジェクト";
+    const asked = new Set(["Backlog Atlas — 表示 9 / 9 件 ・ 2 / 2 プロジェクト"]);
     let round = 0;
     const read = (): Promise<string> => {
       round += 1;
-      // Every read but the last answers with the title the window opened on.
-      return Promise.resolve(round <= TITLE_CONFIRM_WAITS.length ? "Backlog Atlas" : early);
+      return Promise.resolve(round <= 2 ? "Backlog Atlas" : between);
     };
     const wait = (): Promise<void> => {
-      if (round === TITLE_CONFIRM_WAITS.length - 1) {
-        asked = late;
-      }
+      // Two writes land between the first and second read; only the later one would have been sampled.
+      asked.add(between);
+      asked.add("Backlog Atlas — 表示 1 / 9 件 ・ 2 / 2 プロジェクト");
       return Promise.resolve();
     };
 
     expect(await confirmTitleApplied(read, () => asked, wait)).toBeNull();
+  });
+
+  it("reports the title actually found once the waits run out", async () => {
+    const read = (): Promise<string> => Promise.resolve("Backlog Atlas");
+
+    expect(await confirmTitleApplied(read, () => new Set([APPLIED]), noWait)).toBe("Backlog Atlas");
   });
 
   it("asks once per wait and no more", async () => {
@@ -141,7 +138,7 @@ describe("confirmTitleApplied", () => {
       return Promise.resolve();
     };
 
-    await confirmTitleApplied(read, () => "別の題", wait);
+    await confirmTitleApplied(read, () => new Set(["別の題"]), wait);
     expect(waited).toEqual([...TITLE_CONFIRM_WAITS]);
     expect(reads).toBe(TITLE_CONFIRM_WAITS.length + 1);
   });

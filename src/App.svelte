@@ -567,42 +567,52 @@
    *
    * **Confirming is not one read.** tao's Linux `set_title` queues a `WindowRequest::Title` and returns,
    * so the setter resolves with the request still in flight; `confirmTitleApplied` (`title.ts`) is the
-   * rule for how long to keep asking and what counts as the answer, and it re-reads `titleLine` each
-   * time so a newer 総件数 landing mid-check ends the check rather than failing the older one.
+   * rule for how long to keep asking and what counts as the answer, and it answers against every title
+   * `writeTitle` below has issued — the writer is the only place that sees all of them, and a title
+   * written between two of the confirmation's own reads is exactly the one a queued write returns.
    *
    * Once, and not per update: the causes are properties of the build or of the window manager, so they
    * hold for every write from then on, and a 帯 raised per keystroke in the 絞り込み would say the same
    * sentence over and over. `titleWriteChecked` is what spends it.
    */
-  // A plain `let`, not `$state`: nothing renders from it, and an effect that both read and wrote a
-  // reactive latch would run a second time on its own write — one extra write of the same title.
+  // Plain `let`/`Set`, not `$state`: nothing renders from either, and an effect that both read and wrote
+  // a reactive latch would run a second time on its own write — one extra write of the same title.
   let titleWriteChecked = false;
+  const titlesAsked = new Set<string>();
+
+  /** Every title this shell has issued, so the confirmation can recognise whichever one lands. */
+  function writeTitle(line: string): Promise<void> {
+    titlesAsked.add(line);
+    return windowTitleSet(line);
+  }
+
   $effect(() => {
     if (OVERLAY_TITLE_BAR) {
       return;
     }
     const line = titleLine;
     if (titleWriteChecked) {
-      void windowTitleSet(line).catch(() => {});
+      void writeTitle(line).catch(() => {});
       return;
     }
     titleWriteChecked = true;
     void (async () => {
       try {
-        await windowTitleSet(line);
+        await writeTitle(line);
       } catch (error) {
         notice = `ウィンドウのタイトルに総件数を出せません（${unreadableDetail(asCommandError(error))}）`;
         return;
       }
       // A read that fails on its own terms proves nothing either way, so it ends the check rather than
-      // becoming a second report about a title that may well be correct — `untrack` because reading
-      // `titleLine` here is the confirmation asking what is wanted *now*, not this effect subscribing
-      // to it a second time.
+      // becoming a second report about a title that may well be correct.
       const found = await confirmTitleApplied(
         windowTitleRead,
-        () => untrack(() => titleLine),
+        () => titlesAsked,
         (ms) => new Promise((resume) => setTimeout(resume, ms)),
       ).catch(() => null);
+      // Kept only while the confirmation needs it — afterwards every write is a plain one, and a set
+      // that went on growing with each 絞り込み keystroke would be a leak with no reader.
+      titlesAsked.clear();
       if (found !== null) {
         notice = `ウィンドウのタイトルに総件数を出せません（このデスクトップ環境が題を「${found}」のままにしています）`;
       }
