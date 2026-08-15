@@ -19,6 +19,8 @@ ordinal: 82000
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
 スイムレーンのメニューをアプリのタイトルバーへ統合できないか調べる。Tauri で行うには decorations:false にして自前のタイトルバーを描くことになり、macOS・Windows・Linux の 3 環境ぶんのウィンドウ操作（ドラッグ移動・最大化・閉じる・信号機ボタンの位置）を自前で持つ必要がある。TASK-66 で「プロジェクト別スイムレーン」見出し横に件数を出す代替を満たしているため公開阻害ではない。調査の結果として実装しない判断も成果とする。
+
+![](/assets/TASK-82.png)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
