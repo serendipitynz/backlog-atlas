@@ -21,11 +21,23 @@
 
 import type { GitRemoteRead } from "./wire";
 
+/**
+ * What the 現在値 line shows (doc-10 §4.1): the boundary's answer, or Atlas's own failure to ask for
+ * one.
+ *
+ * **The second is not a `GitRemoteRead`.** Every member of that union is a claim about the project
+ * root — a remote, no remote, no repository, or a Git read that failed. A rejected `git_remote_read`
+ * is none of those: it is a claim about Atlas (the 台帳 could not be read, or the entry is gone from
+ * a stale screen), and giving it one of Git's 失敗理由符号 would say Git answered when it was never
+ * asked. It draws exactly as `unreadable` does, so the line reads as it always has.
+ */
+export type RemoteLine = GitRemoteRead | { state: "unaskable"; detail: string };
+
 export interface GitRemoteReadPorts {
-  /** `gitRemoteRead` — never rejects; a failed read is a `GitRemoteRead` state (decision-6). */
-  read: (slug: string) => Promise<GitRemoteRead>;
+  /** `gitRemoteRead` as the shell wraps it: a rejection becomes `unaskable` rather than throwing. */
+  read: (slug: string) => Promise<RemoteLine>;
   /** Put a value on the line. `null` is 未取得 — not 不在, which is a state of its own. */
-  show: (read: GitRemoteRead | null) => void;
+  show: (read: RemoteLine | null) => void;
 }
 
 export interface GitRemoteReader {
@@ -60,7 +72,7 @@ export function createGitRemoteReader(ports: GitRemoteReadPorts): GitRemoteReade
       ports.show(null);
     }
     const token = ++calls;
-    let read: GitRemoteRead;
+    let read: RemoteLine;
     try {
       read = await ports.read(slug);
     } catch {

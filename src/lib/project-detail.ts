@@ -43,7 +43,9 @@
  */
 
 import type { EntryEdit } from "./ledger";
-import type { GitRemoteRead, ProjectEntry, UpdateRequest } from "./wire";
+import type { ProjectEntry, UpdateRequest } from "./wire";
+import { remoteReadFailureText } from "./failure";
+import type { RemoteLine } from "./git-remote-read";
 
 // --- 区画切替 (doc-10 §1/§3) -------------------------------------------------------------------
 
@@ -258,7 +260,7 @@ export interface GitRemoteLine {
 }
 
 /** `null` for a read that has not landed yet — 未取得 is not 不在 (decision-6). */
-export function gitRemoteLine(read: GitRemoteRead | null): GitRemoteLine {
+export function gitRemoteLine(read: RemoteLine | null): GitRemoteLine {
   if (read === null) {
     return { text: "読み込み中…", kind: "neutral", name: null, address: false };
   }
@@ -280,6 +282,15 @@ export function gitRemoteLine(read: GitRemoteRead | null): GitRemoteLine {
         address: false,
       };
     case "unreadable":
+      return {
+        text: `remote を読めません: ${remoteReadFailureText(read.reason, read.detail)}`,
+        kind: "failure",
+        name: null,
+        address: false,
+      };
+    // Atlas never asked (see `RemoteLine`). The same line, because what the reader has to know is
+    // the same: the address on screen is not one that was read.
+    case "unaskable":
       return { text: `remote を読めません: ${read.detail}`, kind: "failure", name: null, address: false };
   }
 }
@@ -294,9 +305,9 @@ export function gitRemoteLine(read: GitRemoteRead | null): GitRemoteLine {
  */
 export function gitRemoteDisagreement(
   entry: ProjectEntry,
-  read: GitRemoteRead | null,
+  read: RemoteLine | null,
 ): string | null {
-  if (read === null || read.state === "unreadable") {
+  if (read === null || read.state === "unreadable" || read.state === "unaskable") {
     return null;
   }
   const found = read.state === "configured";

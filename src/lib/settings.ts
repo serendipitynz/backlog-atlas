@@ -39,6 +39,8 @@ import type {
   StorageSelection,
 } from "./wire";
 import { commandErrorDetail } from "./edit";
+import { launchRefusalText } from "./failure";
+import { msg } from "./messages";
 
 export const CARD_DENSITY_LABEL: Record<CardDensity, string> = {
   s: "S（ID・priority・印・title 1 行）",
@@ -353,9 +355,9 @@ export function openLocationAvailability(
 export function openLocationFailure(error: CommandError): string {
   switch (error.kind) {
     case "editorLaunchFailed":
-      return `${error.program} で開けませんでした: ${error.detail}。`;
+      return `${error.program} で開けませんでした: ${launchRefusalText(error.reason, error.detail)}。`;
     case "editorUnavailable":
-      return `場所を開けませんでした: ${error.detail}`;
+      return `場所を開けませんでした: ${msg().failure.editorUnavailable}`;
     default:
       return commandErrorDetail(error);
   }
