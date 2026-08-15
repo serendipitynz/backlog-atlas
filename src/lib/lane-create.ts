@@ -51,21 +51,32 @@ export function noCandidateAbsentReason(column: StatusColumn): string {
 }
 
 /**
- * Whether this cell's column offers the entry, and with which candidates (doc-7 §4.1).
+ * One column's 列の作成時 status 候補, in `config.yml` order (doc-7 §4.1).
+ *
+ * **Read by both operations that need a `-s` value for a column** — 列内新規タスク入力 here and
+ * 列間ドロップ in `lane-drop.ts` (doc-7 §4.2). The lookup is in one place so the column a task can be
+ * *created* in and the column it can be *dropped* into cannot come apart.
  *
  * A column the payload has no entry for is read as 候補 0 件: the boundary sends all four
  * (`create_status_candidates`), so this can only be a payload that does not know the column — and
- * offering an entry whose `-s` value is unknown is the one thing doc-7 §4.1 rules out.
+ * acting on a column whose `-s` value is unknown is the one thing doc-7 §4.1 rules out.
  */
+export function columnCandidates(
+  candidates: readonly ColumnCreateStatuses[],
+  column: StatusColumn,
+): string[] {
+  return [...(candidates.find((candidate) => candidate.column === column)?.statuses ?? [])];
+}
+
+/** Whether this cell's column offers the entry, and with which candidates (doc-7 §4.1). */
 export function laneCreate(
   candidates: readonly ColumnCreateStatuses[],
   column: StatusColumn,
 ): LaneCreate {
-  const entry = candidates.find((candidate) => candidate.column === column);
-  const statuses = entry?.statuses ?? [];
+  const statuses = columnCandidates(candidates, column);
   return statuses.length === 0
     ? { state: "absent", reason: noCandidateAbsentReason(column) }
-    : { state: "offered", candidates: [...statuses] };
+    : { state: "offered", candidates: statuses };
 }
 
 /**
