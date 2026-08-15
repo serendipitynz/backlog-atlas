@@ -1,4 +1,9 @@
 {
+  "BodyLinkRefusal": [
+    "schemeNotAllowed",
+    "controlCharacter",
+    "launchFailed"
+  ],
   "CardDensity": [
     "s",
     "m",
@@ -86,6 +91,13 @@
     "configured",
     "association"
   ],
+  "LaunchRefusal": [
+    "osRefused",
+    "exited",
+    "shellExecute",
+    "comInit",
+    "shellExecuteAbsent"
+  ],
   "LedgerRefusal": [
     "readOnly",
     "backlogRootInvalid",
@@ -107,6 +119,11 @@
     "document",
     "decision"
   ],
+  "ProbeFailure": [
+    "spawnFailed",
+    "exited",
+    "noResponse"
+  ],
   "ProbeOutcome": [
     "launched",
     "failed"
@@ -127,6 +144,11 @@
   ],
   "RemoteHostKind": [
     "gitHub"
+  ],
+  "RemoteReadFailure": [
+    "gitUnavailable",
+    "gitFailed",
+    "remoteUrlEmpty"
   ],
   "RequiredField": [
     "id",

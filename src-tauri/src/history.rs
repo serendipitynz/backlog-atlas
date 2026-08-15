@@ -113,7 +113,29 @@ pub enum GitRemoteRead {
     /// Git could not be run, refused the repository it found, or could not read the chosen remote's
     /// URL. None of these say whether a remote exists, so this is not folded into
     /// [`GitRemoteRead::RemoteAbsent`] or [`GitRemoteRead::NoRepository`].
-    Unreadable { detail: String },
+    Unreadable {
+        reason: RemoteReadFailure,
+        detail: String,
+    },
+}
+
+/// 失敗理由符号 (decision-35 §3) for a Git remote read that reached neither 不在 nor 設定済み.
+///
+/// `detail` beside it is Git's own output or the OS's, never a sentence written here — and may be
+/// empty, which the screen must not read as a missing value: a `git` that failed writing nothing to
+/// stderr is one of the cases this exists to report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "reason", rename_all = "camelCase")]
+pub enum RemoteReadFailure {
+    /// `git` could not be run at all.
+    GitUnavailable,
+    /// `git` ran and exited unsuccessfully — a refused repository, a permission fault, a root that
+    /// is not there. **Not 対象不在**: that is Git's own verdict and reaches
+    /// [`GitRemoteRead::NoRepository`] instead.
+    GitFailed,
+    /// A remote is listed, but `remote get-url` produced no URL for it. Neither 不在 nor a value to
+    /// show; saying so is what keeps the 現在値 line from printing an empty string as an address.
+    RemoteUrlEmpty { name: String },
 }
 
 /// The per-Pull-Request result of relation resolution (doc-6 §6). One entry per extracted PR so
@@ -159,20 +181,27 @@ pub enum RelationOutcome {
 /// retry, while a query that ran and failed could be authentication, permission, a deleted Pull
 /// Request or the network — which its exit status does not tell apart, and which the screen must
 /// therefore not promise a recovery path for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+/// Its four tokens are what they were; what changed is that two of them now carry the value the
+/// screen has to name (decision-35 §3), which used to be spelled into the sentence beside them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "reason", rename_all = "camelCase")]
 pub enum LookupFailure {
     /// The reference means could not be started at all (e.g. `gh` is not on PATH).
     ToolMissing,
-    /// The Pull Request URL does not yield coordinates that can be queried.
-    InvalidReference,
+    /// The Pull Request URL does not yield coordinates that can be queried. `value` is the segment
+    /// that could not be one, which is what lets the screen point at the References entry to fix.
+    InvalidReference { value: String },
     /// The query ran and did not succeed. Its cause is not decidable here.
     QueryFailed,
     /// 照会期限到達 (decision-19): the 照会 was still running at [`GH_DEADLINE`], so Atlas ended it
     /// without a commit set for this Pull Request. Distinct from [`LookupFailure::QueryFailed`]
     /// because Atlas caused it and therefore knows what it was — and because a retry can change the
     /// answer, which is what doc-8 §5 asks the screen to be able to say.
-    TimedOut,
+    ///
+    /// `after_secs` is [`GH_DEADLINE`], carried rather than known on the other side: the deadline is
+    /// this module's to choose, and a screen holding its own copy would go on saying the old number
+    /// after it changed here.
+    TimedOut { after_secs: u64 },
 }
 
 /// Why a Git read could not produce a commit list. Kept distinct from an *empty* list because
@@ -358,7 +387,7 @@ fn classify_repo_probe(stderr: &str) -> RepoProbe {
         RepoProbe::NoRepository
     } else {
         RepoProbe::Unreadable {
-            detail: first_line(stderr, GIT_FAILED),
+            detail: first_line(stderr),
         }
     }
 }
@@ -553,9 +582,15 @@ pub fn read_git_remote(git: &ExternalProgram, project_root: &Path) -> GitRemoteR
     match probe_git_repo(git, project_root) {
         Ok(RepoProbe::Repository) => {}
         Ok(RepoProbe::NoRepository) => return GitRemoteRead::NoRepository,
-        Ok(RepoProbe::Unreadable { detail }) => return GitRemoteRead::Unreadable { detail },
+        Ok(RepoProbe::Unreadable { detail }) => {
+            return GitRemoteRead::Unreadable {
+                reason: RemoteReadFailure::GitFailed,
+                detail,
+            }
+        }
         Err(err) => {
             return GitRemoteRead::Unreadable {
+                reason: RemoteReadFailure::GitUnavailable,
                 detail: err.to_string(),
             }
         }
@@ -564,13 +599,15 @@ pub fn read_git_remote(git: &ExternalProgram, project_root: &Path) -> GitRemoteR
         Ok(out) => out,
         Err(err) => {
             return GitRemoteRead::Unreadable {
+                reason: RemoteReadFailure::GitUnavailable,
                 detail: err.to_string(),
             }
         }
     };
     if !listed.status.success() {
         return GitRemoteRead::Unreadable {
-            detail: first_line(&String::from_utf8_lossy(&listed.stderr), GIT_FAILED),
+            reason: RemoteReadFailure::GitFailed,
+            detail: first_line(&String::from_utf8_lossy(&listed.stderr)),
         };
     }
     let Some(name) = choose_remote_name(&String::from_utf8_lossy(&listed.stdout)) else {
@@ -581,21 +618,22 @@ pub fn read_git_remote(git: &ExternalProgram, project_root: &Path) -> GitRemoteR
         Ok(out) => out,
         Err(err) => {
             return GitRemoteRead::Unreadable {
+                reason: RemoteReadFailure::GitUnavailable,
                 detail: err.to_string(),
             }
         }
     };
     if !out.status.success() {
         return GitRemoteRead::Unreadable {
-            detail: first_line(&String::from_utf8_lossy(&out.stderr), GIT_FAILED),
+            reason: RemoteReadFailure::GitFailed,
+            detail: first_line(&String::from_utf8_lossy(&out.stderr)),
         };
     }
     let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if url.is_empty() {
-        // A remote that is listed but yields no URL is neither 不在 nor a value to show; saying so is
-        // what keeps the 現在値 line from printing an empty string as if it were an address.
         return GitRemoteRead::Unreadable {
-            detail: format!("remote 「{name}」の URL を読み取れませんでした"),
+            reason: RemoteReadFailure::RemoteUrlEmpty { name },
+            detail: String::new(),
         };
     }
     GitRemoteRead::Configured { name, url }
@@ -646,10 +684,12 @@ impl RelationError {
         }
     }
 
-    pub fn invalid_reference(detail: impl Into<String>) -> Self {
+    pub fn invalid_reference(value: impl Into<String>) -> Self {
         RelationError {
-            reason: LookupFailure::InvalidReference,
-            detail: detail.into(),
+            reason: LookupFailure::InvalidReference {
+                value: value.into(),
+            },
+            detail: String::new(),
         }
     }
 
@@ -664,16 +704,11 @@ impl RelationError {
     /// 照会 — normally nothing. The sentence says Atlas stopped waiting, never that the `gh` process
     /// is gone: the kill is attempted, not guaranteed.
     pub fn timed_out(observed: Option<String>) -> Self {
-        let mut detail = format!(
-            "gh が {} 秒で応答しなかったので照会を打ち切りました",
-            GH_DEADLINE.as_secs()
-        );
-        if let Some(observed) = observed {
-            detail.push_str(&format!("（{observed}）"));
-        }
         RelationError {
-            reason: LookupFailure::TimedOut,
-            detail,
+            reason: LookupFailure::TimedOut {
+                after_secs: GH_DEADLINE.as_secs(),
+            },
+            detail: observed.unwrap_or_default(),
         }
     }
 }
@@ -1000,21 +1035,14 @@ fn github_pull_request_commits(
         .env("GH_NO_UPDATE_NOTIFIER", "1");
     let out = match subprocess::launch(&mut command, GH_DEADLINE, cancel) {
         Ok(completed) => completed,
-        Err(Stopped::Spawn(e)) => {
-            return Err(RelationError::tool_missing(format!(
-                "gh を起動できません（{e}）"
-            )))
-        }
+        Err(Stopped::Spawn(e)) => return Err(RelationError::tool_missing(e.to_string())),
         // Which bound ended the wait is not something `subprocess` reports: the handle is this
         // caller's. A cancelled 照会 is reported as 照会期限到達 here and re-read as 取消 by
         // `resolve_one`, which is the layer that knows the read as a whole was abandoned.
         Err(Stopped::Ended { detail }) => return Err(RelationError::timed_out(detail)),
     };
     if !out.status.success() {
-        return Err(RelationError::query_failed(first_line(
-            &out.stderr,
-            "gh の実行に失敗しました",
-        )));
+        return Err(RelationError::query_failed(first_line(&out.stderr)));
     }
     Ok(out
         .stdout
@@ -1038,9 +1066,7 @@ fn api_path_segment(value: &str) -> Result<&str, RelationError> {
     if ok {
         Ok(value)
     } else {
-        Err(RelationError::invalid_reference(format!(
-            "Pull Request URL の owner/repo が GitHub の名前として扱えません（{value}）"
-        )))
+        Err(RelationError::invalid_reference(value))
     }
 }
 
@@ -1053,19 +1079,17 @@ fn is_sha(line: &str) -> bool {
 /// The first non-empty line of a program's stderr, for reporting a failure without pasting a whole
 /// help text into the screen. Kept short — the panel shows this inline.
 ///
-/// `fallback` is a parameter because a silent failure still has to say *which* program failed, and
-/// the two callers here run different ones (`gh` and `git`).
-fn first_line(text: &str, fallback: &str) -> String {
+/// **Empty when the program wrote nothing**, rather than a sentence naming it. It used to take a
+/// fallback for that case, which is exactly the shape decision-35 §3 removes: the sentence is the
+/// screen's, and it already knows which program failed from the 失敗理由符号 beside this.
+fn first_line(text: &str) -> String {
     let line = text
         .lines()
         .map(str::trim)
         .find(|l| !l.is_empty())
-        .unwrap_or(fallback);
+        .unwrap_or_default();
     line.chars().take(200).collect()
 }
-
-/// What [`read_git_remote`] reports when git failed without writing anything to stderr.
-const GIT_FAILED: &str = "git の実行に失敗しました";
 
 // --- shared Git invocation + URL parsing --------------------------------------------------------
 
@@ -1613,7 +1637,7 @@ mod tests {
                     .map(|(number, answer)| {
                         let answer = match answer {
                             Ok(shas) => Ok(shas.iter().map(|s| (*s).to_string()).collect()),
-                            Err(reason) => Err(*reason),
+                            Err(reason) => Err(reason.clone()),
                         };
                         (*number, answer)
                     })
@@ -1651,7 +1675,7 @@ mod tests {
             *self.inside.lock().expect("no test panics holding it") -= 1;
             match self.answers.get(&target.number) {
                 Some(Ok(shas)) => Ok(shas.clone()),
-                Some(Err(LookupFailure::TimedOut)) => Err(RelationError::timed_out(None)),
+                Some(Err(LookupFailure::TimedOut { .. })) => Err(RelationError::timed_out(None)),
                 Some(Err(_)) | None => Err(RelationError::query_failed("scripted failure")),
             }
         }
@@ -1701,19 +1725,25 @@ mod tests {
         // and the reason reaching the screen is TimedOut rather than the undecidable QueryFailed.
         let commits = vec![commit("aaaaaaaaaaaa1111", "TASK-1")];
         let prs = numbered_prs(&[1, 2]);
-        let source =
-            ScriptedSource::new(&[(1, Err(LookupFailure::TimedOut)), (2, Ok(vec!["aaaaaaa"]))]);
+        let source = ScriptedSource::new(&[
+            (1, Err(LookupFailure::TimedOut { after_secs: 0 })),
+            (2, Ok(vec!["aaaaaaa"])),
+        ]);
         let relations = resolve_relations(&commits, &prs, &source, &never_cancelled())
             .expect("a deadline is not a cancel");
 
         let RelationOutcome::LookupFailed { reason, detail } = &relations[0].outcome else {
             panic!("the first PR reached its deadline: {:?}", relations[0]);
         };
-        assert_eq!(*reason, LookupFailure::TimedOut);
-        assert!(
-            detail.contains(&GH_DEADLINE.as_secs().to_string()),
-            "the reason must name the bound that was reached: {detail}"
+        // The bound travels in the 失敗理由符号 now, not spelled into a sentence beside it
+        // (decision-35 §3) — so this reads it off the token rather than searching the text.
+        assert_eq!(
+            *reason,
+            LookupFailure::TimedOut {
+                after_secs: GH_DEADLINE.as_secs()
+            }
         );
+        assert!(detail.is_empty(), "nothing was observed: {detail}");
         assert_eq!(
             relations[1].outcome,
             RelationOutcome::Resolved {
@@ -1834,17 +1864,13 @@ mod tests {
     #[test]
     fn a_failure_reason_is_one_short_line() {
         assert_eq!(
-            first_line(
-                "\n  gh: To use GitHub CLI, run: gh auth login\nmore\n",
-                "gh の実行に失敗しました"
-            ),
+            first_line("\n  gh: To use GitHub CLI, run: gh auth login\nmore\n"),
             "gh: To use GitHub CLI, run: gh auth login"
         );
-        assert_eq!(
-            first_line("   \n", "gh の実行に失敗しました"),
-            "gh の実行に失敗しました"
-        );
-        assert!(first_line(&"x".repeat(500), GIT_FAILED).chars().count() <= 200);
+        // A program that wrote nothing leaves this empty rather than supplying a sentence — the
+        // 失敗理由符号 beside it is what the screen words (decision-35 §3).
+        assert_eq!(first_line("   \n"), "");
+        assert!(first_line(&"x".repeat(500)).chars().count() <= 200);
     }
 
     #[test]
@@ -1877,16 +1903,25 @@ mod tests {
         assert_eq!(failed["state"], "lookupFailed");
         assert_eq!(failed["detail"], "offline");
         // The reason travels beside the detail so the screen can say whether the cause clears itself
-        // (doc-8 §5) instead of promising a recovery path the payload cannot establish.
-        assert_eq!(failed["reason"], "queryFailed");
+        // (doc-8 §5) instead of promising a recovery path the payload cannot establish. It is tagged
+        // rather than bare because two of the four now carry the value the screen names.
+        assert_eq!(failed["reason"]["reason"], "queryFailed");
         assert_eq!(
             serde_json::to_value(RelationOutcome::LookupFailed {
                 reason: LookupFailure::ToolMissing,
-                detail: "gh を起動できません".into(),
+                detail: "no such file or directory".into(),
             })
-            .unwrap()["reason"],
+            .unwrap()["reason"]["reason"],
             "toolMissing"
         );
+        // The one that carries a value puts it beside its own tag, not in the sentence.
+        let invalid = serde_json::to_value(RelationOutcome::LookupFailed {
+            reason: LookupFailure::InvalidReference { value: "..".into() },
+            detail: String::new(),
+        })
+        .unwrap();
+        assert_eq!(invalid["reason"]["reason"], "invalidReference");
+        assert_eq!(invalid["reason"]["value"], "..");
     }
 
     #[test]
@@ -1902,8 +1937,12 @@ mod tests {
         let error = HostReferences::new(gh_program())
             .commits_for_pull_request(&target, &never_cancelled())
             .unwrap_err();
-        assert_eq!(error.reason, LookupFailure::InvalidReference);
-        assert!(error.detail.contains(".."));
+        assert_eq!(
+            error.reason,
+            LookupFailure::InvalidReference {
+                value: "..".to_string()
+            }
+        );
     }
 
     // --- commit search against a real repo (AC #1, #4, doc-6 §3, §6) ------------------------
@@ -2120,7 +2159,9 @@ mod tests {
 
         // A root that is not there is a third thing again, and also not 対象不在.
         match read_git_remote(&git_program(), &tmp.path.join("gone")) {
-            GitRemoteRead::Unreadable { detail } => assert!(!detail.is_empty()),
+            GitRemoteRead::Unreadable { reason, .. } => {
+                assert_eq!(reason, RemoteReadFailure::GitFailed);
+            }
             other => panic!("a missing root must be 読取不能, got {other:?}"),
         }
     }

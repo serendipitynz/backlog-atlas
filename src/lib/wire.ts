@@ -284,10 +284,15 @@ export type CommitSearch =
  * undecidable from here.
  */
 export type LookupFailure =
-  | "toolMissing"
-  | "invalidReference"
-  | "queryFailed"
-  | "timedOut";
+  | { reason: "toolMissing" }
+  /** `value` is the owner/repo segment that could not be one, so the screen can quote it back. */
+  | { reason: "invalidReference"; value: string }
+  | { reason: "queryFailed" }
+  /**
+   * `afterSecs` is the gh 照会期限 as the boundary holds it. Carried rather than known here: the
+   * deadline is that module's to choose, and a copy on this side would go on naming the old number.
+   */
+  | { reason: "timedOut"; afterSecs: number };
 
 /**
  * What became of one Pull Request during コミット・PR 関連解決 (doc-6 §6). `resolved` with an empty
@@ -330,7 +335,18 @@ export type GitRemoteRead =
   | { state: "configured"; name: string; url: string }
   | { state: "remoteAbsent" }
   | { state: "noRepository" }
-  | { state: "unreadable"; detail: string };
+  | { state: "unreadable"; reason: RemoteReadFailure; detail: string };
+
+/**
+ * 失敗理由符号 for the read above (decision-35 §3). The sentence is this side's; `detail` beside it is
+ * Git's own output or the OS's, and **may be empty** — a `git` that failed writing nothing to stderr
+ * is one of the cases this reports, so an empty `detail` is not a missing value.
+ */
+export type RemoteReadFailure =
+  | { reason: "gitUnavailable" }
+  | { reason: "gitFailed" }
+  /** `name` is the remote that is listed but yields no URL. */
+  | { reason: "remoteUrlEmpty"; name: string };
 
 // --- ledger (doc-3) ------------------------------------------------------------------------
 
@@ -416,7 +432,18 @@ export type ExternalProgramSource = "configured" | "subPackage" | "onPath";
 /** Whether the resolved 外部コマンド started (decision-29 解決結果の表示). */
 export type ProbeOutcome =
   | { state: "launched"; report: string }
-  | { state: "failed"; detail: string };
+  | { state: "failed"; reason: ProbeFailure; detail: string };
+
+/**
+ * 失敗理由符号 for a `--version` probe that reported no version (decision-35 §3). `detail` is the
+ * program's own first stderr line, the OS's description, or empty — never a sentence written by the
+ * boundary, and never what selects the sentence shown here.
+ */
+export type ProbeFailure =
+  /** `program` is what could not be started; the errno alone would not say which. */
+  | { reason: "spawnFailed"; program: string }
+  | { reason: "exited" }
+  | { reason: "noResponse" };
 
 /**
  * One row of the 解決結果の表示 (decision-29): a 外部コマンド, what it resolved to, and whether that
@@ -478,16 +505,51 @@ export type CommandError =
   // files: nothing was started. The other two separate "this environment has no launcher for the
   // method you chose" from "the launcher existed and the OS refused it".
   | { kind: "unknownTaskFile"; slug: string; path: string }
-  | { kind: "editorUnavailable"; detail: string }
-  | { kind: "editorLaunchFailed"; method: LaunchMethod; program: string; detail: string }
+  // Carries nothing: 起動指定の解決順 has one way of coming up empty, so the token is the whole reason.
+  | { kind: "editorUnavailable" }
+  | {
+      kind: "editorLaunchFailed";
+      method: LaunchMethod;
+      program: string;
+      reason: LaunchRefusal;
+      detail: string;
+    }
   // 履歴読取の取消 (decision-19): the screen cancelled this read, so there is no answer. Carries only
   // the 読取識別子 — the screen that gets it has already stopped displaying that read, so there is
   // nothing here for it to show.
   | { kind: "historyCancelled"; read_id: string }
   // 既定ブラウザ起動 (doc-8 §9.3) did not open the 本文リンク: the URL was refused, or the OS call ran
-  // and opened nothing. One variant for both, because the screen does the same thing with either —
-  // ⑤ 通知 with this sentence (doc-11 §4). The program that failed, when there was one, is in `detail`.
-  | { kind: "bodyLinkFailed"; detail: string };
+  // and opened nothing. **The sentence used to be the whole of it**, on the reasoning that both reach
+  // ⑤ 通知 (doc-11 §4) and the screen does the same thing with either; decision-35 §3 ends that,
+  // because the sentence is this side's to write now.
+  | { kind: "bodyLinkFailed"; reason: BodyLinkRefusal; detail: string };
+
+/**
+ * 失敗理由符号 for a launch that reached the OS and did not open its target (decision-35 §3).
+ *
+ * One set for both routes — a management file (doc-8 §7) and a 本文リンク (doc-8 §9.3) fail the same
+ * ways — so `BodyLinkRefusal` nests this rather than restating it. `detail` beside it is the OS's own
+ * description or an exit status, and is empty for the two that carry their whole reason in the token.
+ */
+export type LaunchRefusal =
+  | { reason: "osRefused" }
+  /** The launcher ran and exited unsuccessfully; only 既定ブラウザ起動 watches for this. */
+  | { reason: "exited" }
+  /**
+   * `ShellExecuteW` returned one of its own codes (`SE_ERR_*` 26–32, and 0 for out of memory) rather
+   * than a Win32 one. **The number arrives, not a sentence**: those codes collide with unrelated
+   * Win32 ones, so the table that reads them is the screen's.
+   */
+  | { reason: "shellExecute"; code: number }
+  /** `CoInitializeEx` left the thread with no apartment. `hresult` is what it returned, as an i32. */
+  | { reason: "comInit"; hresult: number }
+  | { reason: "shellExecuteAbsent" };
+
+/** 失敗理由符号 for a 本文リンク that was not opened (doc-8 §9.3). */
+export type BodyLinkRefusal =
+  | { reason: "schemeNotAllowed" }
+  | { reason: "controlCharacter" }
+  | { reason: "launchFailed"; program: string; launch: LaunchRefusal };
 
 // --- 外部エディタ経路 (doc-8 §7, TASK-37) ----------------------------------------------------
 
@@ -649,10 +711,12 @@ export type FailureKind =
 
 export interface UpdateFailure {
   /**
-   * The 写像先 that failed — a sub-command like `"task edit"`, or the operation's own name for the
-   * 直接書き込み操作, which has no sub-command (doc-5 §1/§3).
+   * The 写像先 that failed — a sub-command like `"task edit"`. **`null` for the 直接書き込み操作**,
+   * which has no sub-command to name (doc-5 §1/§3): `kind: "write"` is what says it was that one, so
+   * the screen words the subject rather than printing a name the boundary wrote (decision-35 §3).
+   * A sub-command name itself stays as it is — decision-35 §5 leaves identifiers untranslated.
    */
-  command: string;
+  command: string | null;
   kind: FailureKind;
   /** The CLI's stderr, or the write's reason — the failure reason doc-5 §5 requires showing. */
   stderr: string;

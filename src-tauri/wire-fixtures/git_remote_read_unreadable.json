@@ -1,0 +1,8 @@
+{
+  "state": "unreadable",
+  "reason": {
+    "reason": "remoteUrlEmpty",
+    "name": "origin"
+  },
+  "detail": ""
+}

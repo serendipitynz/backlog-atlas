@@ -29,11 +29,13 @@ use crate::domain::{
     Milestone, ReferenceKind, RequiredField, StorageState, Task, UnknownSection, UnmappedFile,
 };
 use crate::editor::{
-    ConfiguredEditor, EditorCommand, EditorLaunch, EditorReadiness, EditorSource, LaunchMethod,
+    self, BodyLinkRefusal, ConfiguredEditor, EditorCommand, EditorLaunch, EditorReadiness,
+    EditorSource, LaunchMethod, LaunchRefusal,
 };
-use crate::external::{ExternalProgramReport, ExternalProgramSource, ProbeOutcome};
+use crate::external::{ExternalProgramReport, ExternalProgramSource, ProbeFailure, ProbeOutcome};
 use crate::history::{
     Commit, GitRemoteRead, LookupFailure, PrRelation, RelationOutcome, RemoteHost, RemoteHostKind,
+    RemoteReadFailure,
 };
 use crate::interpret::status::{StatusColumn, StatusDeclaration, StatusMapping};
 use crate::interpret::type_value::derive_types;
@@ -324,6 +326,26 @@ fn task_history_is_recorded() {
                     pull_request: "https://example.test/pull/2".to_string(),
                     outcome: RelationOutcome::HostUnsupported,
                 },
+                // The two 失敗理由符号 that carry a value. Sampled rather than left to
+                // `wire_tokens.json`, which anchors the token and not the payload's type:
+                // `after_secs` is a number appearing in no other payload, and `value` is the
+                // segment the screen quotes back.
+                PrRelation {
+                    pull_request: "https://example.test/pull/3".to_string(),
+                    outcome: RelationOutcome::LookupFailed {
+                        reason: LookupFailure::TimedOut { after_secs: 15 },
+                        detail: String::new(),
+                    },
+                },
+                PrRelation {
+                    pull_request: "https://example.test/pull/4".to_string(),
+                    outcome: RelationOutcome::LookupFailed {
+                        reason: LookupFailure::InvalidReference {
+                            value: "..".to_string(),
+                        },
+                        detail: String::new(),
+                    },
+                },
             ],
         },
     );
@@ -365,7 +387,7 @@ fn update_result_ran_is_recorded() {
         "update_result_ran_failed.json",
         &UpdateResult::Ran {
             outcome: UpdateOutcome::Failed(UpdateFailure {
-                command: "task edit".to_string(),
+                command: Some("task edit".to_string()),
                 kind: FailureKind::NonZero { code: Some(1) },
                 stderr: "no such task".to_string(),
                 completed_before: 1,
@@ -385,7 +407,7 @@ fn update_result_timed_out_is_recorded() {
         "update_result_ran_timed_out.json",
         &UpdateResult::Ran {
             outcome: UpdateOutcome::Failed(UpdateFailure {
-                command: "task edit".to_string(),
+                command: Some("task edit".to_string()),
                 kind: FailureKind::TimedOut { after_ms: 30_000 },
                 stderr: "the backlog CLI did not finish within 30 seconds, so Atlas stopped waiting for it"
                     .to_string(),
@@ -440,7 +462,27 @@ fn command_errors_are_recorded() {
             CommandError::EditorLaunchFailed {
                 method: LaunchMethod::Configured,
                 program: "code".to_string(),
+                reason: LaunchRefusal::OsRefused,
                 detail: "No such file or directory".to_string(),
+            },
+            // The 失敗理由符号 that carries a number, and the one platform whose codes only a Windows
+            // build produces — recorded from any host, which is the whole reason `Platform` is a
+            // value here rather than a `cfg` (see `editor.rs`).
+            CommandError::EditorLaunchFailed {
+                method: LaunchMethod::Association,
+                program: editor::SHELL_EXECUTE_NAME.to_string(),
+                reason: LaunchRefusal::ShellExecute { code: 31 },
+                detail: String::new(),
+            },
+            // 起動指定 が 1 つも解決しない, whose whole payload is its own token.
+            CommandError::EditorUnavailable,
+            // The one payload with a 失敗理由符号 nested inside another (doc-8 §9.3).
+            CommandError::BodyLinkFailed {
+                reason: BodyLinkRefusal::LaunchFailed {
+                    program: "xdg-open".to_string(),
+                    launch: LaunchRefusal::Exited,
+                },
+                detail: "exit status: 3".to_string(),
             },
         ],
     );
@@ -465,12 +507,29 @@ fn ledger_response_is_recorded() {
 #[test]
 fn git_remote_read_is_recorded() {
     // The 現在値 the 概要区画 shows (doc-10 §4.1). `Configured` is the sample because it is the only
-    // variant carrying fields; the other three reach the frontend through `wire_tokens.json`.
+    // *reading* variant carrying fields; 不在 and 対象不在 reach the frontend through
+    // `wire_tokens.json`.
     recorded(
         "git_remote_read.json",
         &GitRemoteRead::Configured {
             name: "origin".to_string(),
             url: "git@github.com:serendipitynz/backlog-atlas.git".to_string(),
+        },
+    );
+}
+
+/// The failing side gets its own recording, because its 失敗理由符号 carries a value the token list
+/// does not anchor (decision-35 §3) — and because `detail` is empty here, which is a state the
+/// frontend has to word around rather than print.
+#[test]
+fn git_remote_read_unreadable_is_recorded() {
+    recorded(
+        "git_remote_read_unreadable.json",
+        &GitRemoteRead::Unreadable {
+            reason: RemoteReadFailure::RemoteUrlEmpty {
+                name: "origin".to_string(),
+            },
+            detail: String::new(),
         },
     );
 }
@@ -488,6 +547,26 @@ fn external_program_report_is_recorded() {
             source: ExternalProgramSource::Configured,
             outcome: ProbeOutcome::Launched {
                 report: "git version 2.51.0".to_string(),
+            },
+        },
+    );
+}
+
+/// The failed outcome, which stopped being a bare sentence when decision-35 §3 gave it a
+/// 失敗理由符号: `program` rides inside the token now, so no token list anchors its type.
+#[test]
+fn external_program_report_failed_is_recorded() {
+    recorded(
+        "external_program_report_failed.json",
+        &ExternalProgramReport {
+            name: "gh".to_string(),
+            program: "gh".to_string(),
+            source: ExternalProgramSource::OnPath,
+            outcome: ProbeOutcome::Failed {
+                reason: ProbeFailure::SpawnFailed {
+                    program: "gh".to_string(),
+                },
+                detail: "No such file or directory (os error 2)".to_string(),
             },
         },
     );
@@ -766,16 +845,91 @@ fn every_remote_host_kind() -> Vec<RemoteHostKind> {
 fn every_lookup_failure() -> Vec<LookupFailure> {
     let all = vec![
         LookupFailure::ToolMissing,
-        LookupFailure::InvalidReference,
+        LookupFailure::InvalidReference {
+            value: String::new(),
+        },
         LookupFailure::QueryFailed,
-        LookupFailure::TimedOut,
+        LookupFailure::TimedOut { after_secs: 0 },
     ];
     for value in &all {
         match value {
             LookupFailure::ToolMissing
-            | LookupFailure::InvalidReference
+            | LookupFailure::InvalidReference { .. }
             | LookupFailure::QueryFailed
-            | LookupFailure::TimedOut => {}
+            | LookupFailure::TimedOut { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_launch_refusal() -> Vec<LaunchRefusal> {
+    let all = vec![
+        LaunchRefusal::OsRefused,
+        LaunchRefusal::Exited,
+        LaunchRefusal::ShellExecute { code: 0 },
+        LaunchRefusal::ComInit { hresult: 0 },
+        LaunchRefusal::ShellExecuteAbsent,
+    ];
+    for value in &all {
+        match value {
+            LaunchRefusal::OsRefused
+            | LaunchRefusal::Exited
+            | LaunchRefusal::ShellExecute { .. }
+            | LaunchRefusal::ComInit { .. }
+            | LaunchRefusal::ShellExecuteAbsent => {}
+        }
+    }
+    all
+}
+
+fn every_body_link_refusal() -> Vec<BodyLinkRefusal> {
+    let all = vec![
+        BodyLinkRefusal::SchemeNotAllowed,
+        BodyLinkRefusal::ControlCharacter,
+        BodyLinkRefusal::LaunchFailed {
+            program: String::new(),
+            launch: LaunchRefusal::OsRefused,
+        },
+    ];
+    for value in &all {
+        match value {
+            BodyLinkRefusal::SchemeNotAllowed
+            | BodyLinkRefusal::ControlCharacter
+            | BodyLinkRefusal::LaunchFailed { .. } => {}
+        }
+    }
+    all
+}
+
+fn every_probe_failure() -> Vec<ProbeFailure> {
+    let all = vec![
+        ProbeFailure::SpawnFailed {
+            program: String::new(),
+        },
+        ProbeFailure::Exited,
+        ProbeFailure::NoResponse,
+    ];
+    for value in &all {
+        match value {
+            ProbeFailure::SpawnFailed { .. } | ProbeFailure::Exited | ProbeFailure::NoResponse => {}
+        }
+    }
+    all
+}
+
+fn every_remote_read_failure() -> Vec<RemoteReadFailure> {
+    let all = vec![
+        RemoteReadFailure::GitUnavailable,
+        RemoteReadFailure::GitFailed,
+        RemoteReadFailure::RemoteUrlEmpty {
+            name: String::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            RemoteReadFailure::GitUnavailable
+            | RemoteReadFailure::GitFailed
+            | RemoteReadFailure::RemoteUrlEmpty { .. } => {}
         }
     }
     all
@@ -827,6 +981,7 @@ fn every_probe_outcome() -> Vec<ProbeOutcome> {
             report: String::new(),
         },
         ProbeOutcome::Failed {
+            reason: ProbeFailure::Exited,
             detail: String::new(),
         },
     ];
@@ -977,6 +1132,7 @@ fn every_git_remote_read() -> Vec<GitRemoteRead> {
         GitRemoteRead::RemoteAbsent,
         GitRemoteRead::NoRepository,
         GitRemoteRead::Unreadable {
+            reason: RemoteReadFailure::GitFailed,
             detail: String::new(),
         },
     ];
@@ -1016,7 +1172,7 @@ fn every_update_outcome() -> Vec<UpdateOutcome> {
     let all = vec![
         UpdateOutcome::Succeeded,
         UpdateOutcome::Failed(UpdateFailure {
-            command: String::new(),
+            command: None,
             kind: FailureKind::Spawn,
             stderr: String::new(),
             completed_before: 0,
@@ -1193,14 +1349,18 @@ fn every_command_error() -> Vec<CommandError> {
             slug: blank(),
             path: PathBuf::new(),
         },
-        CommandError::EditorUnavailable { detail: blank() },
+        CommandError::EditorUnavailable,
         CommandError::EditorLaunchFailed {
             method: LaunchMethod::Configured,
             program: blank(),
+            reason: LaunchRefusal::OsRefused,
             detail: blank(),
         },
         CommandError::HistoryCancelled { read_id: blank() },
-        CommandError::BodyLinkFailed { detail: blank() },
+        CommandError::BodyLinkFailed {
+            reason: BodyLinkRefusal::SchemeNotAllowed,
+            detail: blank(),
+        },
     ];
     for value in &all {
         match value {
@@ -1218,7 +1378,7 @@ fn every_command_error() -> Vec<CommandError> {
             | CommandError::VersionProbeFailed { .. }
             | CommandError::WatchFailed { .. }
             | CommandError::UnknownTaskFile { .. }
-            | CommandError::EditorUnavailable { .. }
+            | CommandError::EditorUnavailable
             | CommandError::EditorLaunchFailed { .. }
             | CommandError::HistoryCancelled { .. }
             | CommandError::BodyLinkFailed { .. } => {}
@@ -1246,7 +1406,6 @@ fn every_union_token_is_recorded() {
     tokens.insert("RequiredField", unit_tokens(&every_required_field()));
     tokens.insert("ManagedFileKind", unit_tokens(&every_managed_file_kind()));
     tokens.insert("RemoteHostKind", unit_tokens(&every_remote_host_kind()));
-    tokens.insert("LookupFailure", unit_tokens(&every_lookup_failure()));
     tokens.insert("LaunchMethod", unit_tokens(&every_launch_method()));
     tokens.insert("EditorSource", unit_tokens(&every_editor_source()));
     tokens.insert(
@@ -1285,6 +1444,25 @@ fn every_union_token_is_recorded() {
     tokens.insert(
         "LedgerRefusal",
         tag_tokens(&every_ledger_refusal(), "reason"),
+    );
+    // The 失敗理由符号 decision-35 §3 added, tagged like `LedgerRefusal` because they are the same
+    // kind of value: the token is the screen's sentence and the payload is what it has to name.
+    tokens.insert(
+        "LookupFailure",
+        tag_tokens(&every_lookup_failure(), "reason"),
+    );
+    tokens.insert(
+        "LaunchRefusal",
+        tag_tokens(&every_launch_refusal(), "reason"),
+    );
+    tokens.insert(
+        "BodyLinkRefusal",
+        tag_tokens(&every_body_link_refusal(), "reason"),
+    );
+    tokens.insert("ProbeFailure", tag_tokens(&every_probe_failure(), "reason"));
+    tokens.insert(
+        "RemoteReadFailure",
+        tag_tokens(&every_remote_read_failure(), "reason"),
     );
 
     recorded("wire_tokens.json", &tokens);

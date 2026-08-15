@@ -1808,7 +1808,7 @@ task_prefix: \"TASK\"\n";
                 GuardedUpdate::Ran { outcome, .. } => match outcome {
                     UpdateOutcome::Failed(failure) => {
                         assert_eq!(failure.kind, update::FailureKind::Write, "step {step:?}");
-                        assert_eq!(failure.command, update::MILESTONE_DESCRIBE);
+                        assert_eq!(failure.command, None);
                         // 一時ファイル置換 leaves the old file whole, so this failure alone does not
                         // make the root need re-reading (doc-5 §5).
                         assert!(!failure.reload_required, "step {step:?}");

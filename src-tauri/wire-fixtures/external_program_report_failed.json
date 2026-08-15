@@ -1,0 +1,13 @@
+{
+  "name": "gh",
+  "program": "gh",
+  "source": "onPath",
+  "outcome": {
+    "state": "failed",
+    "reason": {
+      "reason": "spawnFailed",
+      "program": "gh"
+    },
+    "detail": "No such file or directory (os error 2)"
+  }
+}
