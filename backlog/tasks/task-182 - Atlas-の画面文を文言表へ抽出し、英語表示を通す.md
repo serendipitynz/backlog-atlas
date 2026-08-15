@@ -1,10 +1,10 @@
 ---
 id: TASK-182
 title: crate が組み立てる失敗の理由を 失敗理由符号 にする
-status: In Progress
+status: In Review
 assignee: []
 created_date: '2026-08-15 20:58'
-updated_date: '2026-08-15 22:51'
+updated_date: '2026-08-15 23:15'
 labels:
   - i18n
   - 'kind:feature'
@@ -31,7 +31,7 @@ decision-35 §3 が定めた 失敗理由符号 を crate へ入れる。crate �
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 crate が組み立てていた失敗の理由が 失敗理由符号 になり、画面へ出る文はフロントエンドが 文言表 から組む
+- [x] #1 crate が組み立てていた失敗の理由が 失敗理由符号 になり、画面へ出る文はフロントエンドが 文言表 から組む
 <!-- AC:END -->
 
 ## Implementation Notes
