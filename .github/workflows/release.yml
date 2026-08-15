@@ -309,7 +309,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS signing and notarization of the .app; create-release has
           # already failed the run if any of the six is unset. Each is emptied on
-          # the other two runners rather than left to Tauri to ignore — a plain
+          # every other runner rather than left to Tauri to ignore — a plain
           # `${{ secrets.X }}` is expanded on every matrix job, which would hand
           # the certificate and its password to every build script and build
           # dependency a Windows or Linux `cargo build` runs.
