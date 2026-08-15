@@ -30,11 +30,48 @@
     showStorageMark: boolean;
     /** In the 未分類区画 the card shows its original status string (doc-7 §2). */
     showRawStatus: boolean;
+    /**
+     * つまめないカード (doc-7 §4.2): why no card may start a 列間ドロップ, or `null`. **Not drawn here** —
+     * the reason is 画面全体に効く and doc-11 §5 puts it on the 上部帯, so this only decides whether the
+     * card is a drag source. Taken as the reason rather than a flag so the two cannot disagree about
+     * why, and so a caller that does state it reads the same words.
+     */
+    dragHeld: string | null;
+    /** 発行中のカード (doc-7 §4.2): this card's `task edit -s` has not returned. It stays in its own
+     * column while it waits — position is a function of the read result, not of the pending issue. */
+    issuing: boolean;
+    ondragstart: (view: TaskView) => void;
+    ondragend: () => void;
     onselect: (view: TaskView) => void;
   }
 
-  let { view, selected, density, conflict, showStorageMark, showRawStatus, onselect }: Props =
-    $props();
+  let {
+    view,
+    selected,
+    density,
+    conflict,
+    showStorageMark,
+    showRawStatus,
+    dragHeld,
+    issuing,
+    ondragstart,
+    ondragend,
+    onselect,
+  }: Props = $props();
+
+  /**
+   * Start a 列間ドロップ (doc-7 §4.2). `setData` is not decoration: an engine starts no drag for a
+   * `dragstart` that sets nothing, so without it the card would be `draggable` and refuse to move.
+   * The payload is the 横断タスクID because that is what the card already shows — the drop reads the
+   * shell's own record rather than this string, so nothing here is trusted as input.
+   */
+  function beginDrag(event: DragEvent): void {
+    if (event.dataTransfer !== null) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", identity);
+    }
+    ondragstart(view);
+  }
 
   const STORAGE_LABEL: Record<string, string> = {
     active: "active",
@@ -78,11 +115,20 @@
 <!-- 優先度の縁 (decision-23) is `data-priority-edge` on the card itself, not a child: it is the card's
      own left border, which is where TASK-77 freed the space (decision-22). Absent for priority 未設定
      と priority 未知 — the attribute is not written at all, so the card keeps its ordinary 1px 枠. -->
+<!-- `draggable` only while nothing holds it (doc-7 §4.2 の つまめないカード). The card keeps its press —
+     選択でタスク詳細を開く is not what a CLI 縮退 takes away — so this is the one capability that goes.
+     A task whose TASK-ID could not be read is not a drag source either: the id is what `task edit`
+     addresses, and doc-7 §4.2 refuses by not taking the card rather than by ending a gesture the
+     engine has already started (a 解析不能 file, doc-4 §5). -->
 <button
   type="button"
   class="card"
   class:selected
+  class:issuing
   data-priority-edge={step}
+  draggable={dragHeld === null && view.task.id !== null}
+  ondragstart={beginDrag}
+  {ondragend}
   onclick={() => onselect(view)}
 >
   <span class="line">
@@ -190,6 +236,16 @@
     &.selected {
       outline: 2px solid var(--sel);
       outline-offset: 1px;
+    }
+
+    // 発行中のカード (doc-7 §4.2). The issue takes up to the CLI 終了期限 (30 秒, decision-18), so
+    // something has to say it is under way. **The card does not move** — its column is a function of
+    // the read result — and this says exactly that: the card is here, and something is happening to
+    // it. `--faint` rather than an animation, which would read as loading rather than as pending.
+    &.issuing {
+      border-style: dashed;
+      border-color: var(--line-strong);
+      color: var(--muted);
     }
 
     // 優先度の縁 (decision-23): the 3px left edge TASK-77 freed, now saying priority instead of 族.

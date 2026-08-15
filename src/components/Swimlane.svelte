@@ -23,6 +23,7 @@
     type GridColumn,
     type SwimlaneRow,
   } from "../lib/swimlane";
+  import { laneDropTarget, type DragSource } from "../lib/lane-drop";
   import type { CardDensity, StatusColumn, TaskView } from "../lib/wire";
 
   interface Props {
@@ -85,6 +86,19 @@
      * column [`columnFoldable`] allows — the shell checks it again, since it is the rule's holder.
      */
     oncolumnFold: (column: GridColumn) => void;
+    /**
+     * 列間ドロップ (doc-7 §4.2) の状態. Held by the shell for the same reason 列内新規タスク入力 is: the
+     * grid is unmounted when a task opens in 全面シングルビュー, and a drag in progress must not become
+     * a drop into a grid that is no longer the one it started on. `null` はドラッグしていない.
+     */
+    dragSource: DragSource | null;
+    /** Why *no* card may be picked up — CLI 縮退 or an action in flight (doc-7 §4.2), or `null`. */
+    dragHeld: string | null;
+    /** 発行中のカード (doc-7 §4.2): the task file whose `task edit -s` has not returned. */
+    issuingPath: string | null;
+    ondragstart: (view: TaskView) => void;
+    ondragend: () => void;
+    ondropcard: (slug: string, column: StatusColumn) => void;
     onselect: (view: TaskView) => void;
     onmove: (slug: string, direction: -1 | 1) => void;
     onretry: (slug: string) => void;
@@ -117,6 +131,12 @@
     oncreateSubmit,
     onrowFold,
     oncolumnFold,
+    dragSource,
+    dragHeld,
+    issuingPath,
+    ondragstart,
+    ondragend,
+    ondropcard,
     onselect,
     onmove,
     onretry,
@@ -559,6 +579,17 @@
             {showStorageMark}
             {selectedPath}
             {conflictOf}
+            {issuingPath}
+            {dragHeld}
+            {ondragstart}
+            {ondragend}
+            dropTarget={laneDropTarget(
+              dragSource,
+              row.slug,
+              cell.column,
+              row.createStatusCandidates,
+            )}
+            ondropcard={() => ondropcard(row.slug, cell.column)}
             {onselect}
           >
             {#snippet createEntry()}
@@ -587,6 +618,9 @@
                column head rather than in each row's cell (see the head above). Deliberately absent,
                not forgotten — passing a disabled entry here is the presentation doc-11 §5 separates
                from this one. -->
+          <!-- No `dropTarget`: 未分類列は受け先にならず、理由も画面に出さない (doc-7 §4.2, the same
+               judgment §4.1 made for the 入口). Its cards still start a drag — a card in the
+               未分類区画 is in no 正準列, so every canonical column is a real move for it. -->
           <LaneCell
             tasks={row.unmapped}
             label={UNMAPPED_LABEL}
@@ -596,6 +630,10 @@
             {showStorageMark}
             {selectedPath}
             {conflictOf}
+            {issuingPath}
+            {dragHeld}
+            {ondragstart}
+            {ondragend}
             {onselect}
           />
         {/if}

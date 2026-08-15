@@ -143,6 +143,14 @@ Move the state through Backlog CLI calls, like every other task update.
   `icon.icns` is not, because its elements are written in a different order each run
   (same element set, same payloads, constant total size). Treat an `icon.icns`-only diff
   after a re-run as no change.
+- **`"dragDropEnabled": false` in `tauri.conf.json`'s window is load-bearing, not a leftover**
+  (decision-34). Tauri defaults it to `true`, which registers a drag-drop handler whose closure
+  returns `true` — wry's own documentation for that return value says it blocks the OS default,
+  and `tauri-utils` says in so many words that disabling is required for HTML5 drag and drop on
+  Windows. Restoring the default would make the swimlane's 列間ドロップ (doc-7 §4.2) fail silently
+  on Windows while still working on the machine that changed it. **Atlas consumes no OS drag-drop
+  event anywhere**, so nothing else reads this — that is why turning it off cost nothing, and it
+  is also why a reader finding no consumer must not conclude the line is unused.
 
 ## Coding style
 
