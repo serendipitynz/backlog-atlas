@@ -106,6 +106,29 @@ describe("confirmTitleApplied", () => {
       .toBe("Backlog Atlas");
   });
 
+  it("accepts an earlier title that lands after the wanted one moved on", async () => {
+    // The shape a fresh budget per change was meant to fix, without the unbounded chase it brings:
+    // the target moves on the second-to-last attempt, and the write from *before* it lands on the
+    // last read. What that read proves is that writing works, so nothing may be reported.
+    const early = "Backlog Atlas — 表示 0 / 0 件 ・ 0 / 0 プロジェクト";
+    const late = "Backlog Atlas — 表示 7 / 7 件 ・ 2 / 2 プロジェクト";
+    let asked = early;
+    let round = 0;
+    const read = (): Promise<string> => {
+      round += 1;
+      // Every read but the last answers with the title the window opened on.
+      return Promise.resolve(round <= TITLE_CONFIRM_WAITS.length ? "Backlog Atlas" : early);
+    };
+    const wait = (): Promise<void> => {
+      if (round === TITLE_CONFIRM_WAITS.length - 1) {
+        asked = late;
+      }
+      return Promise.resolve();
+    };
+
+    expect(await confirmTitleApplied(read, () => asked, wait)).toBeNull();
+  });
+
   it("asks once per wait and no more", async () => {
     let reads = 0;
     const read = (): Promise<string> => {
