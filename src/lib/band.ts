@@ -110,7 +110,9 @@ export const LEDGER_READ_ONLY_BAND =
  * 検出できない lead the user to different acts.
  */
 function cliDegradedSummary(readiness: CliReadiness | null): string | null {
-  if (readiness === null) return "backlog CLI を確認中です";
+  if (readiness === null) {
+    return "backlog CLI を確認中です";
+  }
   switch (readiness.state) {
     case "ready":
       return null;
@@ -126,7 +128,9 @@ function cliDegradedSummary(readiness: CliReadiness | null): string | null {
 /** CLI 縮退 (doc-5 §5), 縮約. `null` means issuing is possible, so no band stands. */
 export function cliDegradedBand(readiness: CliReadiness | null): string | null {
   const summary = cliDegradedSummary(readiness);
-  if (summary === null) return null;
+  if (summary === null) {
+    return null;
+  }
   return `${summary}。作成・更新は発行できません（登録内容の更新は影響を受けません）。`;
 }
 

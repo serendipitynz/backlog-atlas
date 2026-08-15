@@ -77,7 +77,9 @@ const TASKS = CASES.map((one, index) =>
 function cardOf(host: HTMLElement, id: string): HTMLElement {
   const cards = [...host.querySelectorAll<HTMLElement>("button.card")];
   const card = cards.find((one) => one.querySelector(".identity")?.textContent?.includes(id));
-  if (card === undefined) throw new Error(`${id} のカードがありません`);
+  if (card === undefined) {
+    throw new Error(`${id} のカードがありません`);
+  }
   return card;
 }
 
@@ -149,7 +151,9 @@ describe("priority を述べる 4 つの表示要素が同じ段を言う (decis
         (dt) => dt.textContent?.trim() === "priority",
       );
       const value = term?.nextElementSibling;
-      if (value === null || value === undefined) throw new Error("priority の値がありません");
+      if (value === null || value === undefined) {
+        throw new Error("priority の値がありません");
+      }
       expect(value.getAttribute("data-priority")).toBe(one.step);
       // 値そのものは frontmatter のまま。未設定は `—` (doc-11 §6 の中立表示)。
       expect(value.textContent?.trim()).toBe(one.priority ?? "—");

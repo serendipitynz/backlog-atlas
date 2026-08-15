@@ -76,7 +76,9 @@
   function commitText(event: Event): void {
     // `isComposing` is true for every keystroke of an IME composition; the browser fires one
     // more `input` once the composition is committed, which is the one that gets through.
-    if ((event as InputEvent).isComposing) return;
+    if ((event as InputEvent).isComposing) {
+      return;
+    }
     // Through `setText` rather than by writing the field, so the text takes its place in 追加順 and
     // 直前の 1 つを戻す can take it back like any other condition (`token.ts` says why it has no token).
     onchange(setText(filter, text));

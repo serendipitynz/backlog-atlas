@@ -80,7 +80,9 @@ export function laneCreate(
  * guess. `""` only for a cell with no entry, where nothing is passed at all.
  */
 export function laneCreateStatus(entry: LaneCreate, held: string): string {
-  if (entry.state !== "offered") return "";
+  if (entry.state !== "offered") {
+    return "";
+  }
   return entry.candidates.includes(held) ? held : entry.candidates[0];
 }
 
@@ -100,7 +102,9 @@ export const NO_STATUS_TO_PASS_REASON =
  * values travel, and the status is the column's candidate rather than the canonical column's name.
  */
 export function buildLaneTaskCreate(title: string, status: string): IssuePlan {
-  if (status === "") return { state: "blocked", reason: NO_STATUS_TO_PASS_REASON };
+  if (status === "") {
+    return { state: "blocked", reason: NO_STATUS_TO_PASS_REASON };
+  }
   return buildTaskCreate({ ...EMPTY_TASK_CREATE, title, status });
 }
 

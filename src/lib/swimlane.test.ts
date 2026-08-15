@@ -53,12 +53,16 @@ function ordered(views: ReturnType<typeof taskView>[], order: CardOrder): (strin
 
 function row(rows: SwimlaneRow[], slug: string): SwimlaneRow {
   const found = rows.find((r) => r.slug === slug);
-  if (found === undefined) throw new Error(`no row for ${slug}`);
+  if (found === undefined) {
+    throw new Error(`no row for ${slug}`);
+  }
   return found;
 }
 
 function ids(row: SwimlaneRow, column: string): (string | null)[] {
-  if (row.state !== "loaded") throw new Error("row has no cells");
+  if (row.state !== "loaded") {
+    throw new Error("row has no cells");
+  }
   const cell = row.cells.find((c) => c.column === column);
   return (cell?.tasks ?? []).map((view) => view.task.id);
 }
@@ -72,7 +76,9 @@ describe("AC #1 rows × the four canonical columns, active by default", () => {
 
     expect(rows.map((r) => r.slug)).toEqual(["atlas", "geomyth"]);
     for (const r of rows) {
-      if (r.state !== "loaded") throw new Error("expected a loaded row");
+      if (r.state !== "loaded") {
+        throw new Error("expected a loaded row");
+      }
       expect(r.cells.map((cell) => cell.column)).toEqual([...CANONICAL_COLUMNS]);
     }
   });
@@ -114,7 +120,9 @@ describe("AC #1 rows × the four canonical columns, active by default", () => {
     expect(ids(atlas, "toDo")).toEqual(["TASK-1"]);
     // The row still knows how many it holds, so "filtered away" stays distinguishable from
     // "this project has nothing".
-    if (atlas.state !== "loaded") throw new Error("expected a loaded row");
+    if (atlas.state !== "loaded") {
+      throw new Error("expected a loaded row");
+    }
     expect(atlas.totalBeforeFilter).toBe(4);
   });
 });
@@ -132,7 +140,9 @@ describe("AC #2 未分類区画", () => {
     );
 
     const atlas = row(rows, "atlas");
-    if (atlas.state !== "loaded") throw new Error("expected a loaded row");
+    if (atlas.state !== "loaded") {
+      throw new Error("expected a loaded row");
+    }
     expect(atlas.unmapped.map((view) => view.task.id)).toEqual(["TASK-9"]);
     expect(atlas.unmapped[0].interpretation.status?.raw).toBe("Blocked");
     // And it is nowhere in the canonical columns.
@@ -161,7 +171,9 @@ describe("AC #2 未分類区画", () => {
     );
 
     const atlas = row(rows, "atlas");
-    if (atlas.state !== "loaded") throw new Error("expected a loaded row");
+    if (atlas.state !== "loaded") {
+      throw new Error("expected a loaded row");
+    }
     expect(atlas.unmapped).toHaveLength(1);
     expect(atlas.unmapped[0].interpretation.status).toBeNull();
     expect(atlas.cells.every((cell) => cell.tasks.length === 0)).toBe(true);
@@ -170,7 +182,9 @@ describe("AC #2 未分類区画", () => {
   it("leaves the 未分類区画 empty when every status maps", () => {
     const rows = swimlane(["atlas"], loadMap(loaded("atlas", [taskView()])));
     const atlas = row(rows, "atlas");
-    if (atlas.state !== "loaded") throw new Error("expected a loaded row");
+    if (atlas.state !== "loaded") {
+      throw new Error("expected a loaded row");
+    }
     expect(atlas.unmapped).toHaveLength(0);
   });
 });
@@ -541,7 +555,9 @@ describe("AC #5/#6 rows: unreadable, empty, hidden, reordered", () => {
 
     const broken = row(rows, "broken");
     expect(broken.state).toBe("unreadable");
-    if (broken.state !== "unreadable") throw new Error("expected an unreadable row");
+    if (broken.state !== "unreadable") {
+      throw new Error("expected an unreadable row");
+    }
     expect(broken.detail).toBe("backlog root has no config.yml");
     expect(row(rows, "atlas").state).toBe("loaded");
   });
@@ -554,7 +570,9 @@ describe("AC #5/#6 rows: unreadable, empty, hidden, reordered", () => {
 
     expect(row(rows, "broken").state).toBe("unreadable");
     const empty = row(rows, "empty");
-    if (empty.state !== "loaded") throw new Error("expected a loaded row");
+    if (empty.state !== "loaded") {
+      throw new Error("expected a loaded row");
+    }
     expect(empty.cells.every((cell) => cell.tasks.length === 0)).toBe(true);
     expect(empty.totalBeforeFilter).toBe(0);
   });
@@ -589,7 +607,9 @@ describe("AC #5/#6 rows: unreadable, empty, hidden, reordered", () => {
     );
 
     const atlas = row(rows, "atlas");
-    if (atlas.state !== "loaded") throw new Error("expected a loaded row");
+    if (atlas.state !== "loaded") {
+      throw new Error("expected a loaded row");
+    }
     expect(atlas.cells).toHaveLength(CANONICAL_COLUMNS.length);
     expect(atlas.cells.every((cell) => cell.tasks.length === 0)).toBe(true);
     expect(atlas.totalBeforeFilter).toBe(1);

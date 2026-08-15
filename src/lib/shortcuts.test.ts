@@ -98,7 +98,9 @@ describe("割り当て一覧 (doc-7 §2.1)", () => {
       "saveEditSession",
       "submitLaneCreate",
     ]);
-    for (const binding of stopping) expect(binding.preventsDefault).not.toBe("");
+    for (const binding of stopping) {
+      expect(binding.preventsDefault).not.toBe("");
+    }
   });
 
   /**
@@ -128,7 +130,9 @@ describe("割り当て一覧 (doc-7 §2.1)", () => {
    */
   it("keeps every bare-key assignment out of text fields, except the ones that type nothing", () => {
     for (const binding of SHORTCUTS) {
-      if (binding.chord.mod === true || !binding.firesInTextEntry) continue;
+      if (binding.chord.mod === true || !binding.firesInTextEntry) {
+        continue;
+      }
       expect(["Escape", "Tab"]).toContain(binding.chord.key);
     }
   });

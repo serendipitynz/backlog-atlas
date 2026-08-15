@@ -80,7 +80,9 @@ export interface MilestoneRef {
 
 export function milestoneRef(view: TaskView, milestones: readonly Milestone[]): MilestoneRef | null {
   const id = view.task.milestone;
-  if (id === null) return null;
+  if (id === null) {
+    return null;
+  }
   return { id, title: milestones.find((m) => m.id === id)?.title ?? null };
 }
 
@@ -202,8 +204,12 @@ export function relationAvailability(
   history: HistoryState,
 ): RelationAvailability {
   // 読み込み中 and 未照会 are different claims: only the first is going to resolve on its own.
-  if (history.state === "loading") return { state: "loading" };
-  if (history.state === "failed") return { state: "notRead", detail: history.detail };
+  if (history.state === "loading") {
+    return { state: "loading" };
+  }
+  if (history.state === "failed") {
+    return { state: "notRead", detail: history.detail };
+  }
   if (history.state === "noTaskId") {
     return {
       state: "notRead",
@@ -273,8 +279,11 @@ export function relationTally(history: HistoryState): RelationTally {
   for (const relation of relationsOf(history)) {
     switch (relation.outcome.state) {
       case "resolved":
-        if (relation.outcome.commitIds.length > 0) tally.related += 1;
-        else tally.unrelated += 1;
+        if (relation.outcome.commitIds.length > 0) {
+          tally.related += 1;
+        } else {
+          tally.unrelated += 1;
+        }
         break;
       case "lookupFailed":
         tally.failed += 1;
@@ -295,11 +304,16 @@ export function relationTally(history: HistoryState): RelationTally {
 export function pullRequestsByCommit(history: HistoryState): Map<string, string[]> {
   const byCommit = new Map<string, string[]>();
   for (const relation of relationsOf(history)) {
-    if (relation.outcome.state !== "resolved") continue;
+    if (relation.outcome.state !== "resolved") {
+      continue;
+    }
     for (const commitId of relation.outcome.commitIds) {
       const urls = byCommit.get(commitId);
-      if (urls) urls.push(relation.pullRequest);
-      else byCommit.set(commitId, [relation.pullRequest]);
+      if (urls) {
+        urls.push(relation.pullRequest);
+      } else {
+        byCommit.set(commitId, [relation.pullRequest]);
+      }
     }
   }
   return byCommit;
@@ -393,8 +407,12 @@ export function relationLine(
         return { text: "関連 PR: 参照する Pull Request URL がありません", kind: "neutral" };
       }
       const caveats: string[] = [];
-      if (tally.failed > 0) caveats.push(`${tally.failed} 件は参照不能`);
-      if (tally.unsupported > 0) caveats.push(`${tally.unsupported} 件は対象外`);
+      if (tally.failed > 0) {
+        caveats.push(`${tally.failed} 件は参照不能`);
+      }
+      if (tally.unsupported > 0) {
+        caveats.push(`${tally.unsupported} 件は対象外`);
+      }
       const text =
         caveats.length > 0
           ? `関連 PR ${tally.related} 件（${caveats.join("・")}）`

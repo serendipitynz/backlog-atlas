@@ -50,7 +50,9 @@
   $effect(() => {
     function outside(event: PointerEvent): void {
       const box = boundary ?? root;
-      if (box !== null && !box.contains(event.target as Node)) onclose();
+      if (box !== null && !box.contains(event.target as Node)) {
+        onclose();
+      }
     }
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
@@ -64,7 +66,9 @@
       textEntry: textEntryFocused(document.activeElement),
       mac: MAC_KEYBOARD,
     });
-    if (binding?.action !== "closeOverlay") return;
+    if (binding?.action !== "closeOverlay") {
+      return;
+    }
     // Spent on this layer: it is the innermost thing open, so the window handler behind must not read
     // the same press as well.
     event.stopPropagation();

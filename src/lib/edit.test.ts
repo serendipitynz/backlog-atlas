@@ -47,13 +47,17 @@ function criteria(...items: [string, boolean][]): AcceptanceCriterion[] {
 /** The `task edit` an action carries, so a test names the facet instead of the wire shape. */
 function editOf(action: UpdateOperation[]): TaskEdit {
   const operation = action[0];
-  if (operation.op !== "taskEdit") throw new Error(`expected taskEdit, got ${operation.op}`);
+  if (operation.op !== "taskEdit") {
+    throw new Error(`expected taskEdit, got ${operation.op}`);
+  }
   return operation.edit;
 }
 
 function ready(session: EditSession): { action: UpdateOperation[]; submitted: unknown } {
   const plan = buildSave(session);
-  if (plan.state !== "ready") throw new Error(`expected ready, got ${plan.state}`);
+  if (plan.state !== "ready") {
+    throw new Error(`expected ready, got ${plan.state}`);
+  }
   return plan;
 }
 
@@ -367,7 +371,9 @@ describe("ファイルが読み取り結果から消えたとき (doc-8 §6.4)",
       hasUnsavedInput: false,
       fileMissing: true,
     });
-    if (offers.state !== "offered") throw new Error("expected offers");
+    if (offers.state !== "offered") {
+      throw new Error("expected offers");
+    }
     expect(offers.offers.every((offer) => offer.reason === FILE_MISSING_REASON)).toBe(true);
   });
 
@@ -526,7 +532,9 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
 
   it("active には demote・archive・complete を出す", () => {
     const offers = transitionOffers(taskView({ storageState: "active" }), context);
-    if (offers.state !== "offered") throw new Error("expected offers");
+    if (offers.state !== "offered") {
+      throw new Error("expected offers");
+    }
     expect(offers.offers.map((offer) => offer.kind)).toEqual([
       "taskDemote",
       "taskArchive",
@@ -536,13 +544,17 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
 
   it("task complete は status が Done のときだけ能動化する", () => {
     const notDone = transitionOffers(taskView({ status: "In Progress" }), context);
-    if (notDone.state !== "offered") throw new Error("expected offers");
+    if (notDone.state !== "offered") {
+      throw new Error("expected offers");
+    }
     const disabled = notDone.offers.find((offer) => offer.kind === "taskComplete");
     expect(disabled?.enabled).toBe(false);
     expect(disabled?.reason).toContain("Done");
 
     const done = transitionOffers(taskView({ status: "Done", column: "done" }), context);
-    if (done.state !== "offered") throw new Error("expected offers");
+    if (done.state !== "offered") {
+      throw new Error("expected offers");
+    }
     expect(done.offers.find((offer) => offer.kind === "taskComplete")?.enabled).toBe(true);
   });
 
@@ -551,7 +563,9 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
       taskView({ storageState: "draft", id: "DRAFT-2", status: "Draft" }),
       context,
     );
-    if (offers.state !== "offered") throw new Error("expected offers");
+    if (offers.state !== "offered") {
+      throw new Error("expected offers");
+    }
     expect(offers.offers.map((offer) => offer.kind)).toEqual(["draftPromote", "draftArchive"]);
     expect(offers.offers[0].operation).toEqual({ op: "draftPromote", draftId: "DRAFT-2" });
   });
@@ -567,7 +581,9 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
       readiness: READY,
       hasUnsavedInput: true,
     });
-    if (offers.state !== "offered") throw new Error("expected offers");
+    if (offers.state !== "offered") {
+      throw new Error("expected offers");
+    }
     expect(offers.offers.every((offer) => !offer.enabled)).toBe(true);
   });
 
@@ -576,7 +592,9 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
       readiness: { state: "unavailable", detail: "not found" },
       hasUnsavedInput: false,
     });
-    if (offers.state !== "offered") throw new Error("expected offers");
+    if (offers.state !== "offered") {
+      throw new Error("expected offers");
+    }
     expect(offers.offers.every((offer) => !offer.enabled)).toBe(true);
   });
 });
@@ -591,7 +609,9 @@ describe("実行前確認 (doc-11 §12)", () => {
         taskView({ storageState: storageState as "active" | "draft", status: "Done" }),
         context,
       );
-      if (offers.state !== "offered") throw new Error("expected offers");
+      if (offers.state !== "offered") {
+        throw new Error("expected offers");
+      }
       return offers.offers;
     });
   }
@@ -638,7 +658,9 @@ describe("実行前確認 (doc-11 §12)", () => {
       expect(transitionConfirmation(offer).question).not.toBe(offer.effect);
     }
     const complete = everyOffer().find((offer) => offer.kind === "taskComplete");
-    if (complete === undefined) throw new Error("expected taskComplete");
+    if (complete === undefined) {
+      throw new Error("expected taskComplete");
+    }
     expect(complete.effect).toContain("Done のときのみ");
     expect(transitionConfirmation(complete).question).not.toContain("Done のときのみ");
   });
@@ -649,12 +671,16 @@ describe("実行前確認 (doc-11 §12)", () => {
     // press. 差し戻す・昇格 must not pick it up: those two *can* be taken back.
     for (const kind of ["taskArchive", "taskComplete", "draftArchive"] as const) {
       const offer = everyOffer().find((entry) => entry.kind === kind);
-      if (offer === undefined) throw new Error(`expected ${kind}`);
+      if (offer === undefined) {
+        throw new Error(`expected ${kind}`);
+      }
       expect(transitionConfirmation(offer).question).toContain("この操作は戻せません。");
     }
     for (const kind of ["taskDemote", "draftPromote"] as const) {
       const offer = everyOffer().find((entry) => entry.kind === kind);
-      if (offer === undefined) throw new Error(`expected ${kind}`);
+      if (offer === undefined) {
+        throw new Error(`expected ${kind}`);
+      }
       expect(transitionConfirmation(offer).question).not.toContain("戻せません");
     }
   });

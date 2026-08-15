@@ -152,7 +152,9 @@ export function inconsistencyReasons(
   conflict: VersionConflict | null,
 ): string[] {
   const reasons = healthReasons(view.task.health, "タスク");
-  if (conflict !== null) reasons.push(versionConflictReason(conflict));
+  if (conflict !== null) {
+    reasons.push(versionConflictReason(conflict));
+  }
   return reasons;
 }
 
@@ -198,7 +200,9 @@ const MANAGED_FILE_NOUN: Record<UnmappedFile["kind"], ManagedFileNoun> = {
 
 /** The one event→line mapping every 理由行 goes through (decision-22 「導出は 1 回」). */
 function healthReasons(health: FileHealth, noun: ManagedFileNoun): string[] {
-  if (health.state !== "degraded") return [];
+  if (health.state !== "degraded") {
+    return [];
+  }
   const reasons: string[] = [];
   for (const event of health.events) {
     switch (event.event) {
@@ -234,7 +238,9 @@ function unparseableReasons(
   if (missingRequired.length > 0) {
     reasons.push(`解析不能: ${missingRequired.join("・")} を読めません`);
   }
-  if (detail !== null) reasons.push(`解析不能: ${detail}`);
+  if (detail !== null) {
+    reasons.push(`解析不能: ${detail}`);
+  }
   if (reasons.length === 0) {
     reasons.push(`解析不能: このファイルを${noun}として写せませんでした`);
   }

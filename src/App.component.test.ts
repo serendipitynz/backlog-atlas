@@ -139,7 +139,9 @@ describe("起動時の設定・workspace・監視の順序", () => {
     // ordering it is supposed to be constrained by.
     const at = (name: string): number => {
       const index = names.indexOf(name);
-      if (index < 0) throw new Error(`${name} was never called; recorded: ${names.join(", ")}`);
+      if (index < 0) {
+        throw new Error(`${name} was never called; recorded: ${names.join(", ")}`);
+      }
       return index;
     };
 
@@ -476,7 +478,9 @@ describe("タスク詳細の離脱と保存中状態", () => {
     const other = [...group.querySelectorAll<HTMLButtonElement>("button.switch")].find(
       (button) => button.getAttribute("aria-pressed") === "false",
     );
-    if (other === undefined) throw new Error("every placement reads as the current one");
+    if (other === undefined) {
+      throw new Error("every placement reads as the current one");
+    }
     click(other);
 
     expect(confirmBand(host)).not.toBeNull();
@@ -752,7 +756,9 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
 
   function answer(host: HTMLElement, label: string, text: string): void {
     const confirm = confirmIn(host, label);
-    if (confirm === null) throw new Error(`no 破棄前確認 in ${label}`);
+    if (confirm === null) {
+      throw new Error(`no 破棄前確認 in ${label}`);
+    }
     click(byText(confirm, "button", text));
   }
 
@@ -788,7 +794,9 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     const labelled = [
       ...dialogOf(host, "プロジェクトを登録").querySelectorAll<HTMLElement>("label"),
     ].find((label) => label.querySelector(".caption")?.textContent === "プロジェクトルート（必須）");
-    if (labelled === undefined) throw new Error("no プロジェクトルート field");
+    if (labelled === undefined) {
+      throw new Error("no プロジェクトルート field");
+    }
     fill(only<HTMLInputElement>(labelled, 'input[type="text"]'), "/tmp/new");
     return host;
   }
@@ -974,7 +982,9 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     const original = [...reverted.querySelectorAll<HTMLInputElement>('input[name="card-density"]')].find(
       (radio) => radio !== before,
     );
-    if (original === undefined) throw new Error("no other カード情報量 to go back to");
+    if (original === undefined) {
+      throw new Error("no other カード情報量 to go back to");
+    }
     click(original);
     click(closeOf(reverted, "設定"));
 
@@ -1047,10 +1057,16 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     const summary = [...host.querySelectorAll<HTMLElement>('[aria-label="タスク詳細"] summary')].filter(
       (element) => element.textContent?.includes(title),
     );
-    if (summary.length !== 1) throw new Error(`expected one ${title} summary, found ${summary.length}`);
+    if (summary.length !== 1) {
+      throw new Error(`expected one ${title} summary, found ${summary.length}`);
+    }
     const box = summary[0].closest("details");
-    if (box === null) throw new Error("a 区画見出し outside its details");
-    if (!(box as HTMLDetailsElement).open) click(summary[0]);
+    if (box === null) {
+      throw new Error("a 区画見出し outside its details");
+    }
+    if (!(box as HTMLDetailsElement).open) {
+      click(summary[0]);
+    }
   }
 
   /** Open the first task and reach its 状態遷移 controls (doc-8 §6.5). */
@@ -1090,7 +1106,9 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     pressControl(byText(host, "button.transition", "アーカイブ…"));
 
     const dialog = layer(host, "アーカイブ");
-    if (dialog === null) throw new Error("expected the question");
+    if (dialog === null) {
+      throw new Error("expected the question");
+    }
     // 進む側は動作を名乗る (doc-11 §12): 実行する would be wider than what the press does.
     click(byText(dialog, ".answers button", "アーカイブする"));
     await settled();
@@ -1109,7 +1127,9 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     // 経路をまたいでしまう — 控えが自分で焦点を取るのは押下ハンドラの中である（PR #93 1R [P2]）。
     click(demote);
     const dialog = layer(host, "draft へ差し戻す");
-    if (dialog === null) throw new Error("expected the question");
+    if (dialog === null) {
+      throw new Error("expected the question");
+    }
     // フォーカスを内側に (doc-7 §2.1): `Modal.svelte` puts it on its × as the layer mounts.
     expect(dialog.contains(document.activeElement)).toBe(true);
     click(byText(dialog, ".answers button", "やめる"));
@@ -1197,7 +1217,9 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     const asking = byText<HTMLButtonElement>(host, ".editor-list button", "OS の関連付けで開く…");
     pressControl(asking);
     const dialog = layer(host, "OS の関連付けで開く");
-    if (dialog === null) throw new Error("expected the question");
+    if (dialog === null) {
+      throw new Error("expected the question");
+    }
     // 問いの文は区画が出している注意文そのもの (doc-11 §12): 層がその区画を覆うので、同じことを
     // 2 通りに述べない。
     expect(dialog.textContent).toContain("二重に編集する");
@@ -1614,7 +1636,9 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
 
   /** Open it if it is not already: a 表示切替行 leaves it up, so pressing ☰ again would close it. */
   function openMenu(host: HTMLElement): void {
-    if (menu(host) === null) click(byLabel(host, "button.header-entry", "メニュー"));
+    if (menu(host) === null) {
+      click(byLabel(host, "button.header-entry", "メニュー"));
+    }
   }
 
   function toggle(host: HTMLElement, label: string): void {
@@ -1788,7 +1812,9 @@ describe("折畳み 2 種は画面を移っても効いたまま", () => {
     const head = [...host.querySelectorAll<HTMLElement>(".lane-head")].find(
       (candidate) => candidate.querySelector(".slug")?.textContent === slug,
     );
-    if (head === undefined) throw new Error(`no レーンヘッダ行 for ${slug}`);
+    if (head === undefined) {
+      throw new Error(`no レーンヘッダ行 for ${slug}`);
+    }
     return head;
   }
 

@@ -133,7 +133,9 @@ export function editorArgsText(command: EditorCommand | undefined): string {
  */
 export function editorCommandOf(program: string, argsText: string): EditorCommand | undefined {
   const trimmed = program.trim();
-  if (trimmed === "") return undefined;
+  if (trimmed === "") {
+    return undefined;
+  }
   return {
     program: trimmed,
     args: argsText
@@ -236,8 +238,11 @@ export function toggleStorage(
   on: boolean,
 ): StorageSelection[] {
   const next = new Set(selection);
-  if (on) next.add(value);
-  else next.delete(value);
+  if (on) {
+    next.add(value);
+  } else {
+    next.delete(value);
+  }
   return STORAGE_SELECTIONS.filter((candidate) => next.has(candidate));
 }
 
@@ -377,7 +382,9 @@ export function mergeDraft(
   draft: AppSettings | null,
   next: AppSettings,
 ): AppSettings {
-  if (baseline === null || draft === null) return { ...next };
+  if (baseline === null || draft === null) {
+    return { ...next };
+  }
   const merged: AppSettings = {
     schema_version: next.schema_version,
     theme: pick(draft.theme, baseline.theme, next.theme),

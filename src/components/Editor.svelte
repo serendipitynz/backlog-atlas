@@ -42,7 +42,9 @@
     let cancelled = false;
     loadAce()
       .then((ace) => {
-        if (cancelled || host === null) return;
+        if (cancelled || host === null) {
+          return;
+        }
         const instance = ace.edit(host);
         instance.setTheme("ace/theme/textmate");
         instance.session.setMode("ace/mode/text");
@@ -54,7 +56,9 @@
         instance.setValue(value, -1);
         instance.on("change", () => {
           const next = instance.getValue();
-          if (next !== value) onchange(next);
+          if (next !== value) {
+            onchange(next);
+          }
         });
         // 昇格後も同じ 1 本の handler を通す (doc-7 §2.1: 割り当て一覧を 1 箇所に持つ). Ace's own
         // `commands.addCommand` was a second assignment table: it never saw the list's composition guard
@@ -84,7 +88,9 @@
   // typing back: writing the value Ace already holds would reset the caret mid-edit.
   $effect(() => {
     const current = value;
-    if (editor !== null && editor.getValue() !== current) editor.setValue(current, -1);
+    if (editor !== null && editor.getValue() !== current) {
+      editor.setValue(current, -1);
+    }
   });
 
   /**
@@ -104,8 +110,12 @@
       textEntry: true,
       mac: MAC_KEYBOARD,
     });
-    if (binding?.action !== "saveEditSession") return;
-    if (binding.preventsDefault !== null) event.preventDefault();
+    if (binding?.action !== "saveEditSession") {
+      return;
+    }
+    if (binding.preventsDefault !== null) {
+      event.preventDefault();
+    }
     // The press is spent here: Ace must not also see it (it would insert the newline), and the shell's
     // window handler has nothing to add.
     event.stopPropagation();

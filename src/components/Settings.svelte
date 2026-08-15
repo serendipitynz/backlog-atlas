@@ -341,7 +341,9 @@
   const LOCATION_BLOCKED_ID = "settings-location-blocked";
 
   function setStorage(value: StorageSelection, on: boolean): void {
-    if (draft === null) return;
+    if (draft === null) {
+      return;
+    }
     draft.default_storage_filter = toggleStorage(draft.default_storage_filter, value, on);
   }
 
@@ -355,13 +357,19 @@
    * taken, not by a value that has to have caught up with the write by the time this line runs.
    */
   async function saveAndClose(): Promise<void> {
-    if (saveBlocked !== null) return;
+    if (saveBlocked !== null) {
+      return;
+    }
     await save();
-    if (failure === null) onsaved();
+    if (failure === null) {
+      onsaved();
+    }
   }
 
   async function save(): Promise<void> {
-    if (pending === null || !availability.enabled || saving) return;
+    if (pending === null || !availability.enabled || saving) {
+      return;
+    }
     // `pending`, not `draft`: the editor fields are part of the value being saved, and they are only
     // folded in there. A half-typed program is never the 起動指定 in force all the same — this is the
     // one place anything is written.
@@ -378,7 +386,9 @@
 
   /** 場所を開く (TASK-75 AC #1). Nothing is read or written; the OS opens the directory or says why not. */
   async function openLocation(): Promise<void> {
-    if (!locationAvailability.enabled) return;
+    if (!locationAvailability.enabled) {
+      return;
+    }
     opening = true;
     try {
       locationFailure = await onopenLocation();

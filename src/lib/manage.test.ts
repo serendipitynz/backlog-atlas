@@ -82,13 +82,17 @@ function document(overrides: Partial<Document> = {}): Document {
 /** The action of a plan that must be ready — an assertion and a narrowing in one place. */
 function action(plan: IssuePlan) {
   expect(plan.state).toBe("ready");
-  if (plan.state !== "ready") throw new Error("unreachable");
+  if (plan.state !== "ready") {
+    throw new Error("unreachable");
+  }
   return plan.action;
 }
 
 function blockedReason(plan: IssuePlan): string {
   expect(plan.state).toBe("blocked");
-  if (plan.state !== "blocked") throw new Error("unreachable");
+  if (plan.state !== "blocked") {
+    throw new Error("unreachable");
+  }
   return plan.reason;
 }
 
@@ -300,14 +304,18 @@ describe("docDivergence", () => {
   it("reports a body the re-read disagrees with — the value --content full-replaced", () => {
     const session = setDocField(startDocSession(document()), "content", "私の全文\n");
     const plan = buildDocUpdate(session);
-    if (plan.state !== "ready") throw new Error("unreachable");
+    if (plan.state !== "ready") {
+      throw new Error("unreachable");
+    }
     expect(docDivergence(plan.submitted, document({ body: "誰かの全文\n" }))).toEqual(["本文"]);
   });
 
   it("does not report the CLI's own trailing-whitespace normalization as someone else's change", () => {
     const session = setDocField(startDocSession(document()), "content", "本文\n\n");
     const plan = buildDocUpdate(session);
-    if (plan.state !== "ready") throw new Error("unreachable");
+    if (plan.state !== "ready") {
+      throw new Error("unreachable");
+    }
     expect(docDivergence(plan.submitted, document({ body: "本文" }))).toEqual([]);
   });
 
@@ -318,7 +326,9 @@ describe("docDivergence", () => {
   it("compares tags as a set, and leaves untouched fields out of the comparison", () => {
     const session = setDocField(startDocSession(document()), "tags", ["b", "a"]);
     const plan = buildDocUpdate(session);
-    if (plan.state !== "ready") throw new Error("unreachable");
+    if (plan.state !== "ready") {
+      throw new Error("unreachable");
+    }
     expect(docDivergence(plan.submitted, document({ tags: ["a", "b"], title: "別の題" }))).toEqual([]);
   });
 });
@@ -651,7 +661,9 @@ describe("issueAvailability", () => {
       busy: false,
     });
     expect(available.state).toBe("blocked");
-    if (available.state !== "blocked") throw new Error("unreachable");
+    if (available.state !== "blocked") {
+      throw new Error("unreachable");
+    }
     expect(available.reason).toContain("backlog CLI の実行ファイルを解決できない");
     // The 起動失敗 detail names the executable that was tried (decision-16 順序 1): it is what the
     // user corrects when アプリ設定 `backlog_cli` holds a typo, so the reason has to carry it through.

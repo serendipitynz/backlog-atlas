@@ -78,7 +78,9 @@ export function createSlugPreviewLoader(ports: SlugPreviewPorts): SlugPreviewLoa
       // one of the ways a stale answer used to land, and returning early without stamping would
       // leave that call still holding the newest token.
       const token = begin();
-      if (root === "") return;
+      if (root === "") {
+        return;
+      }
 
       let derived: string | null;
       try {
@@ -89,7 +91,9 @@ export function createSlugPreviewLoader(ports: SlugPreviewPorts): SlugPreviewLoa
         // itself reports what is actually wrong with the root, with its own reason (doc-3 §4.1).
         return;
       }
-      if (token !== calls) return;
+      if (token !== calls) {
+        return;
+      }
 
       ports.show(derived === null ? { state: "underivable" } : { state: "derived", slug: derived });
     },

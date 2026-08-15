@@ -130,7 +130,9 @@ export const LIST_COLUMN_WIDTH_REM = 16;
 export function displayPath(sourcePath: string, projectRoot: string): string {
   for (const separator of ["/", "\\"]) {
     const prefix = projectRoot.endsWith(separator) ? projectRoot : projectRoot + separator;
-    if (sourcePath.startsWith(prefix)) return sourcePath.slice(prefix.length);
+    if (sourcePath.startsWith(prefix)) {
+      return sourcePath.slice(prefix.length);
+    }
   }
   return sourcePath;
 }
@@ -148,7 +150,9 @@ export interface SubmittedAttribute {
 /** The 別名表 on one line. An empty table is「なし」, not "" — blank would make the diff unreadable. */
 export function aliasSummary(table: Record<string, string> | undefined): string {
   const entries = Object.entries(table ?? {});
-  if (entries.length === 0) return "なし";
+  if (entries.length === 0) {
+    return "なし";
+  }
   return entries
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => `${key} → ${value}`)
@@ -218,7 +222,9 @@ export const SLUG_IMMUTABLE_NOTE =
  */
 export function rootMoveNote(entry: ProjectEntry, edit: EntryEdit): string | null {
   const projectRoot = edit.projectRoot.trim();
-  if (projectRoot === "" || projectRoot === entry.project_root) return null;
+  if (projectRoot === "" || projectRoot === entry.project_root) {
+    return null;
+  }
   const backlogRoot = edit.backlogRoot.trim();
   return (
     `同一プロジェクトの移動として扱い、slug ${entry.slug} を保ったまま project_root と backlog_root の` +

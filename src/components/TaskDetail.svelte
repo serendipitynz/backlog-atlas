@@ -336,7 +336,9 @@
   let sessionPlacement: DetailPlacement | null = null;
   $effect(() => {
     const next = placement;
-    if (sessionPlacement !== null && sessionPlacement !== next) endSession();
+    if (sessionPlacement !== null && sessionPlacement !== next) {
+      endSession();
+    }
     sessionPlacement = next;
   });
 
@@ -354,7 +356,9 @@
     key: K,
     value: EditSession["draft"][K],
   ): void {
-    if (session !== null) session = setField(session, key, value);
+    if (session !== null) {
+      session = setField(session, key, value);
+    }
   }
 
   function clearAddBoxes(): void {
@@ -375,8 +379,11 @@
   function cancelEditing(): void {
     // 破棄前確認 (doc-8 §6.3): only when there is something to lose, and through the shell's band —
     // the same words the other four routes use.
-    if (dirty) onconfirmDiscard(endSession);
-    else endSession();
+    if (dirty) {
+      onconfirmDiscard(endSession);
+    } else {
+      endSession();
+    }
   }
 
   /** The task a バージョン不整合 report is about, as of now. Captured before any await (see `save`). */
@@ -385,7 +392,9 @@
   }
 
   async function save(): Promise<void> {
-    if (missing || session === null || plan === null || plan.state !== "ready" || busy) return;
+    if (missing || session === null || plan === null || plan.state !== "ready" || busy) {
+      return;
+    }
     const submitted = plan.submitted;
     // Captured before the await, like the 外部エディタ経路 does with its path: the answer is about
     // *this* task, and the panel may be pointed at another one by the time it arrives (a dirty
@@ -437,12 +446,16 @@
         case "uncheckable":
           // 照合不能 (doc-9 §4.2): no CLI ran and no divergence was observed, so this deliberately
           // does *not* record a バージョン不整合 — doc-9 §5 requires the user not to read it as a conflict.
-          if (stillOpen) saveState = { state: "uncheckable", detail: outcome.detail };
+          if (stillOpen) {
+            saveState = { state: "uncheckable", detail: outcome.detail };
+          }
           break;
         case "failed":
           // CLI 失敗 (doc-5 §5): nothing changed, the display is untouched, and the input stays
           // so the same save can be retried (doc-8 §6.3).
-          if (stillOpen) saveState = { state: "failed", detail: outcome.detail };
+          if (stillOpen) {
+            saveState = { state: "failed", detail: outcome.detail };
+          }
           break;
       }
     } finally {
@@ -461,7 +474,9 @@
 
   /** doc-9 §5 (ii): keep the input and move the session's baseline onto the latest read. */
   function reapplyOntoLatest(): void {
-    if (session === null) return;
+    if (session === null) {
+      return;
+    }
     // Stated before the rebase, since afterwards the two baselines are the same and the drop is
     // no longer visible — and a silently dropped AC operation is exactly what doc-8 §6.4 forbids.
     acDeltaDropped = acDeltaDroppedByRebase(session, view);
@@ -483,7 +498,9 @@
    * so it goes with the question when the panel is pointed at another task (doc-11 §12 の失効).
    */
   function runTransition(offer: TransitionOffer, control: HTMLButtonElement): void {
-    if (!offer.enabled || busy) return;
+    if (!offer.enabled || busy) {
+      return;
+    }
     focusForReturn(control);
     onconfirmIssue(transitionConfirmation(offer), () => void issueTransition(offer));
   }
@@ -511,7 +528,9 @@
    * (doc-9 §4) is for, which this call already goes through.
    */
   async function issueTransition(offer: TransitionOffer): Promise<void> {
-    if (busy) return;
+    if (busy) {
+      return;
+    }
     // A transition needs no 未保存入力, so nothing asks before the selection changes — the swimlane's
     // cards stay clickable while the CLI runs, and `busy` only disables this panel's own controls.
     // The target is therefore captured here rather than read back afterwards.
@@ -522,7 +541,9 @@
       const stillOpen = task.sourcePath === target.sourcePath;
       switch (outcome.state) {
         case "applied":
-          if (stillOpen) saveState = { state: "applied" };
+          if (stillOpen) {
+            saveState = { state: "applied" };
+          }
           break;
         case "conflict":
           if (stillOpen) {
@@ -538,10 +559,14 @@
           );
           break;
         case "uncheckable":
-          if (stillOpen) saveState = { state: "uncheckable", detail: outcome.detail };
+          if (stillOpen) {
+            saveState = { state: "uncheckable", detail: outcome.detail };
+          }
           break;
         case "failed":
-          if (stillOpen) saveState = { state: "failed", detail: outcome.detail };
+          if (stillOpen) {
+            saveState = { state: "failed", detail: outcome.detail };
+          }
           break;
       }
     } finally {
@@ -574,7 +599,9 @@
    * two are reconciled where they already are — the 継続検出 notice above, and the save's 更新前競合検出.
    */
   function openExternally(offer: EditorOffer, control: HTMLButtonElement): void {
-    if (!offer.enabled) return;
+    if (!offer.enabled) {
+      return;
+    }
     // The path is captured before anything can be awaited: the launch is for the task that was on
     // screen when it was asked for, and the answer is filed under that file rather than under whatever
     // is shown when it arrives (the shell resolves the same (slug, path) pair).
@@ -632,13 +659,17 @@
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
   function clearCopyTimer(): void {
-    if (copyTimer !== null) clearTimeout(copyTimer);
+    if (copyTimer !== null) {
+      clearTimeout(copyTimer);
+    }
     copyTimer = null;
   }
 
   async function copyCrossTaskId(): Promise<void> {
     const id = crossId;
-    if (id === null) return;
+    if (id === null) {
+      return;
+    }
     const path = task.sourcePath;
     try {
       await navigator.clipboard.writeText(id);
@@ -672,7 +703,9 @@
    * well would put the question twice.
    */
   function moveTo(target: TaskView | null): void {
-    if (target !== null) onselect(target);
+    if (target !== null) {
+      onselect(target);
+    }
   }
 
   function addTo(values: string[], value: string): string[] {
@@ -681,9 +714,13 @@
   }
 
   function addCriterion(): void {
-    if (session === null || session.draft.ac.mode !== "delta") return;
+    if (session === null || session.draft.ac.mode !== "delta") {
+      return;
+    }
     const text = newCriterion.trim();
-    if (text === "") return;
+    if (text === "") {
+      return;
+    }
     const delta = session.draft.ac.delta;
     session = setField(session, "ac", {
       mode: "delta",

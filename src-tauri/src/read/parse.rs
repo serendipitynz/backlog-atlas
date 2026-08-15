@@ -462,10 +462,8 @@ fn parse_ac_item(line: &str) -> Option<AcceptanceCriterion> {
     let rest = line.trim().strip_prefix("- ")?;
     let (checked, rest) = if let Some(r) = rest.strip_prefix("[x]").or(rest.strip_prefix("[X]")) {
         (true, r)
-    } else if let Some(r) = rest.strip_prefix("[ ]") {
-        (false, r)
     } else {
-        return None;
+        (false, rest.strip_prefix("[ ]")?)
     };
     let rest = rest.trim_start().strip_prefix('#')?;
     let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();

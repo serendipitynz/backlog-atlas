@@ -1,0 +1,60 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+
+  // `.jsonc`, not `.json`: Biome parses the latter as strict JSON, so a `biome.json` carrying the
+  // comments below loads as nothing at all — and a config that fails to load is not an error here,
+  // it is a silent fall back to Biome's defaults over the whole tree.
+  //
+  // Biome is here as a linter and nothing else (decision-32). The version is pinned exactly rather
+  // than ranged, unlike the other devDependencies: a linter's minor release adds rules, and a range
+  // would let a fresh `pnpm install` fail a check nobody changed the code to break.
+  "formatter": {
+    // Off, and not to be turned on. Biome's formatter de-indents the whole `<script>` block of a
+    // `.svelte` file to column 0 — measured on 2.5.8 against Settings.svelte, whose 391-line script
+    // came back as a 694-line diff — and it offers no `svelteIndentScriptAndStyle` equivalent to
+    // stop it. It also leaves `<style lang="scss">` untouched, so it could not cover this tree's
+    // styling even if the indentation were right.
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      // No preset, because Biome does not read Svelte markup, which breaks its unused-symbol
+      // analysis on every component: measured on 2.5.8, the `recommended` preset reported 431
+      // diagnostics, of which 391 were `noUnusedVariables`/`noUnusedImports` across 18 `.svelte`
+      // files and 1 `.ts` file — `Icon` in TaskCard.svelte among them, used in the markup and
+      // flagged with an "unsafe fix" that would delete the import. The rules enabled below are the
+      // ones the coding convention (AGENTS.md "Coding style") actually states.
+      "preset": "none",
+      "style": {
+        // The convention's Control flow rule. This is the only one of its four rule groups a linter
+        // can hold; Comments, Functions and API documentation comments are left to review.
+        "useBlockStatements": "error"
+      }
+    }
+  },
+  "files": {
+    // The hand-written sources, and only those. Named positively rather than by excluding the
+    // generated trees: `src-tauri/target/` and `_sandbox/` are both git-ignored, and a scan that
+    // reached either would report thousands of findings in files nobody here wrote.
+    //
+    // The three root configs are listed one by one rather than as `*.ts`: they are the whole of
+    // the hand-written code outside `src/` and `scripts/`, and a glob would silently take in
+    // whatever config a future tool drops beside them. Leaving them out was a real hole, not a
+    // tidy scope — `vitest.config.ts` carries a `testTimeout` decision and would have been the
+    // one file this repository edits where the rule the linter holds was not held.
+    "includes": [
+      "src/**",
+      "scripts/**",
+      "vite.config.ts",
+      "vitest.config.ts",
+      "svelte.config.js"
+    ]
+  },
+  "assist": { "enabled": false },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  }
+}

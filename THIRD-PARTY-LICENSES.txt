@@ -32,7 +32,7 @@ Line endings are the only thing normalized. No text below is otherwise altered.
 Generated from these inputs (a digest that no longer matches means this file
 is stale — regenerate it with the command at the top of the generator):
   scripts/generate-third-party-licenses.mjs       sha256 62e421a8cd25fed7044baf2597f1b5ceeadb08d525ecd35d181b89e1d6179011
-  pnpm-lock.yaml                                  sha256 3f3eea42f82b525d3924acd6b5c76c968c63e4e41b550e99eec1d521d7b6d1f0
+  pnpm-lock.yaml                                  sha256 948d2592104f09ac83c5f659ff938e20ef820c8928e6546129fec5846a9a4e0c
   src-tauri/Cargo.lock                            sha256 410895b389045d5ba54f6701328e04224b33bce0a3f32340d19177b238968243
   THIRD-PARTY-NOTICES.md                          sha256 622dc24de844b684d63eee93e654819af4114709340a9ac0c201d3fe776f3f9b
   scripts/spdx/Apache-2.0.txt                     sha256 074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff

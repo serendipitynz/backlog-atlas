@@ -34,7 +34,9 @@ function opener(): HTMLButtonElement {
 
 function dialogOf(host: HTMLElement): HTMLElement {
   const dialog = host.querySelector<HTMLElement>('[role="dialog"]');
-  if (dialog === null) throw new Error("the modal drew no dialog");
+  if (dialog === null) {
+    throw new Error("the modal drew no dialog");
+  }
   return dialog;
 }
 
@@ -191,7 +193,9 @@ describe("モーダルの閉じる出口", () => {
       children: snippet('<input type="text" />'),
     });
     const field = host.querySelector<HTMLInputElement>("input");
-    if (field === null) throw new Error("no field");
+    if (field === null) {
+      throw new Error("no field");
+    }
 
     // doc-7 §2.1: the composition owns the keyboard, and Escape then cancels the conversion instead
     // of the modal. macOS WebKit sends the press as `keyCode === 229`, which is the second spelling.
@@ -211,7 +215,9 @@ describe("モーダルの閉じる出口", () => {
       children: snippet("<p>本文</p>"),
     });
     const backdrop = host.querySelector<HTMLElement>(".backdrop");
-    if (backdrop === null) throw new Error("no backdrop");
+    if (backdrop === null) {
+      throw new Error("no backdrop");
+    }
 
     // Deliberately absent: a stray press on the backdrop would throw away a half-filled
     // registration, and doc-7 §2.1 already gives a way out that cannot be pressed by accident.

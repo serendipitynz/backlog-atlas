@@ -39,7 +39,9 @@ function offer(readiness: EditorReadiness | null, method: "configured" | "associ
   const found = editorOffers(readiness, { fileMissing: false }).find(
     (candidate) => candidate.method === method,
   );
-  if (found === undefined) throw new Error(`no offer for ${method}`);
+  if (found === undefined) {
+    throw new Error(`no offer for ${method}`);
+  }
   return found;
 }
 
@@ -161,7 +163,9 @@ describe("CLI で不能な操作の案内先 (AC #5)", () => {
         version: CONFIRMED_CLI_VERSION,
       });
       expect(availability.state).toBe("unavailable");
-      if (availability.state !== "unavailable") return;
+      if (availability.state !== "unavailable") {
+        return;
+      }
       expect(availability.reason).toContain(EXTERNAL_EDITOR_ROUTE);
     }
   });

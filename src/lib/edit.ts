@@ -271,7 +271,9 @@ function acChanged(ac: AcDraft, baseline: TaskView): boolean {
     return add.length + remove.length + check.length + uncheck.length > 0;
   }
   const current = baseline.task.acceptanceCriteria;
-  if (ac.items.length !== current.length) return true;
+  if (ac.items.length !== current.length) {
+    return true;
+  }
   return ac.items.some(
     (item, index) => item.text !== current[index].text || item.checked !== current[index].checked,
   );
@@ -290,7 +292,9 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
  * identity check would call an unchanged root a change on every unrelated reload.
  */
 export function externallyChanged(session: EditSession, current: TaskView | null): boolean {
-  if (current === null) return true;
+  if (current === null) {
+    return true;
+  }
   return JSON.stringify(current.task) !== JSON.stringify(session.baseline.task);
 }
 
@@ -307,9 +311,13 @@ export function externallyChanged(session: EditSession, current: TaskView | null
  * whatever baseline it is finally built against.
  */
 export function acDeltaDroppedByRebase(session: EditSession, latest: TaskView): boolean {
-  if (session.draft.ac.mode !== "delta") return false;
+  if (session.draft.ac.mode !== "delta") {
+    return false;
+  }
   const { add, remove, check, uncheck } = session.draft.ac.delta;
-  if (remove.length + check.length + uncheck.length === 0) return false;
+  if (remove.length + check.length + uncheck.length === 0) {
+    return false;
+  }
   // `add` alone survives: it names no criterion. The rest are index-bound.
   void add;
   return !sameCriteria(session.baseline, latest);
@@ -495,7 +503,9 @@ export function buildSave(session: EditSession): SavePlan {
     return { state: "refused", reason: "TASK-ID を読めないため更新操作の対象を指定できません" };
   }
   const dirty = dirtyFields(session);
-  if (dirty.length === 0) return { state: "nothingToSave" };
+  if (dirty.length === 0) {
+    return { state: "nothingToSave" };
+  }
 
   const draft = session.draft;
   const edit: TaskEdit = {};
@@ -504,7 +514,9 @@ export function buildSave(session: EditSession): SavePlan {
   for (const field of dirty) {
     switch (field) {
       case "title":
-        if (draft.title === "") return { state: "refused", reason: EMPTY_TITLE_REASON };
+        if (draft.title === "") {
+          return { state: "refused", reason: EMPTY_TITLE_REASON };
+        }
         edit.title = draft.title;
         submitted.title = draft.title;
         break;
@@ -700,9 +712,15 @@ export function saveAvailability(
   context: { fileMissing: boolean; busy: boolean },
 ): SaveAvailability {
   // Ordered as the obstacles are: a file that is gone cannot be written whatever the plan says.
-  if (context.fileMissing) return { state: "blocked", reason: FILE_MISSING_REASON };
-  if (context.busy) return { state: "blocked", reason: "保存中です" };
-  if (plan === null) return { state: "blocked", reason: "編集セッションを開いていません" };
+  if (context.fileMissing) {
+    return { state: "blocked", reason: FILE_MISSING_REASON };
+  }
+  if (context.busy) {
+    return { state: "blocked", reason: "保存中です" };
+  }
+  if (plan === null) {
+    return { state: "blocked", reason: "編集セッションを開いていません" };
+  }
   switch (plan.state) {
     case "ready":
       return { state: "ready" };
@@ -786,7 +804,9 @@ function failureCause(kind: FailureKind): string {
  * would claim a fact nobody has.
  */
 function reloadNote(failure: UpdateFailure): string {
-  if (!failure.reloadRequired) return "";
+  if (!failure.reloadRequired) {
+    return "";
+  }
   return failure.completedBefore > 0
     ? `（この操作の ${failure.completedBefore} 件は既に適用済みで、再読込済みです）`
     : "（この操作が管理ファイルを変更したかどうかは分かりません。再読込済みです）";
@@ -871,11 +891,15 @@ export function commandErrorDetail(error: CommandError): string {
  * exists for.
  */
 export function divergence(submitted: Submitted, view: TaskView | null): string[] {
-  if (view === null) return ["タスクファイル（再読込結果に見当たりません）"];
+  if (view === null) {
+    return ["タスクファイル（再読込結果に見当たりません）"];
+  }
   const task = view.task;
   const diverged: string[] = [];
   const text = (label: string, sent: string | undefined, got: string | null) => {
-    if (sent !== undefined && sent.trim() !== (got ?? "").trim()) diverged.push(label);
+    if (sent !== undefined && sent.trim() !== (got ?? "").trim()) {
+      diverged.push(label);
+    }
   };
   text("title", submitted.title, task.title);
   text("description", submitted.description, task.description);
@@ -916,7 +940,9 @@ export type EditAvailability = { state: "editable" } | { state: "unavailable"; r
 
 /** 縮退 (doc-5 §5): why updates are not offered when the CLI is missing or out of range. */
 export function readinessReason(readiness: CliReadiness | null): string | null {
-  if (readiness === null) return "backlog CLI の確認中です";
+  if (readiness === null) {
+    return "backlog CLI の確認中です";
+  }
   switch (readiness.state) {
     case "ready":
       return null;
@@ -953,7 +979,9 @@ export function editAvailability(
   readiness: CliReadiness | null,
   fileMissing = false,
 ): EditAvailability {
-  if (fileMissing) return { state: "unavailable", reason: FILE_MISSING_REASON };
+  if (fileMissing) {
+    return { state: "unavailable", reason: FILE_MISSING_REASON };
+  }
   if (view.task.id === null) {
     return {
       state: "unavailable",
@@ -1243,10 +1271,14 @@ export function acRows(session: EditSession): AcRow[] {
  * toggle back to the baseline drops the pending one instead of adding its opposite.
  */
 export function toggleAcCheck(session: EditSession, number: number): EditSession {
-  if (session.draft.ac.mode !== "delta") return session;
+  if (session.draft.ac.mode !== "delta") {
+    return session;
+  }
   const delta = session.draft.ac.delta;
   const baseline = session.baseline.task.acceptanceCriteria.find((item) => item.number === number);
-  if (baseline === undefined) return session;
+  if (baseline === undefined) {
+    return session;
+  }
   const current = delta.check.includes(number)
     ? true
     : delta.uncheck.includes(number)
@@ -1263,7 +1295,9 @@ export function toggleAcCheck(session: EditSession, number: number): EditSession
 
 /** Mark or unmark one criterion for `--remove-ac`. */
 export function toggleAcRemoval(session: EditSession, number: number): EditSession {
-  if (session.draft.ac.mode !== "delta") return session;
+  if (session.draft.ac.mode !== "delta") {
+    return session;
+  }
   const delta = session.draft.ac.delta;
   const remove = delta.remove.includes(number)
     ? delta.remove.filter((n) => n !== number)

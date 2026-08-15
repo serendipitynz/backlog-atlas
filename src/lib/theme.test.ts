@@ -158,7 +158,9 @@ const BLOCKS = new Map<string, Map<string, string>>(
 
 const hex = (value: string): [number, number, number] => {
   const match = /^#([0-9a-f]{6})$/i.exec(value.trim());
-  if (match === null) throw new Error(`色値が 6 桁の hex ではありません: ${value}`);
+  if (match === null) {
+    throw new Error(`色値が 6 桁の hex ではありません: ${value}`);
+  }
   return [0, 2, 4].map((i) => parseInt(match[1].slice(i, i + 2), 16)) as [number, number, number];
 };
 
@@ -215,7 +217,9 @@ describe("収録した表示テーマ (decision-12)", () => {
     "%s: 印チップ — 3 族 と --info が 12%% 混色背景に対して 4.5:1 以上 (--panel / --inset / --bg)",
     (id) => {
       const block = BLOCKS.get(id);
-      if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      if (block === undefined) {
+        throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      }
       const ratios: Record<string, number> = {};
       for (const family of FAMILIES) {
         for (const surface of SURFACES) {
@@ -240,7 +244,9 @@ describe("収録した表示テーマ (decision-12)", () => {
     "%s: 印グリフ — 3 族 と --info が載る面に対して 3:1 以上 (--panel / --inset / --bg)",
     (id) => {
       const block = BLOCKS.get(id);
-      if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      if (block === undefined) {
+        throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      }
       const ratios: Record<string, number> = {};
       for (const family of FAMILIES) {
         for (const surface of SURFACES) {
@@ -287,7 +293,9 @@ describe("収録した表示テーマ (decision-12)", () => {
     ),
   )("%s: 優先度色 — %s として収録条件を満たす (--panel / --inset / --bg)", (id, condition) => {
     const block = BLOCKS.get(id);
-    if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
+    if (block === undefined) {
+      throw new Error(`[data-theme="${id}"] のブロックがありません`);
+    }
     const ratios: Record<string, number> = {};
     for (const colour of PRIORITY_COLOURS) {
       for (const surface of SURFACES) {
@@ -309,7 +317,9 @@ describe("収録した表示テーマ (decision-12)", () => {
     "%s: 優先度色 が族の色そのものではない",
     (id) => {
       const block = BLOCKS.get(id);
-      if (block === undefined) throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      if (block === undefined) {
+        throw new Error(`[data-theme="${id}"] のブロックがありません`);
+      }
       const families = FAMILIES.map((family) => block.get(family)?.toLowerCase());
       for (const colour of PRIORITY_COLOURS) {
         expect(families).not.toContain(block.get(colour)?.toLowerCase());

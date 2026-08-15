@@ -1,0 +1,113 @@
+name: CI
+
+# Every pull request, and `main` after one lands. The second is not redundant with the first:
+# branch protection leaves an administrator able to merge past a failing check, and a
+# push-triggered run is what states that on `main` rather than leaving it in a closed pull
+# request nobody reopens.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same ref cancels the run still going for the older one, whose verdict is
+# about code nobody is going to merge — true of a pull request, and not of `main`. Every push to
+# `main` shares one group key, so cancelling there would let a `Done` commit (Task state puts
+# those straight on `main`, two of them for this workflow's own pull request) kill the run of the
+# merge commit ahead of it, leaving that commit with no verdict at all — which is the one job the
+# push trigger exists to do.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No version is written here. The pin is `packageManager` in package.json, which this
+      # action reads, and `.node-version`, which setup-node reads — one pin per tool, with
+      # nowhere for a second one to drift (AGENTS.md Toolchain). `release.yml` does the same.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      # `--frozen-lockfile` so a pull request that edited package.json without regenerating the
+      # lockfile fails here rather than resolving to something no other machine will resolve to.
+      - run: pnpm install --frozen-lockfile
+
+      # Ordered cheapest first, and each is a separate step so the run names which one failed
+      # without anyone opening the log.
+      - run: pnpm run lint
+      - run: pnpm run check
+      - run: pnpm test
+
+      # The build is a check in its own right: `pnpm test` runs modules through Vitest's
+      # transform, which is not the same pass as the production one, and a release that first
+      # discovers a build error at tag time discovers it with no pull request left to fix.
+      - run: pnpm run build
+
+  rust:
+    name: rust (${{ matrix.platform }})
+    strategy:
+      # Windows finding something is worth knowing even after macOS has already failed, and the
+      # two share no state.
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # `@stable` resolves to whatever stable is on the day the job runs, so a clippy or rustfmt
+      # release can redden both required checks for code nobody touched — decision-32 §4 pins
+      # Biome exactly for that very reason, and this is the deliberate asymmetry. Pinning here
+      # alone would make the merge requirement test a different compiler from the one
+      # `release.yml` ships with, which is worse; decision-33 records the trade and the two
+      # things placed instead of a pin.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+      # `--all-targets` so the test code is linted too, and `-D warnings` because a warning that
+      # does not fail is a warning nobody reads.
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      # No Node and no `pnpm run build` on this job. `tauri.conf.json` points `frontendDist` at
+      # `../dist`, which a fresh checkout does not have because it is git-ignored — but
+      # `tauri-build` only requires it for a bundling build, and `cargo test` was measured
+      # passing without it (412 passed, 4 ignored, 2026-08-15). Adding the frontend toolchain
+      # here to produce a directory nothing reads would roughly double this job.
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+# Why macOS and Windows, and deliberately not Linux.
+#
+# **Coverage.** The crate has exactly one Linux-exclusive line: the
+# `not(any(target_os = "macos", target_os = "windows"))` arm of `Platform::current` in
+# `editor.rs`, which returns `Platform::Freedesktop`. `src-tauri/src` holds seven distinct
+# OS-conditional predicates, and the other six — `unix`, `windows`, `target_os = "windows"`,
+# `any(target_os = "windows", test)`, `not(target_os = "windows")`, `target_os = "macos"` — are
+# each compiled by one of these two runners, while `Platform::ALL` puts Freedesktop's
+# *behaviour* under test on every platform regardless. What a Linux runner would add is the
+# compilation of one `return`.
+#
+# **Cost of the alternative.** A Linux runner cannot link the crate until it has
+# `apt-get install`ed the WebView development packages, and that list already lives in exactly
+# two places — README's "Building from source" and `release.yml`, which AGENTS.md Toolchain says
+# to change together. Naming it here would make three, and the third would be the copy nobody
+# re-derives.
+#
+# The Linux bundle is still built on every `v*` tag by `release.yml`.

@@ -39,6 +39,15 @@ export default defineConfig({
           name: "component",
           include: ["src/**/*.component.test.ts"],
           environment: "jsdom",
+          // Vitest's 5s default is smaller than one of these tests legitimately needs, and the
+          // difference is not slowness — decision-25 makes mermaid a *dynamic* import inside
+          // `drawFigures`, so `markdown-figure.component.test.ts` pays the whole cost of loading
+          // it inside the test's own budget. In isolation that is about a second; under the full
+          // suite's contention it has gone past five, which is what m-3 TASK-150 records as an
+          // intermittent failure. Nothing here asserts on elapsed time, so the timeout is a
+          // guard against a hang and nothing else, and a two-core CI runner needs more headroom
+          // than this machine does. Raising it does not close TASK-150.
+          testTimeout: 30_000,
         },
       },
     ],
