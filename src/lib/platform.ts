@@ -18,36 +18,28 @@ import { isMacUserAgent } from "./shortcuts";
 /** Whether this is macOS. False anywhere without a user agent to read. */
 const MAC = typeof navigator === "undefined" ? false : isMacUserAgent(navigator.userAgent);
 
-/** Whether this is Linux — WebKitGTK reports `X11; Linux` whichever session type is running. */
-const LINUX = typeof navigator === "undefined" ? false : /Linux/.test(navigator.userAgent);
-
 /** Whether chords are spelled the macOS way. */
 export const MAC_KEYBOARD = MAC;
 
 /**
- * タイトルバーの帯 (decision-31, その Linux の改訂): whether Atlas draws the bar at all. macOS and
- * Linux do; Windows leaves it to the OS and reads 総件数 from the window's own title.
+ * 重ね型 (decision-31): whether Atlas draws the タイトルバーの帯 itself, over the OS's own title bar.
+ * True on macOS, where `titleBarStyle: "Overlay"` makes that bar transparent and hands the page the
+ * window's full height; false on Windows・Linux, where the OS draws the bar and the window's own title
+ * is what gets written.
  *
- * **Separate from `OVERLAY_TITLE_BAR` because the two questions came apart.** They were one fact until
- * Linux turned out to need a bar *and* keep writing the title: with a single value, either Linux takes
- * macOS's traffic-light inset or Windows grows a bar it has no use for.
- */
-export const DRAWN_TITLE_BAR = MAC || LINUX;
-
-/**
- * 重ね型 (decision-31): whether the 帯 is drawn *over* the OS's own title bar rather than under it. True
- * on macOS, where `titleBarStyle: "Overlay"` makes that bar transparent and hands the page the window's
- * full height. It decides two things and nothing else — whether the 帯 leaves room for the 信号機帯 on
- * its left, and whether the window's own title is written (macOS leaves it as `tauri.conf.json` set it,
- * which is what Mission Control shows).
+ * **One value, because drawing the 帯 and overlaying the OS's are the same question here.** They were
+ * briefly two: Linux showed neither — its title write is accepted and then not drawn (decision-31 の
+ * Linux の改訂) — so a 帯 was drawn there for a while, under the decorations rather than over them. The
+ * owner saw it on the real machine and turned it down: the OS decoration prints the app name one line
+ * above, so the 帯 repeated it and charged 32px for the repetition.
  *
  * **A value rather than a `cfg`-shaped branch** (m-1 TASK-44): the halves are one decision read in one
  * place, so neither screen can be built for a platform the other half was not.
  *
  * Read from the same user agent `MAC_KEYBOARD` is, and it is the same fact — but named separately
- * because a misread costs something different here. A chord that spells `Ctrl` on a Mac still works; an
- * inset taken where there are no traffic lights is 78px of blank, and the title written on macOS would
- * be written where nothing draws it. That is why `titleBarStyle` in `tauri.conf.json` and this value
- * have to be changed together.
+ * because a misread costs something different here. A chord that spells `Ctrl` on a Mac still works; a
+ * 帯 drawn where the OS is already drawing one would print the app name twice, and one drawn nowhere
+ * would lose 総件数 altogether. That is why `titleBarStyle` in `tauri.conf.json` and this value have to
+ * be changed together.
  */
 export const OVERLAY_TITLE_BAR = MAC;

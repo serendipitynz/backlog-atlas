@@ -65,7 +65,7 @@
     textEntryFocused,
     type ShortcutScope,
   } from "./lib/shortcuts";
-  import { DRAWN_TITLE_BAR, MAC_KEYBOARD, OVERLAY_TITLE_BAR } from "./lib/platform";
+  import { MAC_KEYBOARD, OVERLAY_TITLE_BAR } from "./lib/platform";
   import { windowTitle } from "./lib/title";
   import {
     DISCARD_CONFIRM_KEEP,
@@ -551,8 +551,12 @@
   /**
    * 総件数 into the window's own title, on every platform but macOS (decision-31). There the 帯 is drawn
    * over the OS's own bar and the title is left as `tauri.conf.json` set it, which is what Mission
-   * Control and the 窓の一覧 show. **Linux gets both** — the write is harmless and window lists read it,
-   * while what reaches the screen is the 帯 (decision-31 の Linux の改訂).
+   * Control and the 窓の一覧 show.
+   *
+   * **On Linux this is written and not drawn** (decision-31 の Linux の改訂). The write is accepted and
+   * `title()` reads the new value back, while the decoration keeps the old one — a layer Atlas cannot
+   * reach. It is still written, because a window list that does read the title gets the right one, and
+   * because the alternative is a platform branch around a call that costs nothing.
    *
    * From an effect, like the theme above and for the same reason: the window is outside this
    * component's markup, and the title has to follow every path 総件数 or the current screen can change
@@ -565,8 +569,8 @@
    * **Whether the title was *applied* is not checked, and that is a decision** (decision-31 の Linux の
    * 改訂). It was, until the platform it was written for turned out to accept the write and read the new
    * value back while drawing the old one — so the check answered "applied" for the very defect it
-   * existed to name. With Linux carrying 総件数 in the 帯 and Windows measured to show the title, it had
-   * nothing left to protect.
+   * existed to name. What is left for it to report on Linux is a state the owner has accepted knowingly,
+   * once, per run; a 帯 saying so on every start would be noise about a decision already taken.
    */
   $effect(() => {
     if (OVERLAY_TITLE_BAR) {
@@ -2496,14 +2500,15 @@
 {/snippet}
 
 <main class="screen">
-  {#if DRAWN_TITLE_BAR}
-    <!-- タイトルバーの帯 (decision-31 と その Linux の改訂). macOS draws it over the OS's own bar,
-         Linux under it; Windows draws nothing here and reads the same line from the window's title,
-         written by the effect above.
+  {#if OVERLAY_TITLE_BAR}
+    <!-- タイトルバーの帯 (decision-31), macOS only: the OS bar is transparent there and this is what
+         stands in it. Everywhere else the same line is written into the window's own title by the
+         effect above — and on Linux that title is accepted and then not drawn, which decision-31 の
+         Linux の改訂 records as a platform where 総件数 does not reach the screen at all.
 
          総件数 only on the swimlane — both ratios describe the グリッド, so on プロジェクト詳細画面 they
          would be counting a screen that is not up (doc-7 §2.1). -->
-    <TitleBar title={titleLine} overlay={OVERLAY_TITLE_BAR} />
+    <TitleBar title={titleLine} />
   {/if}
 
   <!-- 台帳読取専用 is the 上部帯 ③ (doc-11 §4) and never a badge on a bar above it: as a header badge it
