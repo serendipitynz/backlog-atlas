@@ -67,7 +67,7 @@
     type ShortcutScope,
   } from "./lib/shortcuts";
   import { MAC_KEYBOARD, OVERLAY_TITLE_BAR } from "./lib/platform";
-  import { windowTitle } from "./lib/title";
+  import { confirmTitleApplied, windowTitle } from "./lib/title";
   import {
     DISCARD_CONFIRM_KEEP,
     DISCARD_CONFIRM_PROCEED,
@@ -559,11 +559,16 @@
    * component's markup, and the title has to follow every path 総件数 or the current screen can change
    * by — a filter, a hide, a re-read, a move onto プロジェクト詳細画面 and back.
    *
-   * **A failure is reported, once** (⑤ 通知, doc-11 §4). The first write is also read back, because a
+   * **A failure is reported, once** (⑤ 通知, doc-11 §4). The first write is also confirmed, because a
    * write that is accepted and then not applied looks exactly like one that worked — which is the state
    * Linux was found in on 2026-08-15, the title left at the app's name with nothing raised. Either way
-   * the user has lost 総件数 altogether on this platform, and doc-11 §5's refusal of a 理由の無い
+   * the user has lost 総件数 altogether on that platform, and doc-11 §5's refusal of a 理由の無い
    * 無効化 is the same principle: what the screen cannot do, it says.
+   *
+   * **Confirming is not one read.** tao's Linux `set_title` queues a `WindowRequest::Title` and returns,
+   * so the setter resolves with the request still in flight; `confirmTitleApplied` (`title.ts`) is the
+   * rule for how long to keep asking and what counts as the answer, and it re-reads `titleLine` each
+   * time so a newer 総件数 landing mid-check ends the check rather than failing the older one.
    *
    * Once, and not per update: the causes are properties of the build or of the window manager, so they
    * hold for every write from then on, and a 帯 raised per keystroke in the 絞り込み would say the same
@@ -589,12 +594,17 @@
         notice = `ウィンドウのタイトルに総件数を出せません（${unreadableDetail(asCommandError(error))}）`;
         return;
       }
-      // The read is allowed to fail on its own terms without becoming a report: what it would have
-      // proved is already the ordinary case, and a second sentence about a diagnostic the user did not
-      // ask for is noise on top of a title that may well be correct.
-      const written = await windowTitleRead().catch(() => line);
-      if (written !== line) {
-        notice = `ウィンドウのタイトルに総件数を出せません（このデスクトップ環境が題を「${written}」のままにしています）`;
+      // A read that fails on its own terms proves nothing either way, so it ends the check rather than
+      // becoming a second report about a title that may well be correct — `untrack` because reading
+      // `titleLine` here is the confirmation asking what is wanted *now*, not this effect subscribing
+      // to it a second time.
+      const found = await confirmTitleApplied(
+        windowTitleRead,
+        () => untrack(() => titleLine),
+        (ms) => new Promise((resume) => setTimeout(resume, ms)),
+      ).catch(() => null);
+      if (found !== null) {
+        notice = `ウィンドウのタイトルに総件数を出せません（このデスクトップ環境が題を「${found}」のままにしています）`;
       }
     })();
   });

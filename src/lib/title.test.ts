@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APP_NAME, windowTitle } from "./title";
+import { APP_NAME, TITLE_CONFIRM_WAITS, confirmTitleApplied, windowTitle } from "./title";
 import type { SwimlaneTotals } from "./swimlane";
 
 const TOTALS: SwimlaneTotals = {
@@ -44,5 +44,82 @@ describe("APP_NAME", () => {
 
   it("is the document title `index.html` carries", () => {
     expect(read("/index.html")).toContain(`<title>${APP_NAME}</title>`);
+  });
+});
+
+/**
+ * The rule that says whether a title write landed (decision-31, PR #124 の 3R [P2]). Held as a pure
+ * function with its reader and its clock passed in, because what it is about is *waiting* — a check
+ * written against the real ones would either sleep for seconds or prove nothing.
+ */
+describe("confirmTitleApplied", () => {
+  /** A clock that runs no timer: the rule is the sequence of reads, not how long each wait was. */
+  const noWait = (): Promise<void> => Promise.resolve();
+
+  it("answers at once when the title is already what was asked for", async () => {
+    const reads: string[] = [];
+    const read = (): Promise<string> => {
+      reads.push("read");
+      return Promise.resolve("Backlog Atlas — 表示 1 / 1 件 ・ 1 / 1 プロジェクト");
+    };
+
+    expect(
+      await confirmTitleApplied(read, () => "Backlog Atlas — 表示 1 / 1 件 ・ 1 / 1 プロジェクト", noWait),
+    ).toBeNull();
+    expect(reads).toHaveLength(1);
+  });
+
+  it("waits out a write that is still queued rather than calling it a failure", async () => {
+    // tao's Linux `set_title` resolves while GTK still holds the request, so the first reads answer
+    // with the title the window opened on. Nothing is wrong here and nothing may be reported.
+    const answers = ["Backlog Atlas", "Backlog Atlas", "Backlog Atlas — 表示 2 / 2 件 ・ 1 / 1 プロジェクト"];
+    let index = 0;
+    const read = (): Promise<string> => Promise.resolve(answers[Math.min(index++, answers.length - 1)]);
+
+    expect(
+      await confirmTitleApplied(read, () => "Backlog Atlas — 表示 2 / 2 件 ・ 1 / 1 プロジェクト", noWait),
+    ).toBeNull();
+    expect(index).toBe(3);
+  });
+
+  it("follows a newer title that landed mid-check instead of failing the older one", async () => {
+    // 総件数 moves with every 絞り込み keystroke. A wanted value captured at the first read would see
+    // the newer title in the window and report the window manager as broken.
+    let asked = "Backlog Atlas — 表示 9 / 9 件 ・ 1 / 1 プロジェクト";
+    let round = 0;
+    const read = (): Promise<string> => {
+      round += 1;
+      if (round === 1) {
+        return Promise.resolve("Backlog Atlas");
+      }
+      asked = "Backlog Atlas — 表示 3 / 9 件 ・ 1 / 1 プロジェクト";
+      return Promise.resolve(asked);
+    };
+
+    expect(await confirmTitleApplied(read, () => asked, noWait)).toBeNull();
+  });
+
+  it("reports the title actually found once the waits run out", async () => {
+    const read = (): Promise<string> => Promise.resolve("Backlog Atlas");
+
+    expect(await confirmTitleApplied(read, () => "Backlog Atlas — 表示 5 / 5 件 ・ 2 / 2 プロジェクト", noWait))
+      .toBe("Backlog Atlas");
+  });
+
+  it("asks once per wait and no more", async () => {
+    let reads = 0;
+    const read = (): Promise<string> => {
+      reads += 1;
+      return Promise.resolve("そのまま");
+    };
+    const waited: number[] = [];
+    const wait = (ms: number): Promise<void> => {
+      waited.push(ms);
+      return Promise.resolve();
+    };
+
+    await confirmTitleApplied(read, () => "別の題", wait);
+    expect(waited).toEqual([...TITLE_CONFIRM_WAITS]);
+    expect(reads).toBe(TITLE_CONFIRM_WAITS.length + 1);
   });
 });

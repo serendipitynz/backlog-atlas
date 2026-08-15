@@ -33,3 +33,44 @@ export function windowTitle(totals: SwimlaneTotals | null): string {
   }
   return `${APP_NAME} — ${totalsLabel(totals)}`;
 }
+
+/**
+ * How long to keep asking, in milliseconds between reads. Five tries over about 1.5 s.
+ *
+ * **A write that has been accepted is not a title that has been applied.** On Linux tao's `set_title`
+ * puts a `WindowRequest::Title` on a channel and returns, so the setter resolves while GTK still has
+ * the request queued — a single immediate read there would report the old title as the window
+ * manager's answer and raise a warning about a write that was about to land.
+ */
+export const TITLE_CONFIRM_WAITS: readonly number[] = [50, 100, 200, 400, 800];
+
+/**
+ * Whether the window's title reached what was asked for. `null` means it did; a string is the title
+ * actually found once the waits above ran out, which is what the user is told.
+ *
+ * `wanted` is re-read on every attempt rather than captured, so a newer title landing mid-check ends
+ * the check on its own terms instead of failing the older one — the 総件数 changes with every 絞り込み
+ * keystroke, and a captured value would report a stale mismatch as a broken window manager.
+ *
+ * The reader, the clock and the wanted value are all parameters: what this holds is the rule, and a
+ * rule about waiting cannot be tested against a real one.
+ */
+export async function confirmTitleApplied(
+  read: () => Promise<string>,
+  wanted: () => string,
+  wait: (ms: number) => Promise<void>,
+  waits: readonly number[] = TITLE_CONFIRM_WAITS,
+): Promise<string | null> {
+  let found = await read();
+  if (found === wanted()) {
+    return null;
+  }
+  for (const ms of waits) {
+    await wait(ms);
+    found = await read();
+    if (found === wanted()) {
+      return null;
+    }
+  }
+  return found;
+}
