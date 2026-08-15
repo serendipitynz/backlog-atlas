@@ -77,6 +77,7 @@ export function deferred<T>(): Deferred<T> {
 const DEFAULT_SETTINGS: AppSettings = {
   schema_version: 1,
   theme: null,
+  language: null,
   card_density: "m",
   default_storage_filter: ["active"],
   default_detail_placement: "sidebar",
