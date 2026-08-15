@@ -434,6 +434,16 @@ export const commandFakes = {
   updateApply: (slug: string, action: UpdateOperation[]): Promise<UpdateResult> =>
     record("update_apply", [slug, action], () => answers.update(slug, action)),
 
+  // The window's own title (decision-31). Faked for the reason every call here is — it is IPC, and the
+  // real one reaches Tauri's window plugin, which is not there under `jsdom`.
+  //
+  // **Not recorded**, unlike every other call in this module. `at()` answers with a position in the
+  // recorded list, so a call landing in it shifts every later index — and this one is issued by an
+  // effect on the first paint, ahead of the 起動時の順序 the tests here fix. It carries no contract
+  // those tests are about: what the title says is `title.ts`'s rule, and when it is written is
+  // whenever 総件数 or the current screen changed.
+  windowTitleSet: (_title: string): Promise<void> => Promise.resolve(),
+
   onProjectReloaded: (handler: (event: ReloadEvent) => void): Promise<() => void> =>
     record("on_project_reloaded", [], () => {
       if (answers.subscribeFails) {

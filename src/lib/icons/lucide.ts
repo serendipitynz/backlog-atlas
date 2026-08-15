@@ -59,6 +59,7 @@ export type IconName =
   | "arrow-up"
   | "arrow-down"
   | "arrow-right"
+  | "arrow-left"
   | "x"
   | "triangle-alert"
   | "plus"
@@ -255,6 +256,14 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
   "arrow-right": [
     { shape: "path", d: "M5 12h14" },
     { shape: "path", d: "m12 5 7 7-7 7" },
+  ],
+  // プロジェクト詳細の 戻る (doc-10 §3, decision-31). Deliberately the mirror of `arrow-right` above:
+  // that one is the 行末の入口 into this screen, and the way out is the same move reversed. This is the
+  // 語の中の記号 doc-11 §2.4 refuses to abstract — recorded as a deviation there rather than taken as
+  // licence, because the word 「← スイムレーン」 does change when the arrow becomes the whole control.
+  "arrow-left": [
+    { shape: "path", d: "m12 19-7-7 7-7" },
+    { shape: "path", d: "M19 12H5" },
   ],
   // 閉じる・解除・削除 (doc-11 §7 のモーダル、上部帯の通知、絞り込みトークン、status 別名表の行).
   // Those last three printed `×` until TASK-139 — they are older than `src/lib/icons/`, and doc-11 §7
