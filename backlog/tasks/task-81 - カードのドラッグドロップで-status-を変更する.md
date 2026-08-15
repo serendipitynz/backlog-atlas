@@ -1,10 +1,10 @@
 ---
 id: TASK-81
 title: カードのドラッグ&ドロップで status を変更する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:32'
-updated_date: '2026-08-15 02:08'
+updated_date: '2026-08-15 04:29'
 labels:
   - ui
   - swimlane
@@ -31,7 +31,7 @@ backlog.md のようにカンバン上のカードを列間でドラッグ&ド�
 - [x] #4 CLI 縮退中はカードをつまめず、その理由が上部帯から読める
 - [x] #5 発行失敗・バージョン不整合のときカードの位置とディスクの内容が食い違わない
 - [x] #6 行をまたぐドロップ（別プロジェクトへの移動）が成立しないことが明示されている
-- [ ] #7 dragDropEnabled を外した状態で、macOS・Windows・Linux の実機それぞれで列間ドロップが成立する
+- [x] #7 dragDropEnabled を外した状態で、macOS・Windows・Linux の実機それぞれで列間ドロップが成立する
 <!-- AC:END -->
 
 ## Implementation Notes
