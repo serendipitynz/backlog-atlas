@@ -157,8 +157,10 @@ function keysOfType<T extends object>() {
 
 /**
  * A value's *type* shape, ignoring what it holds: `"1000"` and `"m-1"` are the same shape, `1000` is
- * a different one. An array reports its first element's shape, which is enough here because the
- * recordings hold homogeneous lists.
+ * a different one. An array reports **every** element's shape: `relations` is deliberately
+ * heterogeneous — one entry per Pull Request outcome — so reducing a list to its first element would
+ * leave the other variants' payload types uncompared, which is how a snake_case `after_secs` reached
+ * the branch (PR #127 1R [P1]).
  */
 type Shape = string | Shape[] | { [key: string]: Shape };
 
@@ -167,7 +169,7 @@ function shapeOf(value: unknown): Shape {
     return "null";
   }
   if (Array.isArray(value)) {
-    return value.length === 0 ? [] : [shapeOf(value[0])];
+    return value.map(shapeOf);
   }
   if (typeof value === "object") {
     return Object.fromEntries(
@@ -198,10 +200,12 @@ function shapeMismatches(recorded: Shape, expected: Shape, at = ""): string[] {
     if (!Array.isArray(recorded) || !Array.isArray(expected)) {
       return [`${at}: ${JSON.stringify(recorded)} vs ${JSON.stringify(expected)}`];
     }
-    // An empty list on either side says nothing about its element type.
-    return recorded.length === 0 || expected.length === 0
-      ? []
-      : shapeMismatches(recorded[0], expected[0], `${at}[]`);
+    // Pairwise, up to the shorter list — an empty one on either side says nothing about its
+    // element type, and a homogeneous recording is still served by a one-element exemplar.
+    const pairs = Math.min(recorded.length, expected.length);
+    return Array.from({ length: pairs }).flatMap((_, at_) =>
+      shapeMismatches(recorded[at_], expected[at_], `${at}[${at_}]`),
+    );
   }
   if (typeof recorded === "object" || typeof expected === "object") {
     if (typeof recorded !== "object" || typeof expected !== "object") {
@@ -570,10 +574,25 @@ const HISTORY_EXEMPLAR: TaskHistory = {
     ],
   },
   remote: { kind: "gitHub", owner: "serendipitynz", repo: "backlog-atlas" },
+  // All four the recording carries, in its order, so every 失敗理由符号 payload is compared against
+  // `wire.ts` and not only against the token list (which fixes the tag and nothing under it).
   relations: [
     {
       pullRequest: "https://example.test/pull/1",
       outcome: { state: "resolved", commitIds: ["0123456789abcdef0123456789abcdef01234567"] },
+    },
+    { pullRequest: "https://example.test/pull/2", outcome: { state: "hostUnsupported" } },
+    {
+      pullRequest: "https://example.test/pull/3",
+      outcome: { state: "lookupFailed", reason: { reason: "timedOut", afterSecs: 15 }, detail: "" },
+    },
+    {
+      pullRequest: "https://example.test/pull/4",
+      outcome: {
+        state: "lookupFailed",
+        reason: { reason: "invalidReference", value: ".." },
+        detail: "",
+      },
     },
   ],
 };
@@ -783,6 +802,21 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
     expect(keysOf(history.relations[0])).toEqual(
       keysOfType<PrRelation>()("pullRequest", "outcome"),
     );
+    // The two 失敗理由符号 that carry a value, by their **key sets** rather than their value types.
+    // The value-type comparison cannot see this: it walks only the keys both sides carry, so a field
+    // renamed on one side is absent from the other and drops out of the walk entirely. That is how a
+    // serde `rename_all` left off `LookupFailure::TimedOut` shipped `after_secs` against a `wire.ts`
+    // reading `afterSecs`, with every other check green (PR #127 1R [P1]).
+    for (const [at, listed] of [
+      [2, keysOfType<Extract<LookupFailure, { reason: "timedOut" }>>()("reason", "afterSecs")],
+      [3, keysOfType<Extract<LookupFailure, { reason: "invalidReference" }>>()("reason", "value")],
+    ] as const) {
+      const outcome = history.relations[at].outcome;
+      if (outcome.state !== "lookupFailed") {
+        throw new Error(`relations[${at}] is meant to be a failed lookup, got ${outcome.state}`);
+      }
+      expect(keysOf(outcome.reason), `relations[${at}].outcome.reason`).toEqual(listed);
+    }
     const remote = history.remote;
     if (remote === null) {
       throw new Error("the recorded history has no remote");

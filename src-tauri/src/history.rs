@@ -201,6 +201,10 @@ pub enum LookupFailure {
     /// `after_secs` is [`GH_DEADLINE`], carried rather than known on the other side: the deadline is
     /// this module's to choose, and a screen holding its own copy would go on saying the old number
     /// after it changed here.
+    // The container's `rename_all` renames variants, not the fields inside them — so the one
+    // multi-word field on this enum needs the attribute of its own that `value` never revealed.
+    // `update.rs`'s `FailureKind::TimedOut` carries the same line for the same reason.
+    #[serde(rename_all = "camelCase")]
     TimedOut { after_secs: u64 },
 }
 

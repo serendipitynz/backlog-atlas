@@ -1625,22 +1625,29 @@ mod tests {
         );
     }
 
-    /// A `ShellExecuteW` failure names what went wrong rather than the API. `SE_ERR_NOASSOC` is the one a
-    /// user actually meets — a `.md` with nothing registered for it — and it must not be reported through
-    /// `from_raw_os_error`, whose text for 31 is about a malfunctioning device.
+    /// A `ShellExecuteW` failure keeps its own identity rather than being read as a Win32 code.
+    /// `SE_ERR_NOASSOC` is the one a user actually meets — a `.md` with nothing registered for it —
+    /// and `from_raw_os_error`'s text for 31 is about a malfunctioning device.
+    ///
+    /// **The split is what this holds, not the sentence**: since decision-35 §3 the number travels
+    /// and the wording is the screen's (`src/lib/failure.test.ts` holds that half).
     #[cfg(target_os = "windows")]
     #[test]
     fn a_shell_execute_failure_is_reported_in_its_own_terms() {
-        let error = shell_execute_error(31);
-        assert!(
-            error.to_string().contains("SE_ERR_NOASSOC"),
-            "expected the association failure to be named, got {error}"
-        );
-        // Below the SE_ERR_* range the OS's own text is right, so it is used.
         assert_eq!(
-            shell_execute_error(2).kind(),
-            std::io::ErrorKind::NotFound,
+            shell_execute_error(31).reason,
+            LaunchRefusal::ShellExecute { code: 31 }
+        );
+        // Below the SE_ERR_* range the OS's own description is right, so it is what travels.
+        let below = shell_execute_error(2);
+        assert_eq!(
+            below.reason,
+            LaunchRefusal::OsRefused,
             "ERROR_FILE_NOT_FOUND is a real Win32 code and stays one"
+        );
+        assert!(
+            !below.detail.is_empty(),
+            "the OS's description is the whole reason for this one"
         );
     }
 

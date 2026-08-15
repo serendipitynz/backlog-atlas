@@ -38,7 +38,7 @@
         "state": "lookupFailed",
         "reason": {
           "reason": "timedOut",
-          "after_secs": 15
+          "afterSecs": 15
         },
         "detail": ""
       }
