@@ -3,6 +3,11 @@
 // pass while the app quietly loses its IPC transport or its drawn styles.
 #[cfg(test)]
 mod csp;
+// Public: 添付画像 (doc-8 §9.2). The rule that turns one `/assets/<name>` written in a 本文 into a
+// path under a Backlog root, held apart from the command layer because it is Backlog CLI's rule
+// copied rather than anything Atlas decided, and because a rule about which paths may be opened is
+// worth testing without a Tauri app around it.
+pub mod body_image;
 // Public: the Tauri command boundary (TASK-33) — the one module that knows Tauri exists. Every
 // layer below is a plain Rust API; this is what makes them callable from the frontend, and where
 // the read path (file analysis) and the update path (Backlog CLI) are kept apart at the seam
@@ -105,6 +110,8 @@ pub fn run() {
             commands::task_file_open,
             // 本文リンク (doc-8 §9.3): the same association launcher, with a URL from a 本文.
             commands::body_link_open,
+            // 添付画像 (doc-8 §9.2): bytes for one `/assets/<name>` a 本文 named.
+            commands::body_image_read,
             // 解決結果の表示 (decision-29): which `git`/`gh` the 設定画面's own panel is reporting on.
             commands::external_programs_probe,
             // Update path: guarded by the pre-update version check and a probed CLI capability.

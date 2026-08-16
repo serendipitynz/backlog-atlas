@@ -44,7 +44,8 @@
     "editorUnavailable",
     "editorLaunchFailed",
     "historyCancelled",
-    "bodyLinkFailed"
+    "bodyLinkFailed",
+    "bodyImageRefused"
   ],
   "CommitSearch": [
     "searched",
@@ -85,6 +86,11 @@
     "configured",
     "remoteAbsent",
     "noRepository",
+    "unreadable"
+  ],
+  "ImageRefusal": [
+    "outsideAssets",
+    "absent",
     "unreadable"
   ],
   "LaunchMethod": [

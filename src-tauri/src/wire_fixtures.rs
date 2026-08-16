@@ -20,6 +20,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use crate::body_image::ImageRefusal;
 use crate::commands::{
     CliReadiness, CommandError, CommitSearch, LedgerRefusal, LedgerResponse, ProjectLoad,
     ProjectSnapshot, RegisterResponse, ReloadEvent, TaskHistory, TaskView, UpdateResult,
@@ -925,6 +926,20 @@ fn every_body_link_refusal() -> Vec<BodyLinkRefusal> {
     all
 }
 
+fn every_image_refusal() -> Vec<ImageRefusal> {
+    let all = vec![
+        ImageRefusal::OutsideAssets,
+        ImageRefusal::Absent,
+        ImageRefusal::Unreadable,
+    ];
+    for value in &all {
+        match value {
+            ImageRefusal::OutsideAssets | ImageRefusal::Absent | ImageRefusal::Unreadable => {}
+        }
+    }
+    all
+}
+
 fn every_probe_failure() -> Vec<ProbeFailure> {
     let all = vec![
         ProbeFailure::SpawnFailed {
@@ -1385,6 +1400,10 @@ fn every_command_error() -> Vec<CommandError> {
             reason: BodyLinkRefusal::SchemeNotAllowed,
             detail: blank(),
         },
+        CommandError::BodyImageRefused {
+            reason: ImageRefusal::OutsideAssets,
+            detail: blank(),
+        },
     ];
     for value in &all {
         match value {
@@ -1405,7 +1424,8 @@ fn every_command_error() -> Vec<CommandError> {
             | CommandError::EditorUnavailable
             | CommandError::EditorLaunchFailed { .. }
             | CommandError::HistoryCancelled { .. }
-            | CommandError::BodyLinkFailed { .. } => {}
+            | CommandError::BodyLinkFailed { .. }
+            | CommandError::BodyImageRefused { .. } => {}
         }
     }
     all
@@ -1483,6 +1503,7 @@ fn every_union_token_is_recorded() {
         "BodyLinkRefusal",
         tag_tokens(&every_body_link_refusal(), "reason"),
     );
+    tokens.insert("ImageRefusal", tag_tokens(&every_image_refusal(), "reason"));
     tokens.insert("ProbeFailure", tag_tokens(&every_probe_failure(), "reason"));
     tokens.insert(
         "RemoteReadFailure",
