@@ -28,12 +28,7 @@
  * 本文画像 naming one draws nothing in the CLI's browser mode either.
  */
 
-import {
-  BODY_IMAGE_CLASS,
-  BODY_IMAGE_REFERENCE_ATTRIBUTE,
-  bodyImagePlan,
-  type BodyImagePlan,
-} from "./markdown";
+import { BODY_IMAGE_CLASS, BODY_IMAGE_REFERENCE_ATTRIBUTE } from "./markdown";
 
 /**
  * How the bytes of one 添付画像 are fetched.
@@ -75,16 +70,6 @@ export function mediaTypeFor(reference: string): string | null {
     return null;
   }
   return MEDIA_TYPES[name.slice(dot + 1).toLowerCase()] ?? null;
-}
-
-/**
- * Whether this 本文画像 is one Atlas will try to draw: a 添付画像 whose extension is in the 媒体型表.
- *
- * Exported so the same judgement can be made without a DOM — `markdown.test.ts` and the doc both
- * describe the drawn set this way.
- */
-export function drawable(plan: BodyImagePlan): boolean {
-  return plan.kind === "attachment" && mediaTypeFor(plan.reference) !== null;
 }
 
 /** Which draw is current for one root, so a later 本文 cannot be overwritten by an earlier read. */
@@ -163,9 +148,12 @@ export async function drawImages(root: ParentNode, read: ImageReader): Promise<v
     if (generations.get(root) !== generation) {
       return;
     }
+    // **Classified once, in `markdown.ts`.** This attribute exists only on a 添付画像 and already holds
+    // the decoded reference, so re-running `bodyImagePlan` here would decode a second time — and a
+    // file legitimately named `50%.png` arrives here as exactly that, which `decodeURIComponent`
+    // rejects. The image would then never be asked for, though the boundary would have read it.
     const reference = placeholder.getAttribute(BODY_IMAGE_REFERENCE_ATTRIBUTE) ?? "";
-    const plan = bodyImagePlan(reference);
-    const mediaType = plan.kind === "attachment" ? mediaTypeFor(plan.reference) : null;
+    const mediaType = mediaTypeFor(reference);
     if (mediaType === null) {
       // An extension the 媒体型表 does not carry. The 状態の印 stays, which is the whole answer —
       // asking the boundary for bytes no `<img>` could render would only spend a round trip to
@@ -177,9 +165,10 @@ export async function drawImages(root: ParentNode, read: ImageReader): Promise<v
     try {
       bytes = await read(reference);
     } catch {
-      // 経路の拒否・不在・読取不能 all land here, and all three leave the same thing on screen. The
-      // 失敗理由符号 is not read: doc-11 §14.7 puts the reason in the印's own label, which
-      // `markdown.ts` already wrote — nothing about *which* refusal changes what the reader can do.
+      // 経路の拒否・不在・読取不能 all land here, and all three leave the same thing on screen: the
+      // 状態の印 `markdown.ts` wrote, whose accessible name says a picture is there and not shown.
+      // The 失敗理由符号 is deliberately not read — nothing about *which* refusal changes what the
+      // reader can do about it, and doc-8 §9.5 keeps this off ⑤ 通知 for that reason.
       continue;
     }
     if (generations.get(root) !== generation || !placeholder.isConnected) {

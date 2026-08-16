@@ -3,7 +3,6 @@ import { bodyView } from "./markdown";
 import {
   IMAGE_DRAWN_CLASS,
   drawImages,
-  drawable,
   mediaTypeFor,
   releaseImages,
   type ImageReader,
@@ -77,11 +76,12 @@ describe("媒体型表", () => {
     }
   });
 
-  it("is what decides whether a 本文画像 is asked for at all", () => {
-    expect(drawable({ kind: "attachment", reference: "/assets/a.png" })).toBe(true);
-    expect(drawable({ kind: "attachment", reference: "/assets/a.pdf" })).toBe(false);
-    expect(drawable({ kind: "remote", url: "https://e.test/a.png" })).toBe(false);
-    expect(drawable({ kind: "neither" })).toBe(false);
+  it("reads a name that is already decoded, including one holding a bare %", () => {
+    // The attribute `drawImages` reads holds the **decoded** reference, so a file named `50%.png`
+    // arrives here as `/assets/50%.png`. Anything that decoded it a second time would throw on
+    // `%.p` and drop the image for good, though the boundary would have read it.
+    expect(mediaTypeFor("/assets/50%.png")).toBe("image/png");
+    expect(mediaTypeFor("/assets/図.png")).toBe("image/png");
   });
 });
 
@@ -134,6 +134,19 @@ describe("添付画像 の描画 (doc-8 §9.2)", () => {
     image?.dispatchEvent(new Event("error"));
     expect(block.querySelector(`img.${IMAGE_DRAWN_CLASS}`)).toBeNull();
     expect(block.querySelector("[data-body-image]")).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("asks the boundary for a name holding a bare %, rather than dropping it", async () => {
+    stubObjectUrls();
+    const block = root("![](</assets/50%25.png>)");
+    const read = reads();
+
+    await drawImages(block, read);
+
+    // The reference reaches the boundary decoded and byte-identical to the file's own name.
+    expect(read).toHaveBeenCalledWith("/assets/50%.png");
+    expect(block.querySelector(`img.${IMAGE_DRAWN_CLASS}`)).not.toBeNull();
     vi.unstubAllGlobals();
   });
 
