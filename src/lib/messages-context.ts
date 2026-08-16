@@ -9,34 +9,43 @@
  *
  * The shell therefore puts an accessor in context that closes over its own `$derived` language, and
  * a component calling that accessor in its markup depends on the language the way it depends on any
- * other state. **The two accessors are not two sources** — both index `CATALOGS`, and the shell's
- * effect calls `setLanguage` so `msg()` answers with the same catalog this one returns.
+ * other state.
  *
- * A component that words a sentence through a pure module (`edit.ts`, `settings.ts`) still gets the
- * right language without doing anything: those modules call `msg()`, and [`provideMessages`] has
- * already set it. **Setting it here rather than only in the shell's effect is what makes that true
- * of the first render pass** — an effect runs after its subtree is created, so a sentence worded
- * during that pass would otherwise come from the initial language whatever the OS said, and stay
- * there, `msg()` being non-reactive. What such a component does **not** get is a redraw when the
- * language changes, so one whose text comes only from a pure module reads the accessor once to
- * depend on it.
+ * **The two accessors are not two sources.** [`provideMessages`] hands the *same* getter to
+ * `messages.ts` as its 言語の出どころ, so `msg()` reads the shell's `$derived` too — which is what
+ * makes a sentence worded by a pure module (`edit.ts`, `swimlane.ts`, `band.ts`) both come out in the
+ * right language and redraw when that language changes, without the component that draws it doing
+ * anything. `messages.ts`'s header has the measurement that established this was needed.
+ *
+ * **Installing it here rather than in the shell's effect is what makes it true of the first render
+ * pass** — an effect runs after its subtree is created, so a sentence worded during that pass would
+ * otherwise come from whatever this module had been left with.
  *
  * Separate file from `messages.ts` because this one imports `svelte`, and `messages.ts` is imported
  * by modules the `node` project runs.
  */
-import { getContext, setContext } from "svelte";
-import { CATALOGS, setLanguage, type Catalog, type Language } from "./messages";
+import { getContext, onDestroy, setContext } from "svelte";
+import {
+  CATALOGS,
+  clearLanguageSource,
+  provideLanguageSource,
+  type Catalog,
+  type Language,
+} from "./messages";
 
 const KEY = Symbol("messages");
 
 /**
  * Called by the shell, once, with a getter for its own 表示言語.
  *
- * Also sets the module-level language the pure modules read, because this call happens during the
- * shell's initialisation and so precedes the first render — see the paragraph above.
+ * The getter goes to `messages.ts` as well as into the context, so the pure modules' `msg()` reads
+ * the same 表示言語 this accessor returns — one source, read two ways. It is taken back on teardown,
+ * so a shell that has been unmounted (which happens once per component test) leaves `messages.ts`
+ * answering from its own value again.
  */
 export function provideMessages(language: () => Language): void {
-  setLanguage(language());
+  provideLanguageSource(language);
+  onDestroy(() => clearLanguageSource(language));
   setContext(KEY, () => CATALOGS[language()]);
 }
 

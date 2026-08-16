@@ -114,7 +114,7 @@
   import { SAVING_REASON, openLocationFailure } from "./lib/settings";
   import { createSettingsWriter } from "./lib/settings-write";
   import { messages, provideMessages } from "./lib/messages-context";
-  import { osLanguage, resolveLanguage, setLanguage } from "./lib/messages";
+  import { osLanguage, resolveLanguage } from "./lib/messages";
   import { themeAttribute } from "./lib/theme";
   import {
     DEFAULT_FILTER,
@@ -571,8 +571,9 @@
 
   /** The 文言表 in force, read through the accessor so a 表示言語 change redraws this shell too. */
   const t = messages();
+  // `lang` on `<html>` only: `provideMessages` above handed the same 表示言語 to `messages.ts`, so the
+  // 文言表 follows it without an effect — and it has to, since an effect runs after the first render.
   $effect(() => {
-    setLanguage(language);
     document.documentElement.lang = language;
   });
   /**
