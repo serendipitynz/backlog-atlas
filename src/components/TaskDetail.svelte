@@ -1538,7 +1538,10 @@
       <p class="neutral">{t().state.none}</p>
     {:else}
       <ul class="ac">
-        {#each task.definitionOfDone as item (item.number)}
+        <!-- 位置で鍵を作る（#N ではなく）。読み取り層は番号の一意性を保証しない — CLI は
+             max+1 を振るが、手で書いたファイルは `#1` を 2 行持てる。Svelte の
+             `each_key_duplicate` は本番でも throw するので、鍵が重なるとタスク詳細ごと落ちる。 -->
+        {#each task.definitionOfDone as item, index (index)}
           <li class:checked={item.checked}>
             <span class="box" role="img" aria-label={item.checked ? t().taskDetail.done : t().taskDetail.notDone}>
               <Icon name={item.checked ? "square-check" : "square"} />

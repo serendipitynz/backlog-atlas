@@ -43,11 +43,15 @@
      */
     count?: string | null;
     /**
-     * 達成数 of a 区画 that carries a 達成割合 (doc-8 §3). Only ACCEPTANCE CRITERIA does (doc-12 §3).
+     * 達成数 of any 区画 that has one (doc-8 §3) — ACCEPTANCE CRITERIA, and DEFINITION OF DONE since
+     * TASK-185. **Whether the 達成割合のバー is drawn does not follow from this prop**: the バー *is*
+     * the 区画境界 (doc-8 §3), so only a 常設 区画 has anywhere to put it, and the fold branch below
+     * passes `boundary` false. DOD is a fold in all three placements and therefore prints the number
+     * and no バー — which falls out of the disposition rather than being decided per 区画.
      *
-     * The 達成数 and the 達成割合のバー come off one prop because they are one value said twice — once
-     * in words, once as a figure. Handed over separately, the number printed and the proportion drawn
-     * can disagree.
+     * The 達成数 and the バー come off one prop because they are one value said twice — once in words,
+     * once as a figure. Handed over separately, the number printed and the proportion drawn can
+     * disagree.
      */
     progress?: AcProgress | null;
     children: Snippet;
