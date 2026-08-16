@@ -349,6 +349,20 @@ describe("画面に置く文 (doc-11 §8)", () => {
     ];
   }
 
+  it("assembles all four 源泉, so the scan cannot pass by reading less", () => {
+    // `scans every screen source` and `scans the crate and both titles too` hold the three globs; this
+    // holds what `screenLines` does with them. Dropping one of its arms leaves both of those passing —
+    // and the scan below then finds nothing because it looks at nothing.
+    const paths = screenLines().map(([path]) => path);
+    expect(paths.filter((path) => /\.(ts|svelte)$/.test(path)).length).toBeGreaterThan(20);
+    expect(paths.filter((path) => path.endsWith(".rs")).length).toBeGreaterThan(5);
+    for (const name of ["/index.html", "/tauri.conf.json"]) {
+      expect(paths.some((path) => path.endsWith(name))).toBe(true);
+    }
+    // A statement about what the scan reads, where the test below is one about the regex.
+    expect(paths.filter((path) => MESSAGE_TABLE.test(path))).toEqual([]);
+  });
+
   it("keeps Japanese out of every 源泉 but the 文言表", () => {
     const found: string[] = [];
     for (const [path, lines] of screenLines()) {
