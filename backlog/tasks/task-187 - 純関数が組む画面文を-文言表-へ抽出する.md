@@ -1,10 +1,10 @@
 ---
 id: TASK-187
 title: 純関数が組む画面文を 文言表 へ抽出する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-16 01:08'
-updated_date: '2026-08-16 04:03'
+updated_date: '2026-08-16 05:31'
 labels:
   - 'kind:feature'
 milestone: m-3
