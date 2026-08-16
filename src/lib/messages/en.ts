@@ -208,10 +208,13 @@ export const EN: Catalog = {
     unmapped: "Unmapped",
   },
   filter: {
-    textLabel: "Filter by text",
+    // Says more than the Japanese label does, because English has to put 横断タスクID somewhere the
+    // placeholder no longer fits it (below) and this is the box's only other string. An `aria-label`
+    // has no width, so the full term costs nothing here.
+    textLabel: "Filter by cross-project task ID or title",
     // The control has no width of its own, so the room is the input's intrinsic one: 152px at
     // 1280x800, against 125px for this string and 152px for the "task"-carrying form it replaces,
-    // which WebKit cut mid-word (measured 2026-08-16). `textLabel` carries the unabbreviated name.
+    // which WebKit cut mid-word (measured 2026-08-16).
     textPlaceholder: "Cross-project ID / title",
     add: "+ Filter",
     removeToken: (name: string) => `Remove ${name}`,
