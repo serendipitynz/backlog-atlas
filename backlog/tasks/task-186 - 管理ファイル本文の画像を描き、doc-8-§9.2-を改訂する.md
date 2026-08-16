@@ -1,10 +1,10 @@
 ---
 id: TASK-186
 title: 管理ファイル本文の画像を描き、doc-8 §9.2 を改訂する
-status: In Progress
+status: In Review
 assignee: []
 created_date: '2026-08-16 00:28'
-updated_date: '2026-08-16 23:21'
+updated_date: '2026-08-16 23:23'
 labels:
   - 'kind:feature'
   - ui
