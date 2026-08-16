@@ -4,7 +4,7 @@ title: Backlog CLI が書く FINAL_SUMMARY・DOD・COMMENTS を読めるよう�
 status: In Review
 assignee: []
 created_date: '2026-08-16 00:28'
-updated_date: '2026-08-16 21:18'
+updated_date: '2026-08-16 21:43'
 labels:
   - 'kind:bug'
   - rust
@@ -102,4 +102,34 @@ DOD の `#N` 番号列・COMMENTS 項目の区切りの対応・COMMENTS に属�
 
 **`wire_tokens.json` は動いていない。** 足したのは構造体 1 つと 3 項目で、union が増えていないため。
 `wire-fixtures/*.json` は 3 つ録り直してコミットしてある。
+
+## レビュー 1R で直したもの（Claude Code CLI、2026-08-17）
+
+**[P2] `COMMENT` 形が黙って落としていた 3 経路を塞いだ。** `parse_marked_comments` が
+`Vec<Comment>` を返し、`parse_comments` が 縮退事象 を `false` 固定で返していたので、
+①閉じない `COMMENT:BEGIN` が残る、②どの対にも属さない行が残る、③`COMMENT:END` の前に 2 つ目の
+`COMMENT:BEGIN` が来る、の 3 つで内容が消え `events` が空のままだった。**このタスクが消しに来た
+「静かに欠ける」そのもの**である。3 つとも 想定外スキーマ を立て、読めた分は残すようにした。
+
+**[P3] `END` の食い違いが開いている捕捉を道連れにしていた。** `finish_*` が変種を見る前に
+`std::mem::replace` していたためで、`take_capture` を挟んだ。**実測でこれは CLI 到達可能だと分かった** —
+`task edit --comment '<!-- DOD:END -->'` は成功する（拒否は `<!-- COMMENTS?:` と行そのものが `---` の
+行だけ）。**そのため既存の `finish_section`・`finish_ac` も併せて直した** — 4 か所が同じ形で、
+片方だけ直すと読み手が 2 通りの形を見ることになる。
+**その行を本文としては読めないままである** — CLI は本文全体の区切りを先に集めてから族ごとに対にし、
+他の族の範囲の内側にある区切りを区切りと見なさないが、本層は 1 度の走査で読む。**doc-4 §4 に書いた。**
+
+**[P3] `DetailSection` の `progress` の註が偽になっていた**（自分の変更が偽にしたので直す側である）。
+**[P3] ヘッダ鍵の大文字小文字は実測して註へ入れた** — CLI は畳む（`Author:`・`CREATED:` が読まれる）。
+**[P3] Definition of Done 一覧の鍵を位置へ変えた。** **実測でパネルごと落ちることを確かめた** —
+`#N` を鍵にして同じ番号を 2 行渡すと `Svelte error: each_key_duplicate` が立ち、`.detail` が DOM から
+消えた（`?dod=dup` のつまみ）。**同じ形の既存の AC 側は TASK-190 として起票した**（触っていないコードを
+直さず起票する）。
+
+**自分で見つけたものが 2 件ある。** ①`COMMENT` ブロックが空行で始まると header を本文へ入れていた
+（CLI は entry 全体を trim してから分けるので `author:` を読む。実測）、②`created` を `author` と同じく
+畳んでいたが、CLI が畳むのは `author` だけで `created` は trim するだけである。
+
+**変異は 2R ぶんで 17 本流した**（1R の 10 本 ＋ この回の 7 本）。**この回も 1 本が最初は生き残り**
+（`created` の畳み込み）、試験を足した。
 <!-- SECTION:NOTES:END -->
