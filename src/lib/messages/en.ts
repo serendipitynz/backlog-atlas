@@ -324,7 +324,7 @@ export const EN: Catalog = {
       nonAbsoluteRoot: (path: string) => `${path} is not an absolute path. Enter an absolute path.`,
       duplicateRoot: (slug: string) =>
         `This project root or Backlog root is already registered under slug ${slug}. ` +
-        "One project has one entry, so give a different root or edit that entry.",
+        "One project has one entry, so enter a different root or edit that entry.",
       invalidStatusAlias: (key: string, value: string, canonical: string) =>
         `The alias ${key} → ${value} is invalid. It must map to one of ${canonical}.`,
     },
