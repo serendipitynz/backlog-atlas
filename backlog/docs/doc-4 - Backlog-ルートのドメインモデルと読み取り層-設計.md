@@ -3,7 +3,7 @@ id: doc-4
 title: Backlog ルートのドメインモデルと読み取り層 設計
 type: specification
 created_date: '2026-07-21 09:36'
-updated_date: '2026-08-14 11:53'
+updated_date: '2026-08-16 21:03'
 ---
 # Backlog ルートのドメインモデルと読み取り層 設計
 
@@ -60,6 +60,9 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | description | `SECTION:DESCRIPTION` 本文 | |
 | acceptanceCriteria | `AC:BEGIN`〜`AC:END` の `#N` 項目 | 各項目に checked 状態（`[x]`/`[ ]`）を持つ。 |
 | implementationPlan / implementationNotes | `SECTION:PLAN` / `SECTION:NOTES` 本文 | 任意。 |
+| finalSummary | `SECTION:FINAL_SUMMARY` 本文 | 任意。CLI の `task edit --final-summary` / `--append-final-summary` が書く。 |
+| definitionOfDone | `DOD:BEGIN`〜`DOD:END` の `#N` 項目 | 任意。acceptanceCriteria と同形（番号・本文・checked 状態）で、CLI も同じコードで書く。 |
+| comments | `COMMENTS:BEGIN`〜`COMMENTS:END` の各項目 | 任意。1 件は author（任意）・created（任意）・本文を持つ。位置番号は持たない — CLI は `index:` を書かず並び順で数えるため。 |
 | health | 解析結果の健全性（正常 / 縮退） | 5 章。縮退時は不足フィールドを保持。 |
 
 ### 3.2 設定・マイルストーン・文書
@@ -104,14 +107,16 @@ TASK-5 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 ## 4. 管理ファイルからの写像
 
 - **frontmatter**: ファイル先頭 `---` … `---` を YAML として解析する。既知フィールドをドメイン項目へ写し、未知フィールドは保持または無視する（破棄しないが表示もしない）。
-- **SECTION 区切り**: `<!-- SECTION:NAME:BEGIN -->` … `<!-- SECTION:NAME:END -->` と `<!-- AC:BEGIN -->` … `<!-- AC:END -->` を対で切り出す。既知の NAME（DESCRIPTION・NOTES・PLAN 等）と AC を写し、未知の NAME は本文断片として保持し不整合の契機とする（5 章、想定外スキーマ）。
-- **AC 項目**: AC ブロック内の `- [ ] #N …` / `- [x] #N …` を、番号・本文・checked 状態の並びへ写す。
+- **本文の区切り**: 本文の区切りは `SECTION:` を持つ族と持たない族の 2 系統からなり、**両方を対で切り出す**。`SECTION:` を持つ族の既知の NAME は **DESCRIPTION・PLAN・NOTES・FINAL_SUMMARY の 4 つ**で、未知の NAME は本文断片として保持し不整合の契機とする（5 章、想定外スキーマ）。`SECTION:` を持たない族は **AC・DOD・COMMENTS・COMMENT の 4 つ**で、こちらに未知の族は無い。
+  **この 8 つで全部である。** CLI は SECTION の名前を 4 項目の表から組み立て、本文の区切りを `<!-- (SECTION:[A-Z][A-Z0-9_]*|COMMENTS|COMMENT|AC|DOD):(BEGIN|END) -->` の 1 本で走査する（実測）。**マイルストーン・文書・意思決定の本文に区切りは 1 つも無く、`##` 見出しだけである**（実測）。**数え直すときは、CLI が書いた出力を見るのではなくこの走査の定義を見る** — 出力に現れるのは、そのとき値を持っていた族だけである。
+- **AC 項目・DOD 項目**: AC ブロックと DOD ブロック内の `- [ ] #N …` / `- [x] #N …` を、番号・本文・checked 状態の並びへ写す。**2 つは同形で、CLI も同じコードで書く**（実測）。
+- **COMMENTS 項目**: COMMENTS ブロックを 1 件ずつへ写す。1 件は author（任意）・created（任意）・本文を持つ。**書式は 2 つあり、どちらを使うかはブロック単位で決まる** — ブロック内に `COMMENT:BEGIN` が 1 つでもあれば全体をその対で切り、無ければ `---` 行で区切る（実測。CLI の解き方がそうなっている）。**`COMMENT` 対のほうは CLI が読むだけで書かない**が、ディスク上に存在しうるので読み取り層は両方を解く。項目ごとに書式を決め分けない — 書き手が作らない混在を読むことになる。
 - **References / Pull Request URL**: references と本文 References から URL を集める。Pull Request URL の抽出・表示は TASK-12、Git 履歴照合は TASK-10 の入力とし、本層は URL を保持するにとどめる。
 - **版の扱い（書き込み CLI の版と生成元の版の分離）**: 「版」は 2 つを区別する。**書き込み CLI の版**は Atlas が更新で呼ぶ backlog CLI 実行ファイルの版で、実行時に `backlog --version` で取得できる（doc-5 の呼び出し先）。**生成元の版**はいま読んでいる管理ファイルを書いた backlog の版で、frontmatter にも config.yml にも記録が無く、ファイルからは不明である。読み取りは生成元の版に依存できないため、版番号での分岐をしない。
 - **読み取りはスキーマ能力検査で行う**: 版番号ではなく、frontmatter フィールド・SECTION・AC ブロック等の有無と構造から当該ファイルのスキーマ能力を判定して読み取る（**スキーマ能力検査**）。想定するフィールド/SECTION の集合を本層のスキーマ定義として明記し、その有無を検査対象にする。ただし「無ければ不整合」を全既知項目へ一律に適用しない。項目を次の 3 分類に分け、不在の意味を区別する（5 章）。
   - **必須フィールド**（id・title・status）: 欠くと当該タスクをドメインモデルへ写せず、解析不能として不整合表示へ落とす。
-  - **任意フィールド**（implementationPlan／implementationNotes・milestone・priority・assignee・dependencies・references・acceptanceCriteria・type など、3.1 で任意・0 個以上とした項目）: 不在は正常であり、不整合の契機にしない。存在すれば写す。frontmatter `type` は decision-20 で既知フィールドになった項目で、それ以前は上の「未知フィールドは保持または無視」に落ちていた。
-  - **存在時構造検査項目**（SECTION 対（`BEGIN`／`END`）の開閉、AC ブロック内の `#N` 番号列、frontmatter の YAML 妥当性など）: 存在する場合にのみ構造の妥当性を検査し、不在は正常として扱う。構造が壊れているとき（対が閉じない・番号列が読めない・YAML が読めない等）だけ不整合表示へ落とす。
+  - **任意フィールド**（implementationPlan／implementationNotes・finalSummary・definitionOfDone・comments・milestone・priority・assignee・dependencies・references・acceptanceCriteria・type など、3.1 で任意・0 個以上とした項目）: 不在は正常であり、不整合の契機にしない。存在すれば写す。**空の COMMENTS ブロックも正常である** — 区切りだけがあって項目が 0 件なのは、CLI が書きうる形である。frontmatter `type` は decision-20 で既知フィールドになった項目で、それ以前は上の「未知フィールドは保持または無視」に落ちていた。
+  - **存在時構造検査項目**（**8 族すべての対（`BEGIN`／`END`）の開閉**、AC ブロックと DOD ブロック内の `#N` 番号列、**COMMENTS 項目の区切りの対応**、frontmatter の YAML 妥当性など）: 存在する場合にのみ構造の妥当性を検査し、不在は正常として扱う。構造が壊れているとき（対が閉じない・番号列が読めない・区切りが閉じない・YAML が読めない等）だけ不整合表示へ落とす。**COMMENT 対がどの COMMENTS ブロックにも属さずに現れるのもここに入る。** **author・created そのものは検査の対象ではない** — どちらも CLI が値を持つときだけ書く行なので、不在は正常であり、中立表示で「記録が無い」と述べる（doc-11 §6）。
   この分類により、生成元の版が不明・混在でも判別できた範囲で読め、任意項目の不在で正常なタスク（例: PLAN／NOTES を持たないタスク）を不整合表示へ落とさない。想定するフィールド/SECTION 集合は、各項目がこの 3 分類のどれかを併せて明記する。
 - **サポート範囲**: 動作確認した版は書き込み CLI の版に対して固定する（現行の値は decision-7 の最低バージョン要件が持つ。decision-2）。これは更新（doc-5 の操作写像・オプション名の検査）の基準であり、生成元の版を縛るものではない。読み取り側のサポート範囲は、上記スキーマ能力検査が扱えるフィールド/SECTION 集合として定める。
 
