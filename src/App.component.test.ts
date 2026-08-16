@@ -130,6 +130,30 @@ afterEach(cleanup);
 
 // -------------------------------------------------------------------------------------------------
 
+function openSettingsPanel(host: HTMLElement): void {
+  click(byLabel(host, "button.header-entry", "メニュー"));
+  click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+}
+
+/**
+ * Open the settings modal, move 表示言語 to English and save — the app's only route to a language
+ * change, which is why the assertions about one all go through here.
+ */
+async function switchToEnglish(host: HTMLElement): Promise<void> {
+  openSettingsPanel(host);
+  await settled();
+  const languageSelect = [...host.querySelectorAll("section")]
+    .find((section) => section.textContent?.includes("表示言語"))
+    ?.querySelector("select");
+  if (!(languageSelect instanceof HTMLSelectElement)) {
+    throw new Error("表示言語 select not found");
+  }
+  languageSelect.value = "en";
+  languageSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  click(byText(host, "footer button", "保存する"));
+  await settled();
+}
+
 describe("起動時の設定・workspace・監視の順序", () => {
   it("購読と設定読取を workspace 読取より先に済ませる", async () => {
     await startWith([loaded("atlas", [TASK])]);
@@ -310,11 +334,6 @@ describe("起動時の設定・workspace・監視の順序", () => {
     expect(host.textContent).not.toContain("/古い/backlog");
   });
 
-  function openSettingsPanel(host: HTMLElement): void {
-    click(byLabel(host, "button.header-entry", "メニュー"));
-    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
-  }
-
   it("継続検出の適用が終わるまで保存中のままにする", async () => {
     // `reconcileWatches` は登録ルート数ぶんの境界呼び出しで、**設定を適用する**側なので probe とは違い
     // ガードの内側に置く。外へ出すと、probe を切り離して塞いだ窓がそのまま開き直す。
@@ -397,18 +416,7 @@ describe("起動時の設定・workspace・監視の順序", () => {
     const before = only(host, '[aria-label="タスク詳細"]');
     expect(byText(host, "button.primary", "編集")).not.toBeNull();
 
-    openSettingsPanel(host);
-    await settled();
-    const languageSelect = [...host.querySelectorAll("section")]
-      .find((section) => section.textContent?.includes("表示言語"))
-      ?.querySelector("select");
-    if (!(languageSelect instanceof HTMLSelectElement)) {
-      throw new Error("表示言語 select not found");
-    }
-    languageSelect.value = "en";
-    languageSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    click(byText(host, "footer button", "保存する"));
-    await settled();
+    await switchToEnglish(host);
 
     // 同じ要素であること — 再マウントなら別のノードになる。
     const after = only(host, '[aria-label="Task detail"]');
@@ -1419,6 +1427,43 @@ describe("プロジェクト詳細が自分で上げる被せ層", () => {
     // あちらは層を上げる前に ☰ へフォーカスを移す — 押されたメニュー行が層と一緒に消えるためで、
     // この層にその事情は無い。同じことをすると、どの 作成モーダル も ヘッダ へ閉じることになる。
     expect(document.activeElement).toBe(byText(host, "button.create-entry", "新規文書"));
+  });
+  it("表示言語 を変えると、出したままの 発行結果 の帯も英語へ書き直る", async () => {
+    // **発行結果 outlives the press that raised it**, and this screen keeps it up while the 設定モーダル
+    // is opened over it — so it is the one sentence on screen that a 表示言語 change reaches only if it
+    // is worded where it is *read*. Storing the string at the moment the issue returns type-checks and
+    // passes every other test here, and leaves exactly this line in the language the screen has left.
+    //
+    // **The 上部帯 ⑤ 通知 cannot stand in for it**: `saveSettings` clears that band on a successful
+    // write (doc-11 §4), and a successful write is the only route to a language change — so a stale
+    // notice is not reachable there. This 区画's own line is not cleared, which is what makes it the
+    // observable case.
+    answers.update = () =>
+      Promise.resolve({
+        state: "ran",
+        outcome: { state: "succeeded" },
+        project: snapshot("atlas", [TASK]),
+      } as UpdateResult);
+    const host = await openDocumentCreate();
+    await settled();
+    fill(
+      host.querySelectorAll<HTMLInputElement>('[role="dialog"] input[type="text"]')[0],
+      "新しい文書",
+    );
+    click(byText(host, '[role="dialog"] button', "文書を作成"));
+    await settled();
+
+    // The create layer stays up over the screen; close it so the ☰ is reachable — 被せ層 は 1 枚だけ.
+    click(closeOfCreate(host));
+    await settled();
+
+    const banner = () => host.querySelector("p.ok")?.textContent ?? "";
+    expect(banner()).toContain("文書を作成しました");
+
+    await switchToEnglish(host);
+
+    expect(banner()).toContain("The document is created");
+    expect(banner()).not.toContain("文書を作成しました");
   });
 });
 

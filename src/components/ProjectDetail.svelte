@@ -250,7 +250,7 @@
    * failure or a 更新前競合, and 照合不能's own colour for the one that is neither — so it cannot be
    * read as "a conflict happened".
    */
-  let message = $state<{ tone: "ok" | "warn" | "undetectable"; text: string } | null>(null);
+  let message = $state<{ tone: "ok" | "warn" | "undetectable"; text: () => string } | null>(null);
 
   function tone(outcome: IssueOutcome): "ok" | "warn" | "undetectable" {
     if (outcome.state === "applied") {
@@ -270,7 +270,7 @@
   let edit = $state<EntryEdit>(untrack(() => editOf(entry)));
   let unregisterInput = $state("");
   let entryReport = $state<RefusalReport | null>(null);
-  let overviewNotice = $state<string | null>(null);
+  let overviewNotice = $state<(() => string) | null>(null);
 
   let editIssues = $derived(editProblems(edit));
   let updateRequest = $derived(toUpdateRequest(entry, edit));
@@ -387,10 +387,10 @@
         // either. Both are selections rather than typed text, so dropping them costs no input.
         taskInput.status = "";
         taskInput.milestone = "";
-        overviewNotice = t().projectDetail.moved(result.slug);
+        overviewNotice = () => t().projectDetail.moved(result.slug);
         return;
       }
-      overviewNotice = t().projectDetail.entryUpdated(result.slug);
+      overviewNotice = () => t().projectDetail.entryUpdated(result.slug);
     } finally {
       ledgerSaving = false;
     }
@@ -462,7 +462,7 @@
       // rather than `load`: this entry's address is still true until the new answer lands, and
       // blanking it made the field flash through 未取得 (2026-08-08 の目視).
       await remoteReader.refresh(entry.slug);
-      overviewNotice = t().projectDetail.remoteRedetected(result.slug);
+      overviewNotice = () => t().projectDetail.remoteRedetected(result.slug);
     } finally {
       redetecting = false;
       ledgerSaving = false;
@@ -500,7 +500,10 @@
    * ledger write is in flight for the same reason the controls are withheld: that write may be a
    * move, and this action names files by the ids of the root as it was read.
    */
-  async function issue(action: UpdateOperation[], done: string): Promise<IssueOutcome | null> {
+  async function issue(
+    action: UpdateOperation[],
+    done: () => string,
+  ): Promise<IssueOutcome | null> {
     if (project === null || ledgerSaving) {
       return null;
     }
@@ -508,7 +511,7 @@
     message = null;
     try {
       const outcome = await onissue(entry.slug, action);
-      message = { tone: tone(outcome), text: outcomeMessage(outcome, done) };
+      message = { tone: tone(outcome), text: () => outcomeMessage(outcome, done()) };
       return outcome;
     } finally {
       busy = false;
@@ -527,7 +530,7 @@
     if (taskIssue.state !== "ready" || taskPlan.state !== "ready") {
       return;
     }
-    const outcome = await issue(taskPlan.action, t().projectDetail.taskCreated);
+    const outcome = await issue(taskPlan.action, () => t().projectDetail.taskCreated);
     // Cleared only on success: a failed create keeps its input so it can be corrected and retried.
     if (outcome?.state === "applied") {
       taskInput = { ...EMPTY_TASK_CREATE };
@@ -584,7 +587,7 @@
     if (docCreateIssue.state !== "ready" || docCreatePlan.state !== "ready") {
       return;
     }
-    const outcome = await issue(docCreatePlan.action, t().projectDetail.documentCreated);
+    const outcome = await issue(docCreatePlan.action, () => t().projectDetail.documentCreated);
     if (outcome?.state === "applied") {
       docInput = { ...EMPTY_DOC_CREATE };
     }
@@ -600,7 +603,7 @@
       return;
     }
     const submittedDoc = plan.submitted;
-    const outcome = await issue(plan.action, t().projectDetail.documentUpdated);
+    const outcome = await issue(plan.action, () => t().projectDetail.documentUpdated);
     if (outcome?.state !== "applied") {
       return;
     }
@@ -616,10 +619,7 @@
     // pane lands on 閲覧 of what was just written (doc-10 §5).
     await discardEditor();
     if (diverged.length > 0) {
-      message = {
-        tone: "warn",
-        text: t().projectDetail.diverged(diverged),
-      };
+      message = { tone: "warn", text: () => t().projectDetail.diverged(diverged) };
     }
   }
 
@@ -719,7 +719,7 @@
     if (milestoneIssue.state !== "ready" || milestonePlan.state !== "ready") {
       return;
     }
-    const outcome = await issue(milestonePlan.action, t().projectDetail.milestoneCreated);
+    const outcome = await issue(milestonePlan.action, () => t().projectDetail.milestoneCreated);
     if (outcome?.state === "applied") {
       milestoneInput = { ...EMPTY_MILESTONE_ADD };
     }
@@ -909,7 +909,7 @@
     };
   }
 
-  async function runMilestoneOp(milestone: Milestone, done: string): Promise<void> {
+  async function runMilestoneOp(milestone: Milestone, done: () => string): Promise<void> {
     const plan = milestoneOpPlan(milestone);
     if (plan === null || plan.state !== "ready") {
       return;
@@ -948,7 +948,7 @@
     if (availability(plan).state !== "ready") {
       return;
     }
-    const outcome = await issue(plan.action, t().projectDetail.milestoneDescriptionUpdated(milestone.id));
+    const outcome = await issue(plan.action, () => t().projectDetail.milestoneDescriptionUpdated(milestone.id));
     if (outcome?.state === "applied") {
       await discardMilestoneEdit();
     }
@@ -1554,7 +1554,7 @@
       class:split={section === "documents" || section === "milestones" || section === "decisions"}
     >
       {#if message !== null}
-        <p class={message.tone}>{message.text}</p>
+        <p class={message.tone}>{message.text()}</p>
       {/if}
 
       {#if section === "overview"}
@@ -1573,7 +1573,7 @@
           {/if}
 
           {#if overviewNotice}
-            <p class="ok">{overviewNotice}</p>
+            <p class="ok">{overviewNotice()}</p>
           {/if}
 
           <div class="field">
@@ -2514,8 +2514,7 @@
                             disabled={opIssue?.state !== "ready"}
                             title={opIssue === null ? "" : why(opIssue)}
                             onclick={() =>
-                              runMilestoneOp(
-                                milestone,
+                              runMilestoneOp(milestone, () =>
                                 open === "rename"
                                   ? t().projectDetail.renamed
                                   : open === "remove"

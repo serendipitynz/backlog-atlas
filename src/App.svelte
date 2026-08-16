@@ -306,8 +306,15 @@
   let loading = $state(true);
   /** A failure that left the screen with nothing to draw, as opposed to one bad row. */
   let fatal = $state<string | null>(null);
-  /** A failure of an action the user took; the grid stays usable. */
-  let notice = $state<string | null>(null);
+  /**
+   * A failure of an action the user took; the grid stays usable.
+   *
+   * **A thunk, not the sentence.** A 通知 outlives the press that raised it, so a stored string would
+   * keep the 表示言語 that was in force when it was raised while the screen around it redrew
+   * (decision-35). The closure holds the values the sentence needs and words it where it is read, so
+   * the band follows the language like everything else. `null` is 通知なし.
+   */
+  let notice = $state<(() => string) | null>(null);
   /**
    * The open task, held as (slug, file path) rather than as the `TaskView` itself: a reload
    * replaces every view object, and a captured one would keep the detail panel showing the
@@ -598,7 +605,8 @@
       return;
     }
     void windowTitleSet(titleLine).catch((error) => {
-      notice = t().shell.titleCountFailed(unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.titleCountFailed(detail);
     });
   });
   /**
@@ -666,7 +674,7 @@
       ledgerReadOnly,
       unwatchedReason:
         screen === "swimlane" && unwatchedRows.length > 0 ? unwatchedReason : null,
-      notice,
+      notice: notice?.() ?? null,
     }),
   );
   /**
@@ -917,7 +925,8 @@
       });
     } catch (error) {
       reloadFeed = "unavailable";
-      notice = t().shell.feedSubscribeFailed(unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.feedSubscribeFailed(detail);
     }
     // Probed here and after every settings save, not per edit: it decides whether edit controls are
     // offered at all (doc-5 §5), and a probe per keystroke-worth of UI would spawn a process for a
@@ -945,7 +954,8 @@
     try {
       applySettings(await settingsRead());
     } catch (error) {
-      notice = t().shell.settingsReadFailed(unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.settingsReadFailed(detail);
     }
     try {
       settingsPath = await settingsLocation();
@@ -965,7 +975,8 @@
     try {
       editorReadiness = await editorProbe();
     } catch (error) {
-      notice = t().shell.editorProbeFailed(unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.editorProbeFailed(detail);
     }
     await load();
   });
@@ -1183,7 +1194,8 @@
       if (run !== saveRefresh) {
         return;
       }
-      notice = t().shell.editorProbeFailed(unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.editorProbeFailed(detail);
     }
     // 外部コマンド解決の順序 starts at the 外部コマンド指定 (decision-29), so this save changes what the
     // 解決結果の表示 reports — for the same reason the editor is re-probed just above.
@@ -1212,7 +1224,8 @@
       if (run !== saveRefresh) {
         return;
       }
-      notice = t().shell.cliProbeFailed(unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.cliProbeFailed(detail);
     }
   }
 
@@ -1239,7 +1252,8 @@
       if (run !== programsRefresh) {
         return;
       }
-      notice = t().shell.externalProbeFailed(unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.externalProbeFailed(detail);
     }
   }
 
@@ -1387,7 +1401,8 @@
       unwatched = unwatched.filter((candidate) => candidate !== slug);
       return true;
     } catch (error) {
-      notice = t().shell.watchStartFailed(slug, unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.watchStartFailed(slug, detail);
       if (!unwatched.includes(slug)) {
         unwatched = [...unwatched, slug];
       }
@@ -1450,7 +1465,7 @@
     // (`ledgerBusy`) rather than racing it. Reported rather than dropped: the row visibly did not
     // move, and the neighbour it would have passed may be different by the time the other finishes.
     if (ledgerBusy) {
-      notice = t().shell.ledgerBusy;
+      notice = () => t().shell.ledgerBusy;
       return;
     }
     ledgerBusy = true;
@@ -1458,7 +1473,8 @@
       applyLedger(await ledgerReorder(slug, order.indexOf(neighbour)));
       notice = null;
     } catch (error) {
-      notice = t().shell.reorderFailed(unreadableDetail(asCommandError(error)));
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.reorderFailed(detail);
     } finally {
       ledgerBusy = false;
     }
@@ -1874,7 +1890,7 @@
           selectedRef = null;
           detailDirty = false;
         }
-        notice = t().shell.transitionClosedDetail;
+        notice = () => t().shell.transitionClosedDetail;
       }
       // The operated task as of the re-read, resolved here because the shell is what holds it. The
       // panel needs it to make doc-9 §5's 事後通知 comparison against the right task even when the
@@ -1972,18 +1988,16 @@
       // the moment it is read — the one thing about this create the screen does not state, since an
       // unchanged cell is otherwise indistinguishable from a create that silently did nothing. The
       // filter is reversible from the フィルタ帯, so the card is one 解除 away rather than lost.
-      const outOfFilter =
-        created !== null && !matchesFilter(created, filter, inconsistentView)
-          ? t().shell.outOfFilter
-          : null;
+      const outOfFilter = created !== null && !matchesFilter(created, filter, inconsistentView);
       // 発行が通った事実そのものは ⑤ 通知 に載せない (doc-11 §4): the card lands in the cell the ＋新規
       // that made it sits in, so a 帯 would repeat what the screen already shows. What stands is the
       // 帰結 above, and every outcome that is not 通った.
       notice =
-        outcome.state === "applied" && outOfFilter === null
+        outcome.state === "applied" && !outOfFilter
           ? null
-          : outcomeMessage(outcome, t().shell.taskCreated(at.slug, column)) +
-            (outOfFilter ?? "");
+          : () =>
+              outcomeMessage(outcome, t().shell.taskCreated(at.slug, column)) +
+              (outOfFilter ? t().shell.outOfFilter : "");
       if (outcome.state === "applied") {
         laneCreateTitle = "";
       }
@@ -2089,16 +2103,13 @@
       const outOfFilter =
         outcome.state === "applied" &&
         moved !== undefined &&
-        !matchesFilter(moved, filter, inconsistentView)
-          ? t().shell.outOfFilter
-          : null;
+        !matchesFilter(moved, filter, inconsistentView);
       notice =
-        outcome.state === "applied" && outOfFilter === null
+        outcome.state === "applied" && !outOfFilter
           ? null
-          : outcomeMessage(
-              outcome,
-              t().shell.statusChanged(source.taskId, status),
-            ) + (outOfFilter ?? "");
+          : () =>
+              outcomeMessage(outcome, t().shell.statusChanged(source.taskId, status)) +
+              (outOfFilter ? t().shell.outOfFilter : "");
     } finally {
       dropIssuingPath = null;
     }
@@ -2160,7 +2171,8 @@
     try {
       await bodyLinkOpen(url);
     } catch (error) {
-      notice = commandErrorDetail(asCommandError(error));
+      const detail = commandErrorDetail(asCommandError(error));
+      notice = () => detail;
     }
   }
 
