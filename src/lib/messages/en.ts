@@ -153,8 +153,11 @@ export const EN: Catalog = {
     columnFoldHint:
       "Column fold: folds this column in every row at once, leaving the column name (each row keeps its count).",
     columnUnfoldHint: "Unfolds the column and brings its cards back in every row.",
+    // The noun is already in `name` — `columnHeadName` supplies it and `unmappedHeadName` supplies a
+    // different one, so spelling it here again gave "Fold the To Do column column" and called the
+    // 未分類区画 a column. Japanese does not hit this: there the operation has its own name (列折畳み).
     columnFoldLabel: (name: string, folded: boolean) =>
-      folded ? `Unfold the ${name} column` : `Fold the ${name} column`,
+      folded ? `Unfold the ${name}` : `Fold the ${name}`,
     rowFoldLabel: (slug: string, folded: boolean) =>
       folded ? `Unfold the ${slug} row` : `Fold the ${slug} row`,
     columnHeadName: (label: string) => `${label} column`,
