@@ -1,10 +1,10 @@
 ---
 id: TASK-184
 title: 抽出漏れの走査を足し、英語表示のレイアウトを確かめる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-15 22:19'
-updated_date: '2026-08-16 08:24'
+updated_date: '2026-08-16 12:06'
 labels:
   - i18n
   - 'kind:feature'
