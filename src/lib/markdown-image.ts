@@ -87,17 +87,42 @@ function placeholders(root: ParentNode): HTMLElement[] {
 }
 
 /**
- * Revoke every object URL this root still holds.
+ * Revoke the object URLs this root holds that nothing is displaying any more.
  *
  * Called before each pass and on unmount. Without it the blobs stay alive for the life of the window:
  * a panel that redraws on every keystroke would otherwise accumulate one copy of every screenshot it
  * has ever shown.
+ *
+ * **A URL whose `<img>` is still in the document is kept**, and that is not an optimisation — it is
+ * what stops this from breaking the picture it is tidying up after. `Body.svelte`'s effect re-runs
+ * whenever `bodyView` recomputes, and `bodyView` returns a fresh object every time, so the effect
+ * fires on an unrelated snapshot change even when the 本文 is byte-identical. `{@html}` then rebuilds
+ * nothing, the drawn `<img>` stays put, and a blanket revoke would pull the source out from under an
+ * image that is on screen — invisibly for one already decoded, but as an `error` (and so a permanent
+ * fall back to the 状態の印) for one still loading. Keying on what is displayed rather than on what
+ * triggered the pass closes that whichever dependency moved.
  */
 export function releaseImages(root: ParentNode): void {
+  const displayed = new Set(
+    [...root.querySelectorAll<HTMLImageElement>(`img.${IMAGE_DRAWN_CLASS}[${REFERENCE_ATTRIBUTE}]`)]
+      // `isConnected` is what makes unmounting still release everything: on unmount the block is out
+      // of the document, so every image under it is displaying nothing.
+      .filter((image) => image.isConnected)
+      .map((image) => image.getAttribute("src") ?? ""),
+  );
+  const kept: string[] = [];
   for (const url of held.get(root) ?? []) {
+    if (displayed.has(url)) {
+      kept.push(url);
+      continue;
+    }
     URL.revokeObjectURL(url);
   }
-  held.delete(root);
+  if (kept.length === 0) {
+    held.delete(root);
+  } else {
+    held.set(root, kept);
+  }
 }
 
 /**

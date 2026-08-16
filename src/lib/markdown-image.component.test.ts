@@ -173,17 +173,49 @@ describe("添付画像 の描画 (doc-8 §9.2)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("revokes the URLs it opened, so a redrawn panel does not accumulate them", async () => {
+  it("keeps the URL of an image that is still displayed", async () => {
     const { revoked } = stubObjectUrls();
     const block = root("![](/assets/a.png)");
 
     await drawImages(block, reads());
     expect(revoked).toEqual([]);
 
+    // `Body.svelte`'s effect re-runs on a snapshot change even when the 本文 is byte-identical, and
+    // `{@html}` then rebuilds nothing — so a blanket revoke here would pull the source out from under
+    // an `<img>` that is on screen. Invisible for one already decoded; a permanent fall back to the
+    // 状態の印 for one still loading.
+    releaseImages(block);
+    expect(revoked).toEqual([]);
+    expect(block.querySelector(`img.${IMAGE_DRAWN_CLASS}`)).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("revokes it once nothing is displaying it, and only once", async () => {
+    const { revoked } = stubObjectUrls();
+    const block = root("![](/assets/a.png)");
+    await drawImages(block, reads());
+
+    // Unmounting is the ordinary case: the block leaves the document, so every image under it is
+    // displaying nothing.
+    block.remove();
     releaseImages(block);
     expect(revoked).toEqual(["blob:test/1"]);
     // Releasing twice is not two revocations: the second call has nothing left to hold.
     releaseImages(block);
+    expect(revoked).toEqual(["blob:test/1"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("revokes a URL whose image was replaced by its 状態の印", async () => {
+    const { revoked } = stubObjectUrls();
+    const block = root("![](/assets/corrupt.png)");
+    await drawImages(block, reads());
+
+    block.querySelector(`img.${IMAGE_DRAWN_CLASS}`)?.dispatchEvent(new Event("error"));
+    releaseImages(block);
+
+    // The image is gone from the document, so keeping its URL alive would leak exactly what the
+    // "still displayed" rule is not meant to cover.
     expect(revoked).toEqual(["blob:test/1"]);
     vi.unstubAllGlobals();
   });

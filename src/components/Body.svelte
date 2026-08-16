@@ -65,10 +65,15 @@
     void drawFigures(root, scheme);
   });
 
-  // 添付画像 (doc-8 §9.2, doc-11 §14.7). Re-runs when the 本文 changes, which is what puts the 状態の印
-  // back for `drawImages` to find; the 明暗 is not a dependency, because a picture carries no colours of
-  // Atlas's. The blobs a previous pass opened are revoked here rather than left to the window: this
-  // component redraws on every keystroke of an edit beside it.
+  // 添付画像 (doc-8 §9.2, doc-11 §14.7). The 明暗 is not a dependency — a picture carries no colours of
+  // Atlas's — and the blobs a previous pass opened are released here rather than left to the window,
+  // since this component redraws on every keystroke of an edit beside it.
+  //
+  // **This re-runs more often than the 本文 changes**, and nothing here assumes otherwise: `view` is a
+  // fresh object on every recompute, so a snapshot replacement fires it even when the html is
+  // byte-identical and `{@html}` rebuilds nothing. That is why `releaseImages` decides by what is
+  // displayed rather than by what triggered it — a pass that finds its 状態の印 already replaced by a
+  // drawn image must leave that image alone.
   $effect(() => {
     const root = block;
     const html = view.kind === "formatted" ? view.html : null;
