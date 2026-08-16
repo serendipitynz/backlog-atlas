@@ -29,6 +29,7 @@
   import { PRIORITIES, type DiscardAnswers } from "../lib/edit";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
+  import { messages } from "../lib/messages-context";
   import {
     CANONICAL_STATUS_NAMES,
     aliasKeyEffect,
@@ -194,6 +195,9 @@
     menu,
   }: Props = $props();
 
+  /** The 文言表 in force, read through the accessor so a 表示言語 change redraws this screen. */
+  const t = messages();
+
   let section = $state<DetailSection>("overview");
 
   let project = $derived(load?.state === "loaded" ? load.project : null);
@@ -286,7 +290,7 @@
    * `aria-label` has to name what pressing it gets you — and that is the layer, whose `role="dialog"`
    * is then announced by the same name. Two strings here would let the promise and the thing drift.
    */
-  const TASK_NOTE_LABEL = "作成後に追加できる項目";
+  const taskNoteLabel = (): string => t().projectDetail.taskNoteLabel;
 
   let saveControl = $derived(
     overviewSave({
@@ -325,7 +329,7 @@
 
   async function pickRoot(field: "projectRoot" | "backlogRoot"): Promise<void> {
     const picked = await onpickDirectory(
-      field === "projectRoot" ? "プロジェクトルートを選択" : "Backlog ルートを選択",
+      field === "projectRoot" ? t().field.pickProjectRootTitle : t().field.pickBacklogRootTitle,
     );
     if (picked === null) {
       return;
@@ -383,12 +387,10 @@
         // either. Both are selections rather than typed text, so dropping them costs no input.
         taskInput.status = "";
         taskInput.milestone = "";
-        overviewNotice =
-          `${result.slug} を移動しました。開いていた文書・マイルストーンの編集セッションは、` +
-          "旧ルートの読み取りに基づくため閉じました。";
+        overviewNotice = t().projectDetail.moved(result.slug);
         return;
       }
-      overviewNotice = `${result.slug} の登録内容を更新しました。`;
+      overviewNotice = t().projectDetail.entryUpdated(result.slug);
     } finally {
       ledgerSaving = false;
     }
@@ -460,7 +462,7 @@
       // rather than `load`: this entry's address is still true until the new answer lands, and
       // blanking it made the field flash through 未取得 (2026-08-08 の目視).
       await remoteReader.refresh(entry.slug);
-      overviewNotice = `${result.slug} の Git remote を再検出しました。`;
+      overviewNotice = t().projectDetail.remoteRedetected(result.slug);
     } finally {
       redetecting = false;
       ledgerSaving = false;
@@ -525,7 +527,7 @@
     if (taskIssue.state !== "ready" || taskPlan.state !== "ready") {
       return;
     }
-    const outcome = await issue(taskPlan.action, "タスクを作成しました。");
+    const outcome = await issue(taskPlan.action, t().projectDetail.taskCreated);
     // Cleared only on success: a failed create keeps its input so it can be corrected and retried.
     if (outcome?.state === "applied") {
       taskInput = { ...EMPTY_TASK_CREATE };
@@ -563,7 +565,7 @@
   let docUpdatePlan = $derived(docSession === null ? null : buildDocUpdate(docSession));
   let docUpdateIssue = $derived(
     docUpdatePlan === null
-      ? ({ state: "blocked", reason: "編集する文書を選んでください" } as const)
+      ? ({ state: "blocked", reason: t().projectDetail.pickDocumentFirst } as const)
       : availability(docUpdatePlan),
   );
   let docDirty = $derived(docSession !== null && isDocDirty(docSession));
@@ -582,7 +584,7 @@
     if (docCreateIssue.state !== "ready" || docCreatePlan.state !== "ready") {
       return;
     }
-    const outcome = await issue(docCreatePlan.action, "文書を作成しました。");
+    const outcome = await issue(docCreatePlan.action, t().projectDetail.documentCreated);
     if (outcome?.state === "applied") {
       docInput = { ...EMPTY_DOC_CREATE };
     }
@@ -598,7 +600,7 @@
       return;
     }
     const submittedDoc = plan.submitted;
-    const outcome = await issue(plan.action, "文書を更新しました。");
+    const outcome = await issue(plan.action, t().projectDetail.documentUpdated);
     if (outcome?.state !== "applied") {
       return;
     }
@@ -616,10 +618,7 @@
     if (diverged.length > 0) {
       message = {
         tone: "warn",
-        text:
-          `更新は適用されましたが、再読込した内容が送信した内容と一致しません（${diverged.join("・")}）。` +
-          "照合の完了後〜書き込み完了の間に入った外部更新の可能性があります。この間に入った更新が" +
-          "上書きで失われた場合、その内容は表示も復元もできません。",
+        text: t().projectDetail.diverged(diverged),
       };
     }
   }
@@ -720,7 +719,7 @@
     if (milestoneIssue.state !== "ready" || milestonePlan.state !== "ready") {
       return;
     }
-    const outcome = await issue(milestonePlan.action, "マイルストーンを作成しました。");
+    const outcome = await issue(milestonePlan.action, t().projectDetail.milestoneCreated);
     if (outcome?.state === "applied") {
       milestoneInput = { ...EMPTY_MILESTONE_ADD };
     }
@@ -949,7 +948,7 @@
     if (availability(plan).state !== "ready") {
       return;
     }
-    const outcome = await issue(plan.action, `${milestone.id} の説明を更新しました`);
+    const outcome = await issue(plan.action, t().projectDetail.milestoneDescriptionUpdated(milestone.id));
     if (outcome?.state === "applied") {
       await discardMilestoneEdit();
     }
@@ -986,7 +985,7 @@
    * `selectedMilestone` already resolves against the current read for the same reason (PR #71 [P2]).
    */
   let openDocReasons = $derived(
-    selectedDocument === null ? [] : fileInconsistencyReasons(selectedDocument.health, "文書"),
+    selectedDocument === null ? [] : fileInconsistencyReasons(selectedDocument.health, "document"),
   );
 
   /**
@@ -1041,7 +1040,7 @@
   let openMilestoneReasons = $derived(
     selectedMilestone === null
       ? []
-      : fileInconsistencyReasons(selectedMilestone.health, "マイルストーン"),
+      : fileInconsistencyReasons(selectedMilestone.health, "milestone"),
   );
 
   /** What the 説明 box shows: the draft while one is being typed, the current read otherwise. */
@@ -1124,7 +1123,7 @@
 
   /** 理由行 for the decision in the pane (decision-24, doc-10 §10). Derived once, like the other two. */
   let openDecisionReasons = $derived(
-    selectedDecision === null ? [] : fileInconsistencyReasons(selectedDecision.health, "決定事項"),
+    selectedDecision === null ? [] : fileInconsistencyReasons(selectedDecision.health, "decision"),
   );
 
   /** 表示パス (doc-10 §5's term, §10's instance) for the selected decision. */
@@ -1229,10 +1228,10 @@
   /** The layer's accessible name — what the 入口 that opened it is called (doc-11 §7). */
   let layerLabel = $derived(
     layerOpen === "milestone"
-      ? "新規マイルストーン"
+      ? t().projectDetail.milestoneNew
       : layerOpen === "task-note"
-        ? TASK_NOTE_LABEL
-        : "新規文書",
+        ? taskNoteLabel()
+        : t().projectDetail.documentNew,
   );
 
   let createConfirm = $derived<DiscardAnswers | null>(
@@ -1408,8 +1407,7 @@
   let unreadableNote = $derived(
     unreadable === null
       ? null
-      : "ルートが読めないため、この区画の一覧と発行は出せません。概要区画でルートを直してください" +
-        "（登録内容自体は読めています）。",
+      : t().projectDetail.sectionUnreadable,
   );
 </script>
 
@@ -1430,7 +1428,7 @@
             class="mini"
             onclick={() => apply(values.filter((_, at) => at !== index))}
           >
-            削除
+            {t().action.remove}
           </button>
         </li>
       {/each}
@@ -1451,7 +1449,7 @@
         setDraft("");
       }}
     >
-      追加
+      {t().action.add}
     </button>
   </div>
 {/snippet}
@@ -1491,7 +1489,7 @@
        — where a way back is looked for — with the project name as the current place; the return that
        also lands (doc-10 §2) stays a separate control at the right, since it does more than go back. -->
   <header class="head">
-    <nav class="breadcrumb" aria-label="現在地">
+    <nav class="breadcrumb" aria-label={t().projectDetail.breadcrumbLabel}>
       <!-- アイコンのみのボタン (doc-11 §2.4), and a deliberate deviation from that section's 語の中の記号
            — the original is 「← スイムレーン」 (doc-12 §8), where §2.4 refuses to lift the arrow out
            because doing so changes the word. decision-31 changes it knowingly; §2.4 records the
@@ -1500,8 +1498,8 @@
       <button
         type="button"
         class="back"
-        aria-label="スイムレーンへ戻る"
-        title="スイムレーンへ戻る"
+        aria-label={t().action.backToSwimlane}
+        title={t().action.backToSwimlane}
         onclick={onback}
       >
         <Icon name="arrow-left" />
@@ -1516,14 +1514,14 @@
              移った (TASK-118)。タスクがここに残るのは、この画面に タスク の区画が無いためで、移す
              先が無い — 区画ナビの括弧は「その区画の一覧が何件持っているか」であって、区画を持たない
              ものの件数を置ける場所ではない。 -->
-        タスク {project.tasks.length}
+        {t().projectDetail.taskCount(project.tasks.length)}
       {:else if unreadable !== null}
-        <span class="unreadable-count">件数はルート読取不能のため出せません</span>
+        <span class="unreadable-count">{t().projectDetail.countUnreadable}</span>
       {:else}
-        読み込み中…
+        {t().state.loading}
       {/if}
     </span>
-    <button type="button" class="to-lane" onclick={ontoLane}>このプロジェクトのレーンへ</button>
+    <button type="button" class="to-lane" onclick={ontoLane}>{t().projectDetail.toLane}</button>
     <!-- 帯の右端 (decision-31). After 出口 rather than before it: the two exits are what this screen
          offers, and the ☰ opens things that have nothing to do with this project. -->
     {@render menu()}
@@ -1532,7 +1530,7 @@
   <div class="body">
     <!-- 区画切替 (doc-10 §1): a display change within one screen, not a screen transition. Every
          区画's input lives in this one component, so moving between them loses nothing. -->
-    <nav class="sections" aria-label="区画">
+    <nav class="sections" aria-label={t().projectDetail.sectionsLabel}>
       {#each DETAIL_SECTIONS as item (item.id)}
         {@const count = sectionCount(item.id, project)}
         <button
@@ -1563,7 +1561,7 @@
         <!-- 概要区画 (doc-10 §4): the ledger file is the only thing it writes, so CLI 縮退 does not
              reach it. -->
         <section>
-          <h2>概要（登録内容）</h2>
+          <h2>{t().projectDetail.overviewHeading}</h2>
 
           {#if ledgerReadOnly}
             <!-- doc-10 §8 asks for both the inputs and 登録解除 to be disabled. With only the save
@@ -1596,7 +1594,7 @@
                 disabled={ledgerReadOnly}
               />
               <button type="button" disabled={ledgerReadOnly} onclick={() => pickRoot("projectRoot")}>
-                選択…
+                {t().action.pick}
               </button>
             </span>
           </label>
@@ -1617,10 +1615,10 @@
                 disabled={ledgerReadOnly}
               />
               <button type="button" disabled={ledgerReadOnly} onclick={() => pickRoot("backlogRoot")}>
-                選択…
+                {t().action.pick}
               </button>
               <button type="button" disabled={ledgerReadOnly} onclick={followBacklogDefault}>
-                既定に合わせる
+                {t().projectDetail.matchDefault}
               </button>
             </span>
           </label>
@@ -1633,7 +1631,7 @@
             <p class="value-line remote" class:setting={remoteLine.kind === "setting"} class:failure={remoteLine.kind === "failure"}>
               {#if remoteLine.address}
                 <code>{remoteLine.text}</code>
-                <span class="remote-name">（{remoteLine.name}）</span>
+                <span class="remote-name">{t().projectDetail.remoteName(remoteLine.name ?? "")}</span>
               {:else}
                 {remoteLine.text}
               {/if}
@@ -1659,10 +1657,9 @@
           </div>
 
           <fieldset class="aliases">
-            <legend>status 別名表</legend>
+            <legend>{t().projectDetail.aliasLegend}</legend>
             <p class="hint">
-              プロジェクト固有の status を正準ステータス列へ対応づけます。既定は空で、Backlog.md 既定の
-              4 status は名称一致するため設定は要りません。
+              {t().projectDetail.aliasNote}
             </p>
             {#each edit.aliases as row, index (index)}
               {@const effect =
@@ -1672,7 +1669,7 @@
               <div class="alias-row">
                 <input
                   type="text"
-                  placeholder="プロジェクトの status"
+                  placeholder={t().projectDetail.aliasKeyPlaceholder}
                   list={`declared-${entry.slug}`}
                   bind:value={row.key}
                   disabled={ledgerReadOnly}
@@ -1691,7 +1688,7 @@
                          own out-of-range value *is* what「削除しない」means on this screen: listing
                          only the canonical four would swap the value for the first option the moment
                          the form opened, and the save would then drop it. -->
-                    <option value={row.value}>{row.value}（不正: 正準列ではありません）</option>
+                    <option value={row.value}>{t().projectDetail.aliasInvalid(row.value)}</option>
                   {/if}
                 </select>
                 <!-- アイコンのみのボタン (doc-11 §2.4). 原文 is the wording「行を外す」; doc-10 §4.2
@@ -1703,9 +1700,9 @@
                   type="button"
                   class="drop"
                   aria-label={row.key.trim() === ""
-                    ? `${index + 1} 行目を削除`
-                    : `${row.key} の行を削除`}
-                  title="この行を削除"
+                    ? t().projectDetail.aliasRemoveByIndex(index + 1)
+                    : t().projectDetail.aliasRemoveByKey(row.key)}
+                  title={t().projectDetail.aliasRemoveHint}
                   disabled={ledgerReadOnly}
                   onclick={() => removeAliasRow(index)}
                 >
@@ -1720,7 +1717,7 @@
                     </span>
                   {:else}
                     <span class="alias-effect">
-                      ルート読取不能のため、この別名が効くかを判定できません
+                      {t().projectDetail.aliasUncheckable}
                     </span>
                   {/if}
                 {/if}
@@ -1730,7 +1727,7 @@
               {/if}
             {/each}
             <div class="row-inline">
-              <button type="button" disabled={ledgerReadOnly} onclick={addAliasRow}>別名を追加</button>
+              <button type="button" disabled={ledgerReadOnly} onclick={addAliasRow}>{t().projectDetail.aliasAdd}</button>
               {#if declaredStatuses !== null}
                 <datalist id={`declared-${entry.slug}`}>
                   {#each declaredStatuses as status (status)}
@@ -1748,14 +1745,14 @@
                actually carries, not what the screen thinks it changed — a move carrying both roots
                shows up here. -->
           <div class="submit-preview">
-            <h3>保存で送る属性</h3>
+            <h3>{t().projectDetail.attributesHeading}</h3>
             <!-- 状態文 (doc-11 §8): what this 区画 has to show when the list is empty. §8 puts 状態文
                  outside its own scope, so the 一掃 that dropped this line as a 状態の言い換え
                  (`8aa4be9`) was applying the wrong rule — and doc-10 §4.1 names「変更なし」as the
                  word to use. It is also the 保存's 保留理由 stated by the 区画 itself (§8 の licence ①),
                  which is why no second sentence is printed under the control. -->
             {#if submitted.length === 0}
-              <p class="neutral">変更なし（送る属性はありません）。</p>
+              <p class="neutral">{t().projectDetail.attributesNone}</p>
             {:else}
               <ul class="submitted">
                 {#each submitted as attribute (attribute.attribute)}
@@ -1766,10 +1763,10 @@
                        2 つ目の形) — the figure already says it to the eye. -->
                   <li>
                     <code>{attribute.attribute}</code>
-                    <span class="unseen">変更前</span>
+                    <span class="unseen">{t().projectDetail.before}</span>
                     <span class="from">{attribute.from}</span>
                     <Icon name="arrow-right" />
-                    <span class="unseen">変更後</span>
+                    <span class="unseen">{t().projectDetail.after}</span>
                     <span class="to">{attribute.to}</span>
                   </li>
                 {/each}
@@ -1793,8 +1790,8 @@
                   : SAVE_BLOCKED_ID}
               title={saveControl.state === "withheld"
                 ? saveControl.reason
-                : "上に並べた属性を登録内容へ書きます"}
-              onclick={save}>保存</button
+                : t().projectDetail.saveHint}
+              onclick={save}>{t().action.save}</button
             >
           </div>
           {#if !ledgerReadOnly}
@@ -1814,10 +1811,10 @@
 
           <!-- 登録解除 (doc-10 §4.3): a 危険区画, kept apart from the other operations. -->
           <div class="danger">
-            <h3>登録解除</h3>
+            <h3>{t().projectDetail.unregisterHeading}</h3>
             <p>{UNREGISTER_SCOPE_NOTE}</p>
             <label class="field">
-              <span class="label">確認: slug を入力してください</span>
+              <span class="label">{t().projectDetail.unregisterConfirmLabel}</span>
               <input
                 type="text"
                 placeholder={entry.slug}
@@ -1835,8 +1832,8 @@
                   : ledgerReadOnly
                     ? OVERVIEW_BLOCKED_ID
                     : UNREGISTER_BLOCKED_ID}
-                title={unregisterReason ?? "このプロジェクトの登録を解除します"}
-                onclick={unregister}>登録を解除</button
+                title={unregisterReason ?? t().projectDetail.unregisterHint}
+                onclick={unregister}>{t().projectDetail.unregister}</button
               >
             </div>
             {#if unregisterReason !== null && !ledgerReadOnly}
@@ -1852,11 +1849,11 @@
              columns: it must be visible whatever either column has scrolled to. -->
         <section class="split-section">
           {#if unreadableNote !== null}
-            <h2>文書</h2>
+            <h2>{t().projectDetail.documentsHeading}</h2>
             <p class="unreadable">{unreadableNote}</p>
           {:else if project === null}
-            <h2>文書</h2>
-            <p class="neutral">読み込み中…</p>
+            <h2>{t().projectDetail.documentsHeading}</h2>
+            <p class="neutral">{t().state.loading}</p>
           {:else}
             {#if pendingDocument !== null}
               <!-- 破棄前確認: 未保存入力 is held and the requested action would drop it. The action
@@ -1864,13 +1861,13 @@
               <div class="confirm">
                 <span>
                   {#if pendingDocument.document === null}
-                    文書の編集に未保存入力があります。編集を閉じると破棄されます。
+                    {t().projectDetail.documentUnsavedOnClose}
                   {:else}
-                    文書の編集に未保存入力があります。{pendingDocument.document.id} を開くと破棄されます。
+                    {t().projectDetail.documentUnsavedOnOpen(pendingDocument.document.id)}
                   {/if}
                 </span>
-                <button type="button" onclick={leaveConfirmed}>破棄して続行</button>
-                <button type="button" onclick={() => (pendingDocument = null)}>入力に戻る</button>
+                <button type="button" onclick={leaveConfirmed}>{t().projectDetail.discardAndContinue}</button>
+                <button type="button" onclick={() => (pendingDocument = null)}>{t().projectDetail.backToInput}</button>
               </div>
             {/if}
 
@@ -1881,13 +1878,13 @@
                      far the cards are scrolled. The count is the cards' own (目視反映), which is why
                      the 写せなかったファイル below are not in it (decision-24). -->
                 {@render listHead(
-                  `文書 ${project.documents.length} 件`,
-                  "新規文書",
-                  "文書の作成を開きます",
+                  t().projectDetail.documentsCount(project.documents.length),
+                  t().projectDetail.documentNew,
+                  t().projectDetail.documentNewHint,
                   () => openCreate("document"),
                 )}
                 {#if project.documents.length === 0}
-                  <p class="neutral">文書はありません。</p>
+                  <p class="neutral">{t().projectDetail.documentsEmpty}</p>
                 {:else}
                   {#if issuingReason !== null}
                     <!-- Every card is held by the same one thing (doc-11 §5): the reason is written
@@ -1895,14 +1892,14 @@
                          so they keep taking focus, which is what makes the binding reachable
                          without a pointer. -->
                     <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
-                      {issuingReason}。完了するまで別の文書は開けません。
+                      {t().projectDetail.documentIssuingBlocksOthers(issuingReason)}
                     </p>
                   {/if}
                   <ul class="cards">
                     {#each project.documents as document (document.id)}
                       {@const current = docSelection === document.id}
                       {@const editing = docSession?.baseline.id === document.id}
-                      {@const reasons = fileInconsistencyReasons(document.health, "文書")}
+                      {@const reasons = fileInconsistencyReasons(document.health, "document")}
                       <li>
                         <!-- カード (doc-10 §5): the whole area is the selection — no separate 編集
                              button, and the current card is marked (目視反映: which document is
@@ -1917,21 +1914,21 @@
                           aria-current={current ? "true" : undefined}
                           aria-disabled={issuing}
                           aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
-                          title={issuingReason ?? "この文書を開きます"}
+                          title={issuingReason ?? t().projectDetail.documentOpenHint}
                           onclick={() => !issuing && selectDocument(document)}
                         >
                           <span class="card-head">
                             <span class="id">{document.id}</span>
-                            <span class="meta">{document.type ?? "type 未設定"}</span>
+                            <span class="meta">{document.type ?? t().projectDetail.typeUnset}</span>
                             {#if editing}
-                              <span class="editing">編集中</span>
+                              <span class="editing">{t().projectDetail.editing}</span>
                             {/if}
                             {#if editing && docEditorDirty}
                               <!-- 未保存入力のある文書には印を付ける (doc-10 §5). Only one 編集セッション
                                    exists at a time, so only one card can carry it; it is shown on the
                                    list side so that「まだ送っていない」stays readable even when the
                                    editor has scrolled out of view. -->
-                              <span class="unsaved">未保存</span>
+                              <span class="unsaved">{t().projectDetail.unsaved}</span>
                             {/if}
                             {#if reasons.length > 0}
                               <!-- 不整合印 (decision-22, widened to 管理ファイル 1 件 by decision-24):
@@ -1964,7 +1961,7 @@
                        id, so there is nothing to select or load into the pane. The heading above
                        still counts only the cards; this region states its own count. -->
                   <div class="unmapped">
-                    <h3>写せなかったファイル {unmappedDocuments.length} 件</h3>
+                    <h3>{t().projectDetail.unmappedFiles(unmappedDocuments.length)}</h3>
                     <ul>
                       {#each unmappedDocuments as file (file.sourcePath)}
                         <li>
@@ -1985,10 +1982,10 @@
                 {#if docSession !== null}
                   {@const session = docSession}
                   <div class="sub-panel">
-                    <h3>{session.baseline.id} を更新</h3>
+                    <h3>{t().projectDetail.documentUpdateHeading(session.baseline.id)}</h3>
 
                     <label class="field">
-                      <span class="label">title（必須）</span>
+                      <span class="label">{t().field.titleRequired}</span>
                       <input
                         type="text"
                         value={session.draft.title}
@@ -1997,16 +1994,16 @@
                     </label>
 
                     <div class="field">
-                      <span class="label">本文</span>
+                      <span class="label">{t().field.body}</span>
                       <Editor
-                        label="本文"
+                        label={t().field.body}
                         value={session.draft.content}
                         rows={14}
                         onchange={(value) => setDoc("content", value)}
                         onsave={updateDoc}
                       />
                       <p class="hint">
-                        保存すると、ここにある全文で本文を置き換えます。
+                        {t().projectDetail.bodyReplaceNote}
                       </p>
                     </div>
 
@@ -2017,7 +2014,7 @@
                           value={session.draft.docType}
                           onchange={(event) => setDoc("docType", event.currentTarget.value)}
                         >
-                          <option value="">—（変更しない）</option>
+                          <option value="">{t().projectDetail.keepUnchanged}</option>
                           {#each DOC_TYPES as value (value)}
                             <option {value}>{value}</option>
                           {/each}
@@ -2025,7 +2022,7 @@
                       </label>
 
                       <label class="field">
-                        <span class="label">path（移動する場合のみ）</span>
+                        <span class="label">{t().projectDetail.pathLabel}</span>
                         <!-- 表示パス (doc-10 §5), repeated here from the 閲覧ヘッダ: this field is a
                              move request holding no current value, and「空欄なら変更しません」only
                              reads against where the file is now. One derivation for both places
@@ -2038,14 +2035,14 @@
                              location rather than admitting there is none (PR #72 1R [P2]). -->
                         {#if selectedDocPath === null}
                           <span class="path">
-                            現在の所在は読み取れません（この文書は最新の読み取りに見当たりません）。
+                            {t().projectDetail.pathUnreadable}
                           </span>
                         {:else}
-                          <span class="path">現在の所在: <code>{selectedDocPath}</code></span>
+                          <span class="path">{t().projectDetail.pathCurrent} <code>{selectedDocPath}</code></span>
                         {/if}
                         <input
                           type="text"
-                          placeholder="空欄なら変更しません"
+                          placeholder={t().projectDetail.pathPlaceholder}
                           value={session.draft.path}
                           oninput={(event) => setDoc("path", event.currentTarget.value)}
                         />
@@ -2059,7 +2056,7 @@
                         (next) => setDoc("tags", next),
                         newTag,
                         (value) => (newTag = value),
-                        "追加するタグ",
+                        t().projectDetail.addTag,
                       )}
                     </div>
 
@@ -2087,16 +2084,16 @@
                          (doc-7 §2.1)。可視の 1 行はここに置かない。 -->
                     <div class="actions">
                       <!-- 取りやめ → 発行 (doc-11 §11): one order everywhere, since the row is centred. -->
-                      <button type="button" onclick={closeEditor}>編集を止める</button>
+                      <button type="button" onclick={closeEditor}>{t().projectDetail.stopEditing}</button>
                       <button
                         type="button"
                         aria-disabled={docUpdateIssue.state !== "ready"}
                         aria-describedby={docUpdateIssue.state === "blocked" ? DOC_UPDATE_BLOCKED_ID : undefined}
                         aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-                        title={issueTitle(docUpdateIssue, "文書を更新")}
+                        title={issueTitle(docUpdateIssue, t().projectDetail.documentUpdate)}
                         onclick={() => docUpdateIssue.state === "ready" && updateDoc()}
                       >
-                        文書を更新
+                        {t().projectDetail.documentUpdate}
                       </button>
                     </div>
                   </div>
@@ -2120,10 +2117,10 @@
                         type="button"
                         aria-disabled={issuing}
                         aria-describedby={issuing ? DOC_EDIT_HELD_ID : undefined}
-                        title={issuingReason ?? "この文書の編集を開きます"}
+                        title={issuingReason ?? t().projectDetail.documentEditOpenHint}
                         onclick={() => !issuing && startDocEdit()}
                       >
-                        編集
+                        {t().action.edit}
                       </button>
                       <!-- No 選択を解除 here since TASK-121 (doc-10 §5). The reason it was placed —
                            the create form's 未保存入力 sitting off screen while still counting
@@ -2134,16 +2131,16 @@
                     </div>
                     {#if issuingReason !== null}
                       <p class="reason" id={DOC_EDIT_HELD_ID}>
-                        {issuingReason}。完了するまでこの文書の編集は開けません。
+                        {t().projectDetail.documentIssuingBlocksEdit(issuingReason)}
                       </p>
                     {/if}
                     <p class="meta-line">
                       <span class="id">{document.id}</span>
-                      <span>{document.type ?? "type 未設定"}</span>
+                      <span>{document.type ?? t().projectDetail.typeUnset}</span>
                       <span>
                         {document.tags.length > 0
                           ? `tags: ${document.tags.join(", ")}`
-                          : "tags なし"}
+                          : t().projectDetail.tagsNone}
                       </span>
                     </p>
                     <!-- 表示パス (doc-10 §5): which file this is, project-relative. -->
@@ -2167,7 +2164,7 @@
                          rendered look would be a claim the screen cannot keep — the same treatment
                          タスク詳細 gives Description. -->
                     {#if (document.body ?? "") === ""}
-                      <p class="neutral">本文はありません。</p>
+                      <p class="neutral">{t().projectDetail.bodyEmpty}</p>
                     {:else}
                       <div class="read-body-slot"><Body source={document.body ?? ""} {onopenlink} /></div>
                     {/if}
@@ -2179,7 +2176,7 @@
                        what keeps the column from reading as an empty box the user has broken.
                        doc-11 §6's `—` is not this: that mark stands for a value that is absent, and
                        what is absent here is a selection. -->
-                  <p class="neutral">文書が選択されていません</p>
+                  <p class="neutral">{t().projectDetail.documentNotSelected}</p>
                 {/if}
               </div>
             </div>
@@ -2192,11 +2189,11 @@
              repeats. -->
         <section class="split-section">
           {#if unreadableNote !== null}
-            <h2>マイルストーン</h2>
+            <h2>{t().projectDetail.milestonesHeading}</h2>
             <p class="unreadable">{unreadableNote}</p>
           {:else if project === null}
-            <h2>マイルストーン</h2>
-            <p class="neutral">読み込み中…</p>
+            <h2>{t().projectDetail.milestonesHeading}</h2>
+            <p class="neutral">{t().state.loading}</p>
           {:else}
             {#if pendingMilestone !== null}
               <!-- 破棄前確認 (doc-10 §6): the open 編集セッション holds 未保存入力 and the requested
@@ -2206,13 +2203,13 @@
               <div class="confirm">
                 <span>
                   {#if pendingMilestone.milestone === null}
-                    マイルストーンの編集に未保存入力があります。編集を閉じると破棄されます。
+                    {t().projectDetail.milestoneUnsavedOnClose}
                   {:else}
-                    マイルストーンの編集に未保存入力があります。{pendingMilestone.milestone.id} を開くと破棄されます。
+                    {t().projectDetail.milestoneUnsavedOnOpen(pendingMilestone.milestone.id)}
                   {/if}
                 </span>
-                <button type="button" onclick={milestoneLeaveConfirmed}>破棄して続行</button>
-                <button type="button" onclick={() => (pendingMilestone = null)}>入力に戻る</button>
+                <button type="button" onclick={milestoneLeaveConfirmed}>{t().projectDetail.discardAndContinue}</button>
+                <button type="button" onclick={() => (pendingMilestone = null)}>{t().projectDetail.backToInput}</button>
               </div>
             {/if}
 
@@ -2222,20 +2219,20 @@
                      same snippet. §1 puts it on the 一覧列 rather than on the 区画, so the two that
                      can add an object cannot come to differ in how one is added. -->
                 {@render listHead(
-                  `マイルストーン ${project.milestones.length} 件`,
-                  "新規マイルストーン",
-                  "マイルストーンの作成を開きます",
+                  t().projectDetail.milestonesCount(project.milestones.length),
+                  t().projectDetail.milestoneNew,
+                  t().projectDetail.milestoneNewHint,
                   () => openCreate("milestone"),
                 )}
                 {#if project.milestones.length === 0}
-                  <p class="neutral">マイルストーンはありません。</p>
+                  <p class="neutral">{t().projectDetail.milestonesEmpty}</p>
                 {:else}
                   {#if issuingReason !== null}
                     <!-- Every card is held by the same one thing (doc-11 §5): written once above the
                          list and each card bound to it. They stay `aria-disabled` so they keep
                          taking focus, which is what makes the binding reachable without a pointer. -->
                     <p class="reason" id={MILESTONE_SELECT_BLOCKED_ID}>
-                      {issuingReason}。完了するまで別のマイルストーンは開けません。
+                      {t().projectDetail.milestoneIssuingBlocksOthers(issuingReason)}
                     </p>
                   {/if}
                   <ul class="cards">
@@ -2245,7 +2242,7 @@
                       ).length}
                       {@const current = milestoneSelection === milestone.id}
                       {@const editing = current && milestoneEditing}
-                      {@const reasons = fileInconsistencyReasons(milestone.health, "マイルストーン")}
+                      {@const reasons = fileInconsistencyReasons(milestone.health, "milestone")}
                       <li>
                         <!-- カード (doc-10 §6): id・title・所属タスク件数. No 説明 — the 一覧列 is
                              16rem and the description is stated in the pane instead (§6's recorded
@@ -2259,21 +2256,21 @@
                           aria-current={current ? "true" : undefined}
                           aria-disabled={issuing}
                           aria-describedby={issuing ? MILESTONE_SELECT_BLOCKED_ID : undefined}
-                          title={issuingReason ?? "このマイルストーンを開きます"}
+                          title={issuingReason ?? t().projectDetail.milestoneOpenHint}
                           onclick={() => !issuing && selectMilestone(milestone)}
                         >
                           <span class="card-head">
                             <span class="id">{milestone.id}</span>
-                            <span class="meta">所属タスク {held} 件</span>
+                            <span class="meta">{t().projectDetail.heldTasks(held)}</span>
                             {#if editing}
-                              <span class="editing">編集中</span>
+                              <span class="editing">{t().projectDetail.editing}</span>
                             {/if}
                             {#if editing && milestoneDirty}
                               <!-- 未保存入力の印 (doc-10 §6): only the card with the open 編集
                                    セッション can carry it, and it is shown here so「まだ発行して
                                    いない」stays readable when the マイルストーンペイン has scrolled
                                    out of view. -->
-                              <span class="unsaved">未保存</span>
+                              <span class="unsaved">{t().projectDetail.unsaved}</span>
                             {/if}
                             {#if reasons.length > 0}
                               <!-- 不整合印 — same figure and same rule as the 文書カード (doc-10 §6
@@ -2297,7 +2294,7 @@
                 {#if unmappedMilestones.length > 0}
                   <!-- 写せなかったファイルの一覧 — same form as the 文書区画's (doc-10 §1/§6). -->
                   <div class="unmapped">
-                    <h3>写せなかったファイル {unmappedMilestones.length} 件</h3>
+                    <h3>{t().projectDetail.unmappedFiles(unmappedMilestones.length)}</h3>
                     <ul>
                       {#each unmappedMilestones as file (file.sourcePath)}
                         <li>
@@ -2334,7 +2331,7 @@
                          but the two columns scroll apart — the selected card can be above the
                          viewport while this pane is being typed into, which is the direction §6
                          already argues in for the 未保存 chip. -->
-                    <h3>{milestone.id} を編集</h3>
+                    <h3>{t().projectDetail.milestoneEditHeading(milestone.id)}</h3>
                     <!-- 説明 (doc-10 §6): stated on this column rather than on the card, which is the
                          second of this 区画's departures from design 07 — and editable, which is the
                          third (decision-21). The box is not one of the 改称・削除・アーカイブ
@@ -2342,10 +2339,10 @@
                          description is what this column states about the milestone and editing it is
                          that statement being corrected. -->
                     <label class="field">
-                      <span class="label">説明</span>
+                      <span class="label">{t().field.description}</span>
                       <textarea
                         rows="4"
-                        placeholder="説明なし"
+                        placeholder={t().projectDetail.milestoneDescriptionPlaceholder}
                         value={milestoneDescriptionText}
                         oninput={(event) =>
                           (milestoneDescriptionDraft = event.currentTarget.value)}
@@ -2354,7 +2351,7 @@
                     <!-- Not pinned (doc-11 §11): this column holds 改称・削除・アーカイブ as well, so no
                          one 発行 owns its bottom row. 取りやめ → 発行 all the same. -->
                     <div class="actions">
-                      <button type="button" onclick={closeMilestoneEdit}>編集を止める</button>
+                      <button type="button" onclick={closeMilestoneEdit}>{t().projectDetail.stopEditing}</button>
                       <button
                         type="button"
                         aria-disabled={describeIssue.state !== "ready"}
@@ -2363,7 +2360,7 @@
                         onclick={() =>
                           describeIssue.state === "ready" && saveMilestoneDescription(milestone)}
                       >
-                        説明を保存
+                        {t().projectDetail.milestoneDescriptionSave}
                       </button>
                       <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). See the 文書ペイン's copy above. -->
                       <span
@@ -2389,7 +2386,7 @@
                         title={issuingReason ?? ""}
                         onclick={() => openMilestoneOp("rename")}
                       >
-                        改称
+                        {t().projectDetail.rename}
                       </button>
                       <button
                         type="button"
@@ -2398,7 +2395,7 @@
                         title={issuingReason ?? ""}
                         onclick={() => openMilestoneOp("remove")}
                       >
-                        削除
+                        {t().projectDetail.remove}
                       </button>
                       <button
                         type="button"
@@ -2407,16 +2404,16 @@
                         title={issuingReason ?? ""}
                         onclick={() => openMilestoneOp("archive")}
                       >
-                        アーカイブ
+                        {t().projectDetail.archive}
                       </button>
                     </div>
 
                     {#if open !== null}
                       <div class="sub-panel">
                         {#if open === "rename"}
-                          <h3>改称</h3>
+                          <h3>{t().projectDetail.rename}</h3>
                           <label class="field">
-                            <span class="label">新しい名称（必須）</span>
+                            <span class="label">{t().projectDetail.renameNewName}</span>
                             <input
                               type="text"
                               value={renameInput.to}
@@ -2430,20 +2427,19 @@
                               onchange={(event) =>
                                 (renameInput.updateTasks = event.currentTarget.checked)}
                             />
-                            <span>参照するタスクも更新する（外すと --no-update-tasks）</span>
+                            <span>{t().projectDetail.renameUpdatesTasks}</span>
                           </label>
                           <!-- 改称が id を変えないことの測定は doc-9 §4.2.1 にあり、版は画面に出さない
                                (decision-27). -->
                           <p class="hint">
-                            改称は id（{milestone.id}）を変えないため、実際に書き換わるのは
-                            milestone 値が id 以外のタスクだけです。
+                            {t().projectDetail.renameNote(milestone.id)}
                           </p>
                         {:else if open === "remove"}
-                          <h3>削除</h3>
+                          <h3>{t().projectDetail.remove}</h3>
                           <p class="hint">{MILESTONE_REMOVE_MOVES_THE_FILE}</p>
                           <fieldset class="handling">
-                            <legend>参照するタスクの扱い（必須）</legend>
-                            {#each [{ mode: "clear", label: "milestone 値を除去する（clear）" }, { mode: "keep", label: "そのまま保持する（keep）" }, { mode: "reassign", label: "別マイルストーンへ付け替える（reassign）" }] as choice (choice.mode)}
+                            <legend>{t().projectDetail.removeTasksLegend}</legend>
+                            {#each [{ mode: "clear", label: t().projectDetail.removeTasksClear }, { mode: "keep", label: t().projectDetail.removeTasksKeep }, { mode: "reassign", label: t().projectDetail.removeTasksReassign }] as choice (choice.mode)}
                               <label class="check">
                                 <input
                                   type="radio"
@@ -2464,13 +2460,13 @@
                           {/if}
                           {#if removeInput.handling === "reassign"}
                             <label class="field">
-                              <span class="label">付け替え先（必須）</span>
+                              <span class="label">{t().projectDetail.reassignTarget}</span>
                               <select
                                 value={removeInput.reassignTo}
                                 onchange={(event) =>
                                   (removeInput.reassignTo = event.currentTarget.value)}
                               >
-                                <option value="">選択してください</option>
+                                <option value="">{t().projectDetail.chooseOne}</option>
                                 {#each project.milestones.filter((candidate) => candidate.id !== milestone.id) as candidate (candidate.id)}
                                   <option value={candidate.id}>
                                     {candidate.id}
@@ -2481,23 +2477,22 @@
                             </label>
                           {/if}
                         {:else}
-                          <h3>アーカイブ</h3>
+                          <h3>{t().projectDetail.archive}</h3>
                           <p class="hint">
-                            マイルストーンのファイルを archive/milestones/ へ移します。参照するタスクは
-                            書き換わりません。
+                            {t().projectDetail.archiveNote}
                           </p>
                         {/if}
 
                         <!-- 実行前に書き換え対象集合を示す (doc-10 §6, doc-9 §4.2.2/§4.2.3): what the
                              user decides from has to be what the check protects. -->
                         <div class="targets">
-                          <h4>書き換え対象</h4>
+                          <h4>{t().projectDetail.rewriteTargetsHeading}</h4>
                           <ul class="paths">
                             <li>{milestone.sourcePath}</li>
                           </ul>
                           {#if targets.fanOut}
                             <p class="meta">
-                              参照するタスク {targets.tasks.length} 件も併せて書き換わります（参照追随書き換え）。
+                              {t().projectDetail.rewriteTargets(targets.tasks.length)}
                             </p>
                             {#if targets.tasks.length > 0}
                               <ul class="paths">
@@ -2507,13 +2502,13 @@
                               </ul>
                             {/if}
                           {:else}
-                            <p class="meta">参照するタスクは書き換わりません。</p>
+                            <p class="meta">{t().projectDetail.rewriteNone}</p>
                           {/if}
                         </div>
 
                         <div class="actions">
                           <!-- 取りやめ → 発行 (doc-11 §11). Not pinned: see the 説明を保存 row above. -->
-                          <button type="button" onclick={closeMilestoneOp}>キャンセル</button>
+                          <button type="button" onclick={closeMilestoneOp}>{t().action.cancel}</button>
                           <button
                             type="button"
                             disabled={opIssue?.state !== "ready"}
@@ -2522,17 +2517,17 @@
                               runMilestoneOp(
                                 milestone,
                                 open === "rename"
-                                  ? "マイルストーンを改称しました。"
+                                  ? t().projectDetail.renamed
                                   : open === "remove"
-                                    ? "マイルストーンを削除しました。"
-                                    : "マイルストーンをアーカイブしました。",
+                                    ? t().projectDetail.removed
+                                    : t().projectDetail.archived,
                               )}
                           >
                             {open === "rename"
-                              ? "改称を発行"
+                              ? t().projectDetail.issueRename
                               : open === "remove"
-                                ? "削除を発行"
-                                : "アーカイブを発行"}
+                                ? t().projectDetail.issueRemove
+                                : t().projectDetail.issueArchive}
                           </button>
                           {#if opIssue?.state === "blocked" && !omitsSentence(opIssue.reason)}
                             <span class="reason">{opIssue.reason}</span>
@@ -2562,20 +2557,20 @@
                         type="button"
                         aria-disabled={issuing}
                         aria-describedby={issuing ? MILESTONE_EDIT_HELD_ID : undefined}
-                        title={issuingReason ?? "このマイルストーンの編集を開きます"}
+                        title={issuingReason ?? t().projectDetail.milestoneEditOpenHint}
                         onclick={() => !issuing && startMilestoneEdit()}
                       >
-                        編集
+                        {t().action.edit}
                       </button>
                     </div>
                     {#if issuingReason !== null}
                       <p class="reason" id={MILESTONE_EDIT_HELD_ID}>
-                        {issuingReason}。完了するまでこのマイルストーンの編集は開けません。
+                        {t().projectDetail.milestoneIssuingBlocksEdit(issuingReason)}
                       </p>
                     {/if}
                     <p class="meta-line">
                       <span class="id">{milestone.id}</span>
-                      <span>所属タスク {held} 件</span>
+                      <span>{t().projectDetail.heldTasks(held)}</span>
                     </p>
                     {#if openMilestoneReasons.length > 0}
                       <!-- 理由行 (decision-22, doc-10 §6 as TASK-121 revised it): the place doc-11
@@ -2594,7 +2589,7 @@
                          文書区画's 本文 — the string as read, with doc-8 §2.1's 48rem line length on
                          it, since this column takes whatever width is left. -->
                     {#if (milestone.description ?? "") === ""}
-                      <p class="neutral">説明はありません。</p>
+                      <p class="neutral">{t().projectDetail.milestoneDescriptionEmpty}</p>
                     {:else}
                       <div class="read-body-slot"><Body source={milestone.description ?? ""} {onopenlink} /></div>
                     {/if}
@@ -2608,7 +2603,7 @@
                        selection came and went (§5・§6) — and the line says what the column is for.
                        Since TASK-121 this state is reached only by the three occasions §6 lists, not
                        by a press: 選択を解除 is gone. -->
-                  <p class="neutral">マイルストーンが選択されていません</p>
+                  <p class="neutral">{t().projectDetail.milestoneNotSelected}</p>
                 {/if}
               </div>
             </div>
@@ -2626,11 +2621,11 @@
              exception left in it (TASK-123). -->
         <section class="split-section">
           {#if unreadableNote !== null}
-            <h2>決定事項</h2>
+            <h2>{t().projectDetail.decisionsHeading}</h2>
             <p class="unreadable">{unreadableNote}</p>
           {:else if project === null}
-            <h2>決定事項</h2>
-            <p class="neutral">読み込み中…</p>
+            <h2>{t().projectDetail.decisionsHeading}</h2>
+            <p class="neutral">{t().state.loading}</p>
           {:else}
             <div class="columns">
               <div class="list-column">
@@ -2639,15 +2634,15 @@
                      produce a decision no screen in Atlas can then fill in. The count is the cards'
                      own, which is why the 写せなかったファイル below are outside it (decision-24). -->
                 <div class="list-head">
-                  <h2>決定事項 {project.decisions.length} 件</h2>
+                  <h2>{t().projectDetail.decisionsCount(project.decisions.length)}</h2>
                 </div>
                 {#if project.decisions.length === 0}
-                  <p class="neutral">決定事項はありません。</p>
+                  <p class="neutral">{t().projectDetail.decisionsEmpty}</p>
                 {:else}
                   <ul class="cards">
                     {#each project.decisions as decision (decision.id)}
                       {@const current = decisionSelection === decision.id}
-                      {@const reasons = fileInconsistencyReasons(decision.health, "決定事項")}
+                      {@const reasons = fileInconsistencyReasons(decision.health, "decision")}
                       <li>
                         <!-- カード (doc-10 §10): the whole area is the selection, and the current one
                              is marked — the same form the other two 一覧列 take. Cards are never
@@ -2659,12 +2654,12 @@
                           class="card"
                           class:current
                           aria-current={current ? "true" : undefined}
-                          title="この決定事項を開きます"
+                          title={t().projectDetail.decisionOpenHint}
                           onclick={() => void selectDecision(decision)}
                         >
                           <span class="card-head">
                             <span class="id">{decision.id}</span>
-                            <span class="meta">{decision.status ?? "status 未設定"}</span>
+                            <span class="meta">{decision.status ?? t().projectDetail.statusUnset}</span>
                             {#if reasons.length > 0}
                               <!-- 不整合印 (decision-22, decision-24): one ⚠️, no family name. The
                                    lines themselves are read in the 閲覧ヘッダ, the place doc-11 §2.4
@@ -2690,7 +2685,7 @@
                        arrive together with the normal list, never before it: on its own it would tell
                        a reader Atlas handles decisions while giving them no decision to find. -->
                   <div class="unmapped">
-                    <h3>写せなかったファイル {unmappedDecisions.length} 件</h3>
+                    <h3>{t().projectDetail.unmappedFiles(unmappedDecisions.length)}</h3>
                     <ul>
                       {#each unmappedDecisions as file (file.sourcePath)}
                         <li>
@@ -2720,8 +2715,8 @@
                     </div>
                     <p class="meta-line">
                       <span class="id">{decision.id}</span>
-                      <span>{decision.status ?? "status 未設定"}</span>
-                      <span>{decision.date ?? "date 未設定"}</span>
+                      <span>{decision.status ?? t().projectDetail.statusUnset}</span>
+                      <span>{decision.date ?? t().projectDetail.dateUnset}</span>
                     </p>
                     <!-- 表示パス (doc-10 §5): which file this is, project-relative. -->
                     <p class="path"><code>{selectedDecisionPath}</code></p>
@@ -2740,7 +2735,7 @@
                          states that it is not confined to タスク詳細, and this is the same object it
                          names: 管理ファイルの本文 1 つを読むだけの表示. -->
                     {#if (decision.body ?? "") === ""}
-                      <p class="neutral">本文はありません。</p>
+                      <p class="neutral">{t().projectDetail.bodyEmpty}</p>
                     {:else}
                       <div class="read-body-slot">
                         <Body source={decision.body ?? ""} {onopenlink} />
@@ -2751,7 +2746,7 @@
                   <!-- 非選択時の決定事項ペイン (doc-10 §10). The column is not collapsed and the
                        区画 does not fall to two columns: the cards' width would move every time a
                        selection came and went (doc-10 §5's reason, taken as it stands). -->
-                  <p class="neutral">決定事項が選択されていません</p>
+                  <p class="neutral">{t().projectDetail.decisionNotSelected}</p>
                 {/if}
               </div>
             </div>
@@ -2766,7 +2761,7 @@
                Until TASK-123 the five fields sat at the foot of this 区画 at all times, 361px of an
                885px 区画 and the reason the form did not fit its scroller (measured). -->
           <div class="section-head">
-            <h2>新規タスク</h2>
+            <h2>{t().projectDetail.taskNewHeading}</h2>
             <!-- Only where the form is. What the note answers is「この欄はどこにあるのか」, a
                  question a reader has while filling the form in — beside a 読み込み中 or a
                  ルート読取不能 message there is no form to have it about, and an entry offering
@@ -2776,8 +2771,8 @@
               <button
                 type="button"
                 class="note-entry"
-                aria-label={TASK_NOTE_LABEL}
-                title={TASK_NOTE_LABEL}
+                aria-label={taskNoteLabel()}
+                title={taskNoteLabel()}
                 onclick={openTaskNote}
               >
                 <Icon name="circle-question-mark" />
@@ -2788,10 +2783,10 @@
           {#if unreadableNote !== null}
             <p class="unreadable">{unreadableNote}</p>
           {:else if project === null}
-            <p class="neutral">読み込み中…</p>
+            <p class="neutral">{t().state.loading}</p>
           {:else}
             <label class="field">
-              <span class="label">title（必須）</span>
+              <span class="label">{t().field.titleRequired}</span>
               <input
                 type="text"
                 value={taskInput.title}
@@ -2819,7 +2814,7 @@
                 >
                   <!-- 未指定 stays selectable throughout: leaving `--status` off is what makes
                        `default_status` apply, and that is a different request from setting one. -->
-                  <option value="">—（config.yml の既定 status に任せる）</option>
+                  <option value="">{t().projectDetail.configDefaultStatus}</option>
                   <!-- 選択肢は宣言済みの原文 status に限る (doc-10 §7): `-s` takes only what
                        `config.yml` declares, and an undeclared value is refused with exit code 1.
                        Canonical column names are deliberately not listed. -->
@@ -2835,7 +2830,7 @@
                   value={taskInput.priority}
                   onchange={(event) => (taskInput.priority = event.currentTarget.value)}
                 >
-                  <option value="">—（未設定）</option>
+                  <option value="">{t().projectDetail.unset}</option>
                   {#each PRIORITIES as priority (priority)}
                     <option value={priority}>{priority}</option>
                   {/each}
@@ -2848,7 +2843,7 @@
                   value={taskInput.milestone}
                   onchange={(event) => (taskInput.milestone = event.currentTarget.value)}
                 >
-                  <option value="">—（未設定）</option>
+                  <option value="">{t().projectDetail.unset}</option>
                   {#each project.milestones as milestone (milestone.id)}
                     <option value={milestone.id}>{milestone.id} {milestone.title}</option>
                   {/each}
@@ -2857,17 +2852,16 @@
             </div>
 
             <div class="field">
-              <span class="label">通常ラベル</span>
+              <span class="label">{t().field.plainLabels}</span>
               {@render listEditor(
                 taskInput.labels,
                 (next) => (taskInput.labels = next),
                 newLabel,
                 (value) => (newLabel = value),
-                "追加するラベル",
+                t().field.addLabel,
               )}
               <p class="hint">
-                Type（kind ラベル）はここでは扱いません。ラベルは 1 個のカンマ区切り値として扱われる
-                ため、「,」を含むラベルは発行しません。
+                {t().projectDetail.labelNote}
               </p>
             </div>
 
@@ -2878,7 +2872,7 @@
                 (next) => (taskInput.acceptanceCriteria = next),
                 newCriterion,
                 (value) => (newCriterion = value),
-                "追加する Acceptance Criterion",
+                t().field.addCriterion,
               )}
             </div>
 
@@ -2894,10 +2888,10 @@
                   type="button"
                   disabled={taskIssue.state !== "ready"}
                   aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-                  title={issueTitle(taskIssue, "タスクを作成")}
+                  title={issueTitle(taskIssue, t().projectDetail.taskCreate)}
                   onclick={createTask}
                 >
-                  タスクを作成
+                  {t().projectDetail.taskCreate}
                 </button>
               </div>
             </div>
@@ -2933,12 +2927,12 @@
   >
     {#if createOpen === "document"}
       <div class="modal-form">
-        <h2>文書を作成</h2>
+        <h2>{t().projectDetail.documentCreateHeading}</h2>
         <!-- 欄は 1 欄ずつ縦に積む (doc-10 §1): 作成モーダルの「同じ型」に欄の積み方が入るので、
              マイルストーン側と並び方が違う形はもう取れない。横 1 行だったのは §1 が積み方を
              覆っていなかった間のことで、実装の逸脱ではない。 -->
         <label class="field">
-          <span class="label">title（必須）</span>
+          <span class="label">{t().field.titleRequired}</span>
           <input
             type="text"
             value={docInput.title}
@@ -2951,7 +2945,7 @@
             value={docInput.docType}
             onchange={(event) => (docInput.docType = event.currentTarget.value)}
           >
-            <option value="">—（CLI の既定）</option>
+            <option value="">{t().projectDetail.cliDefault}</option>
             {#each DOC_TYPES as value (value)}
               <option {value}>{value}</option>
             {/each}
@@ -2961,7 +2955,7 @@
           <span class="label">path</span>
           <input
             type="text"
-            placeholder="docs 配下の下位パス（任意）"
+            placeholder={t().projectDetail.docPathPlaceholder}
             value={docInput.path}
             oninput={(event) => (docInput.path = event.currentTarget.value)}
           />
@@ -2986,7 +2980,7 @@
               title={why(docCreateIssue)}
               onclick={createDoc}
             >
-              文書を作成
+              {t().projectDetail.documentCreate}
             </button>
           </div>
         </div>
@@ -2997,7 +2991,7 @@
            下書き, so it has no exit that writes and leaves for the ✕ to be told apart from
            (doc-11 §7 の条件). -->
       <div class="modal-form note">
-        <h2>{TASK_NOTE_LABEL}</h2>
+        <h2>{taskNoteLabel()}</h2>
         <p>{TASK_CREATE_NOTE}</p>
         <ul>
           {#each TASK_CREATE_LATER_FIELDS as field (field)}
@@ -3007,9 +3001,9 @@
       </div>
     {:else}
       <div class="modal-form">
-        <h2>マイルストーンを作成</h2>
+        <h2>{t().projectDetail.milestoneCreateHeading}</h2>
         <label class="field">
-          <span class="label">名称（必須）</span>
+          <span class="label">{t().projectDetail.nameRequired}</span>
           <input
             type="text"
             value={milestoneInput.name}
@@ -3017,7 +3011,7 @@
           />
         </label>
         <label class="field">
-          <span class="label">説明</span>
+          <span class="label">{t().field.description}</span>
           <input
             type="text"
             value={milestoneInput.description}
@@ -3036,7 +3030,7 @@
               title={why(milestoneIssue)}
               onclick={addMilestone}
             >
-              マイルストーンを作成
+              {t().projectDetail.milestoneCreate}
             </button>
           </div>
         </div>

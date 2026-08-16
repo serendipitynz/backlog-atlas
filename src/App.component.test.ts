@@ -48,6 +48,7 @@ import { SHORTCUT_HELP_LABEL, SHOW_ALL_PROJECTS_LABEL } from "./lib/header";
 import { CLOSE_WITHOUT_SAVING_LABEL, SAVE_LABEL } from "./lib/settings";
 import { MAC_KEYBOARD } from "./lib/platform";
 import { SHORTCUTS } from "./lib/shortcuts";
+import { msg } from "./lib/messages";
 import type { ProjectLoad, UpdateResult } from "./lib/wire";
 
 /**
@@ -365,12 +366,61 @@ describe("起動時の設定・workspace・監視の順序", () => {
     // What is fixed here is that a *rejection* is not fatal: the boundary already degrades a missing
     // or unreadable file to the defaults, so only an IPC failure reaches the shell, and leaving
     // 読み込み中 on screen over a workspace that reads perfectly well would be the worse answer.
+    //
+    // **The band is compared against the 文言表, not against a sentence spelled here** (decision-35).
+    // This is the one case where the fake's `language: "ja"` does not reach the screen: the read that
+    // would have carried it is the one that failed, so 表示言語 is 言語未選択 and the OS decides. A
+    // literal would therefore pin the assertion to whatever locale the runner reports.
     answers.settingsReadFails = true;
     const host = await startWith([loaded("atlas", [TASK])]);
 
     expect(order()).toContain("workspace_open");
     expect(host.querySelector("button.card")).not.toBeNull();
-    expect(host.querySelector('.band[data-band="notice"]')?.textContent).toContain("既定値");
+    expect(host.querySelector('.band[data-band="notice"]')?.textContent).toContain(
+      msg().shell.settingsReadFailed("Error: settings channel is gone"),
+    );
+  });
+
+  it("表示言語 を変えると、開いたままの画面がその場で英語へ描き直る", async () => {
+    // decision-35 の 表示言語 が、**再起動でも再マウントでもなく描き直しで効く**ことを固定する。
+    // `messages-context.ts` の取得子がシェルの `$derived` を閉じ込めているのがその仕組みで、これを
+    // 素の `msg()` に戻すと、最初に描いた言語のまま動かなくなる — 型は通り、画面だけが古びる。
+    //
+    // **見る先は詳細パネルである。** スイムレーンだけを見ると、設定モーダルが閉じるついでに引き直された
+    // 場合と区別が付かない。詳細パネルは 編集セッション を持ちうる区画で、言語を変えても閉じない
+    // (doc-8 §6.4 が破棄を禁じている理由と同じ) ので、**同じ要素が残ったまま字だけが変わる**ことまで
+    // 見られる。
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
+    await settled();
+
+    const before = only(host, '[aria-label="タスク詳細"]');
+    expect(byText(host, "button.primary", "編集")).not.toBeNull();
+
+    openSettingsPanel(host);
+    await settled();
+    const languageSelect = [...host.querySelectorAll("section")]
+      .find((section) => section.textContent?.includes("表示言語"))
+      ?.querySelector("select");
+    if (!(languageSelect instanceof HTMLSelectElement)) {
+      throw new Error("表示言語 select not found");
+    }
+    languageSelect.value = "en";
+    languageSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+
+    // 同じ要素であること — 再マウントなら別のノードになる。
+    const after = only(host, '[aria-label="Task detail"]');
+    expect(after).toBe(before);
+    expect(byText(host, "button.primary", "Edit")).not.toBeNull();
+    // 背後のスイムレーンも同じ描き直しで動く — 詳細パネルだけが取得子を読んでいるのではない。
+    expect(host.textContent).toContain("1 / 1 tasks");
+    // **この時点の画面は 2 言語が混ざる。** 純関数が組む文（`edit.ts`・`external-editor.ts` ほか）は
+    // まだ 文言表 を引いていないので日本語のままで、それを移すのは TASK-187 である。ここでその不在を
+    // 主張しないのは、混在が分割の帰結であって欠陥ではないからで、**混在が解けたことを固定するのは
+    // 抽出漏れの走査 (TASK-184) の役目**である。
+    expect(host.textContent).toContain("外部エディタでは frontmatter");
   });
 
   it("購読に失敗した行はどれも自動更新されないと帯が述べる", async () => {

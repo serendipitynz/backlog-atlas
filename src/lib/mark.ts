@@ -151,7 +151,7 @@ export function inconsistencyReasons(
   view: TaskView,
   conflict: VersionConflict | null,
 ): string[] {
-  const reasons = healthReasons(view.task.health, "タスク");
+  const reasons = healthReasons(view.task.health, MANAGED_FILE_NOUN.task);
   if (conflict !== null) {
     reasons.push(versionConflictReason(conflict));
   }
@@ -167,8 +167,8 @@ export function inconsistencyReasons(
  * There is no `conflict` parameter: doc-9's バージョン不整合 is recorded against a task's save, and
  * these three kinds have no such record to consult.
  */
-export function fileInconsistencyReasons(health: FileHealth, kind: ManagedFileNoun): string[] {
-  return healthReasons(health, kind);
+export function fileInconsistencyReasons(health: FileHealth, kind: ManagedFileKind): string[] {
+  return healthReasons(health, MANAGED_FILE_NOUN[kind]);
 }
 
 /**
@@ -184,22 +184,28 @@ export function unmappedFileReason(file: UnmappedFile): string {
 }
 
 /**
+ * Which management file a 理由行 is about. **The caller names the kind, not the word** — the word is
+ * this module's (`MANAGED_FILE_NOUN`), so a screen asking for a 理由行 spells no Japanese and the
+ * noun has one home to be translated in (TASK-183).
+ */
+export type ManagedFileKind = "task" | UnmappedFile["kind"];
+
+/**
  * What a file is called in a 理由行. Not a family name — the noun of the thing that failed.
  *
  * `decision` reads 決定事項, not doc-4 §1's 意思決定 (TASK-118). These nouns are printed for the
  * user, so they take the 画面に出る語; the read layer and the design documents keep 意思決定 for the
  * same object. The other three nouns are unaffected because their two words coincide.
  */
-export type ManagedFileNoun = "タスク" | "マイルストーン" | "文書" | "決定事項";
-
-const MANAGED_FILE_NOUN: Record<UnmappedFile["kind"], ManagedFileNoun> = {
+const MANAGED_FILE_NOUN: Record<ManagedFileKind, string> = {
+  task: "タスク",
   milestone: "マイルストーン",
   document: "文書",
   decision: "決定事項",
 };
 
 /** The one event→line mapping every 理由行 goes through (decision-22 「導出は 1 回」). */
-function healthReasons(health: FileHealth, noun: ManagedFileNoun): string[] {
+function healthReasons(health: FileHealth, noun: string): string[] {
   if (health.state !== "degraded") {
     return [];
   }
@@ -232,7 +238,7 @@ function healthReasons(health: FileHealth, noun: ManagedFileNoun): string[] {
 function unparseableReasons(
   missingRequired: readonly RequiredField[],
   detail: string | null,
-  noun: ManagedFileNoun,
+  noun: string,
 ): string[] {
   const reasons: string[] = [];
   if (missingRequired.length > 0) {
