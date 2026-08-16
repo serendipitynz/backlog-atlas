@@ -5,6 +5,7 @@
   import { cardFields, cardIdentity, priorityStep } from "../lib/card";
   import Icon from "../lib/icons/Icon.svelte";
   import { inconsistencyLabel, inconsistencyReasons, type VersionConflict } from "../lib/mark";
+  import { messages } from "../lib/messages-context";
   import type { CardDensity, TaskView } from "../lib/wire";
 
   interface Props {
@@ -59,6 +60,8 @@
     onselect,
   }: Props = $props();
 
+  const t = messages();
+
   /**
    * Start a 列間ドロップ (doc-7 §4.2). `setData` is not decoration: an engine starts no drag for a
    * `dragstart` that sets nothing, so without it the card would be `draggable` and refuse to move.
@@ -94,7 +97,7 @@
   // The mark distinguishes the added divisions from active, so active itself stays unmarked.
   let storageMark = $derived(
     showStorageMark && view.task.storageState !== "active"
-      ? (STORAGE_LABEL[view.task.storageState ?? ""] ?? "保存区分不明")
+      ? (STORAGE_LABEL[view.task.storageState ?? ""] ?? t().state.storageUnknown)
       : null,
   );
   /**
@@ -166,7 +169,7 @@
     style="--title-lines: {fields.titleLines}"
     title={view.task.title ?? undefined}
   >
-    {view.task.title ?? "（title 不明）"}
+    {view.task.title ?? t().state.titleUnknown}
   </span>
 
   {#if hasChips}
@@ -176,7 +179,9 @@
            読めないカードになる。 -->
       {#if showRawStatus}
         <span class="status">
-          {view.interpretation.status ? `status: ${view.interpretation.status.raw}` : "status 不明"}
+          {view.interpretation.status
+            ? `status: ${view.interpretation.status.raw}`
+            : t().state.statusUnknown}
         </span>
       {/if}
       {#if storageMark}
@@ -187,13 +192,13 @@
            Type と通常ラベルは混ぜない (doc-7 §3): different chip shapes, never one list. -->
       {#if fields.types}
         {#if types.length === 0}
-          <span class="type unset">Type 未設定</span>
+          <span class="type unset">{t().state.typeUnset}</span>
         {:else}
           <!-- Indexed keys: a malformed frontmatter can repeat a label, and a duplicate key would
                be a render error rather than the display of what the file actually says. -->
           {#each types as value, index (index)}
             <span class="type" class:unknown={!value.known}>
-              {value.value}{value.known ? "" : "（未知）"}
+              {value.value}{value.known ? "" : t().state.valueUnknown}
             </span>
           {/each}
         {/if}

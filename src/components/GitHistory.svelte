@@ -20,6 +20,7 @@
   } from "../lib/detail";
   import { RECENT_COMMIT_LIMIT, type HistoryDetail } from "../lib/placement";
   import type { ProjectEntry } from "../lib/wire";
+  import { messages } from "../lib/messages-context";
 
   interface Props {
     history: HistoryState;
@@ -33,6 +34,8 @@
   }
 
   let { history, entry, detail, onexpand, onreload }: Props = $props();
+
+  const t = messages();
 
   let commits = $derived(commitList(history));
   let relation = $derived(relationAvailability(entry, history));
@@ -63,7 +66,7 @@
    * なぜ再取得が押せないか、押せないときだけ (doc-11 §5). One value for both the withheld state and the
    * sentence beside the button: derived apart, a control can end up blocked with nothing said about it.
    */
-  let reloadBlocked = $derived(history.state === "loading" ? "取得中です" : null);
+  let reloadBlocked = $derived(history.state === "loading" ? t().gitHistory.loadingReason : null);
 
   /** Author date is strict ISO 8601 (doc-6 §3); show it without inventing a timezone for it. */
   function day(date: string): string {
@@ -79,14 +82,14 @@
       type="button"
       onclick={onreload}
       disabled={reloadBlocked !== null}
-      title={reloadBlocked ?? "Git 履歴を取り直します"}
+      title={reloadBlocked ?? t().gitHistory.reloadHint}
     >
-      再取得
+      {t().gitHistory.reload}
     </button>
     <!-- 無効化の理由を常時表示で添える (doc-11 §5): a disabled button takes no focus, so a `title` would
          leave the reason out of reach from the keyboard and from a screen reader. -->
     {#if reloadBlocked !== null}
-      <span class="reason">{reloadBlocked}。完了するまで再取得はできません。</span>
+      <span class="reason">{t().gitHistory.reloadWithheld(reloadBlocked)}</span>
     {/if}
   </div>
 
@@ -114,22 +117,20 @@
         {/each}
       </ol>
       {#if remaining > 0}
-        <p class="neutral">ほか {remaining} 件（全件は全面シングルビューで読めます）</p>
+        <p class="neutral">{t().gitHistory.remainingCommits(remaining)}</p>
       {/if}
     {:else if commits.state === "noCommits"}
       <!-- コミット該当なし is a normal state (未着手・未コミット), so it is neutral, not an error
            (decision-6 エラー提示方針). -->
-      <p class="neutral absence">対応コミット無し（このリポジトリに TASK-ID を含むコミットがありません）</p>
+      <p class="neutral absence">{t().gitHistory.noCommits}</p>
     {:else if commits.state === "noRepository"}
-      <p class="setting">
-        Git 対象不在: {commits.projectRoot} は Git リポジトリではないため、ローカル履歴も関連解決も出せません。
-      </p>
+      <p class="setting">{t().gitHistory.noRepository(commits.projectRoot)}</p>
     {:else if commits.state === "unreadable"}
-      <p class="failure">Git 履歴を読めません: {commits.detail}</p>
+      <p class="failure">{t().gitHistory.unreadable(commits.detail)}</p>
     {:else if commits.state === "noTaskId"}
-      <p class="setting">TASK-ID が読めないため、コミット検索の鍵がありません。</p>
+      <p class="setting">{t().gitHistory.noTaskId}</p>
     {:else}
-      <p class="neutral">読み込み中…</p>
+      <p class="neutral">{t().state.loading}</p>
     {/if}
 
     {#if detail === "full"}
@@ -138,7 +139,7 @@
              Request 区画's (doc-8 §4), which doc-8 §5 keeps independent of the commit list whenever the
              relation cannot be resolved — repeating the URLs here would make it look like a resolved
              pairing. -->
-        <h4>関連 Pull Request</h4>
+        <h4>{t().gitHistory.relatedHeading}</h4>
         {#if relation.state === "hostDetermined"}
           <!-- The gate doc-6 §5/§6 puts on 関連解決 is open, so every extracted PR has an outcome.
                全面 is where doc-8 §5 asks for those causes to be written out one by one, with whether
@@ -157,19 +158,13 @@
             </ul>
           {/if}
         {:else if relation.state === "remoteAbsent"}
-          <p class="setting">
-            Git remote 不在（登録内容の Git remote 有無属性が「なし」）のため関連解決なし。
-            ローカルコミット履歴は上のとおり表示します。プロジェクト詳細の概要区画で解消できます。
-          </p>
+          <p class="setting">{t().gitHistory.remoteAbsent}</p>
         {:else if relation.state === "hostUndetermined"}
-          <p class="setting">
-            remote ホスト種別を判別できないため関連解決の対象外です（未対応ホスト、または remote を
-            読めません）。
-          </p>
+          <p class="setting">{t().gitHistory.hostUndetermined}</p>
         {:else if relation.state === "notRead"}
-          <p class="setting">関連解決は未実施です（{relation.detail}）。</p>
+          <p class="setting">{t().gitHistory.notRead(relation.detail)}</p>
         {:else}
-          <p class="neutral">読み込み中…</p>
+          <p class="neutral">{t().state.loading}</p>
         {/if}
       </div>
     {:else}
@@ -186,7 +181,7 @@
          「残り 1 件と関連 PR は全面表示で →」, a count form this button cannot take — it is offered
          even when there is nothing left to expand. That difference is TASK-80's. -->
     <p>
-      <button type="button" class="expand" onclick={onexpand}> 全面表示で開く → </button>
+      <button type="button" class="expand" onclick={onexpand}> {t().gitHistory.expand} </button>
     </p>
   {/if}
 </div>

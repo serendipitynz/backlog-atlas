@@ -198,7 +198,7 @@ describe("conflictKeyOf", () => {
 
 describe("fileInconsistencyReasons", () => {
   it("emits nothing for a non-task file that mapped cleanly", () => {
-    expect(fileInconsistencyReasons({ state: "ok" }, "文書")).toEqual([]);
+    expect(fileInconsistencyReasons({ state: "ok" }, "document")).toEqual([]);
   });
 
   // AC #3: the id/title/body survive and only the out-of-range field is named — so the line has to
@@ -210,7 +210,7 @@ describe("fileInconsistencyReasons", () => {
           state: "degraded",
           events: [{ event: "unexpectedSchema", detail: "frontmatter `type` is not a scalar value" }],
         },
-        "文書",
+        "document",
       ),
     ).toEqual(["想定外スキーマ: frontmatter `type` is not a scalar value"]);
   });
@@ -222,7 +222,7 @@ describe("fileInconsistencyReasons", () => {
       state: "degraded",
       events: [{ event: "danglingReference", kind: "milestone", target: "m-9" }],
     };
-    expect(fileInconsistencyReasons(health, "マイルストーン")).toEqual(
+    expect(fileInconsistencyReasons(health, "milestone")).toEqual(
       inconsistencyReasons(taskView({ health }), null),
     );
   });

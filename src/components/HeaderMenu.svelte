@@ -21,6 +21,7 @@
   } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import { omitsSentence, startsGroup, type MenuItem } from "../lib/header";
+  import { messages } from "../lib/messages-context";
   import Icon from "../lib/icons/Icon.svelte";
 
   interface Props {
@@ -35,6 +36,8 @@
   }
 
   let { items, boundary, onchoose, onclose }: Props = $props();
+
+  const t = messages();
 
   let root = $state<HTMLDivElement | null>(null);
 
@@ -86,7 +89,7 @@
 <div
   class="menu"
   role="dialog"
-  aria-label="メニュー"
+  aria-label={t().action.menu}
   tabindex="-1"
   bind:this={root}
   onkeydown={keydown}

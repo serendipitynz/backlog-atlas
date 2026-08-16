@@ -4,12 +4,13 @@ title: 抽出漏れの走査を足し、英語表示のレイアウトを確か�
 status: To Do
 assignee: []
 created_date: '2026-08-15 22:19'
+updated_date: '2026-08-16 02:12'
 labels:
   - i18n
   - 'kind:feature'
 milestone: m-3
 dependencies:
-  - TASK-183
+  - TASK-187
 ordinal: 175700
 ---
 
@@ -18,7 +19,7 @@ ordinal: 175700
 <!-- SECTION:DESCRIPTION:BEGIN -->
 decision-35 §4 の 2 段目 — 源泉に残った日本語を落とす走査 — を `screen-text.test.ts` の 4 本目として足し、英語表示のレイアウトを確かめる。
 
-**この行は 2026-08-16 に TASK-182 から分けて起票された。** 走査は抽出（TASK-183）が終わるまで通らない — 源泉に残った日本語で落ちるのが走査の役目なので、除外表を持たない限り最後に入る。**したがって依存は TASK-183 であって TASK-182 ではない。**
+**この行は 2026-08-16 に TASK-182 から分けて起票され、同じ日に依存を付け替えた。** 走査は抽出が終わるまで通らない — 源泉に残った日本語で落ちるのが走査の役目なので、除外表を持たない限り最後に入る。**抽出は同日 2 つに割れた**（TASK-183 が 取得子側の画面文、TASK-187 が `msg()` 側の画面文）ので、**依存は TASK-187 である** — TASK-183 だけが済んだ時点では `src/lib/**/*.ts` に画面文の日本語が残っており、そこで走らせれば必ず落ちる。
 
 **源泉は `screen-text.test.ts` が既に数えている 4 つである** — フロントエンドの `.ts` と `.svelte`、crate の `.rs`、`index.html` の `<title>`、`tauri.conf.json` の窓 `title`。**源泉を数え落とさないための検査も既に在る**（`scans the crate and both titles too`）。**語の一覧より先に源泉の一覧を数える** — フロントエンドだけ見ると crate の失敗理由を落とす。
 

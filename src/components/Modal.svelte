@@ -45,6 +45,7 @@
     type DiscardAnswers,
   } from "../lib/edit";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
+  import { messages } from "../lib/messages-context";
   import { MAC_KEYBOARD } from "../lib/platform";
 
   interface Props {
@@ -93,6 +94,8 @@
    * reason to point at.
    */
   const CLOSE_BLOCKED_ID = "modal-close-blocked";
+
+  const t = messages();
 
   /**
    * 閉じたら開く前の操作へフォーカスを戻す (doc-7 §2.1). Read while the component initialises, which is
@@ -224,10 +227,10 @@
     <button
       type="button"
       class="close"
-      aria-label="閉じる"
+      aria-label={t().action.close}
       aria-disabled={closeBlocked !== null}
       aria-describedby={closeBlocked === null ? undefined : CLOSE_BLOCKED_ID}
-      title={closeBlocked ?? "閉じる"}
+      title={closeBlocked ?? t().action.close}
       onclick={() => closeBlocked === null && onclose()}
     >
       <Icon name="x" />
@@ -237,7 +240,7 @@
          would name one circumstance twice in one box. Kept in the DOM at all times because a target
          inserted at the moment it is pointed at is not reliably announced. -->
     <span class="unseen" id={CLOSE_BLOCKED_ID}>
-      {closeBlocked === null ? "" : `いま押せません: ${closeBlocked}`}
+      {closeBlocked === null ? "" : t().modal.cannotPressNow(closeBlocked)}
     </span>
     <!--
       破棄前確認 (doc-8 §6.3), drawn here because this layer covers the 上部帯 ① where every other

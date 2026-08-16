@@ -113,7 +113,7 @@
   } from "./lib/history-read";
   import { SAVING_REASON, openLocationFailure } from "./lib/settings";
   import { createSettingsWriter } from "./lib/settings-write";
-  import { provideMessages } from "./lib/messages-context";
+  import { messages, provideMessages } from "./lib/messages-context";
   import { osLanguage, resolveLanguage, setLanguage } from "./lib/messages";
   import { themeAttribute } from "./lib/theme";
   import {
@@ -306,8 +306,15 @@
   let loading = $state(true);
   /** A failure that left the screen with nothing to draw, as opposed to one bad row. */
   let fatal = $state<string | null>(null);
-  /** A failure of an action the user took; the grid stays usable. */
-  let notice = $state<string | null>(null);
+  /**
+   * A failure of an action the user took; the grid stays usable.
+   *
+   * **A thunk, not the sentence.** A 通知 outlives the press that raised it, so a stored string would
+   * keep the 表示言語 that was in force when it was raised while the screen around it redrew
+   * (decision-35). The closure holds the values the sentence needs and words it where it is read, so
+   * the band follows the language like everything else. `null` is 通知なし.
+   */
+  let notice = $state<(() => string) | null>(null);
   /**
    * The open task, held as (slug, file path) rather than as the `TaskView` itself: a reload
    * replaces every view object, and a captured one would keep the detail panel showing the
@@ -561,6 +568,9 @@
    */
   let language = $derived(resolveLanguage(settings?.settings.language ?? null, osLanguage()));
   provideMessages(() => language);
+
+  /** The 文言表 in force, read through the accessor so a 表示言語 change redraws this shell too. */
+  const t = messages();
   $effect(() => {
     setLanguage(language);
     document.documentElement.lang = language;
@@ -595,7 +605,8 @@
       return;
     }
     void windowTitleSet(titleLine).catch((error) => {
-      notice = `ウィンドウのタイトルに総件数を出せません（${unreadableDetail(asCommandError(error))}）`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.titleCountFailed(detail);
     });
   });
   /**
@@ -614,10 +625,10 @@
   /** Why 継続検出 is stopped, for the 帯. The state's name and mark stay the same (doc-9 §3.1). */
   let unwatchedReason = $derived(
     !watchEnabled
-      ? "設定で継続検出を切っているため、どの行も自動では更新されません"
+      ? t().shell.watchOffAll
       : reloadFeed === "unavailable"
-        ? "変更の通知を購読できていないため、どの行も自動では更新されません"
-        : "変更監視が動いていない行があります",
+        ? t().shell.feedUnavailable
+        : t().shell.someRowsUnwatched,
   );
   /** Whether the open task's root is one of those (AC #7: the 外部エディタ経路 states it before opening). */
   let selectedWatchStopped = $derived(
@@ -663,7 +674,7 @@
       ledgerReadOnly,
       unwatchedReason:
         screen === "swimlane" && unwatchedRows.length > 0 ? unwatchedReason : null,
-      notice,
+      notice: notice?.() ?? null,
     }),
   );
   /**
@@ -764,12 +775,11 @@
   // --- 列間ドロップ (doc-7 §4.2, decision-34) ------------------------------------------------
 
   /** The 候補選択の問い's accessible name — what the layer is, in the words doc-7 §4.2 names it with. */
-  const DROP_ASK_LABEL = "渡す status を選ぶ";
+
   /** Why the 問い can no longer be answered: the column stopped declaring anything the drop could pass
    * while the layer stood (doc-9 §3 継続検出). A refusal rather than a silent close — the card was
    * dropped deliberately, so the answer to that gesture is a sentence, not a layer that vanishes. */
-  const DROP_ASK_WITHDRAWN_REASON =
-    "この列に渡せる status が無くなりました。読み直した内容を確かめてからやり直してください。";
+
 
   /** Why no card may be picked up, or `null` — つまめないカード (doc-7 §4.2). */
   let dragHeld = $derived(laneDragHold({ readiness, busy: gridBusy }));
@@ -796,7 +806,7 @@
   /** Why the 問い cannot be answered, or `null` — the column stopped taking the card, or 縮退. */
   let dropAskBlocked = $derived.by(() => {
     if (dropAskDrop !== null && dropAskDrop.state === "ignored") {
-      return DROP_ASK_WITHDRAWN_REASON;
+      return t().shell.dropAskWithdrawn;
     }
     return dragHeld;
   });
@@ -915,7 +925,8 @@
       });
     } catch (error) {
       reloadFeed = "unavailable";
-      notice = `変更の通知を購読できません（${unreadableDetail(asCommandError(error))}）`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.feedSubscribeFailed(detail);
     }
     // Probed here and after every settings save, not per edit: it decides whether edit controls are
     // offered at all (doc-5 §5), and a probe per keystroke-worth of UI would spawn a process for a
@@ -943,7 +954,8 @@
     try {
       applySettings(await settingsRead());
     } catch (error) {
-      notice = `設定を読み込めませんでした（${unreadableDetail(asCommandError(error))}）。既定値で動きます。`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.settingsReadFailed(detail);
     }
     try {
       settingsPath = await settingsLocation();
@@ -963,7 +975,8 @@
     try {
       editorReadiness = await editorProbe();
     } catch (error) {
-      notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.editorProbeFailed(detail);
     }
     await load();
   });
@@ -1181,7 +1194,8 @@
       if (run !== saveRefresh) {
         return;
       }
-      notice = `外部エディタの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.editorProbeFailed(detail);
     }
     // 外部コマンド解決の順序 starts at the 外部コマンド指定 (decision-29), so this save changes what the
     // 解決結果の表示 reports — for the same reason the editor is re-probed just above.
@@ -1210,7 +1224,8 @@
       if (run !== saveRefresh) {
         return;
       }
-      notice = `Backlog CLI の確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.cliProbeFailed(detail);
     }
   }
 
@@ -1237,7 +1252,8 @@
       if (run !== programsRefresh) {
         return;
       }
-      notice = `外部コマンドの確認に失敗しました（${unreadableDetail(asCommandError(error))}）`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.externalProbeFailed(detail);
     }
   }
 
@@ -1385,7 +1401,8 @@
       unwatched = unwatched.filter((candidate) => candidate !== slug);
       return true;
     } catch (error) {
-      notice = `${slug}: 変更監視を開始できません（${unreadableDetail(asCommandError(error))}）`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.watchStartFailed(slug, detail);
       if (!unwatched.includes(slug)) {
         unwatched = [...unwatched, slug];
       }
@@ -1448,7 +1465,7 @@
     // (`ledgerBusy`) rather than racing it. Reported rather than dropped: the row visibly did not
     // move, and the neighbour it would have passed may be different by the time the other finishes.
     if (ledgerBusy) {
-      notice = "ほかの登録の更新が完了するまで待ってください。";
+      notice = () => t().shell.ledgerBusy;
       return;
     }
     ledgerBusy = true;
@@ -1456,7 +1473,8 @@
       applyLedger(await ledgerReorder(slug, order.indexOf(neighbour)));
       notice = null;
     } catch (error) {
-      notice = `行の並べ替えに失敗しました: ${unreadableDetail(asCommandError(error))}`;
+      const detail = unreadableDetail(asCommandError(error));
+      notice = () => t().shell.reorderFailed(detail);
     } finally {
       ledgerBusy = false;
     }
@@ -1484,7 +1502,7 @@
   /** The answer to a ledger action asked for while another was still in flight. */
   const LEDGER_BUSY_RESULT: LedgerActionResult = {
     state: "refused",
-    report: { message: "ほかの登録の更新が完了するまで待ってください。", field: null },
+    report: { message: t().shell.ledgerBusy, field: null },
   };
 
   /** Adopt a ledger the boundary just returned: the row order and the read-only state come with it. */
@@ -1839,7 +1857,7 @@
     // was issued for, and the selection can move while the CLI runs.
     const target = selectedRef;
     if (target === null) {
-      return { state: "failed", detail: "対象プロジェクトを特定できません" };
+      return { state: "failed", detail: t().shell.projectUnidentified };
     }
     const slug = target.slug;
     try {
@@ -1872,7 +1890,7 @@
           selectedRef = null;
           detailDirty = false;
         }
-        notice = "状態遷移を適用しました。保存区分と ID が変わるため、詳細を閉じました。";
+        notice = () => t().shell.transitionClosedDetail;
       }
       // The operated task as of the re-read, resolved here because the shell is what holds it. The
       // panel needs it to make doc-9 §5's 事後通知 comparison against the right task even when the
@@ -1970,18 +1988,16 @@
       // the moment it is read — the one thing about this create the screen does not state, since an
       // unchanged cell is otherwise indistinguishable from a create that silently did nothing. The
       // filter is reversible from the フィルタ帯, so the card is one 解除 away rather than lost.
-      const outOfFilter =
-        created !== null && !matchesFilter(created, filter, inconsistentView)
-          ? "（今の絞り込みでは表示されないため、カードは出ていません。フィルタ帯で条件を外すと出ます）"
-          : null;
+      const outOfFilter = created !== null && !matchesFilter(created, filter, inconsistentView);
       // 発行が通った事実そのものは ⑤ 通知 に載せない (doc-11 §4): the card lands in the cell the ＋新規
       // that made it sits in, so a 帯 would repeat what the screen already shows. What stands is the
       // 帰結 above, and every outcome that is not 通った.
       notice =
-        outcome.state === "applied" && outOfFilter === null
+        outcome.state === "applied" && !outOfFilter
           ? null
-          : outcomeMessage(outcome, `${at.slug} の ${column} 列にタスクを作成しました。`) +
-            (outOfFilter ?? "");
+          : () =>
+              outcomeMessage(outcome, t().shell.taskCreated(at.slug, column)) +
+              (outOfFilter ? t().shell.outOfFilter : "");
       if (outcome.state === "applied") {
         laneCreateTitle = "";
       }
@@ -2087,16 +2103,13 @@
       const outOfFilter =
         outcome.state === "applied" &&
         moved !== undefined &&
-        !matchesFilter(moved, filter, inconsistentView)
-          ? "（今の絞り込みでは表示されないため、カードは出ていません。フィルタ帯で条件を外すと出ます）"
-          : null;
+        !matchesFilter(moved, filter, inconsistentView);
       notice =
-        outcome.state === "applied" && outOfFilter === null
+        outcome.state === "applied" && !outOfFilter
           ? null
-          : outcomeMessage(
-              outcome,
-              `${source.taskId} の status を ${status} にしました。`,
-            ) + (outOfFilter ?? "");
+          : () =>
+              outcomeMessage(outcome, t().shell.statusChanged(source.taskId, status)) +
+              (outOfFilter ? t().shell.outOfFilter : "");
     } finally {
       dropIssuingPath = null;
     }
@@ -2121,7 +2134,7 @@
   async function openExternally(method: LaunchMethod): Promise<OpenOutcome> {
     const ref = selectedRef;
     if (ref === null) {
-      return { state: "failed", detail: "対象タスクを特定できません" };
+      return { state: "failed", detail: t().shell.taskUnidentified };
     }
     // Read before the await: whether the panel had already told the user that nothing will bring the
     // save back. It is the difference between a warning they have read and one that appears with the
@@ -2158,7 +2171,8 @@
     try {
       await bodyLinkOpen(url);
     } catch (error) {
-      notice = commandErrorDetail(asCommandError(error));
+      const detail = commandErrorDetail(asCommandError(error));
+      notice = () => detail;
     }
   }
 
@@ -2497,11 +2511,11 @@
       type="button"
       class="header-entry"
       bind:this={menuButton}
-      aria-label="メニュー"
+      aria-label={t().action.menu}
       aria-expanded={menuOpen}
       aria-haspopup="dialog"
       aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
-      title={`メニュー（${shortcutHint("toggleMenu", MAC_KEYBOARD)}）— 共通の入口と、${SHORTCUT_HELP_LABEL}と、プロジェクトごとの表示・非表示をまとめて開きます`}
+      title={t().shell.menuHint(shortcutHint("toggleMenu", MAC_KEYBOARD), SHORTCUT_HELP_LABEL)}
       onclick={() => (menuOpen ? closeMenu() : openMenu())}
     >
       <Icon name="menu" />
@@ -2540,7 +2554,7 @@
          so there is no 下部操作行. Both of them discard what has been typed, so both are held by the
          same flag while the registration is unresolved and both ask first when there is input. -->
     <Modal
-      label="プロジェクトを登録"
+      label={t().projectRegister.heading}
       closeBlocked={registerSubmitting ? REGISTERING_REASON : null}
       confirmDiscard={modalConfirm}
       onclose={closeRegister}
@@ -2567,7 +2581,7 @@
          The 破棄前確認 is a different fact and reaches only two of them: 変更せずに閉じる says what
          becomes of the 下書き in its own words, so the question would ask what the label answered. -->
     <Modal
-      label="設定"
+      label={t().settings.heading}
       closeBlocked={settingsSaving ? SAVING_REASON : null}
       confirmDiscard={modalConfirm}
       onclose={() => closeSettings(false)}
@@ -2605,19 +2619,22 @@
          which is what §4.1 keeps for the 入口. **Not doc-11 §12's 実行前確認** — that one asks whether to
          act and has two answers; this asks which value travels and has as many as the column declares.
          What is borrowed is the 被せ層 の作法 (同時に 1 枚, kept by this file), not §12's rules. -->
-    <Modal label={DROP_ASK_LABEL} onclose={cancelDropAsk}>
+    <Modal label={t().shell.dropAskLabel} onclose={cancelDropAsk}>
       <section class="drop-ask">
-        <h2>{DROP_ASK_LABEL}</h2>
+        <h2>{t().shell.dropAskLabel}</h2>
         <p>
-          {dropAsk.source.taskId} を {CANONICAL_COLUMN_LABEL[dropAsk.column]} 列へ移します。この列には
-          status が {dropAskCandidates.length} 件宣言されています。
+          {t().shell.dropAskLead(
+            dropAsk.source.taskId,
+            CANONICAL_COLUMN_LABEL[dropAsk.column],
+            dropAskCandidates.length,
+          )}
         </p>
         <!-- 渡す値は常に読める (doc-7 §4.1 の要求を §4.2 が引く): the chosen candidate is the string the
              `-s` will carry, so the control shows the project's own spelling and never the 正準列名.
              The options are derived from the current read, so a candidate withdrawn from `config.yml`
              while this stands leaves the list rather than staying selectable. -->
         <label>
-          <span>渡す status</span>
+          <span>{t().shell.dropAskSelectLabel}</span>
           <select
             value={dropStatusToPass}
             disabled={dropAskCandidates.length === 0}
@@ -2637,7 +2654,7 @@
         <!-- 進む → 戻る, the order every other layer on this screen answers in (doc-11 §12). -->
         <div class="answers">
           <button type="button" disabled={dropAskBlocked !== null} onclick={confirmDropAsk}>
-            この status で移す
+            {t().shell.dropAskConfirm}
           </button>
           <button type="button" onclick={cancelDropAsk}>{ISSUE_CONFIRM_CANCEL}</button>
         </div>
@@ -2701,7 +2718,7 @@
       {:else if band.kind === "unwatched"}
         <!-- 帯が持つ操作は縮約しても帯に残す (doc-11 §4): 継続検出停止 is resolved by re-reading, so the
              再読込 is here and not only on each row's mark — a row that may be scrolled out of view. -->
-        <button type="button" onclick={rereadUnwatched}>該当行を再読込</button>
+        <button type="button" onclick={rereadUnwatched}>{t().shell.rereadUnwatched}</button>
       {:else if band.kind === "notice"}
         <!-- A 通知 carries whatever the backend said (a watch that would not start, a refused
              reorder), so it is the one band whose text is not already 縮約 — the ellipsis can hide
@@ -2710,7 +2727,7 @@
              Keyed on the text so a new 通知 starts closed rather than reusing the last one's state. -->
         {#key band.text}
           <details class="full">
-            <summary>全文</summary>
+            <summary>{t().shell.noticeFull}</summary>
             <p>{band.text}</p>
           </details>
         {/key}
@@ -2719,7 +2736,7 @@
         <!-- アイコンのみのボタン (doc-11 §2.4): the figure is decorative, so the name is all on
              `aria-label`. Same `x` the モーダル draws, and doc-11 §7 is explicit that this is not that
              section's contract — this closes one band, not a layer. -->
-        <button type="button" class="close" aria-label="通知を閉じる" onclick={() => (notice = null)}>
+        <button type="button" class="close" aria-label={t().shell.noticeClose} onclick={() => (notice = null)}>
           <Icon name="x" />
         </button>
       {/if}
@@ -2738,9 +2755,9 @@
            would have no visible way in for as long as the user stays here. -->
       <div class="orphan">
         <p class="status">
-          このプロジェクトは登録されていません（別の画面で登録が外れた可能性）。
+          {t().shell.projectUnregistered}
           <button type="button" class="link" onclick={() => leaveProject(false)}>
-            スイムレーンへ戻る
+            {t().action.backToSwimlane}
           </button>
         </p>
         {@render menuControl()}
@@ -2768,17 +2785,17 @@
       {/key}
     {/if}
   {:else if fatal}
-    <p class="fatal">読み込みに失敗しました: {fatal}</p>
-    <button type="button" onclick={load}>再読み込み</button>
+    <p class="fatal">{t().shell.fatal(fatal)}</p>
+    <button type="button" onclick={load}>{t().action.reload}</button>
   {:else if loading}
-    <p class="status">読み込み中…</p>
+    <p class="status">{t().state.loading}</p>
   {:else if order.length === 0}
     <p class="status">
-      登録済みプロジェクトがありません。フィルタ帯右端のメニューの
+      {t().shell.noProjects.lead}
       <button type="button" class="link" onclick={() => openEntry("register")}>
-        プロジェクトを登録
+        {t().projectRegister.heading}
       </button>
-      から追加してください。
+      {t().shell.noProjects.tail}
     </p>
   {:else}
     <!-- The grid and the detail panel share the remaining height. Which of the three ways the panel
@@ -2880,11 +2897,8 @@
     <!-- The task was open when its root stopped yielding it — deleted, moved, or the root
          became unreadable. Distinct from an empty panel: the selection is still named. -->
     <aside class="detail-gone">
-      <p>
-        {selectedRef.sourcePath} は現在の読み取り結果にありません（削除・移動、または
-        ルート読取不能の可能性）。
-      </p>
-      <button type="button" onclick={() => (selectedRef = null)}>閉じる</button>
+      <p>{t().shell.detailGone(selectedRef.sourcePath)}</p>
+      <button type="button" onclick={() => (selectedRef = null)}>{t().action.close}</button>
     </aside>
   {/if}
 {/snippet}

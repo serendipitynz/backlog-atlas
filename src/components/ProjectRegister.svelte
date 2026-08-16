@@ -27,6 +27,7 @@
   import { omitsSentence } from "../lib/manage";
   import { OVERVIEW_INPUT_PROBLEMS_REASON } from "../lib/project-detail";
   import { createSlugPreviewLoader, type SlugPreview } from "../lib/slug-preview";
+  import { messages } from "../lib/messages-context";
   import type { ProjectEntry, RegisterRequest } from "../lib/wire";
 
   interface Props {
@@ -65,6 +66,8 @@
     ondirty,
   }: Props = $props();
 
+  const t = messages();
+
   let input = $state<RegisterInput>({ ...EMPTY_REGISTER_INPUT });
   /**
    * The default slug derived from the project root (doc-3 §3.1). Shown beside the field rather than
@@ -91,8 +94,6 @@
 
   const BLOCKED_ID = "register-blocked";
   const READ_ONLY_ID = "register-read-only";
-  const READ_ONLY_PICK_REASON =
-    "登録ファイルが読み取り専用のため、フォルダを選んでも登録できません。";
 
   /**
    * Why registration is held, and only when it is (doc-11 §5). One string drives both the withheld
@@ -106,9 +107,9 @@
    */
   let blocked = $derived(
     readOnly
-      ? "登録ファイルが読み取り専用のため、プロジェクトを登録できません。"
+      ? t().projectRegister.readOnlyBlocked
       : busy || submitting
-        ? "登録の更新を実行中です。完了するまで登録は始められません。"
+        ? t().projectRegister.busyBlocked
         : issues.length > 0
           ? OVERVIEW_INPUT_PROBLEMS_REASON
           : null,
@@ -126,7 +127,7 @@
   }
 
   async function pickProjectRoot(): Promise<void> {
-    const picked = await onpickDirectory("プロジェクトルートを選択");
+    const picked = await onpickDirectory(t().field.pickProjectRootTitle);
     if (picked === null) {
       return;
     }
@@ -140,7 +141,7 @@
    * field* for the user to accept or correct. Guessing it silently would attach the wrong repository.
    */
   async function pickBacklogRoot(): Promise<void> {
-    const picked = await onpickDirectory("Backlog ルートを選択");
+    const picked = await onpickDirectory(t().field.pickBacklogRootTitle);
     if (picked === null) {
       return;
     }
@@ -186,7 +187,7 @@
        the ledger without leaving the layer, so there is no second way out for a wording to tell the
        first one from. What the × does with what has been typed is said by the 破棄前確認, not here. -->
   <header>
-    <h2>プロジェクトを登録</h2>
+    <h2>{t().projectRegister.heading}</h2>
   </header>
 
   <!-- 台帳ファイルの保存場所はこの層では述べない (doc-3 §2.1): パスを読む必要が生じるのは台帳を手で
@@ -197,18 +198,15 @@
   {#if readOnly}
     <!-- A reason that applies to the whole screen (doc-11 §5). The 選択… buttons below point at it
          rather than repeating the sentence. -->
-    <p class="readonly" id={READ_ONLY_ID}>
-      登録ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。
-      登録はできません。
-    </p>
+    <p class="readonly" id={READ_ONLY_ID}>{t().projectRegister.readOnlyNotice}</p>
   {/if}
 
   {#if registered}
-    <p class="notice">{registered} を登録しました。スイムレーンに行が 1 本増えます。</p>
+    <p class="notice">{t().projectRegister.registered(registered)}</p>
   {/if}
 
   <label>
-    <span class="caption">プロジェクトルート（必須）</span>
+    <span class="caption">{t().field.projectRootRequired}</span>
     <span class="field">
       <input
         type="text"
@@ -221,8 +219,8 @@
         type="button"
         aria-disabled={readOnly}
         aria-describedby={readOnly ? READ_ONLY_ID : undefined}
-        title={readOnly ? READ_ONLY_PICK_REASON : "フォルダを選びます"}
-        onclick={() => !readOnly && pickProjectRoot()}>選択…</button
+        title={readOnly ? t().projectRegister.readOnlyPickReason : t().field.pickHint}
+        onclick={() => !readOnly && pickProjectRoot()}>{t().action.pick}</button
       >
     </span>
   </label>
@@ -231,12 +229,12 @@
   {/each}
 
   <label>
-    <span class="caption">Backlog ルート（任意）</span>
+    <span class="caption">{t().field.backlogRootOptional}</span>
     <span class="field">
       <input
         type="text"
         placeholder={previewBacklogRoot === ""
-          ? "既定は <プロジェクトルート>/backlog"
+          ? t().projectRegister.backlogRootDefaultPlaceholder
           : previewBacklogRoot}
         spellcheck="false"
         bind:value={input.backlogRoot}
@@ -245,15 +243,20 @@
         type="button"
         aria-disabled={readOnly}
         aria-describedby={readOnly ? READ_ONLY_ID : undefined}
-        title={readOnly ? READ_ONLY_PICK_REASON : "フォルダを選びます"}
-        onclick={() => !readOnly && pickBacklogRoot()}>選択…</button
+        title={readOnly ? t().projectRegister.readOnlyPickReason : t().field.pickHint}
+        onclick={() => !readOnly && pickBacklogRoot()}>{t().action.pick}</button
       >
     </span>
   </label>
   {#if input.backlogRoot.trim() === "" && previewBacklogRoot !== ""}
     <p class="hint">
-      指定しない場合は <code>{previewBacklogRoot}</code> を Backlog ルートとして
-      <code>config.yml</code> と <code>tasks/</code> を確認します。
+      {t().projectRegister.backlogRootHint.lead}
+      <code>{previewBacklogRoot}</code>
+      {t().projectRegister.backlogRootHint.asBacklogRoot}
+      <code>config.yml</code>
+      {t().projectRegister.backlogRootHint.conjunction}
+      <code>tasks/</code>
+      {t().projectRegister.backlogRootHint.tail}
     </p>
   {/if}
   {#each problemsFor(issues, "backlogRoot") as message (message)}
@@ -261,11 +264,11 @@
   {/each}
 
   <label>
-    <span class="caption">slug（任意）</span>
+    <span class="caption">{t().field.slugOptional}</span>
     <span class="field">
       <input
         type="text"
-        placeholder={preview.state === "derived" ? preview.slug : "英小文字・数字・ハイフン"}
+        placeholder={preview.state === "derived" ? preview.slug : t().projectRegister.slugPlaceholder}
         spellcheck="false"
         bind:value={input.slug}
       />
@@ -274,15 +277,14 @@
   {#if input.slug.trim() === ""}
     {#if preview.state === "derived"}
       <p class="hint">
-        未指定なら <code>{preview.slug}</code> をプロジェクトルート名から導出して使います。
-        別の slug を使う場合はここに入力してください。
+        {t().projectRegister.slugHint.lead}
+        <code>{preview.slug}</code>
+        {t().projectRegister.slugHint.tail}
       </p>
     {:else if preview.state === "underivable"}
       <!-- doc-3 §3.1: a directory name with no usable characters yields no default, so the user
            has to name one. -->
-      <p class="problem">
-        プロジェクトルート名から slug を導出できません。slug を指定してください。
-      </p>
+      <p class="problem">{t().projectRegister.slugUnderivable}</p>
     {/if}
   {/if}
   {#each problemsFor(issues, "slug") as message (message)}
@@ -315,10 +317,10 @@
         class="primary"
         aria-disabled={!canRegister}
         aria-describedby={canRegister ? undefined : BLOCKED_ID}
-        title={blocked ?? "入力の内容でプロジェクトを登録します"}
+        title={blocked ?? t().projectRegister.submitHint}
         onclick={submit}
       >
-        {submitting ? "登録中…" : "登録"}
+        {submitting ? t().projectRegister.submitting : t().projectRegister.submit}
       </button>
     </div>
   </div>

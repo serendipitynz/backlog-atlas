@@ -28,6 +28,7 @@
   import { omitsSentence } from "../lib/manage";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
+  import { messages } from "../lib/messages-context";
   import {
     CROSS_ID_UNAVAILABLE,
     acProgress,
@@ -250,6 +251,9 @@
     onclose,
   }: Props = $props();
 
+  /** The 文言表 in force, read through the accessor so a 表示言語 change redraws the panel. */
+  const t = messages();
+
   const STORAGE_LABEL: Record<StorageState, string> = {
     active: "active",
     draft: "draft",
@@ -293,7 +297,7 @@
   let saveState = $state<SaveState>({ state: "idle" });
   let busy = $state(false);
   /** Why every 状態遷移 is withheld while one is in flight (doc-11 §5: 理由の無い無効化を残さない). */
-  const TRANSITION_BUSY_REASON = "更新を発行中です。完了するまで次の遷移は始められません。";
+  const transitionBusyReason = (): string => t().taskDetail.transitionBusy;
   /** Draft text of the "add one" boxes, which are inputs rather than part of the session. */
   let newLabel = $state("");
   let newAssignee = $state("");
@@ -747,10 +751,10 @@
           type="button"
           class="mini"
           disabled={!removable}
-          title={removable ? "削除" : (withheldReason ?? "")}
+          title={removable ? t().action.remove : (withheldReason ?? "")}
           onclick={() => apply(values.filter((_, at) => at !== index))}
         >
-          削除
+          {t().action.remove}
         </button>
       </li>
     {/each}
@@ -773,7 +777,7 @@
         setDraft("");
       }}
     >
-      追加
+      {t().action.add}
     </button>
   </div>
 {/snippet}
@@ -801,8 +805,8 @@
         class:fading={copyNotice?.state === "fading"}
         style="--copy-fade: {COPY_FADE_MS}ms"
         disabled={crossId === null}
-        aria-label="横断タスクID をコピー"
-        title={crossId === null ? CROSS_ID_UNAVAILABLE : "横断タスクID をコピー"}
+        aria-label={t().taskDetail.copyCrossId}
+        title={crossId === null ? CROSS_ID_UNAVAILABLE : t().taskDetail.copyCrossId}
         onclick={copyCrossTaskId}
       >
         <Icon name={copied ? "clipboard-check" : "clipboard"} />
@@ -811,7 +815,7 @@
         <!-- 解析不能 (doc-4 §5): a required field the read layer could not get. Still a 印チップ and
              not part of the ⚠️ — it names the field that is missing *here*, where the ID would have
              been, which is a different act from listing the task's reasons (decision-22). -->
-        <span class="mark" data-kind="inconsistent">TASK-ID 不明</span>
+        <span class="mark" data-kind="inconsistent">{t().taskDetail.taskIdUnknown}</span>
       {/if}
       <!-- 不整合印 (decision-22): カードと同じ ⚠️ 1 つで、族名も由来名も出さない。理由は下の
            不整合区画が持つ。同じ 1 つの derivation から出るので、カード・見出し・区画が同じタスク
@@ -827,7 +831,7 @@
         </span>
       {/if}
       {#if missing}
-        <span class="mark" data-kind="unreadable">ファイル不明</span>
+        <span class="mark" data-kind="unreadable">{t().taskDetail.fileUnknown}</span>
       {/if}
 
       <!-- 前後移動 (doc-8 §2.2) は 1 行目の右端、配置切替の手前 (画面設計案 02。doc-12 §3)。
@@ -841,18 +845,21 @@
            名前がその行の 97px を占めていた (TASK-72 の実測)。端での無効化の理由は隣の位置表示と
            下の控えが担う — 読めない位置に理由を隠さない、が doc-11 §5 の要求である。 -->
       <div class="nav">
-        {#each [{ dir: "previous", name: "前のタスクへ", edge: "先頭" }, { dir: "next", name: "次のタスクへ", edge: "末尾" }] as const as step (step.dir)}
+        {#each [{ dir: "previous" }, { dir: "next" }] as const as step (step.dir)}
+          {@const stepName =
+            step.dir === "previous" ? t().taskDetail.previousTask : t().taskDetail.nextTask}
+          {@const edge = step.dir === "previous" ? t().taskDetail.headEdge : t().taskDetail.tailEdge}
           {@const target = neighbours === null ? null : neighbours[step.dir]}
           <button
             type="button"
             class="step"
             disabled={target === null}
-            aria-label={step.name}
+            aria-label={stepName}
             title={neighbours === null
               ? NO_LANE_CELL_REASON
               : target === null
-                ? `${laneGroupLabel(neighbours.group)}の${step.edge}です`
-                : `${laneGroupLabel(neighbours.group)}内の${step.name}`}
+                ? t().taskDetail.atEdge(laneGroupLabel(neighbours.group), edge)
+                : t().taskDetail.withinGroup(laneGroupLabel(neighbours.group), stepName)}
             onclick={() => moveTo(target)}
           >
             <!-- 移動の図形 (doc-11 §2.4) は `placement.ts` の `STEP_ICON` が持つ — the family rule is
@@ -862,14 +869,14 @@
           </button>
         {/each}
         <span class="position">
-          {neighbours === null ? "スイムレーン上の位置不明" : laneNeighbourLabel(neighbours)}
+          {neighbours === null ? t().taskDetail.positionUnknown : laneNeighbourLabel(neighbours)}
         </span>
       </div>
 
       <!-- 配置の切替は「閉じる ×」と同じ操作群に置く (doc-8 §2.2): both answer "この面をどうするか",
            and neither belongs among the operations on the task's contents. -->
       <div class="frame">
-        <div class="placement" role="group" aria-label="詳細配置">
+        <div class="placement" role="group" aria-label={t().taskDetail.placementGroup}>
           {#each PLACEMENTS as candidate (candidate)}
             {@const isDefault = candidate === defaultPlacement}
             <!-- アイコンのみのボタン (doc-11 §2.4): the figure is decorative, so `aria-label` carries
@@ -890,7 +897,7 @@
             </button>
           {/each}
         </div>
-        <button type="button" class="close" onclick={onclose}>閉じる</button>
+        <button type="button" class="close" onclick={onclose}>{t().action.close}</button>
       </div>
     </div>
 
@@ -902,7 +909,7 @@
       {#if session === null}
         <!-- 2 行を超える title は末尾を落とす (doc-11 §13)。全体は `title` が持つ — 落ちるのは
              描かれる字だけで、値は編集セッションの欄がそのまま持っている。 -->
-        <h2 title={task.title ?? "（title 不明）"}>{task.title ?? "（title 不明）"}</h2>
+        <h2 title={task.title ?? t().state.titleUnknown}>{task.title ?? t().state.titleUnknown}</h2>
       {:else}
         <label class="field">
           <span>title</span>
@@ -937,21 +944,23 @@
           {/each}
         </select>
       {:else if status === null}
-        <span class="mark" data-kind="inconsistent">status を読めません</span>
+        <span class="mark" data-kind="inconsistent">{t().taskDetail.statusUnreadable}</span>
       {:else}
         <span class="raw">{status.raw}</span>
         <!-- 正準対応を併記 (AC #1): 未分類 status is stated as such rather than shown blank. -->
         {#if status.column === null}
-          <span class="mark unmapped">正準列 未分類</span>
+          <span class="mark unmapped">{t().taskDetail.canonicalUnmapped}</span>
         {:else}
-          <span class="column">正準列: {CANONICAL_COLUMN_LABEL[status.column]}</span>
+          <span class="column">
+            {t().taskDetail.canonicalColumn(CANONICAL_COLUMN_LABEL[status.column])}
+          </span>
         {/if}
         {#if status.declaration === "undeclared"}
-          <span class="mark unmapped">config.yml 未宣言</span>
+          <span class="mark unmapped">{t().taskDetail.configUndeclared}</span>
         {:else if status.declaration === "noDeclaredSet"}
-          <span class="mark neutral">config.yml に status 宣言なし</span>
+          <span class="mark neutral">{t().taskDetail.configNoStatuses}</span>
         {:else if status.declaration === "draft"}
-          <span class="mark neutral">draft の既知 status</span>
+          <span class="mark neutral">{t().taskDetail.draftKnownStatus}</span>
         {/if}
       {/if}
     </dd>
@@ -978,9 +987,9 @@
       {/if}
     </dd>
 
-    <dt>保存区分</dt>
+    <dt>{t().taskDetail.storageTerm}</dt>
     <dd>
-      {task.storageState === null ? "保存区分不明" : STORAGE_LABEL[task.storageState]}
+      {task.storageState === null ? t().state.storageUnknown : STORAGE_LABEL[task.storageState]}
     </dd>
 
     <dt>milestone</dt>
@@ -1000,7 +1009,7 @@
       {:else}
         {milestone.id}
         {#if milestone.title === null}
-          <span class="mark unmapped">未解決</span>
+          <span class="mark unmapped">{t().taskDetail.unresolved}</span>
         {:else}
           <span class="resolved">{milestone.title}</span>
         {/if}
@@ -1048,11 +1057,11 @@
       class:unseen={copyNotice?.state !== "failed"}
     >
       {#if copied}
-        <p class="ok">横断タスクID をコピーしました。</p>
+        <p class="ok">{t().taskDetail.copied}</p>
       {:else if copyNotice !== null && copyNotice.state === "failed"}
         <p class="warn">
-          クリップボードへ書けませんでした。次の文字列を選択してコピーしてください。
-          <input type="text" readonly value={copyNotice.text} aria-label="横断タスクID" />
+          {t().taskDetail.copyFailed}
+          <input type="text" readonly value={copyNotice.text} aria-label={t().taskDetail.crossIdLabel} />
         </p>
       {/if}
     </div>
@@ -1078,10 +1087,10 @@
         type="button"
         class="primary"
         disabled={availability.state !== "editable"}
-        title={availability.state === "editable" ? "編集" : availability.reason}
+        title={availability.state === "editable" ? t().action.edit : availability.reason}
         onclick={startEditing}
       >
-        編集
+        {t().action.edit}
       </button>
     {/if}
   </div>
@@ -1108,7 +1117,7 @@
     </span>
     <div class="issue-actions">
       <!-- 取りやめ → 発行 (doc-11 §11). -->
-      <button type="button" onclick={cancelEditing}>キャンセル</button>
+      <button type="button" onclick={cancelEditing}>{t().action.cancel}</button>
       <!-- `aria-disabled` rather than `disabled`: this control's 保留理由 are of both kinds (doc-11 §8)
            — 発行中 and ファイルが無い are caused from outside the form and keep a printed line, 変更は
            まだありません is licensed away — and one control may not take focus or not depending on why
@@ -1120,11 +1129,11 @@
         aria-describedby={saveGate.state === "ready" ? undefined : SAVE_REASON_ID}
         aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
         title={saveGate.state === "ready"
-          ? `保存 (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`
+          ? t().taskDetail.saveWithChord(shortcutHint("saveEditSession", MAC_KEYBOARD))
           : saveGate.reason}
         onclick={save}
       >
-        {busy ? "保存中…" : "保存"}
+        {busy ? t().action.saving : t().action.save}
       </button>
     </div>
   </div>
@@ -1150,27 +1159,22 @@
         <!-- 破棄前確認 (doc-8 §6.3) を、押す前に読める形で置く: 入力を失う操作の前には同じ確認が
              上部帯に出る、という予告である。§6.3 の 5 経路をここへ数え上げないのは doc-11 §8 の
              設計文の写しに当たるためで、予告として要るのは「確認を通る」ことだけである。 -->
-        <p class="hint">
-          未保存入力があります。破棄する前に「{DISCARD_CONFIRM_PROCEED}」の確認を通します。
-        </p>
+        <p class="hint">{t().taskDetail.unsavedWarn(DISCARD_CONFIRM_PROCEED)}</p>
       {/if}
       {#if externalChange}
         <!-- 編集中の継続検出 (doc-8 §6.4). 不整合 の色を取り、generic notice ではない: the version has
              *been observed* to move against this session's baseline. It is not recorded on the card,
              though — no save has been attempted, and doc-8 §6.4 keeps this stated rather than acted
              on, so it belongs to the live session and ends with it. -->
-        <p class="conflict">
-          このタスクのファイルが編集中に外部で変わりました（バージョン不整合）。入力はそのまま保持しています。
-          保存時に更新前競合検出を通します。
-        </p>
+        <p class="conflict">{t().taskDetail.externallyChanged}</p>
       {/if}
     {/if}
 
     {#if saveState.state === "applied"}
-      <p class="ok">保存しました。</p>
+      <p class="ok">{t().taskDetail.saved}</p>
     {:else if saveState.state === "failed"}
       <!-- CLI 失敗 (doc-5 §5): the display above is unchanged and the input is still here. -->
-      <p class="warn">保存できませんでした: {saveState.detail}</p>
+      <p class="warn">{t().action.saveFailed(saveState.detail)}</p>
     {:else if saveState.state === "uncheckable"}
       <!-- 照合不能 (doc-9 §4.2/§5): its own family (`undetectable`), because 版がずれているとは
            限らず、確かめる方法が無い — doc-9 §5 requires this not to read as a conflict, and forbids
@@ -1179,36 +1183,23 @@
     {:else if saveState.state === "conflict"}
       <!-- 防げる競合の未然提示 (doc-9 §5): the check stopped this before the CLI ran. -->
       <div class="conflict">
-        <p>
-          更新前競合を検出したため、CLI を起動せずに保存を止めました（{conflictSetDetail(
-            saveState,
-          )}）。未保存入力は保持しています。
-        </p>
+        <p>{t().taskDetail.conflictStopped(conflictSetDetail(saveState))}</p>
         <div class="buttons">
           <button type="button" onclick={restartFromLatest}>
-            最新を読み直してやり直す（入力を破棄）
+            {t().taskDetail.conflictDiscard}
           </button>
           <button type="button" onclick={reapplyOntoLatest}>
-            入力を保持して最新版へ再適用する
+            {t().taskDetail.conflictReapply}
           </button>
         </div>
-        <p class="hint">
-          再適用は、触った項目だけを最新版の上に載せ直します（触っていない項目は最新のままです）。
-          内容を確かめてからもう一度保存してください。
-        </p>
+        <p class="hint">{t().taskDetail.conflictReapplyNote}</p>
       </div>
     {:else if saveState.state === "diverged"}
       <!-- 防げない喪失の事後通知 (doc-9 §4.1/§5). Deliberately worded apart from the conflict
            above: this one was *not* prevented, and what an overwrite removed cannot be shown. -->
       <div class="conflict">
-        <p>
-          保存は適用されましたが、再読込した内容が送信した内容と一致しません（{saveState.fields.join(
-            "・",
-          )}）。照合の完了後〜書き込み完了の間に入った外部更新の可能性があります。
-        </p>
-        <p class="hint">
-          この間に入った外部更新は防げません。上書きで失われた場合、その内容は表示も復元もできません。
-        </p>
+        <p>{t().taskDetail.postCheckMismatch(saveState.fields)}</p>
+        <p class="hint">{t().taskDetail.postCheckNote}</p>
       </div>
     {:else if conflict !== null}
       <!-- A バージョン不整合 recorded on an earlier visit to this task: the banners above belong to
@@ -1217,10 +1208,10 @@
            so neither doc-9 §5 path applies any more. -->
       <div class="conflict">
         <p>{versionConflictReason(conflict)}</p>
-        <p class="hint">表示は再読込後の最新内容です。未保存入力は残っていません。</p>
+        <p class="hint">{t().taskDetail.postCheckFresh}</p>
         <div class="buttons">
           <button type="button" onclick={() => onconflict(null, conflictTarget())}>
-            確認した（不整合の印を消す）
+            {t().taskDetail.acknowledge}
           </button>
         </div>
       </div>
@@ -1229,10 +1220,7 @@
     {#if acDeltaDropped}
       <!-- Stated rather than done quietly: the rebase kept every other field's input, and a
            silently dropped AC operation would look like the save simply ignored it. -->
-      <p class="warn">
-        最新版では Acceptance Criteria の並びが変わっていたため、番号で指していた削除・チェックの
-        指定は取り消しました（同じ番号が別の項目を指すため）。必要なら指定し直してください。
-      </p>
+      <p class="warn">{t().taskDetail.criteriaReordered}</p>
     {/if}
   </section>
 {/snippet}
@@ -1249,7 +1237,7 @@
     <section class="inconsistency-panel">
       <h3>
         <span class="glyph"><Icon name="triangle-alert" /></span>
-        不整合
+        {t().taskDetail.inconsistentHeading}
       </h3>
       {#each reasons as reason, index (index)}
         <p>{reason}</p>
@@ -1266,7 +1254,7 @@
                  開閉印はその 4 系統のどれでもない。 -->
             <span class="disclosure closed"><Icon name={DISCLOSURE_ICON.closed} /></span>
             <span class="disclosure open"><Icon name={DISCLOSURE_ICON.open} /></span>
-            未知セクション {section.name}（保持のみ）
+            {t().taskDetail.unknownSection(section.name)}
           </summary>
           <pre class="body">{section.body}</pre>
         </details>
@@ -1282,11 +1270,11 @@
       {#if types.length === 0}
         <!-- Type 未設定 は破線輪郭のチップ (doc-11 §3), カードと同じ形で. A sentence here and a chip on
              the card made the same 未設定 read as two different findings. -->
-        <li class="type unset">Type 未設定</li>
+        <li class="type unset">{t().state.typeUnset}</li>
       {:else}
         {#each types as value, index (index)}
           <li class="type" class:unknown={!value.known}>
-            {value.value}{value.known ? "" : "（未知）"}
+            {value.value}{value.known ? "" : t().state.valueUnknown}
           </li>
         {/each}
       {/if}
@@ -1305,11 +1293,11 @@
   <DetailSection
     title="assignee"
     section="assignee" {layout}
-    count={`${task.assignee.length} 件`}
+    count={t().state.count(task.assignee.length)}
   >
     {#if session === null}
       {#if task.assignee.length === 0}
-        <p class="neutral">なし</p>
+        <p class="neutral">{t().state.none}</p>
       {:else}
         <p>{task.assignee.join(", ")}</p>
       {/if}
@@ -1321,23 +1309,23 @@
         (next) => edit("assignee", next),
         newAssignee,
         (value) => (newAssignee = value),
-        "追加する assignee",
+        t().taskDetail.addAssignee,
         lastRemovalReason(session.baseline.task.assignee, EMPTY_ASSIGNEE_REASON),
       )}
-      <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
+      <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
   </DetailSection>
 {/snippet}
 
 {#snippet labelsSection()}
   <DetailSection
-    title="通常ラベル"
+    title={t().field.plainLabels}
     section="labels" {layout}
-    count={`${task.labels.length} 件`}
+    count={t().state.count(task.labels.length)}
   >
     {#if session === null}
       {#if task.labels.length === 0}
-        <p class="neutral">なし</p>
+        <p class="neutral">{t().state.none}</p>
       {:else}
         <ul class="chips">
           {#each task.labels as label, index (index)}
@@ -1351,7 +1339,7 @@
         (next) => edit("labels", next),
         newLabel,
         (value) => (newLabel = value),
-        "追加するラベル",
+        t().field.addLabel,
         null,
       )}
     {/if}
@@ -1364,7 +1352,7 @@
       {#if task.description}
         <Body source={task.description} {onopenlink} />
       {:else}
-        <p class="neutral">なし</p>
+        <p class="neutral">{t().state.none}</p>
       {/if}
     {:else}
       <Editor
@@ -1382,7 +1370,7 @@
   <DetailSection title="Acceptance Criteria" section="ac" {layout} progress={ac}>
     {#if session === null}
       {#if ac.total === 0}
-        <p class="neutral">なし</p>
+        <p class="neutral">{t().state.none}</p>
       {:else}
         <ul class="ac">
           {#each task.acceptanceCriteria as item (item.number)}
@@ -1391,7 +1379,7 @@
                    name goes on the wrapper. `role="img"` is required, not decoration — with the figure
                    `aria-hidden` this span has no content left, and `aria-label` on a bare span is not
                    announced. While it printed a glyph, the glyph itself was the name. -->
-              <span class="box" role="img" aria-label={item.checked ? "完了" : "未完了"}>
+              <span class="box" role="img" aria-label={item.checked ? t().taskDetail.done : t().taskDetail.notDone}>
                 <Icon name={item.checked ? "square-check" : "square"} />
               </span>
               <span class="number">#{item.number}</span>
@@ -1410,7 +1398,7 @@
           class:on={session.draft.ac.mode === "delta"}
           onclick={() => (session = setAcMode(session!, "delta"))}
         >
-          項目単位（増減・チェック）
+          {t().taskDetail.criteriaModeItems}
         </button>
         <button
           type="button"
@@ -1418,7 +1406,7 @@
           class:on={session.draft.ac.mode === "replace"}
           onclick={() => (session = setAcMode(session!, "replace"))}
         >
-          全体差し替え
+          {t().taskDetail.criteriaModeReplace}
         </button>
       </div>
 
@@ -1433,7 +1421,7 @@
               <button
                 type="button"
                 class="box"
-                aria-label={`#${row.number} を${row.checked ? "未完了" : "完了"}にする`}
+                aria-label={t().taskDetail.toggleCriterion(row.number, row.checked)}
                 onclick={() => (session = toggleAcCheck(session!, row.number))}
               >
                 <Icon name={row.checked ? "square-check" : "square"} />
@@ -1445,26 +1433,25 @@
                 class="mini"
                 onclick={() => (session = toggleAcRemoval(session!, row.number))}
               >
-                {row.removed ? "削除を取り消す" : "削除"}
+                {row.removed ? t().taskDetail.undoRemove : t().action.remove}
               </button>
             </li>
           {/each}
         </ul>
         {#each session.draft.ac.delta.add as text, index (index)}
-          <p class="hint">追加予定: {text}</p>
+          <p class="hint">{t().taskDetail.pendingAdd(text)}</p>
         {/each}
         <div class="add-row">
           <input
             type="text"
-            placeholder="追加する Acceptance Criterion"
+            placeholder={t().field.addCriterion}
             value={newCriterion}
             oninput={(event) => (newCriterion = event.currentTarget.value)}
           />
-          <button type="button" class="mini" onclick={addCriterion}>追加</button>
+          <button type="button" class="mini" onclick={addCriterion}>{t().action.add}</button>
         </div>
         <p class="hint">
-          既存項目の本文は項目単位では変えられません（CLI に本文編集の手段がないため）。本文を変える
-          ときは全体差し替えを使います。
+          {t().taskDetail.criteriaBodyNote}
         </p>
       {:else}
         {@const items = session.draft.ac.mode === "replace" ? session.draft.ac.items : []}
@@ -1485,7 +1472,7 @@
                       ),
                     })}
                 />
-                完了
+                {t().taskDetail.done}
               </label>
               <Editor
                 label={`Acceptance Criterion ${index + 1}`}
@@ -1509,7 +1496,7 @@
                     items: items.filter((_, at) => at !== index),
                   })}
               >
-                削除
+                {t().action.remove}
               </button>
             </li>
           {/each}
@@ -1520,10 +1507,10 @@
           onclick={() =>
             edit("ac", { mode: "replace", items: [...items, { text: "", checked: false }] })}
         >
-          項目を追加
+          {t().taskDetail.addItem}
         </button>
         <p class="hint">
-          保存時に既存の全項目を削除してから、ここにある項目を並び順どおり作り直します。
+          {t().taskDetail.replaceAllNote}
         </p>
       {/if}
     {/if}
@@ -1531,16 +1518,16 @@
 {/snippet}
 
 {#snippet planSection()}
-  <DetailSection title="実装計画" section="plan" {layout}>
+  <DetailSection title={t().taskDetail.planHeading} section="plan" {layout}>
     {#if session === null}
       {#if task.implementationPlan}
         <Body source={task.implementationPlan} {onopenlink} />
       {:else}
-        <p class="neutral">なし</p>
+        <p class="neutral">{t().state.none}</p>
       {/if}
     {:else}
       <Editor
-        label="実装計画"
+        label={t().taskDetail.planHeading}
         value={session.draft.plan}
         onchange={(value) => edit("plan", value)}
         onsave={save}
@@ -1550,12 +1537,12 @@
 {/snippet}
 
 {#snippet notesSection()}
-  <DetailSection title="実装ノート" section="notes" {layout}>
+  <DetailSection title={t().taskDetail.notesHeading} section="notes" {layout}>
     {#if session === null}
       {#if task.implementationNotes}
         <Body source={task.implementationNotes} {onopenlink} />
       {:else}
-        <p class="neutral">なし</p>
+        <p class="neutral">{t().state.none}</p>
       {/if}
     {:else}
       <div class="modes">
@@ -1565,7 +1552,7 @@
           class:on={session.draft.notesMode === "set"}
           onclick={() => (session = setNotesMode(session!, "set"))}
         >
-          置換（--notes）
+          {t().taskDetail.notesReplace}
         </button>
         <button
           type="button"
@@ -1573,11 +1560,11 @@
           class:on={session.draft.notesMode === "append"}
           onclick={() => (session = setNotesMode(session!, "append"))}
         >
-          追記（--append-notes）
+          {t().taskDetail.notesAppend}
         </button>
       </div>
       <Editor
-        label={session.draft.notesMode === "append" ? "実装ノート（追記）" : "実装ノート"}
+        label={session.draft.notesMode === "append" ? t().taskDetail.notesAppendLabel : t().taskDetail.notesHeading}
         value={session.draft.notes}
         onchange={(value) => edit("notes", value)}
         onsave={save}
@@ -1590,23 +1577,23 @@
   <DetailSection
     title="dependencies"
     section="dependencies" {layout}
-    count={`${task.dependencies.length} 件`}
+    count={t().state.count(task.dependencies.length)}
   >
     {#if session === null}
       {#if dependencies.length === 0}
-        <p class="neutral">なし</p>
+        <p class="neutral">{t().state.none}</p>
       {:else}
         <ul class="deps">
           {#each dependencies as dependency, index (index)}
             <li>
               {#if dependency.target === null}
                 <span class="id">{dependency.id}</span>
-                <span class="mark unmapped">未解決</span>
+                <span class="mark unmapped">{t().taskDetail.unresolved}</span>
               {:else}
                 {@const target = dependency.target}
                 <button type="button" onclick={() => onselect(target)}>
                   {dependency.id}
-                  <span class="dep-title">{target.task.title ?? "（title 不明）"}</span>
+                  <span class="dep-title">{target.task.title ?? t().state.titleUnknown}</span>
                 </button>
               {/if}
             </li>
@@ -1622,7 +1609,7 @@
         "TASK-ID",
         lastRemovalReason(session.baseline.task.dependencies, EMPTY_DEPENDENCIES_REASON),
       )}
-      <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
+      <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
   </DetailSection>
 {/snippet}
@@ -1633,17 +1620,17 @@
   <DetailSection
     title="Pull Request"
     section="pullRequest" {layout}
-    count={`${references.pullRequests.length} 件`}
+    count={t().state.count(references.pullRequests.length)}
   >
     {#if references.pullRequests.length === 0}
-      <p class="neutral">References に Pull Request URL はありません</p>
+      <p class="neutral">{t().taskDetail.noPullRequests}</p>
     {:else}
       <ul class="prs">
         {#each references.pullRequests as pr, index (index)}
           <li>
             <span class="url">{pr.url}</span>
             <span class="meta">
-              {pr.host ?? "ホスト種別 不明"}{pr.owner && pr.repo
+              {pr.host ?? t().taskDetail.hostUnknown}{pr.owner && pr.repo
                 ? ` / ${pr.owner}/${pr.repo}`
                 : ""}{pr.number === null ? "" : ` / #${pr.number}`}
             </span>
@@ -1653,8 +1640,7 @@
     {/if}
     {#if session !== null}
       <p class="hint">
-        Pull Request URL の登録は References の編集です。下の References 欄へ足すと、
-        既存参照を含む非空全集合で置き換えます。
+        {t().taskDetail.pullRequestNote}
       </p>
     {/if}
   </DetailSection>
@@ -1666,18 +1652,18 @@
   <DetailSection
     title="References"
     section="references" {layout}
-    count={`${references.references.length} 件`}
+    count={t().state.count(references.references.length)}
   >
     {#if session === null}
       {#if references.references.length === 0}
-        <p class="neutral">なし</p>
+        <p class="neutral">{t().state.none}</p>
       {:else}
         <ul class="refs">
           {#each references.references as reference, index (index)}
             <li>
               <span class="url">{reference.value}</span>
               {#if reference.dangling}
-                <span class="mark unmapped">参照欠損</span>
+                <span class="mark unmapped">{t().taskDetail.referenceMissing}</span>
               {/if}
             </li>
           {/each}
@@ -1694,7 +1680,7 @@
         "URL",
         lastRemovalReason(session.baseline.task.references, EMPTY_REFERENCES_REASON),
       )}
-      <p class="hint">保存時は既存を含む全集合で置き換えます。</p>
+      <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
   </DetailSection>
 {/snippet}
@@ -1702,7 +1688,7 @@
 <!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行であり、同じ割当（3 配置とも折畳み。既定は併置・モーダルで
      閉、全面で開）で動く。2 つの区画に分けてあるのは操作の系統が違うためで、開き方は 1 つの規則に従う。 -->
 {#snippet transitionsSection()}
-  <DetailSection title="状態遷移" section="transitions" {layout}>
+  <DetailSection title={t().taskDetail.transitionsHeading} section="transitions" {layout}>
     {#if transitions.state === "none"}
       <!-- 提供しない理由であって不在ではない (doc-11 §5): 空表示の弱 (`--faint`) で描くと、読ませたい
            理由が一番読みにくい文字になる。 -->
@@ -1711,7 +1697,7 @@
       {#if busy}
         <!-- 発行中は全ての遷移が同じ理由で押せない (doc-11 §5): the offers' own reasons say nothing about
              it, so it is stated once for the list rather than left to each button's `title`. -->
-        <p class="hint">{TRANSITION_BUSY_REASON}</p>
+        <p class="hint">{transitionBusyReason()}</p>
       {/if}
       <ul class="transition-list">
         {#each transitions.offers as offer (offer.kind)}
@@ -1720,7 +1706,7 @@
               type="button"
               class="transition"
               disabled={!offer.enabled || busy}
-              title={busy ? TRANSITION_BUSY_REASON : (offer.reason ?? offer.effect)}
+              title={busy ? transitionBusyReason() : (offer.reason ?? offer.effect)}
               onclick={(event) => runTransition(offer, event.currentTarget)}
             >
               <!-- 語尾の … (doc-11 §12): every 状態遷移 asks first, so the mark is unconditional here. -->
@@ -1739,7 +1725,7 @@
      保存区分 and independently of the CLI probe: this is where doc-8 §6.5 and doc-5 §3.1 send the
      edits Atlas itself cannot issue. -->
 {#snippet externalEditorSection()}
-  <DetailSection title="外部エディタで開く" section="transitions" {layout}>
+  <DetailSection title={t().taskDetail.externalEditorHeading} section="transitions" {layout}>
     <!-- 管理ファイルのパス (doc-8 §7): 見出しから移した (TASK-72). 開く操作の隣がパスの置き場である —
          何を開こうとしているのかは押す前に読めていなければならない。画面でこのパスを出しているのは
          ここだけなので、不整合や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
@@ -1789,7 +1775,7 @@
 {/snippet}
 
 {#snippet gitHistorySection()}
-  <DetailSection title="Git 履歴欄" section="gitHistory" {layout}>
+  <DetailSection title={t().taskDetail.gitHistoryHeading} section="gitHistory" {layout}>
     <GitHistory
       {history}
       {entry}
@@ -1845,7 +1831,7 @@
 <aside
   class="detail"
   data-placement={placement}
-  aria-label="タスク詳細"
+  aria-label={t().taskDetail.panelLabel}
   style="--modal-side-column: {MODAL_SIDE_COLUMN_REM}rem; --modal-column-gap: {MODAL_COLUMN_GAP_REM}rem; --panel-padding: {PANEL_PADDING_REM /
     2}rem; --modal-inset: {MODAL_INSET_REM / 2}rem; --modal-max-width: {MODAL_MAX_WIDTH_REM}rem; --prose-max-width: {PROSE_MAX_WIDTH_REM}rem; --sidebar-width: {SIDEBAR_WIDTH_REM}rem;"
 >

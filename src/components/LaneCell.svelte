@@ -7,6 +7,7 @@
   // "ルートが読めない", which is a row-level state (doc-7 §6).
   import TaskCard from "./TaskCard.svelte";
   import { collapsedCellLabel, priorityTally } from "../lib/card";
+  import { messages } from "../lib/messages-context";
   import type { Snippet } from "svelte";
   import type { VersionConflict } from "../lib/mark";
   import type { CardDensity, TaskView } from "../lib/wire";
@@ -100,6 +101,8 @@
   // One derivation for both the figures and the count's accessible name (decision-23): the shape a
   // sighted user reads and the words a screen reader hears describe the same distribution because
   // they come from the same call.
+  const t = messages();
+
   let groups = $derived(priorityTally(tasks));
 </script>
 
@@ -146,7 +149,7 @@
       <!-- 空セル (doc-7 §6): 該当タスク無し is normal, so it is neutral — opacity only, no colour
            and no symbol (decision-6 エラー提示方針). ルート読取不能 never reaches here; it replaces
            the row's cells entirely, which is what keeps the two apart (AC #2). -->
-      <span class="empty" aria-label="該当タスクなし">—</span>
+      <span class="empty" aria-label={t().swimlane.emptyCell}>—</span>
     {:else}
       {#each tasks as view (view.task.sourcePath)}
         <TaskCard
