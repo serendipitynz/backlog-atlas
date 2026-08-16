@@ -179,12 +179,14 @@ describe("画面に置く文 (doc-11 §8)", () => {
   const designOnlyHit = (line: string) => DESIGN_ONLY_WORDS.find((e) => line.includes(e.word));
 
   /**
-   * The crate's sources, scanned by this one check and by nothing else in this file.
+   * The crate's sources, read by the 設計語 scan and the 抽出漏れ scan, and by neither of the two above.
    *
-   * **A user reads Japanese that this crate builds**, not only Japanese from the frontend:
-   * `editor.rs` hands back its own 失敗の理由 (「アプリ設定の外部エディタ指定・VISUAL・EDITOR のいずれも
-   * 設定されていません」and the SE_ERR set), and those are printed beside the control that asked. A word
-   * banned from the screen has to be banned there too, or the next such reason may carry it.
+   * **The crate is in range because it must build no Japanese — not because it does.** This note used
+   * to say the opposite, and named a sentence `editor.rs` handed back
+   * (「アプリ設定の外部エディタ指定・VISUAL・EDITOR のいずれも設定されていません」). decision-35 §3 moved
+   * those onto 失敗理由符号: `editor.rs` now returns `LaunchRefusal` variants and a `detail` the OS wrote,
+   * and the frontend words them. The sentence is gone; the reason for scanning survived it inverted, so
+   * what these two scans hold is that the crate stays wordless.
    *
    * **Separate from `scanned` on purpose.** The two checks above must not reach this set: `update.rs`'s
    * `MIN_VERSION` is the one legal home for a spelled version (decision-27 §1), so the 版表記 scan would
@@ -204,8 +206,8 @@ describe("画面に置く文 (doc-11 §8)", () => {
    * プロジェクト台帳. **A title is exactly the string a session would spell out rather than derive**,
    * which is what makes the gap worth closing rather than noting (raised in review on PR #111).
    *
-   * Scanned by this check alone, for `CRATE`'s reason turned around: `tauri.conf.json` carries the
-   * app `version`, which the 版表記 scan forbids.
+   * Read by the same two scans as `CRATE` and by neither of the first two, for `CRATE`'s reason:
+   * `tauri.conf.json` carries the app `version`, which the 版表記 scan forbids.
    */
   const STATIC_UI: Record<string, string> = import.meta.glob(
     ["../../index.html", "../../src-tauri/tauri.conf.json"],
