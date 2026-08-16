@@ -206,7 +206,10 @@ export const EN: Catalog = {
   },
   filter: {
     textLabel: "Filter by text",
-    textPlaceholder: "Cross-project task ID / title",
+    // The control has no width of its own, so the room is the input's intrinsic one: 152px at
+    // 1280x800, against 125px for this string and 152px for the "task"-carrying form it replaces,
+    // which WebKit cut mid-word (measured 2026-08-16). `textLabel` carries the unabbreviated name.
+    textPlaceholder: "Cross-project ID / title",
     add: "+ Filter",
     removeToken: (name: string) => `Remove ${name}`,
     noStorageSelected: "No storage division is selected, so no cards are shown",
