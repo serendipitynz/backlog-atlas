@@ -428,7 +428,11 @@ export const EN: Catalog = {
       terminalCaveat:
         "A terminal-only editor (vim, nano and the like) draws nothing when started from a GUI. " +
         "Use the OS file association for those.",
-      sourceAppSettings: "the external editor set in the app settings",
+      source: {
+        appSettings: "the external editor set in the app settings",
+        visual: "$VISUAL",
+        editor: "$EDITOR",
+      },
       openWithConfigured: (source: string, program: string) => `Open with ${source} (${program})`,
       openWithConfiguredAbsent: "Open with $EDITOR",
       openWithAssociation: "Open with the OS file association",
@@ -906,10 +910,10 @@ export const EN: Catalog = {
     },
     relationNoCommitList: "Related PRs: cannot be matched (the local commit list cannot be read)",
     relationNoUrls: "Related PRs: References carries no Pull Request URL",
-    relationCaveatFailed: (n: number) =>
-      pluralize(n, { one: `${n} cannot be checked`, other: `${n} cannot be checked` }),
-    relationCaveatUnsupported: (n: number) =>
-      pluralize(n, { one: `${n} out of scope`, other: `${n} out of scope` }),
+    // No `pluralize`: the noun these count is carried by `relationCount` beside them, so the caveat
+    // itself has no word that varies — calling it with two identical forms would only read as if it did.
+    relationCaveatFailed: (n: number) => `${n} cannot be checked`,
+    relationCaveatUnsupported: (n: number) => `${n} out of scope`,
     relationCount: (n: number) =>
       `Related PRs: ${pluralize(n, { one: `${n} PR`, other: `${n} PRs` })}`,
     relationCountWithCaveats: (n: number, caveats: string) =>

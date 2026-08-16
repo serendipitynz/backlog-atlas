@@ -160,11 +160,17 @@ export function setLanguage(language: Language): void {
  * Pick a form by count (decision-35 §1). Japanese selects `other` for every number — `Intl` says so,
  * rather than this module assuming it — so a Japanese entry writes `other` alone and an English one
  * adds `one`.
+ *
+ * **The default is [`currentLanguage`], not the plain value.** Both read the same 表示言語 as `msg()`
+ * does, which they have to: an English entry is looked up through `msg()` and then asks this for its
+ * form, so a default that answered from somewhere else would pick the form of a language the sentence
+ * is not in — and with a shell installed nothing writes the plain value at all, so every English
+ * singular would come out plural.
  */
 export function pluralize(
   count: number,
   forms: { one?: string; other: string },
-  language: Language = active,
+  language: Language = currentLanguage(),
 ): string {
   const rule = new Intl.PluralRules(language).select(count);
   return (rule === "one" ? forms.one : undefined) ?? forms.other;

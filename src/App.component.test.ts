@@ -423,7 +423,7 @@ describe("起動時の設定・workspace・監視の順序", () => {
     expect(after).toBe(before);
     expect(byText(host, "button.primary", "Edit")).not.toBeNull();
     // 背後のスイムレーンも同じ描き直しで動く — 詳細パネルだけが取得子を読んでいるのではない。
-    expect(host.textContent).toContain("1 / 1 tasks");
+    expect(host.textContent).toContain("1 / 1 task");
   });
 
   /**
@@ -444,18 +444,27 @@ describe("起動時の設定・workspace・監視の順序", () => {
     await settled();
 
     // 外部エディタ区画の注意 (`external-editor.ts`)、状態遷移の控え (`edit.ts`)、
-    // レーンヘッダ行の 表示 / 総数 (`swimlane.ts`)。
+    // 前後移動の群の名 (`swimlane.ts` の `laneGroupLabel`)。
+    //
+    // **3 つ目は `title` から読む。** 群の名が本文へ出る場所は無く（doc-8 §2.2 が 位置表示 から
+    // 名前を落としている）、本文で読める `1 / 1 件` は同じ字を `visibleCount` も刷る — あちらは
+    // `.svelte` が取得子で読む TASK-183 の経路なので、`swimlane.ts` を literal へ戻しても気づけない。
+    // 前後の 2 つとも同じ群を名乗るので、両方の `title` をつないで見る（doc-8 §2.2）。
+    const stepTitles = () =>
+      [...host.querySelectorAll<HTMLButtonElement>("button.step")].map((b) => b.title).join(" | ");
+
     expect(host.textContent).toContain("外部エディタでは frontmatter");
     expect(host.textContent).toContain("draft へ差し戻す");
-    expect(host.textContent).toContain("1 / 1 件");
+    expect(stepTitles()).toContain("In Progress セル");
 
     await switchToEnglish(host);
 
     expect(host.textContent).toContain("An external editor opens the task's Markdown file whole");
     expect(host.textContent).toContain("Move back to drafts");
-    expect(host.textContent).toContain("1 / 1 tasks");
+    expect(stepTitles()).toContain("the In Progress cell");
     expect(host.textContent).not.toContain("外部エディタでは frontmatter");
     expect(host.textContent).not.toContain("draft へ差し戻す");
+    expect(stepTitles()).not.toContain("セル");
   });
 
   it("購読に失敗した行はどれも自動更新されないと帯が述べる", async () => {

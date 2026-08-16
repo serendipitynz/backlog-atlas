@@ -500,13 +500,14 @@
       {#if unwatched.includes(row.slug)}
         <!-- 継続検出停止: the cards below are only as fresh as the last read, and バージョン不整合 の有無は
              確かめられない — a distinct family from 不整合 (doc-9 §3/§5). -->
+        {@const mark = unwatchedMark()}
         <span
           class="mark"
-          data-kind={unwatchedMark().kind}
-          title={unwatchedMark().detail}
-          aria-label="{unwatchedMark().label}: {unwatchedMark().detail}"
+          data-kind={mark.kind}
+          title={mark.detail}
+          aria-label="{mark.label}: {mark.detail}"
         >
-          {unwatchedMark().label}
+          {mark.label}
         </span>
       {/if}
       <div class="controls">

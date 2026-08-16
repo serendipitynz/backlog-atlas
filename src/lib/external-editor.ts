@@ -123,7 +123,7 @@ export function configuredTerminalCaveat(): string {
  * it `$…` would send them looking for a variable that does not exist.
  */
 export function editorSourceLabel(source: EditorSource): string {
-  return source === "appSettings" ? msg().taskDetail.editor.sourceAppSettings : `$${source.toUpperCase()}`;
+  return msg().taskDetail.editor.source[source];
 }
 
 export function noConfiguredEditorReason(): string {

@@ -568,12 +568,17 @@ export const ja = {
         "端末専用エディタ（vim・nano など）を指している場合、GUI から起動しても画面は出ません。" +
         "その場合は OS の関連付けで開いてください。",
       /**
-       * 起動指定の出所 (doc-8 §7 の解決順). アプリ設定 is spelled as itself rather than as a variable
-       * name — it is the 指定手段 for users whose environment never reaches the process, and a `$…`
-       * would send them looking for a variable that does not exist. The other two *are* variables,
-       * so `external-editor.ts` spells those from the value and they need no entry.
+       * 起動指定の出所 (doc-8 §7 の解決順), keyed by `EditorSource` so a fourth cannot be added
+       * without the compiler asking what it is called. アプリ設定 is spelled as itself rather than as
+       * a variable name — it is the 指定手段 for users whose environment never reaches the process,
+       * and a `$…` would send them looking for a variable that does not exist. The other two *are*
+       * variables, so both catalogues carry the same spelling (decision-35 §5 の識別子).
        */
-      sourceAppSettings: "アプリ設定の外部エディタ指定",
+      source: {
+        appSettings: "アプリ設定の外部エディタ指定",
+        visual: "$VISUAL",
+        editor: "$EDITOR",
+      },
       openWithConfigured: (source: string, program: string) => `${source} で開く（${program}）`,
       openWithConfiguredAbsent: "$EDITOR で開く",
       openWithAssociation: "OS の関連付けで開く",
