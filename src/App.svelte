@@ -305,7 +305,9 @@
   let ledgerReadOnly = $state(false);
   let loading = $state(true);
   /** A failure that left the screen with nothing to draw, as opposed to one bad row. */
-  let fatal = $state<string | null>(null);
+  // A thunk for the reason `notice` is one: the failure outlives the read that raised it, and a
+  // stored sentence would keep the 表示言語 it was worded in (decision-35).
+  let fatal = $state<(() => string) | null>(null);
   /**
    * A failure of an action the user took; the grid stays usable.
    *
@@ -448,7 +450,7 @@
    * the placement did take effect — only its persistence did not — and the panel states that beside
    * the switch, where the 既定 mark is (doc-8 §2.2).
    */
-  let placementFailure = $state<string | null>(null);
+  let placementFailure = $state<(() => string) | null>(null);
   /**
    * 並び順 (doc-7 §5.4) in force. Held as state rather than read straight off `settings` — the way
    * カード情報量 is — because the 帯's control has to answer even when the write does not: decision-13
@@ -461,7 +463,7 @@
    * Why the last choice could not be stored as the 既定, or `null`. Stated in the 帯 beside the control:
    * the order did take effect — only its persistence did not.
    */
-  let cardOrderFailure = $state<string | null>(null);
+  let cardOrderFailure = $state<(() => string) | null>(null);
 
   let unlisten: UnlistenFn | null = null;
 
@@ -1012,7 +1014,7 @@
         void startWatch(slug);
       }
     } catch (error) {
-      fatal = unreadableDetail(asCommandError(error));
+      fatal = () => unreadableDetail(asCommandError(error));
     } finally {
       loading = false;
     }
@@ -1112,7 +1114,7 @@
     peek: () => untrack(() => settings?.settings ?? null),
     save: settingsSave,
     adopt: applySettings,
-    describeError: (error) => unreadableDetail(asCommandError(error)),
+    describeError: (error) => () => unreadableDetail(asCommandError(error)),
   });
 
   /**
@@ -1128,10 +1130,10 @@
    */
   async function saveSettings(
     change: (current: AppSettings) => AppSettings,
-  ): Promise<string | null> {
+  ): Promise<(() => string) | null> {
     const before = watchEnabled;
     settingsSaving = true;
-    let failure: string | null;
+    let failure: (() => string) | null;
     try {
       failure = await writeSettings(change);
       if (failure === null) {
@@ -1359,12 +1361,14 @@
    *
    * Nothing is read or written here and no path is sent: the boundary resolves the directory itself.
    */
-  async function openSettingsLocation(): Promise<string | null> {
+  async function openSettingsLocation(): Promise<(() => string) | null> {
     try {
       await settingsLocationOpen();
       return null;
     } catch (error) {
-      return openLocationFailure(asCommandError(error));
+      // Worded where it is read, not here: the failure outlives this press (TASK-187).
+      const failed = asCommandError(error);
+      return () => openLocationFailure(failed);
     }
   }
 
@@ -2695,7 +2699,7 @@
       {facets}
       {defaultStorage}
       {cardOrder}
-      {cardOrderFailure}
+      cardOrderFailure={cardOrderFailure?.() ?? null}
       popoverOpen={filterPopoverOpen}
       onpopover={setFilterPopover}
       onchange={(next) => (filter = next)}
@@ -2786,7 +2790,7 @@
       {/key}
     {/if}
   {:else if fatal}
-    <p class="fatal">{t().shell.fatal(fatal)}</p>
+    <p class="fatal">{t().shell.fatal(fatal())}</p>
     <button type="button" onclick={load}>{t().action.reload}</button>
   {:else if loading}
     <p class="status">{t().state.loading}</p>
@@ -2872,7 +2876,7 @@
       {history}
       {placement}
       defaultPlacement={settings?.settings.default_detail_placement ?? placement}
-      {placementFailure}
+      placementFailure={placementFailure?.() ?? null}
       onplacement={requestPlacement}
       {neighbours}
       {readiness}

@@ -110,13 +110,13 @@
      * time this save reaches the file one of those values may already be in it. Only this form knows which fields are its own to impose — the ones
      * the user edited — so it decides that here rather than sending the whole document blind.
      */
-    onsave: (change: (current: AppSettings) => AppSettings) => Promise<string | null>;
+    onsave: (change: (current: AppSettings) => AppSettings) => Promise<(() => string) | null>;
     /**
      * Open the アプリ設定ディレクトリ in the OS's file manager (TASK-75). Resolves with the failure's
      * text, or `null` once the launcher took it. The shell owns the call for the same reason it owns
      * `onsave`: the path is Atlas's own and is resolved at the boundary, never sent from here.
      */
-    onopenLocation: () => Promise<string | null>;
+    onopenLocation: () => Promise<(() => string) | null>;
     /**
      * Whether a save issued from here is still unresolved. Held by the shell rather than here, the way
      * `ProjectRegister` takes `busy`: the same flag has to withhold this form's controls *and* stop the
@@ -168,8 +168,14 @@
 
   /** The draft the form edits. Re-seeded whenever the boundary hands back a new value. */
   let draft = $state<AppSettings | null>(null);
-  /** The result of the last 保存 attempt: its failure text, or `null` once it succeeded. */
-  let failure = $state<string | null>(null);
+  /**
+   * The result of the last 保存 attempt: a thunk wording its failure, or `null` once it succeeded.
+   *
+   * **A thunk rather than the sentence** (TASK-187, following the shell's 通知): the failure stays on
+   * screen after the press that raised it, and every sentence carries a 表示言語 since the 文言表 —
+   * a captured string would keep the language it was worded in while the モーダル around it redrew.
+   */
+  let failure = $state<(() => string) | null>(null);
   /**
    * The values the draft was seeded from — what tells a field the user edited from one they left alone
    * (`mergeDraft`). Plain, not `$state`: it is read only inside the effect below, which must not depend
@@ -346,7 +352,7 @@
 
   /** The failure of the last 場所を開く, or `null`. Reported beside the button, not as a 上部帯 通知:
    *  this モーダル covers the 上部帯 (`Modal.svelte`), so a 帯 would not be read until it closed. */
-  let locationFailure = $state<string | null>(null);
+  let locationFailure = $state<(() => string) | null>(null);
   /** Whether a launch has been issued and not yet answered. */
   let opening = $state(false);
   /**
@@ -660,7 +666,7 @@
           <p class="hint" id={LOCATION_BLOCKED_ID}>{locationAvailability.reason}</p>
         {/if}
         {#if locationFailure !== null}
-          <p class="warn">{locationFailure}</p>
+          <p class="warn">{locationFailure()}</p>
         {/if}
       </section>
     {/if}
@@ -675,7 +681,7 @@
     {#if failure !== null}
       <!-- Beside the press that produced it. The failure used to be printed at the top of the panel,
            which a scrolled form would have carried out of sight at the moment 保存する was pressed. -->
-      <p class="warn">{t().action.saveFailed(failure)}</p>
+      <p class="warn">{t().action.saveFailed(failure())}</p>
     {/if}
     <!-- 無効化の理由 (doc-11 §5). Kept in the DOM whether or not it is printed, because a withheld
          control points at it with `aria-describedby` — a reason only rendered when it is visible

@@ -35,7 +35,7 @@ function harness(options: { initial?: AppSettings | null; fail?: boolean } = {})
       });
     },
     adopt: (loaded) => (current = loaded.settings),
-    describeError: (error) => (error as { detail: string }).detail,
+    describeError: (error) => () => (error as { detail: string }).detail,
   });
 
   /** Let the queued work reach its next await — a write is issued on a microtask, not on the call. */
@@ -118,15 +118,15 @@ describe("アプリ設定の 2 writer を直列化する", () => {
 
   it("says so, and writes nothing, before the first read has answered", async () => {
     const app = harness({ initial: null });
-    expect(await app.write((current) => current)).toBe(settingsNotRead());
+    expect((await app.write((current) => current))?.()).toBe(settingsNotRead());
     expect(app.written).toHaveLength(0);
   });
 
   it("returns the failure's reason and keeps taking later writes", async () => {
     const failing = harness({ fail: true });
-    expect(await failing.write((current) => ({ ...current, theme: "dusk" }))).toBe("disk is full");
+    expect((await failing.write((current) => ({ ...current, theme: "dusk" })))?.()).toBe("disk is full");
     // The queue must not be left chained behind the rejection: a second write still gets issued.
-    expect(await failing.write((current) => ({ ...current, theme: "dawn" }))).toBe("disk is full");
+    expect((await failing.write((current) => ({ ...current, theme: "dawn" })))?.()).toBe("disk is full");
     expect(failing.written).toHaveLength(2);
   });
 });
