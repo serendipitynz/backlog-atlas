@@ -764,7 +764,6 @@ export const EN: Catalog = {
     typeUnset: "type unset",
     tagsNone: "no tags",
     bodyEmpty: "There is no body.",
-    stopEditing: "Cancel editing",
     editing: "Editing",
     unsaved: "Unsaved",
     unmappedFiles: (n: number) =>

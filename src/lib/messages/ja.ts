@@ -965,7 +965,6 @@ export const ja = {
     typeUnset: "type 未設定",
     tagsNone: "tags なし",
     bodyEmpty: "本文はありません。",
-    stopEditing: "編集を止める",
     editing: "編集中",
     unsaved: "未保存",
     unmappedFiles: (n: number) => `写せなかったファイル ${n} 件`,
