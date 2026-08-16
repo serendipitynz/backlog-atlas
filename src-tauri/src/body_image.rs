@@ -4,9 +4,20 @@
 //! **The rule here is Backlog CLI's, copied.** v1.49.3's `handleAssetRequest` is what serves these
 //! same references in the CLI's own browser mode, so a different resolution would make one 台帳 mean
 //! two different things depending on which tool opened it (AGENTS). Read out of the shipped binary on
-//! 2026-08-17: the decoded path must start with `/assets/`, the remainder must not contain `..`
-//! **anywhere** — as a substring, not as a path segment — the join must stay under the assets
-//! directory, and a file that is not there is a 404. Everything below is that, in the same order.
+//! 2026-08-17, it is five steps: percent-decode, the path must start with `/assets/`, the remainder
+//! must not contain `..` **anywhere** — as a substring, not as a path segment — the join must stay
+//! under the assets directory, and a file that is not there is a 404.
+//!
+//! **Four of the five are here; the decode is the screen's** (`markdown.ts`'s `bodyImagePlan`, which
+//! has to decode anyway to write the reference a reader sees). doc-8 §9.5 records the split.
+//!
+//! **That split does not weaken the門, and the reason is worth stating rather than assuming.** The
+//! four steps below hold for *any* string, decoded or not: an escape that arrives undecoded is a
+//! literal path segment, so `/assets/%2e%2e/x` joins to a directory named `%2e%2e` and reads nothing
+//! rather than escaping. So the decode decides **which file is found**, not **whether containment
+//! holds** — which is why it can live on the screen while containment cannot. What the split does
+//! cost is that [`resolve`] alone is not the CLI's rule: called with an undecoded `%2e%2e` it answers
+//! `Ok` where the CLI answers 404. **Any second caller must decode first**, or move the decode here.
 //!
 //! **This module is the門, and the screen's classification is the second of the two** — the shape
 //! doc-8 §9.3 already settled for the URL a 本文リンク hands to the OS, for the same reason: the value
