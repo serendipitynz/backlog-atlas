@@ -4,12 +4,13 @@ title: 抽出漏れの走査を足し、英語表示のレイアウトを確か�
 status: To Do
 assignee: []
 created_date: '2026-08-15 22:19'
+updated_date: '2026-08-16 01:10'
 labels:
   - i18n
   - 'kind:feature'
 milestone: m-3
 dependencies:
-  - TASK-183
+  - TASK-187
 ordinal: 175700
 ---
 
