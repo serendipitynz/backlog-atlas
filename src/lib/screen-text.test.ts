@@ -254,4 +254,179 @@ describe("画面に置く文 (doc-11 §8)", () => {
       expect(screenText(comment, false).some((line) => designOnlyHit(line))).toBe(false);
     }
   });
+
+  // --- 抽出漏れ (decision-35 §4) ----------------------------------------------------------------
+  //
+  // The fourth kind, and the one that is not about a word but about a language. Every sentence Atlas
+  // draws now comes from the 文言表 (TASK-183 moved the components', TASK-187 the pure modules'), and
+  // what holds it there is that a source carrying Japanese fails here. The alternative — re-reading 46
+  // files whenever a sentence is added — is the one-time sweep decision-35 §4 declined.
+  //
+  // **The range is the four 源泉, the same set the 設計語 scan reaches**, because a user reads Japanese
+  // the crate builds too. The crate needs one thing the frontend does not, below.
+
+  /**
+   * Japanese: kana, kanji, and the punctuation a Japanese sentence is set with.
+   *
+   * **The punctuation is in the class on purpose** — a leftover need not carry a kana. A template like
+   * 「`${slug}（${detail}）`」 is a Japanese sentence with every word interpolated out of it, and a
+   * kana-and-kanji class would pass it. Nothing outside the 文言表 uses these characters (measured
+   * 2026-08-16 over all four 源泉: zero lines), so the wider class buys the reach for no exception.
+   *
+   * Written as escapes, not as literals: the endpoints (`〿`, `ゟ`, `゠`, `䶿`, `鿿`, `ﾟ`) are characters
+   * a reader cannot check by eye, and each range here is a named Unicode block — CJK punctuation,
+   * hiragana, katakana, CJK ideographs and their extension A, then the full-width and half-width forms.
+   */
+  const JAPANESE =
+    /[\u3000-\u303f\u3041-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff01-\uff9f]/;
+
+  /**
+   * The one exception decision-35 §4 allows, by file rather than by word: `ja.ts` holds Japanese as its
+   * whole job, and `en.ts` carries `languageName.ja`, a value decided against translating rather than
+   * one left untranslated. `excludes the two 文言表 and nothing else` requires both to still need it.
+   */
+  const MESSAGE_TABLE = /\/messages\/(ja|en)\.ts$/;
+
+  /**
+   * Blank out `#[cfg(test)] mod` blocks, keeping the line count so a failure still names its line.
+   *
+   * Rust puts a file's tests beside the code it tests, so the frontend's file-level `SKIPPED` has no
+   * counterpart here — decision-35 §4 records this as the source set's edge rather than an exception to
+   * it. Without it the scan reports assert prose and 試験関数名 such as
+   * `an_unset_指定_leaves_the_bare_name_for_the_os`, which no user reads.
+   *
+   * **The close is found by rustfmt's indentation, not by counting braces.** A counter would have to
+   * know which braces sit inside string literals (`"{forbidden} is …"` appears in `settings.rs`), and
+   * `cargo fmt --check` runs in CI, so the module's `}` is the first line equal to the attribute's
+   * indent plus `}`. **A module whose close is not found is left in place rather than stripped to the
+   * end of the file** — over-stripping would hide real screen text, and `closes every crate test module
+   * it opens` is what notices instead.
+   */
+  function withoutTestModules(source: string): { text: string; opened: number; closed: number } {
+    const lines = source.split("\n");
+    const kept = [...lines];
+    let opened = 0;
+    let closed = 0;
+    for (let index = 0; index < lines.length; index += 1) {
+      const attribute = /^(\s*)#\[cfg\(test\)\]$/.exec(lines[index]);
+      const opens = /^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{$/.test(lines[index + 1] ?? "");
+      if (attribute === null || !opens) {
+        continue;
+      }
+      opened += 1;
+      const end = lines.indexOf(`${attribute[1]}}`, index + 2);
+      if (end === -1) {
+        continue;
+      }
+      closed += 1;
+      for (let line = index; line <= end; line += 1) {
+        kept[line] = "";
+      }
+    }
+    return { text: kept.join("\n"), opened, closed };
+  }
+
+  /** The scanned 源泉 as `[path, lines]`, with the two 文言表 and the crate's test modules taken out. */
+  function screenLines(): [string, string[]][] {
+    return [
+      ...scanned
+        .filter((path) => !MESSAGE_TABLE.test(path))
+        .map(
+          (path): [string, string[]] => [path, screenText(SOURCES[path], path.endsWith(".svelte"))],
+        ),
+      ...Object.keys(CRATE)
+        .sort()
+        .map((path): [string, string[]] => [
+          path,
+          screenText(withoutTestModules(CRATE[path]).text, false),
+        ]),
+      ...Object.keys(STATIC_UI)
+        .sort()
+        .map((path): [string, string[]] => [
+          path,
+          screenText(STATIC_UI[path], path.endsWith(".html")),
+        ]),
+    ];
+  }
+
+  it("keeps Japanese out of every 源泉 but the 文言表", () => {
+    const found: string[] = [];
+    for (const [path, lines] of screenLines()) {
+      lines.forEach((line, index) => {
+        if (JAPANESE.test(line)) {
+          found.push(`${path}:${index + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("excludes the two 文言表 and nothing else, and both still need excluding", () => {
+    const excluded = scanned.filter((path) => MESSAGE_TABLE.test(path));
+    expect(excluded.map((path) => path.replace(/^.*\//, "")).sort()).toEqual(["en.ts", "ja.ts"]);
+    // Not a formality: an exclusion nothing would trip over is one the scan could drop, and the two
+    // trip over it for different reasons (decision-35 §4).
+    for (const path of excluded) {
+      expect(screenText(SOURCES[path], false).some((line) => JAPANESE.test(line))).toBe(true);
+    }
+  });
+
+  it("finds Japanese planted in each of the four 源泉", () => {
+    const planted: [string, boolean][] = [
+      ['export const EMPTY = "タスクはありません。";\n', false],
+      ["<p>{shown} 件を表示しています</p>\n", true],
+      ['const REASON: &str = "外部エディタを起動できません";\n', false],
+      ["  <title>アトラス</title>\n", true],
+      ['        "title": "アトラス",\n', false],
+      // No kana and no kanji: the shape the punctuation range is in the class for.
+      ["  return `${slug}（${detail}）`;\n", false],
+    ];
+    for (const [source, svelte] of planted) {
+      expect(screenText(source, svelte).some((line) => JAPANESE.test(line))).toBe(true);
+    }
+    // English screen text is what the extraction produced, so it has to stay legal.
+    const english = 'export const EMPTY = "No tasks yet.";\n';
+    expect(screenText(english, false).some((line) => JAPANESE.test(line))).toBe(false);
+    // So do the Japanese 領域語 in comments: AGENTS allows them, and TASK-107 is what reduces prose there.
+    const comment = "  // 保存区分 is the directory the CLI puts a task in.\n";
+    expect(screenText(comment, false).some((line) => JAPANESE.test(line))).toBe(false);
+  });
+
+  it("blanks a crate test module and nothing past its close", () => {
+    const source = [
+      'const REASON: &str = "editor unset";',
+      "#[cfg(test)]",
+      "mod tests {",
+      "    #[test]",
+      "    fn an_unset_指定_leaves_the_bare_name() {",
+      '        assert_eq!(reason(), "起動失敗", "{} は理由を述べない", 1);',
+      "    }",
+      "}",
+      'const AFTER: &str = "この行は読まれる";',
+      "",
+    ].join("\n");
+    const { text, opened, closed } = withoutTestModules(source);
+    expect([opened, closed]).toEqual([1, 1]);
+    const lines = screenText(text, false);
+    // The line after the close survives, so the stripper is not "from the attribute to end of file";
+    // the unbalanced `{}` inside the module's format string is why braces are not counted.
+    expect(lines.filter((line) => JAPANESE.test(line))).toEqual([
+      'const AFTER: &str = "この行は読まれる";',
+    ]);
+    expect(lines.length).toBe(source.split("\n").length);
+  });
+
+  it("closes every crate test module it opens", () => {
+    let opened = 0;
+    let closed = 0;
+    for (const source of Object.values(CRATE)) {
+      const counted = withoutTestModules(source);
+      opened += counted.opened;
+      closed += counted.closed;
+    }
+    // A matcher that stopped matching would leave the scan reading the tests again, and the count is
+    // what says it still matches — `closed === opened` alone holds at zero.
+    expect(opened).toBeGreaterThan(10);
+    expect(closed).toBe(opened);
+  });
 });
