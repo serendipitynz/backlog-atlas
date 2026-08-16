@@ -1,10 +1,10 @@
 ---
 id: TASK-185
 title: Backlog CLI が書く FINAL_SUMMARY・DOD・COMMENTS を読めるようにする
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-16 00:28'
-updated_date: '2026-08-16 21:43'
+updated_date: '2026-08-16 22:15'
 labels:
   - 'kind:bug'
   - rust
