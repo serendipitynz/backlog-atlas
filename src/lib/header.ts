@@ -18,14 +18,14 @@
  * |---|---|---|
  * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the ☰'s メニュー offers — 登録 and 設定 |
  * | doc-7 §2.1 メニュー | [`MenuItem`] + [`headerMenu`] | メニュー項目: one line of the menu, and the whole list in order |
- * | doc-7 §2.1 キーボード操作一覧（メニュー内） | [`SHORTCUT_HELP_LABEL`] + the `shortcutHelp` item | the menu line that opens the 一覧モーダル, where the 割り当て一覧's 画面に出す列 are drawn. The 一覧 itself is `shortcuts.ts`, which §2.1 holds apart from that table |
+ * | doc-7 §2.1 キーボード操作一覧（メニュー内） | [`shortcutHelpLabel`] + the `shortcutHelp` item | the menu line that opens the 一覧モーダル, where the 割り当て一覧's 画面に出す列 are drawn. The 一覧 itself is `shortcuts.ts`, which §2.1 holds apart from that table |
  * | doc-7 §2.1 プロジェクト一覧（メニュー内） | [`MenuProject`] + the `toggleProject` items | 登録済みプロジェクトを台帳の並び順に 1 行ずつ並べた群 |
  * | doc-7 §2.1 表示切替行 | one `toggleProject` item | 一覧の 1 行。押すとそのプロジェクト行の表示・非表示が入れ替わる |
  * | doc-7 §2.1 表示中の印 | `MenuItem.shown` on a `toggleProject` item | whether that project's row is on screen — the figure `HeaderMenu.svelte` draws from it |
- * | doc-7 §2.1 すべてのプロジェクトを表示 | [`SHOW_ALL_PROJECTS_LABEL`] + the `showAllProjects` item | 一覧の先頭に置く、全行を表示へ戻す行 |
+ * | doc-7 §2.1 すべてのプロジェクトを表示 | [`showAllProjectsLabel`] + the `showAllProjects` item | 一覧の先頭に置く、全行を表示へ戻す行 |
  * | doc-7 §2.1 群（項目の並びの単位） | [`MenuGroup`] + each item's `group` | which of the two 群 a line is in: `layer` raises a 被せ層, `rows` changes which rows the grid draws |
  * | doc-7 §2.1 区切り線 | [`startsGroup`] | メニューの群と群の境目に置く水平の線を指す。Where one is drawn — read from 群 alone, never from `held` |
- * | doc-11 §5 無効化提示 | [`showAllProjectsHeld`] | 保留理由: why すべてのプロジェクトを表示 cannot be pressed, or `null` when it can — [`SHOW_ALL_PROJECTS_HELD_REASON`] when every row is shown, [`NO_PROJECTS_REASON`] when the ledger is empty |
+ * | doc-11 §5 無効化提示 | [`showAllProjectsHeld`] | 保留理由: why すべてのプロジェクトを表示 cannot be pressed, or `null` when it can — [`showAllProjectsHeldReason`] when every row is shown, [`noProjectsReason`] when the ledger is empty |
  * | doc-11 §8 可視の文を省いてよい理由 | [`omitsSentence`] | which 保留理由 is drawn without a visible sentence, because the 区画 states it (licence ①) |
  *
  * ## Why the whole project list is here
@@ -41,6 +41,7 @@
  * decides what a press does.
  */
 
+import { msg } from "./messages";
 import type { ShortcutAction } from "./shortcuts";
 
 // --- 共通入口 (doc-7 §2.1) ---------------------------------------------------------------------
@@ -50,14 +51,19 @@ export type HeaderEntryId = "register" | "settings";
 
 export interface HeaderEntry {
   id: HeaderEntryId;
-  label: string;
   /** The assignment that opens it, so the chord and the menu item name the same operation. */
   action: ShortcutAction;
-  /**
-   * What the entry reaches, in one line — the `title` on the menu line. It sat on the entry's own button
-   * until TASK-66 folded that button away; moving it rather than dropping it is why the entries can
-   * lose their buttons without the screen losing what they said.
-   */
+}
+
+/**
+ * One 共通入口 with the words the menu draws it with.
+ *
+ * `note` is what the entry reaches, in one line — the `title` on the menu line. It sat on the entry's
+ * own button until TASK-66 folded that button away; moving it rather than dropping it is why the
+ * entries can lose their buttons without the screen losing what they said.
+ */
+export interface HeaderEntryView extends HeaderEntry {
+  label: string;
   note: string;
 }
 
@@ -66,19 +72,14 @@ export interface HeaderEntry {
  * Ordered as doc-7 §2.1 lists them: 登録 (台帳全体) then 設定 (アプリ設定).
  */
 export const HEADER_ENTRIES: readonly HeaderEntry[] = [
-  {
-    id: "register",
-    label: "プロジェクトを登録",
-    action: "openRegister",
-    note: "プロジェクトを 1 件登録します。グリッドの末尾に行が 1 本増えます。",
-  },
-  {
-    id: "settings",
-    label: "設定",
-    action: "openSettings",
-    note: "アプリ設定を開きます。",
-  },
+  { id: "register", action: "openRegister" },
+  { id: "settings", action: "openSettings" },
 ] as const;
+
+/** One 共通入口 as the menu draws it, worded where it is read. */
+export function headerEntryView(entry: HeaderEntry): HeaderEntryView {
+  return { ...entry, ...msg().shell.headerEntry[entry.id] };
+}
 
 // --- メニュー項目 (doc-7 §2.1, doc-11 §4 ⑥) ----------------------------------------------------
 
@@ -94,7 +95,9 @@ export const HEADER_ENTRIES: readonly HeaderEntry[] = [
  * character away from it. What stays apart is the 割り当て一覧 itself: `shortcuts.ts` holds the five-欄
  * record, and doc-7 §2.1 keeps that word for the record and never for what is drawn (TASK-125).
  */
-export const SHORTCUT_HELP_LABEL = "キーボード操作一覧";
+export function shortcutHelpLabel(): string {
+  return msg().shell.shortcutHelpLabel;
+}
 
 /**
  * The line that puts every project row back on screen (doc-7 §2.1), in the user's own words
@@ -102,14 +105,18 @@ export const SHORTCUT_HELP_LABEL = "キーボード操作一覧";
  * of hidden rows: a line named for the state it undoes belongs above a list of what is undone, and the
  * list now names every registered project whichever state it is in.
  */
-export const SHOW_ALL_PROJECTS_LABEL = "すべてのプロジェクトを表示";
+export function showAllProjectsLabel(): string {
+  return msg().shell.showAllProjectsLabel;
+}
 
 /**
  * 保留理由 for すべてのプロジェクトを表示 while every registered row is on screen. Written as a sentence
  * rather than as parenthetical shorthand because nothing prints it — it is read aloud or not at all
  * (see [`omitsSentence`]), and brackets that kept a visible note short only become noise in speech.
  */
-export const SHOW_ALL_PROJECTS_HELD_REASON = "すべてのプロジェクトが表示されています。";
+export function showAllProjectsHeldReason(): string {
+  return msg().shell.showAllProjectsHeld;
+}
 
 /**
  * 保留理由 for the same line when the ledger holds nothing at all. A second reason rather than the one
@@ -119,7 +126,9 @@ export const SHOW_ALL_PROJECTS_HELD_REASON = "すべてのプロジェクトが�
  * otherwise the first thing a new install shows in its menu is a held line with no reason anywhere,
  * which is exactly what doc-11 §5 refuses (故障と区別できない).
  */
-export const NO_PROJECTS_REASON = "登録済みプロジェクトがありません。";
+export function noProjectsReason(): string {
+  return msg().shell.noProjectsRegistered;
+}
 
 /**
  * 保留理由 for すべてのプロジェクトを表示, or `null` while at least one row is hidden. A sentence rather
@@ -128,11 +137,11 @@ export const NO_PROJECTS_REASON = "登録済みプロジェクトがありませ
  */
 export function showAllProjectsHeld(projectCount: number, hiddenCount: number): string | null {
   if (projectCount === 0) {
-    return NO_PROJECTS_REASON;
+    return noProjectsReason();
   }
   return hiddenCount > 0
     ? null
-    : SHOW_ALL_PROJECTS_HELD_REASON;
+    : showAllProjectsHeldReason();
 }
 
 /**
@@ -146,7 +155,7 @@ export function showAllProjectsHeld(projectCount: number, hiddenCount: number): 
  * sentence and nothing else: doc-7 §2.1 keeps the reason in the accessibility tree.
  */
 export function omitsSentence(reason: string): boolean {
-  return reason === SHOW_ALL_PROJECTS_HELD_REASON;
+  return reason === showAllProjectsHeldReason();
 }
 
 /**
@@ -167,7 +176,7 @@ export type MenuGroup = "layer" | "rows";
  * menu did. Keeping the key in the data makes uniqueness a property this module can be tested for.
  */
 export type MenuItem =
-  | { kind: "entry"; key: string; group: MenuGroup; entry: HeaderEntry; held: null }
+  | { kind: "entry"; key: string; group: MenuGroup; entry: HeaderEntryView; held: null }
   | { kind: "shortcutHelp"; key: string; group: MenuGroup; label: string; held: null }
   | { kind: "showAllProjects"; key: string; group: MenuGroup; label: string; held: string | null }
   | {
@@ -245,7 +254,7 @@ export function headerMenu(projects: readonly MenuProject[]): MenuItem[] {
         kind: "entry",
         key: `entry:${entry.id}`,
         group: "layer",
-        entry,
+        entry: headerEntryView(entry),
         held: null,
       }),
     ),
@@ -253,14 +262,14 @@ export function headerMenu(projects: readonly MenuProject[]): MenuItem[] {
       kind: "shortcutHelp",
       key: "shortcutHelp",
       group: "layer",
-      label: SHORTCUT_HELP_LABEL,
+      label: shortcutHelpLabel(),
       held: null,
     },
     {
       kind: "showAllProjects",
       key: "showAllProjects",
       group: "rows",
-      label: SHOW_ALL_PROJECTS_LABEL,
+      label: showAllProjectsLabel(),
       held: showAllProjectsHeld(projects.length, hiddenCount),
     },
     ...projects.map((project): MenuItem => ({

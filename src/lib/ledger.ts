@@ -34,6 +34,7 @@
  * request values for the three ledger commands, which write the ledger file alone (doc-3 §2.1).
  */
 
+import { msg } from "./messages";
 import type {
   CommandError,
   ProjectEntry,
@@ -95,10 +96,12 @@ export function hasRegisterInput(input: RegisterInput): boolean {
 /**
  * Why the 登録モーダル will not take a close request right now (doc-11 §7 の いま閉じられない事情).
  *
- * Same shape and same reason as `SAVING_REASON` one screen over: the panel is what reports whether the
+ * Same shape and same reason as `savingReason()` one screen over: the panel is what reports whether the
  * registration was refused, and leaving takes it away while the write already issued goes on to land.
  */
-export const REGISTERING_REASON = "登録中です";
+export function registeringReason(): string {
+  return msg().projectRegister.registering;
+}
 
 /** One row of the 別名表 editor. Ordered and possibly incomplete — see the referent table. */
 export interface AliasRow {
@@ -197,22 +200,14 @@ export function registerProblems(
   const backlogRoot = input.backlogRoot.trim();
   const slug = input.slug.trim();
 
+  const text = msg().projectRegister.problem;
   if (projectRoot === "") {
-    problems.push({
-      field: "projectRoot",
-      message: "プロジェクトルートを指定してください。",
-    });
+    problems.push({ field: "projectRoot", message: text.projectRootRequired });
   } else if (!isAbsolutePath(projectRoot)) {
-    problems.push({
-      field: "projectRoot",
-      message: "プロジェクトルートは絶対パスで指定してください。",
-    });
+    problems.push({ field: "projectRoot", message: text.projectRootNotAbsolute });
   }
   if (backlogRoot !== "" && !isAbsolutePath(backlogRoot)) {
-    problems.push({
-      field: "backlogRoot",
-      message: "Backlog ルートは絶対パスで指定してください。",
-    });
+    problems.push({ field: "backlogRoot", message: text.backlogRootNotAbsolute });
   }
   // An empty slug is not a problem: it means "derive it from the project root" (doc-3 §3.1).
   if (slug !== "" && !isValidSlug(slug)) {
@@ -220,7 +215,7 @@ export function registerProblems(
   } else if (slug !== "" && taken.includes(slug)) {
     problems.push({
       field: "slug",
-      message: `slug ${slug} は既に登録済みです。別の slug を指定してください。`,
+      message: text.slugTaken(slug),
     });
   }
   return problems;
@@ -254,21 +249,16 @@ export function editProblems(edit: EntryEdit): FieldProblem[] {
   const projectRoot = edit.projectRoot.trim();
   const backlogRoot = edit.backlogRoot.trim();
 
+  const text = msg().projectRegister.problem;
   if (projectRoot === "") {
-    problems.push({ field: "projectRoot", message: "プロジェクトルートは空にできません。" });
+    problems.push({ field: "projectRoot", message: text.projectRootEmpty });
   } else if (!isAbsolutePath(projectRoot)) {
-    problems.push({
-      field: "projectRoot",
-      message: "プロジェクトルートは絶対パスで指定してください。",
-    });
+    problems.push({ field: "projectRoot", message: text.projectRootNotAbsolute });
   }
   if (backlogRoot === "") {
-    problems.push({ field: "backlogRoot", message: "Backlog ルートは空にできません。" });
+    problems.push({ field: "backlogRoot", message: text.backlogRootEmpty });
   } else if (!isAbsolutePath(backlogRoot)) {
-    problems.push({
-      field: "backlogRoot",
-      message: "Backlog ルートは絶対パスで指定してください。",
-    });
+    problems.push({ field: "backlogRoot", message: text.backlogRootNotAbsolute });
   }
   problems.push(...aliasProblems(edit.aliases));
   return problems;
@@ -277,6 +267,7 @@ export function editProblems(edit: EntryEdit): FieldProblem[] {
 /** 別名表 rows that cannot become a table (doc-3 §3.3). Blank rows are ignored, not reported. */
 export function aliasProblems(rows: readonly AliasRow[]): FieldProblem[] {
   const problems: FieldProblem[] = [];
+  const text = msg().projectRegister.problem;
   const seen = new Set<string>();
   for (const row of rows) {
     const key = row.key.trim();
@@ -285,7 +276,7 @@ export function aliasProblems(rows: readonly AliasRow[]): FieldProblem[] {
       continue;
     }
     if (key === "") {
-      problems.push({ field: "aliases", message: "別名表に status 名の無い行があります。" });
+      problems.push({ field: "aliases", message: text.aliasKeyMissing });
       continue;
     }
     // 名称一致 (decision-4): two keys differing only in case or surrounding space are one status,
@@ -294,14 +285,14 @@ export function aliasProblems(rows: readonly AliasRow[]): FieldProblem[] {
     if (seen.has(normalized)) {
       problems.push({
         field: "aliases",
-        message: `別名表の status ${key} が重複しています（大文字小文字・前後空白は同一と見なします）。`,
+        message: text.aliasKeyDuplicate(key),
       });
     }
     seen.add(normalized);
     if (!CANONICAL_STATUS_NAMES.includes(value)) {
       problems.push({
         field: "aliases",
-        message: `${key} の対応先 ${value === "" ? "（未選択）" : value} は正準ステータス列ではありません。`,
+        message: text.aliasValueNotCanonical(key, value === "" ? text.aliasValueUnset : value),
       });
     }
   }
@@ -441,63 +432,38 @@ export function refusalReport(error: CommandError): RefusalReport {
     // Not a refusal of the operation: the ledger file could not be read or written, or the failure
     // is not a ledger one at all. Reported as it arrived rather than dressed as a correctable input.
     const detail = "detail" in error ? error.detail : JSON.stringify(error);
-    return { message: `登録を更新できません: ${detail}`, field: null };
+    return { message: msg().projectRegister.refusal.notARefusal(detail), field: null };
   }
+  const text = msg().projectRegister.refusal;
   const reason = error.reason;
   switch (reason.reason) {
     case "readOnly":
-      return {
-        message:
-          `登録ファイルの schema_version ${reason.schema_version} はこのビルドが読める版より新しい` +
-          "ため、上書きを拒否しました（読み取り専用）。Atlas を更新するまで登録は変更できません。",
-        field: null,
-      };
+      return { message: text.readOnly(reason.schema_version), field: null };
     case "backlogRootInvalid":
-      return {
-        message:
-          `${reason.path} は Backlog ルートとして読めません（config.yml と tasks/ が必要です）。` +
-          "Backlog ルートを指定し直してください。",
-        field: "backlogRoot",
-      };
+      return { message: text.backlogRootInvalid(reason.path), field: "backlogRoot" };
     case "invalidSlug":
-      return { message: `${slugGrammarMessage(reason.slug)}`, field: "slug" };
+      return { message: slugGrammarMessage(reason.slug), field: "slug" };
     case "duplicateSlug":
-      return {
-        message: `slug ${reason.slug} は既に登録済みです。別の slug を指定してください。`,
-        field: "slug",
-      };
+      return { message: msg().projectRegister.problem.slugTaken(reason.slug), field: "slug" };
     case "slugNotFound":
-      return {
-        message:
-          `slug ${reason.slug} の登録内容がありません（別の画面で削除された可能性）。` +
-          "一覧を読み直してください。",
-        field: null,
-      };
+      return { message: text.slugNotFound(reason.slug), field: null };
     case "nonAbsoluteRoot":
-      return {
-        message: `${reason.path} は絶対パスではありません。絶対パスで指定してください。`,
-        field: "projectRoot",
-      };
+      return { message: text.nonAbsoluteRoot(reason.path), field: "projectRoot" };
     case "duplicateRoot":
-      return {
-        message:
-          `このプロジェクトルート／Backlog ルートは既に slug ${reason.slug} に登録されています。` +
-          "1 プロジェクト 1 エントリのため、別のルートを指定するか、そのエントリを編集してください。",
-        field: "projectRoot",
-      };
+      return { message: text.duplicateRoot(reason.slug), field: "projectRoot" };
     case "invalidStatusAlias":
       return {
-        message:
-          `別名 ${reason.key} → ${reason.value} は不正です。対応先は ` +
-          `${CANONICAL_STATUS_NAMES.join(" / ")} のいずれかにしてください。`,
+        message: text.invalidStatusAlias(
+          reason.key,
+          reason.value,
+          CANONICAL_STATUS_NAMES.join(" / "),
+        ),
         field: "aliases",
       };
   }
 }
 
 function slugGrammarMessage(slug: string): string {
-  return (
-    `slug ${slug === "" ? "（空）" : slug} は使えません。` +
-    "英小文字・数字で始まり、以降は英小文字・数字・ハイフンのみ（: と空白は不可）です。"
-  );
+  const text = msg().projectRegister;
+  return text.problem.slugGrammar(slug === "" ? text.problem.emptySlug : slug);
 }

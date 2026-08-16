@@ -39,9 +39,9 @@
   import type { Snippet } from "svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import {
-    DISCARD_CONFIRM_CLOSE,
-    DISCARD_CONFIRM_KEEP,
-    DISCARD_CONFIRM_QUESTION,
+    discardConfirmClose,
+    discardConfirmKeep,
+    discardConfirmQuestion,
     type DiscardAnswers,
   } from "../lib/edit";
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
@@ -251,9 +251,9 @@
     -->
     {#if confirmDiscard !== null}
       <div class="confirm">
-        <span class="confirm-text">{DISCARD_CONFIRM_QUESTION}</span>
-        <button type="button" onclick={confirmDiscard.onproceed}>{DISCARD_CONFIRM_CLOSE}</button>
-        <button type="button" onclick={confirmDiscard.onkeep}>{DISCARD_CONFIRM_KEEP}</button>
+        <span class="confirm-text">{discardConfirmQuestion()}</span>
+        <button type="button" onclick={confirmDiscard.onproceed}>{discardConfirmClose()}</button>
+        <button type="button" onclick={confirmDiscard.onkeep}>{discardConfirmKeep()}</button>
       </div>
     {/if}
     <!--

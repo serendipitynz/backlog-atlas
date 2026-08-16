@@ -43,6 +43,7 @@ import type {
 } from "./wire";
 import { matchesFilter, type CardFilter, type InconsistentLookup } from "./filter";
 import type { IconName } from "./icons/lucide";
+import { msg } from "./messages";
 
 /** 正準ステータス列 in left-to-right order (decision-4, doc-7 §2). Fixed for every row. */
 export const CANONICAL_COLUMNS: readonly StatusColumn[] = [
@@ -73,7 +74,9 @@ export const CANONICAL_COLUMN_LABEL: Record<StatusColumn, string> = {
  *
  * Not the detail panel's 位置表示: that prints a count alone and names no group (doc-8 §2.2, TASK-72).
  */
-export const UNMAPPED_LABEL = "未分類";
+export function unmappedLabel(): string {
+  return msg().swimlane.unmapped;
+}
 
 /** One row × one canonical column. Empty `tasks` is an empty cell — 該当タスク無し (doc-7 §6). */
 export interface LaneCell {
@@ -258,10 +261,11 @@ function compareDigitRuns(a: string, b: string): number {
   return Math.sign(a.length - b.length);
 }
 
-/** What one 並び順 compares first, and what it is called wherever the choice is offered. */
+/**
+ * What one 並び順 compares first. The screen's word for it is [`cardOrderLabel`]'s — doc-7 §5.4 の表
+ * lives in the 文言表, so the rule and the word are not two halves of one literal any more.
+ */
 export interface CardOrderRule {
-  /** The screen's word for it (doc-7 §5.4 の表). Attribute names follow doc-8 §3 の主要属性. */
-  label: string;
   compare: Comparator;
 }
 
@@ -279,48 +283,32 @@ export interface CardOrderRule {
  * project's cards, so the slug prefix is the same on all of them and would only cost a comparison.
  */
 export const CARD_ORDERS: Record<CardOrder, CardOrderRule> = {
-  priority_asc: { label: "priority 昇順", compare: byPriority(ASC) },
-  priority_desc: { label: "priority 降順", compare: byPriority(DESC) },
-  task_id_asc: {
-    label: "task id 昇順",
-    compare: byOptional((view) => view.task.id, compareNumberAware, ASC),
-  },
-  task_id_desc: {
-    label: "task id 降順",
-    compare: byOptional((view) => view.task.id, compareNumberAware, DESC),
-  },
-  updated_asc: {
-    label: "updated 昇順",
-    compare: byOptional((view) => view.task.updatedDate, compareText, ASC),
-  },
-  updated_desc: {
-    label: "updated 降順",
-    compare: byOptional((view) => view.task.updatedDate, compareText, DESC),
-  },
-  created_asc: {
-    label: "created 昇順",
-    compare: byOptional((view) => view.task.createdDate, compareText, ASC),
-  },
-  created_desc: {
-    label: "created 降順",
-    compare: byOptional((view) => view.task.createdDate, compareText, DESC),
-  },
-  milestone_asc: {
-    label: "milestone 昇順",
-    compare: byOptional((view) => view.task.milestone, compareNumberAware, ASC),
-  },
-  milestone_desc: {
-    label: "milestone 降順",
-    compare: byOptional((view) => view.task.milestone, compareNumberAware, DESC),
-  },
+  priority_asc: { compare: byPriority(ASC) },
+  priority_desc: { compare: byPriority(DESC) },
+  task_id_asc: { compare: byOptional((view) => view.task.id, compareNumberAware, ASC) },
+  task_id_desc: { compare: byOptional((view) => view.task.id, compareNumberAware, DESC) },
+  updated_asc: { compare: byOptional((view) => view.task.updatedDate, compareText, ASC) },
+  updated_desc: { compare: byOptional((view) => view.task.updatedDate, compareText, DESC) },
+  created_asc: { compare: byOptional((view) => view.task.createdDate, compareText, ASC) },
+  created_desc: { compare: byOptional((view) => view.task.createdDate, compareText, DESC) },
+  milestone_asc: { compare: byOptional((view) => view.task.milestone, compareNumberAware, ASC) },
+  milestone_desc: { compare: byOptional((view) => view.task.milestone, compareNumberAware, DESC) },
 };
+
+/** 並び順の語 (doc-7 §5.4), as the フィルタ帯's control and the 設定画面 both list them. */
+export function cardOrderLabel(order: CardOrder): string {
+  return msg().swimlane.order[order];
+}
 
 /**
  * The ten as a list, for the controls that offer them (the 帯 and the 設定画面). Derived from the
  * record rather than written out a second time, so the two cannot come to hold different sets;
- * `Object.entries` widens the key to `string`, which is what the annotation puts back.
+ * `Object.keys` widens the key to `string`, which is what the annotation puts back.
+ *
+ * The values alone since TASK-187: the 語 moved to the 文言表, so a control listing the ten reads
+ * [`cardOrderLabel`] for each rather than carrying the rule it has no other use for.
  */
-export const CARD_ORDER_CHOICES = Object.entries(CARD_ORDERS) as [CardOrder, CardOrderRule][];
+export const CARD_ORDER_CHOICES = Object.keys(CARD_ORDERS) as CardOrder[];
 
 /** 既定の並び順 (doc-7 §5.4) — the order in force before the settings read answers. */
 export const DEFAULT_CARD_ORDER: CardOrder = "priority_desc";
@@ -475,7 +463,7 @@ export function laneCounts(row: SwimlaneRow, withUnmapped: boolean): LaneCount[]
   if (withUnmapped) {
     counts.push({
       column: null,
-      label: UNMAPPED_LABEL,
+      label: unmappedLabel(),
       count: row.state === "loaded" ? row.unmapped.length : 0,
     });
   }
@@ -575,9 +563,10 @@ export function swimlaneTotals(
  * ledger entries, not rows on screen.
  */
 export function totalsLabel(totals: SwimlaneTotals): string {
-  return (
-    `表示 ${totals.shownCards} / ${totals.totalCards} 件` +
-    ` ・ ${totals.shownLanes} / ${totals.totalLanes} プロジェクト`
+  const text = msg().swimlane;
+  return text.totals(
+    text.totalsCards(totals.shownCards, totals.totalCards),
+    text.totalsLanes(totals.shownLanes, totals.totalLanes),
   );
 }
 
@@ -596,17 +585,18 @@ export function rowFoldable(row: SwimlaneRow): boolean {
  * place says why it is absent, which is not the same as an operation that is there but blocked
  * (doc-11 §5).
  */
-export const ROW_FOLD_ABSENT_REASON =
-  "ルートが読めず畳む対象のセルがないため、この行に行折畳みは置きません。" +
-  "この行を画面から外すには、ヘッダのメニューのプロジェクト一覧を使います。";
+export function rowFoldAbsentReason(): string {
+  return msg().swimlane.rowFoldAbsent;
+}
 
 /**
  * Why the last open column's 列折畳み is blocked (doc-7 §2.2). This one *is* placed and disabled —
  * unlike the two above, the control exists in every canonical column head and only its last instance
  * is refused, so removing it would make the heads differ in what they hold (doc-11 §5).
  */
-export const LAST_COLUMN_FOLD_BLOCKED_REASON =
-  "残り 1 列は畳めません。すべて畳むと、どの列のカードも読めない画面になります。";
+export function lastColumnFoldBlockedReason(): string {
+  return msg().swimlane.lastColumnHeld;
+}
 
 // --- レーンヘッダ行と列ヘッダの図形 (doc-7 §2.2・§2.3, doc-11 §2.4) ----------------------------
 
@@ -747,9 +737,10 @@ export function laneNeighbours(
  * a cell — which is the whole point of this function, and it survives the count changing.
  */
 export function laneGroupLabel(group: LaneNeighbours["group"]): string {
+  const text = msg().swimlane;
   return group.kind === "column"
-    ? `${CANONICAL_COLUMN_LABEL[group.column]} セル`
-    : `${UNMAPPED_LABEL}区画`;
+    ? text.laneGroupCell(CANONICAL_COLUMN_LABEL[group.column])
+    : text.laneGroupUnmapped(unmappedLabel());
 }
 
 /**
@@ -766,13 +757,13 @@ export function laneGroupLabel(group: LaneNeighbours["group"]): string {
  * doc-11 §2.4 wants (the label holds the operation's name and nothing else).
  */
 export function laneNeighbourLabel(neighbours: LaneNeighbours): string {
-  return `${neighbours.position} / ${neighbours.total} 件`;
+  return msg().swimlane.lanePosition(neighbours.position, neighbours.total);
 }
 
 /** Why 前後移動 is not offered, when it is not (doc-11 §5: a withheld control says why). */
-export const NO_LANE_CELL_REASON =
-  "このタスクは今のスイムレーンに出ていないため（行の非表示・ルート読取不能・絞り込みのいずれか）、" +
-  "前後のタスクを決められません。";
+export function noLaneCellReason(): string {
+  return msg().swimlane.laneAbsent;
+}
 
 /**
  * The reason a row has no cards. Only ルート読取不能 and the ledger-level failures can reach a

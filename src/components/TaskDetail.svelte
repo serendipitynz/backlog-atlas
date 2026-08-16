@@ -30,7 +30,7 @@
   import { MAC_KEYBOARD } from "../lib/platform";
   import { messages } from "../lib/messages-context";
   import {
-    CROSS_ID_UNAVAILABLE,
+    crossIdUnavailable,
     acProgress,
     dependencyLinks,
     milestoneRef,
@@ -38,13 +38,13 @@
     type HistoryState,
   } from "../lib/detail";
   import {
-    DISCARD_CONFIRM_PROCEED,
-    EMPTY_ASSIGNEE_REASON,
-    EMPTY_DEPENDENCIES_REASON,
-    EMPTY_REFERENCES_REASON,
-    FILE_MISSING_REASON,
+    discardConfirmProceed,
+    emptyAssigneeReason,
+    emptyDependenciesReason,
+    emptyReferencesReason,
+    fileMissingReason,
     PRIORITIES,
-    TYPE_NOT_EDITABLE,
+    typeNotEditable,
     acDeltaDroppedByRebase,
     acRows,
     buildSave,
@@ -74,10 +74,10 @@
     type TransitionOffer,
   } from "../lib/edit";
   import {
-    FRONTMATTER_NOTICE,
-    REREAD_ROOT_LABEL,
-    UNSAVED_INPUT_WARNING,
-    WATCH_STOPPED_NOTE,
+    frontmatterNotice,
+    rereadRootLabel,
+    unsavedInputWarning,
+    watchStoppedNote,
     editorOffers,
     launchConfirmation,
     launchSummary,
@@ -115,10 +115,10 @@
     // `DetailSection` is the component imported above; the type takes an alias here.
     type DetailSection as SectionKey,
   } from "../lib/placement";
-  import { DETAIL_PLACEMENT_LABEL } from "../lib/settings";
+  import { detailPlacementLabel } from "../lib/settings";
   import {
     CANONICAL_COLUMN_LABEL,
-    NO_LANE_CELL_REASON,
+    noLaneCellReason,
     laneGroupLabel,
     laneNeighbourLabel,
     type LaneNeighbours,
@@ -283,7 +283,7 @@
     placementPersistence(placement, defaultPlacement, placementFailure),
   );
   let persistenceNote = $derived(
-    placementPersistenceNote(persistence, (value) => DETAIL_PLACEMENT_LABEL[value]),
+    placementPersistenceNote(persistence, (value) => detailPlacementLabel(value)),
   );
   let crossId = $derived(crossTaskId(view));
 
@@ -806,7 +806,7 @@
         style="--copy-fade: {COPY_FADE_MS}ms"
         disabled={crossId === null}
         aria-label={t().taskDetail.copyCrossId}
-        title={crossId === null ? CROSS_ID_UNAVAILABLE : t().taskDetail.copyCrossId}
+        title={crossId === null ? crossIdUnavailable() : t().taskDetail.copyCrossId}
         onclick={copyCrossTaskId}
       >
         <Icon name={copied ? "clipboard-check" : "clipboard"} />
@@ -856,7 +856,7 @@
             disabled={target === null}
             aria-label={stepName}
             title={neighbours === null
-              ? NO_LANE_CELL_REASON
+              ? noLaneCellReason()
               : target === null
                 ? t().taskDetail.atEdge(laneGroupLabel(neighbours.group), edge)
                 : t().taskDetail.withinGroup(laneGroupLabel(neighbours.group), stepName)}
@@ -889,8 +889,8 @@
               class:on={candidate === placement}
               class:is-default={isDefault}
               aria-pressed={candidate === placement}
-              aria-label={placementSwitchName(DETAIL_PLACEMENT_LABEL[candidate], isDefault)}
-              title={placementSwitchName(DETAIL_PLACEMENT_LABEL[candidate], isDefault)}
+              aria-label={placementSwitchName(detailPlacementLabel(candidate), isDefault)}
+              title={placementSwitchName(detailPlacementLabel(candidate), isDefault)}
               onclick={() => onplacement(candidate)}
             >
               <Icon name={PLACEMENT_ICON[candidate]} />
@@ -1040,10 +1040,10 @@
     {/if}
     {#if neighbours === null}
       <!-- 無効化提示 (doc-11 §5): the reason sits beside the control, not only in a tooltip. -->
-      <p class="hint">{NO_LANE_CELL_REASON}</p>
+      <p class="hint">{noLaneCellReason()}</p>
     {/if}
     {#if crossId === null}
-      <p class="hint">{CROSS_ID_UNAVAILABLE}</p>
+      <p class="hint">{crossIdUnavailable()}</p>
     {/if}
     <!-- 成功・失敗を述べる語 (doc-11 §2.4, TASK-72). A live region because the control's own name must
          not change under the user: the figure and the 成功色 reach the eye, and this is what reaches
@@ -1069,7 +1069,7 @@
       <!-- doc-8 §6.4: an external move does not get to take the 未保存入力 with it. The panel
            stays up showing the last read that resolved, so the input can be copied out before it
            is discarded on purpose. -->
-      <p class="warn">{FILE_MISSING_REASON}</p>
+      <p class="warn">{fileMissingReason()}</p>
     {/if}
   </div>
 {/snippet}
@@ -1159,7 +1159,7 @@
         <!-- 破棄前確認 (doc-8 §6.3) を、押す前に読める形で置く: 入力を失う操作の前には同じ確認が
              上部帯に出る、という予告である。§6.3 の 5 経路をここへ数え上げないのは doc-11 §8 の
              設計文の写しに当たるためで、予告として要るのは「確認を通る」ことだけである。 -->
-        <p class="hint">{t().taskDetail.unsavedWarn(DISCARD_CONFIRM_PROCEED)}</p>
+        <p class="hint">{t().taskDetail.unsavedWarn(discardConfirmProceed())}</p>
       {/if}
       {#if externalChange}
         <!-- 編集中の継続検出 (doc-8 §6.4). 不整合 の色を取り、generic notice ではない: the version has
@@ -1280,7 +1280,7 @@
       {/if}
     </ul>
     {#if session !== null}
-      <p class="hint">{TYPE_NOT_EDITABLE}</p>
+      <p class="hint">{typeNotEditable()}</p>
     {/if}
   </DetailSection>
 {/snippet}
@@ -1310,7 +1310,7 @@
         newAssignee,
         (value) => (newAssignee = value),
         t().taskDetail.addAssignee,
-        lastRemovalReason(session.baseline.task.assignee, EMPTY_ASSIGNEE_REASON),
+        lastRemovalReason(session.baseline.task.assignee, emptyAssigneeReason()),
       )}
       <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
@@ -1607,7 +1607,7 @@
         newDependency,
         (value) => (newDependency = value),
         "TASK-ID",
-        lastRemovalReason(session.baseline.task.dependencies, EMPTY_DEPENDENCIES_REASON),
+        lastRemovalReason(session.baseline.task.dependencies, emptyDependenciesReason()),
       )}
       <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
@@ -1678,7 +1678,7 @@
         newReference,
         (value) => (newReference = value),
         "URL",
-        lastRemovalReason(session.baseline.task.references, EMPTY_REFERENCES_REASON),
+        lastRemovalReason(session.baseline.task.references, emptyReferencesReason()),
       )}
       <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
@@ -1732,17 +1732,17 @@
     <p class="path">{task.sourcePath}</p>
     <!-- 開く前に示す (doc-8 §7 難点と受け方): the frontmatter is exposed and the CLI's schema checking
          is bypassed, so this is stated before a launch rather than after a degraded read. -->
-    <p class="warn">{FRONTMATTER_NOTICE}</p>
+    <p class="warn">{frontmatterNotice()}</p>
     {#if watchStopped}
       <!-- 継続検出が止まっている場合の書き戻し (doc-8 §7): said before the launch, with the re-read
            that is the only thing which will bring the edit back. -->
-      <p class="warn">{WATCH_STOPPED_NOTE}</p>
-      <p><button type="button" class="mini" onclick={onreread}>{REREAD_ROOT_LABEL}</button></p>
+      <p class="warn">{watchStoppedNote()}</p>
+      <p><button type="button" class="mini" onclick={onreread}>{rereadRootLabel()}</button></p>
     {/if}
     {#if dirty}
       <!-- 二重取り込みの回避 (doc-8 §6.4): stated here, and the launch asks before it starts
            (doc-11 §12) with this same text as the question. The input is not discarded either way. -->
-      <p class="warn">{UNSAVED_INPUT_WARNING}</p>
+      <p class="warn">{unsavedInputWarning()}</p>
     {/if}
     <ul class="editor-list">
       {#each editorOfferList as offer (offer.method)}

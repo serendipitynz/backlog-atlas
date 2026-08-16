@@ -41,6 +41,7 @@
  */
 
 import type { IconName } from "./icons/lucide";
+import { msg } from "./messages";
 import type { DetailPlacement } from "./wire";
 
 /**
@@ -396,7 +397,9 @@ export function placementPersistence(
  * underline 画面設計案 02 puts there (doc-12 §3). An underline reaches the eye and nothing else, so
  * this word is what carries the same fact into the accessible name — see [`placementSwitchName`].
  */
-export const DEFAULT_PLACEMENT_MARK = "既定";
+export function defaultPlacementMark(): string {
+  return msg().taskDetail.placementDefaultMark;
+}
 
 /**
  * The name an アイコンのみのボタン for `placement` announces (doc-8 §2.2, doc-11 §2.4).
@@ -406,7 +409,7 @@ export const DEFAULT_PLACEMENT_MARK = "既定";
  * it would be told which placement the button chooses but never which one the app will open in.
  */
 export function placementSwitchName(label: string, isDefault: boolean): string {
-  return isDefault ? `${label}（${DEFAULT_PLACEMENT_MARK}）` : label;
+  return isDefault ? msg().taskDetail.placementIsDefault(label, defaultPlacementMark()) : label;
 }
 
 /**
@@ -466,8 +469,8 @@ export function placementPersistenceNote(
     case "default":
       return null;
     case "notDefault":
-      return `次回起動時は「${label(persistence.stored)}」で開きます（既定はそちらのままです）。`;
+      return msg().taskDetail.placementStoredElsewhere(label(persistence.stored));
     case "refused":
-      return `この配置を既定として保存できませんでした（${persistence.reason}）。今の表示には効いています。`;
+      return msg().taskDetail.placementNotStored(persistence.reason);
   }
 }

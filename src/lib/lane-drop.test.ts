@@ -15,7 +15,7 @@ import {
   laneDropTarget,
   type DragSource,
 } from "./lane-drop";
-import { ISSUE_BUSY_REASON } from "./manage";
+import { issueBusyReason } from "./manage";
 import type { ColumnCreateStatuses } from "./wire";
 
 /** `backlog init --defaults` の 3 status 構成: In Review is not declared (doc-7 §4.1, 実測). */
@@ -183,7 +183,7 @@ describe("つまめないカード", () => {
 
   it("holds every card while an action is in flight, in the 入口's own words (AC #4)", () => {
     expect(laneDragHold({ readiness: READY, busy: true })).toBe(
-      ISSUE_BUSY_REASON,
+      issueBusyReason(),
     );
   });
 });

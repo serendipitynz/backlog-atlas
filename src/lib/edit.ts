@@ -88,7 +88,7 @@ export interface EditDraft {
   /**
    * 担当 (doc-5 §3 `-a`). The whole frontmatter list, like `references`/`dependencies`: `task edit`
    * reads `-a`'s value as a comma-separated set and replaces the list with it (実測 2026-08-12), so
-   * this is a 非空全置換. Empty is refused — see [`EMPTY_ASSIGNEE_REASON`], the CLI has no unassign.
+   * this is a 非空全置換. Empty is refused — see [`emptyAssigneeReason`], the CLI has no unassign.
    */
   assignee: string[];
   plan: string;
@@ -137,10 +137,9 @@ export interface EditSession {
  * `type:` field could produce one. Neither source is editable, so the message states that as one
  * fact with its two grounds rather than implying one half can be reached.
  */
-export const TYPE_NOT_EDITABLE =
-  "Type の編集はこの画面では提供しません。kind ラベル由来の値は、読み取り層が保持するのが" +
-  "接頭辞を外した値で、元のラベル文字列と一致する保証がないためです。frontmatter の type 由来の値は、" +
-  "更新アダプターが --type の操作写像を持たないためです（通常ラベルは編集できます）";
+export function typeNotEditable(): string {
+  return msg().taskDetail.typeNotEditable;
+}
 
 const EMPTY_DELTA: AcDelta = { add: [], remove: [], check: [], uncheck: [] };
 
@@ -397,7 +396,9 @@ export type SavePlan =
  * operation points at the same control instead of at "外部エディタ経路" as an abstraction — TASK-37
  * put the launch in this panel, so the guidance can name where it is.
  */
-export const EXTERNAL_EDITOR_ROUTE = "この画面下部の「外部エディタで開く」";
+export function externalEditorRoute(): string {
+  return msg().taskDetail.externalEditorRoute;
+}
 
 /**
  * **None of the withheld-operation reasons names a version** (decision-27). Which version was
@@ -406,9 +407,9 @@ export const EXTERNAL_EDITOR_ROUTE = "この画面下部の「外部エディタ
  * `null` or `unavailable`, neither of which carries a version. The one sentence that does name one is
  * [`readinessReason`]'s unsupported branch, whose subject *is* the difference between two versions.
  */
-export const EMPTY_REFERENCES_REASON =
-  "References は最後の 1 件を削除できません（CLI に空集合化の手段がないため）。" +
-  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
+export function emptyReferencesReason(): string {
+  return msg().taskDetail.lastElementHeld("References", externalEditorRoute());
+}
 
 /**
  * Why the last assignee cannot be removed. `-a ""` exits 0 without clearing in v1.49.3 (実測), and
@@ -416,13 +417,13 @@ export const EMPTY_REFERENCES_REASON =
  * it was — so an empty set is withheld rather than issued as an unassignment that would be reported
  * as a success and not happen (doc-5 §3.1, the same silent-no-op as `--ref ""`).
  */
-export const EMPTY_ASSIGNEE_REASON =
-  "assignee は最後の 1 件を削除できません（CLI に空集合化の手段がないため）。" +
-  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
+export function emptyAssigneeReason(): string {
+  return msg().taskDetail.lastElementHeld("assignee", externalEditorRoute());
+}
 
-export const EMPTY_DEPENDENCIES_REASON =
-  "dependencies は最後の 1 件を削除できません（CLI に空集合化の手段がないため）。" +
-  `空にする場合は${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
+export function emptyDependenciesReason(): string {
+  return msg().taskDetail.lastElementHeld("dependencies", externalEditorRoute());
+}
 
 /**
  * Renumber a per-item AC edit for the CLI (doc-5 §3). One `task edit` resolves its AC options in
@@ -463,8 +464,9 @@ export function acDeltaForCli(delta: AcDelta, baseline: TaskView): AcDelta {
   };
 }
 
-export const EMPTY_TITLE_REASON =
-  "title は空にできません（必須項目で、空にすると解析不能として不整合表示になります）";
+export function emptyTitleReason(): string {
+  return msg().taskDetail.emptyTitle;
+}
 
 /**
  * Whether one more removal is allowed from a 非空全置換 field (doc-5 §3.1). The last element stays:
@@ -502,7 +504,7 @@ export function lastRemovalReason(baseline: readonly string[], reason: string): 
 export function buildSave(session: EditSession): SavePlan {
   const taskId = session.baseline.task.id;
   if (taskId === null) {
-    return { state: "refused", reason: "TASK-ID を読めないため更新操作の対象を指定できません" };
+    return { state: "refused", reason: msg().taskDetail.noTaskIdForUpdate };
   }
   const dirty = dirtyFields(session);
   if (dirty.length === 0) {
@@ -517,7 +519,7 @@ export function buildSave(session: EditSession): SavePlan {
     switch (field) {
       case "title":
         if (draft.title === "") {
-          return { state: "refused", reason: EMPTY_TITLE_REASON };
+          return { state: "refused", reason: emptyTitleReason() };
         }
         edit.title = draft.title;
         submitted.title = draft.title;
@@ -540,7 +542,7 @@ export function buildSave(session: EditSession): SavePlan {
         break;
       case "assignee": {
         if (draft.assignee.length === 0) {
-          return { state: "refused", reason: EMPTY_ASSIGNEE_REASON };
+          return { state: "refused", reason: emptyAssigneeReason() };
         }
         // A comma inside one name is not expressible: `-a` reads its value as the whole set, so the
         // name would arrive as two assignees (doc-5 §3, the same rule ラベル・タグ follow).
@@ -572,14 +574,14 @@ export function buildSave(session: EditSession): SavePlan {
       }
       case "dependencies":
         if (draft.dependencies.length === 0) {
-          return { state: "refused", reason: EMPTY_DEPENDENCIES_REASON };
+          return { state: "refused", reason: emptyDependenciesReason() };
         }
         edit.dependencies = [...draft.dependencies];
         submitted.dependencies = [...draft.dependencies];
         break;
       case "references":
         if (draft.references.length === 0) {
-          return { state: "refused", reason: EMPTY_REFERENCES_REASON };
+          return { state: "refused", reason: emptyReferencesReason() };
         }
         // 既存を含む非空全集合 (doc-5 §3): the list starts as everything the task has, so adding a
         // Pull Request URL here is the References 全置換 doc-8 §6 reduces PR 登録 to.
@@ -604,7 +606,9 @@ export function buildSave(session: EditSession): SavePlan {
   return { state: "ready", action: [{ op: "taskEdit", taskId, edit }], submitted };
 }
 
-export const NOTHING_TO_SAVE_REASON = "変更はまだありません";
+export function nothingToSaveReason(): string {
+  return msg().state.nothingToSaveYet;
+}
 
 // --- 破棄前確認 (doc-8 §6.3) ------------------------------------------------------------------
 //
@@ -625,11 +629,14 @@ export const NOTHING_TO_SAVE_REASON = "変更はまだありません";
  * モーダル is up (doc-11 §7) — the question is the same one either way, whatever the answers are
  * called there.
  */
-export const DISCARD_CONFIRM_QUESTION =
-  "編集中の未保存入力があります。このまま進むと破棄されます。";
+export function discardConfirmQuestion(): string {
+  return msg().shell.discardConfirmQuestion;
+}
 
 /** The answer that goes ahead and loses the input. */
-export const DISCARD_CONFIRM_PROCEED = "破棄して続ける";
+export function discardConfirmProceed(): string {
+  return msg().shell.discardConfirmProceed;
+}
 
 /**
  * The same answer where the モーダル asks it (doc-11 §7).
@@ -640,10 +647,14 @@ export const DISCARD_CONFIRM_PROCEED = "破棄して続ける";
  * something wider than what the press does. The *question* stays the one above: what is lost is the
  * same thing, and doc-8 §6.3 asks for one wording of that.
  */
-export const DISCARD_CONFIRM_CLOSE = "破棄して閉じる";
+export function discardConfirmClose(): string {
+  return msg().shell.discardConfirmClose;
+}
 
 /** The answer that stays where it is. */
-export const DISCARD_CONFIRM_KEEP = "編集に戻る";
+export function discardConfirmKeep(): string {
+  return msg().shell.discardConfirmKeep;
+}
 
 /**
  * The two answers, as the layer that draws them needs them (doc-11 §7). A pair rather than a flag and
@@ -688,7 +699,9 @@ export interface IssueConfirmation {
 }
 
 /** 戻る側の答え (doc-11 §12): one word, for every question of this kind. */
-export const ISSUE_CONFIRM_CANCEL = "やめる";
+export function issueConfirmCancel(): string {
+  return msg().modal.issueConfirmCancel;
+}
 
 /**
  * 語尾の … (doc-11 §12): the mark saying this press does not reach the act.
@@ -715,19 +728,19 @@ export function saveAvailability(
 ): SaveAvailability {
   // Ordered as the obstacles are: a file that is gone cannot be written whatever the plan says.
   if (context.fileMissing) {
-    return { state: "blocked", reason: FILE_MISSING_REASON };
+    return { state: "blocked", reason: fileMissingReason() };
   }
   if (context.busy) {
-    return { state: "blocked", reason: "保存中です" };
+    return { state: "blocked", reason: msg().action.savingNow };
   }
   if (plan === null) {
-    return { state: "blocked", reason: "編集セッションを開いていません" };
+    return { state: "blocked", reason: msg().taskDetail.noEditSession };
   }
   switch (plan.state) {
     case "ready":
       return { state: "ready" };
     case "nothingToSave":
-      return { state: "blocked", reason: NOTHING_TO_SAVE_REASON };
+      return { state: "blocked", reason: nothingToSaveReason() };
     case "refused":
       return { state: "blocked", reason: plan.reason };
   }
@@ -784,21 +797,22 @@ export function failureDetail(failure: UpdateFailure): string {
   // 直接書き込み操作 names no sub-command (decision-35 §3): `kind` is what says it was that one,
   // so the subject comes from the 文言表 rather than from a name the boundary wrote.
   const what = failure.command ?? msg().failure.milestoneDescribe;
-  return `${what} が失敗しました（${how}）${reloadNote(failure)}: ${failure.stderr.trim()}`;
+  return msg().taskDetail.commandFailed(what, how, reloadNote(failure), failure.stderr.trim());
 }
 
 function failureCause(kind: FailureKind): string {
+  const text = msg().taskDetail.failureCause;
   switch (kind.kind) {
     case "spawn":
-      return "起動できません";
+      return text.spawn;
     case "nonZero":
-      return `終了コード ${kind.code ?? "不明"}`;
+      return text.nonZero(kind.code);
     case "timedOut":
-      return `${Math.round(kind.afterMs / 1000)} 秒以内に終了しなかったため中断しました`;
+      return text.timedOut(Math.round(kind.afterMs / 1000));
     // 直接書き込み操作 (decision-21). No exit code to quote and no process to blame; the reason is
     // the whole of what is known, and it arrives in `stderr` like a CLI's does.
     case "write":
-      return "書き込めません";
+      return text.write;
   }
 }
 
@@ -812,9 +826,10 @@ function reloadNote(failure: UpdateFailure): string {
   if (!failure.reloadRequired) {
     return "";
   }
+  const text = msg().taskDetail;
   return failure.completedBefore > 0
-    ? `（この操作の ${failure.completedBefore} 件は既に適用済みで、再読込済みです）`
-    : "（この操作が管理ファイルを変更したかどうかは分かりません。再読込済みです）";
+    ? text.reloadNoteApplied(failure.completedBefore)
+    : text.reloadNoteUnknown;
 }
 
 /**
@@ -823,39 +838,40 @@ function reloadNote(failure: UpdateFailure): string {
  * defined way to look for one — and forbids offering an unchecked run as the way around it.
  */
 export function commandErrorDetail(error: CommandError): string {
+  const text = msg().taskDetail.commandError;
   switch (error.kind) {
     case "updatesUnavailable":
-      return readinessReason(error.readiness) ?? "backlog CLI を確認できません";
+      return readinessReason(error.readiness) ?? text.cliUncheckable;
     case "updateRejected":
-      return `更新アダプターが実行前に拒否しました: ${error.detail}`;
+      return text.updateRejected(error.detail);
     case "uncheckableTarget":
-      return (
-        `照合不能: ${error.what} は書き換え対象の照合方法が定まっていないため、CLI を起動せずに` +
-        `拒否しました。版がずれていることを検出したわけではありません。${error.detail}`
-      );
+      return text.uncheckableTarget(error.what, error.detail);
     case "reloadFailed":
       return error.applied === null || error.applied === undefined
-        ? `再読込に失敗しました（更新は実行していません）: ${error.detail}`
-        : `更新は適用されましたが再読込に失敗しました。同じ操作をやり直さないでください: ${error.detail}`;
+        ? text.reloadFailedNotApplied(error.detail)
+        : text.reloadFailedApplied(error.detail);
     case "versionProbeFailed":
-      return `更新前競合検出の版読み取りに失敗しました: ${error.detail}`;
+      return text.versionProbeFailed(error.detail);
     case "taskNotFound":
-      return `${error.task_id} は現在の読み取り結果にありません（削除・移動の可能性）`;
+      return text.taskNotFound(error.task_id);
     case "projectNotOpen":
-      return `プロジェクト ${error.slug} が開かれていません`;
+      return text.projectNotOpen(error.slug);
     case "unknownProject":
-      return `プロジェクト ${error.slug} は登録されていません`;
+      return text.unknownProject(error.slug);
     case "rootUnreadable":
-      return `ルートを読めません: ${error.detail}`;
+      return text.rootUnreadable(error.detail);
     // 外部エディタ経路 (doc-8 §7). Stated here because this is the one place a `CommandError` becomes
-    // the panel's Japanese text; `external-editor.ts` re-words these three for the launch controls,
+    // the panel's sentence; `external-editor.ts` re-words these three for the launch controls,
     // where "the path is not in the read result" has a specific next step (open the task again).
     case "unknownTaskFile":
-      return `${error.path} は現在の読み取り結果のタスクファイルではありません（移動・削除の可能性）`;
+      return text.unknownTaskFile(error.path);
     case "editorUnavailable":
-      return `外部エディタを起動できません: ${msg().failure.editorUnavailable}`;
+      return text.editorUnavailable(msg().failure.editorUnavailable);
     case "editorLaunchFailed":
-      return `${error.program} を起動できません: ${launchRefusalText(error.reason, error.detail)}`;
+      return text.editorLaunchFailed(
+        error.program,
+        launchRefusalText(error.reason, error.detail),
+      );
     // A 台帳操作 refusal (doc-3 §4) reaching this screen is second-hand — the 台帳管理画面 is where
     // these are acted on — so the wording is taken from there rather than written a second time.
     case "ledgerRefused":
@@ -866,19 +882,19 @@ export function commandErrorDetail(error: CommandError): string {
     // アプリ設定 (decision-13): only a save fails, and it does not touch this task — the panel states
     // it as what it is, so a settings write failure never reads as a failed edit.
     case "settings":
-      return `設定を保存できませんでした: ${error.detail}`;
+      return text.settingsSaveFailed(error.detail);
     // 履歴読取の取消 (decision-19) cannot arise from an edit — it answers `task_history_read`, and
     // only the read this screen itself abandoned. It is worded rather than left out because the
     // switch is exhaustive, and a sentence that says what happened beats a variant name if a future
     // route ever does route one here.
     case "historyCancelled":
-      return "Git 履歴の読み取りは画面の側で取り消されました";
+      return text.historyCancelled;
     // 本文リンク (doc-8 §9.3) cannot arise from an edit either — it answers a press on a link inside a
     // 閲覧 の本文 — and the boundary's sentence already names what did not open (a refused URL, or the
     // program that failed). Prefixed rather than passed through, so ⑤ 通知 says which press it belongs
     // to: nothing else on screen changed when the browser failed to come forward.
     case "bodyLinkFailed":
-      return `リンクを開けませんでした: ${bodyLinkRefusalText(error.reason, error.detail)}`;
+      return text.bodyLinkFailed(bodyLinkRefusalText(error.reason, error.detail));
   }
 }
 
@@ -897,7 +913,7 @@ export function commandErrorDetail(error: CommandError): string {
  */
 export function divergence(submitted: Submitted, view: TaskView | null): string[] {
   if (view === null) {
-    return ["タスクファイル（再読込結果に見当たりません）"];
+    return [msg().taskDetail.divergedTaskFile];
   }
   const task = view.task;
   const diverged: string[] = [];
@@ -914,8 +930,8 @@ export function divergence(submitted: Submitted, view: TaskView | null): string[
   if (submitted.assignee !== undefined && !sameSet(submitted.assignee, task.assignee)) {
     diverged.push("assignee");
   }
-  text("実装計画", submitted.plan, task.implementationPlan);
-  text("実装ノート", submitted.notes, task.implementationNotes);
+  text(msg().taskDetail.planHeading, submitted.plan, task.implementationPlan);
+  text(msg().taskDetail.notesHeading, submitted.notes, task.implementationNotes);
   if (submitted.references !== undefined && !sameSet(submitted.references, task.references)) {
     diverged.push("References");
   }
@@ -945,8 +961,9 @@ export type EditAvailability = { state: "editable" } | { state: "unavailable"; r
 
 /** 縮退 (doc-5 §5): why updates are not offered when the CLI is missing or out of range. */
 export function readinessReason(readiness: CliReadiness | null): string | null {
+  const text = msg().taskDetail.readiness;
   if (readiness === null) {
-    return "backlog CLI の確認中です";
+    return text.checking;
   }
   switch (readiness.state) {
     case "ready":
@@ -954,19 +971,19 @@ export function readinessReason(readiness: CliReadiness | null): string | null {
     // See `cliDegradedSummary`: naming PATH alone stopped being true at decision-16. `detail` names
     // the executable the resolution settled on, which is what the user has to act on.
     case "unavailable":
-      return `backlog CLI の実行ファイルを解決できないため更新操作を提供しません（${readiness.detail}）`;
+      return text.unavailable(readiness.detail);
     case "unsupported":
-      return `backlog CLI ${readiness.version} は動作確認範囲外のため更新操作を提供しません（必要: ${readiness.minimum} 以上）`;
+      return text.unsupported(readiness.version, readiness.minimum);
   }
 }
 
-const DRAFT_READ_ONLY =
-  "draft の内容編集は提供しません（CLI に draft の内容を編集する手段がないため）。" +
-  `編集するにはタスクへ昇格するか、${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
+function draftReadOnly(): string {
+  return msg().taskDetail.draftReadOnly(externalEditorRoute());
+}
 
-const CLOSED_READ_ONLY =
-  "completed・archive のタスクは、CLI が更新を受け付けないため読み取り専用です。" +
-  `内容を変えるには${EXTERNAL_EDITOR_ROUTE}から管理ファイルを直接編集します`;
+function closedReadOnly(): string {
+  return msg().taskDetail.closedReadOnly(externalEditorRoute());
+}
 
 /**
  * The task's file left the read result while the panel was open — moved or deleted by something
@@ -974,9 +991,9 @@ const CLOSED_READ_ONLY =
  * 未保存入力 is not the file's to take: doc-8 §6.4 keeps the input, and this is the reason shown
  * beside it.
  */
-export const FILE_MISSING_REASON =
-  "このタスクのファイルが現在の読み取り結果にありません（外部での移動・削除の可能性）。" +
-  "CLI 経由の更新はできません。未保存入力は保持しているので、必要な内容を控えてから破棄してください";
+export function fileMissingReason(): string {
+  return msg().taskDetail.fileMissing;
+}
 
 /** Whether the panel offers content editing for this task at all (doc-8 §6.5, doc-5 §5). */
 export function editAvailability(
@@ -985,25 +1002,19 @@ export function editAvailability(
   fileMissing = false,
 ): EditAvailability {
   if (fileMissing) {
-    return { state: "unavailable", reason: FILE_MISSING_REASON };
+    return { state: "unavailable", reason: fileMissingReason() };
   }
   if (view.task.id === null) {
-    return {
-      state: "unavailable",
-      reason: "TASK-ID を読めないため更新操作の対象を指定できません（解析不能）",
-    };
+    return { state: "unavailable", reason: msg().taskDetail.noTaskIdForUpdateUnparsed };
   }
   switch (view.task.storageState) {
     case "draft":
-      return { state: "unavailable", reason: DRAFT_READ_ONLY };
+      return { state: "unavailable", reason: draftReadOnly() };
     case "completed":
     case "archive":
-      return { state: "unavailable", reason: CLOSED_READ_ONLY };
+      return { state: "unavailable", reason: closedReadOnly() };
     case null:
-      return {
-        state: "unavailable",
-        reason: "保存区分を判別できないため更新操作を提供しません",
-      };
+      return { state: "unavailable", reason: msg().taskDetail.noStorageForUpdate };
     case "active":
       break;
   }
@@ -1058,60 +1069,41 @@ export function transitionOffers(
 ): TransitionOffers {
   const id = view.task.id;
   if (id === null) {
-    return { state: "none", reason: "TASK-ID を読めないため状態遷移の対象を指定できません" };
+    return { state: "none", reason: msg().taskDetail.noTaskIdForTransition };
   }
   const storage = view.task.storageState;
   if (storage === null) {
-    return { state: "none", reason: "保存区分を判別できないため状態遷移を提供しません" };
+    return { state: "none", reason: msg().taskDetail.noStorageForTransition };
   }
   if (storage === "completed" || storage === "archive") {
-    return {
-      state: "none",
-      reason:
-        "completed・archive から戻す操作は CLI にないため提供しません",
-    };
+    return { state: "none", reason: msg().taskDetail.noWayBackFromClosed };
   }
 
   // Ordered by how fundamental the obstacle is: a file that is gone cannot be transitioned at all,
   // no CLI means no operation, and unsaved input is the one the user can clear themselves.
   const blocked =
-    (context.fileMissing === true ? FILE_MISSING_REASON : null) ??
+    (context.fileMissing === true ? fileMissingReason() : null) ??
     readinessReason(context.readiness) ??
-    (context.hasUnsavedInput
-      ? "未保存の入力があります。保存またはキャンセルしてから実行します"
-      : null);
+    (context.hasUnsavedInput ? msg().taskDetail.unsavedBeforeTransition : null);
 
   const offers: TransitionOffer[] =
     storage === "draft"
       ? [
-          offer("draftPromote", "タスクへ昇格", DRAFT_PROMOTE_EFFECT, {
-            op: "draftPromote",
-            draftId: id,
-          }),
-          offer("draftArchive", "アーカイブ", DRAFT_ARCHIVE_EFFECT, {
-            op: "draftArchive",
-            draftId: id,
-          }),
+          offer("draftPromote", { op: "draftPromote", draftId: id }),
+          offer("draftArchive", { op: "draftArchive", draftId: id }),
         ]
       : [
-          offer("taskDemote", "draft へ差し戻す", TASK_DEMOTE_EFFECT, {
-            op: "taskDemote",
-            taskId: id,
-          }),
-          offer("taskArchive", "アーカイブ", TASK_ARCHIVE_EFFECT, {
-            op: "taskArchive",
-            taskId: id,
-          }),
+          offer("taskDemote", { op: "taskDemote", taskId: id }),
+          offer("taskArchive", { op: "taskArchive", taskId: id }),
           offer(
             "taskComplete",
-            "完了整理",
-            TASK_COMPLETE_EFFECT,
             { op: "taskComplete", taskId: id },
             view.task.status === COMPLETABLE_STATUS
               ? null
-              : `status が ${COMPLETABLE_STATUS} のときのみ実行可能です（現在: ${
-                  view.task.status ?? "不明"
-                }）`,
+              : msg().taskDetail.completableOnly(
+                  COMPLETABLE_STATUS,
+                  view.task.status ?? msg().taskDetail.statusUnreadableShort,
+                ),
           ),
         ];
 
@@ -1127,28 +1119,19 @@ export function transitionOffers(
 
 function offer(
   kind: TransitionKind,
-  label: string,
-  effect: string,
   operation: UpdateOperation,
   reason: string | null = null,
 ): TransitionOffer {
-  return { kind, label, effect, operation, enabled: reason === null, reason };
+  const text = msg().taskDetail.transition[kind];
+  return {
+    kind,
+    label: text.label,
+    effect: text.effect,
+    operation,
+    enabled: reason === null,
+    reason,
+  };
 }
-
-// 遷移が何を変えるかだけを述べる (doc-11 §8 の結果の予告). The 写像 itself (active → archive/tasks) is
-// on the button, and the storage state is on screen beside it, so what is left to say is the part a
-// user cannot read off either: whether the id survives, and whether the move can be undone.
-//
-// **The five lines are deliberately not parallel.** Each says only what is not already answered for
-// *that* transition: 昇格・差し戻し renumber, so the id is the news; draft archive keeps both, so the
-// news is that nothing changes; the two one-way moves have no id question at all and the news is
-// that they cannot be taken back. Making them symmetric would put a clause on each button that its
-// own transition never raises.
-const DRAFT_PROMOTE_EFFECT = "id は採番し直されます";
-const DRAFT_ARCHIVE_EFFECT = "id・status は保持されます";
-const TASK_DEMOTE_EFFECT = "id は採番し直されます";
-const TASK_ARCHIVE_EFFECT = "元に戻せません";
-const TASK_COMPLETE_EFFECT = "status が Done のときのみ実行可能です。元に戻せません";
 
 /**
  * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — v1.49.3 has no way back to the state before
@@ -1161,42 +1144,9 @@ const TASK_COMPLETE_EFFECT = "status が Done のときのみ実行可能です�
  * happen and what will not be undoable — so the two texts differ per transition, not per field.
  */
 export function transitionConfirmation(offer: TransitionOffer): IssueConfirmation {
-  return {
-    title: offer.label,
-    question: TRANSITION_CONFIRM_QUESTION[offer.kind],
-    proceed: TRANSITION_CONFIRM_PROCEED[offer.kind],
-  };
+  const text = msg().taskDetail.transition[offer.kind];
+  return { title: offer.label, question: text.question, proceed: text.proceed };
 }
-
-// Keyed by `TransitionKind` so a sixth transition cannot be added without the compiler asking what its
-// question says — the same reason `band.ts` keys its texts by `BandKind`.
-//
-// **The three one-way moves say 戻せません plainly, and do not name the CLI's absence** (the wording is the
-// user's, from the 2026-08-11 目視). The first draft said "アーカイブから戻す操作は v1.48.0 の CLI に
-// ありません" — true, and measured (doc-8 §6.5 holds that measurement, which is where a reader who needs
-// the reason goes) — but a version number in a question about *this* press answers something the user did
-// not ask at the moment of asking. 差し戻す・昇格 *can* be taken back, so those two say what is lost
-// instead: the id.
-//
-// **That 目視 is now the general rule, not this record's own exception**: decision-27 §2 generalized it, so
-// no screen text names a version and doc-11 §8 counts one as a 設計文の写し.
-const TRANSITION_CONFIRM_QUESTION: Record<TransitionKind, string> = {
-  taskDemote: "このタスクを draft へ差し戻します。id は採番し直されます。",
-  taskArchive: "このタスクをアーカイブします。この操作は戻せません。",
-  taskComplete: "このタスクを完了整理します。この操作は戻せません。",
-  draftPromote: "この draft をタスクへ昇格します。id は採番し直されます。",
-  draftArchive: "この draft をアーカイブします。この操作は戻せません。",
-};
-
-/** 進む側は動作を名乗る (doc-11 §12). Two kinds share `アーカイブする`: the act is the same act, and the
- * layer's own name says which of the two 保存区分 it was pressed from. */
-const TRANSITION_CONFIRM_PROCEED: Record<TransitionKind, string> = {
-  taskDemote: "draft へ差し戻す",
-  taskArchive: "アーカイブする",
-  taskComplete: "完了整理する",
-  draftPromote: "タスクへ昇格する",
-  draftArchive: "アーカイブする",
-};
 
 // --- 選択肢 (doc-5 §3 の値域) --------------------------------------------------------------
 
@@ -1218,10 +1168,10 @@ export function optionsFor(current: string | null, values: readonly string[]): S
   // A value the file carries but config.yml does not declare still has to be selectable as-is,
   // otherwise opening the select would silently propose changing it (decision-4 未分類 status).
   if (current !== null && current !== "" && !values.includes(current)) {
-    options.unshift({ value: current, label: `${current}（config.yml 未宣言）` });
+    options.unshift({ value: current, label: msg().taskDetail.undeclaredValue(current) });
   }
   if (current === null || current === "") {
-    options.unshift({ value: "", label: "—（未設定）" });
+    options.unshift({ value: "", label: msg().projectDetail.unset });
   }
   return options;
 }
@@ -1236,10 +1186,10 @@ export function milestoneOptions(
   });
   const options = snapshot.milestones.map(named);
   if (current !== null && current !== "" && !snapshot.milestones.some((m) => m.id === current)) {
-    options.unshift({ value: current, label: `${current}（このルートに無い）` });
+    options.unshift({ value: current, label: msg().taskDetail.milestoneNotInRoot(current) });
   }
   if (current === null || current === "") {
-    options.unshift({ value: "", label: "—（未設定）" });
+    options.unshift({ value: "", label: msg().projectDetail.unset });
   }
   return options;
 }

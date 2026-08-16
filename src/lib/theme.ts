@@ -18,6 +18,8 @@
  * by the 設定画面 with no block behind it would select a theme that paints nothing.
  */
 
+import { msg } from "./messages";
+
 /** Whether a theme is painted on a light or a dark ground — what its `color-scheme` declares. */
 export type ThemeScheme = "light" | "dark";
 
@@ -25,13 +27,14 @@ export interface RecordedTheme {
   /** The stored name (`settings.toml` の `theme`) and the `data-theme` value. */
   id: string;
   /**
-   * What the 設定画面 calls it. States the theme's 明暗 in the word a user reads (ライト／ダーク),
-   * because four of the ten names carry it in neither language (Catppuccin Latte / Mocha, Rosé Pine
-   * Dawn / Rosé Pine). `theme.test.ts` requires that word to be the one `scheme` declares — a theme
-   * recorded with the wrong one reads correctly on screen and paints the other ground.
+   * The colour set's own name. **Not translated** (decision-35 §5): eight of the ten are the names
+   * their upstream projects publish, and the two Atlas wrote are named after the app — a reader
+   * comparing this list against those projects reads the same words in either language.
    */
-  label: string;
+  name: string;
   scheme: ThemeScheme;
+  /** One of the two 未選択 resolves to (decision-12 の既定), which its 呼び名 says. */
+  isDefault?: true;
 }
 
 /**
@@ -43,16 +46,16 @@ export interface RecordedTheme {
  * the borrowed eight follow in the order 設計案 05 presents them, light before dark within each pair.
  */
 export const RECORDED_THEMES: RecordedTheme[] = [
-  { id: "atlas-light", label: "Atlas Light（ライト・既定）", scheme: "light" },
-  { id: "atlas-dark", label: "Atlas Dark（ダーク・既定）", scheme: "dark" },
-  { id: "one-light", label: "One Light（ライト）", scheme: "light" },
-  { id: "one-dark", label: "One Dark（ダーク）", scheme: "dark" },
-  { id: "solarized-light", label: "Solarized Light（ライト）", scheme: "light" },
-  { id: "solarized-dark", label: "Solarized Dark（ダーク）", scheme: "dark" },
-  { id: "catppuccin-latte", label: "Catppuccin Latte（ライト）", scheme: "light" },
-  { id: "catppuccin-mocha", label: "Catppuccin Mocha（ダーク）", scheme: "dark" },
-  { id: "rose-pine-dawn", label: "Rosé Pine Dawn（ライト）", scheme: "light" },
-  { id: "rose-pine", label: "Rosé Pine（ダーク）", scheme: "dark" },
+  { id: "atlas-light", name: "Atlas Light", scheme: "light", isDefault: true },
+  { id: "atlas-dark", name: "Atlas Dark", scheme: "dark", isDefault: true },
+  { id: "one-light", name: "One Light", scheme: "light" },
+  { id: "one-dark", name: "One Dark", scheme: "dark" },
+  { id: "solarized-light", name: "Solarized Light", scheme: "light" },
+  { id: "solarized-dark", name: "Solarized Dark", scheme: "dark" },
+  { id: "catppuccin-latte", name: "Catppuccin Latte", scheme: "light" },
+  { id: "catppuccin-mocha", name: "Catppuccin Mocha", scheme: "dark" },
+  { id: "rose-pine-dawn", name: "Rosé Pine Dawn", scheme: "light" },
+  { id: "rose-pine", name: "Rosé Pine", scheme: "dark" },
 ];
 
 export const RECORDED_THEME_IDS: string[] = RECORDED_THEMES.map((theme) => theme.id);
@@ -60,19 +63,36 @@ export const RECORDED_THEME_IDS: string[] = RECORDED_THEMES.map((theme) => theme
 /**
  * 未選択. Named as what it does rather than as an absence: it is a working state, not a gap.
  *
- * It names no theme. The two this state resolves to are already marked 既定 in their own labels a
+ * It names no theme. The two this state resolves to are already marked 既定 in their own 呼び名 a
  * few rows below, and naming them here reads as though picking this option picks one of them — what
  * it picks is the state of following the system, which keeps following it when the system changes.
  */
-export const THEME_UNSET_LABEL = "システム設定に従う";
+export function themeUnsetLabel(): string {
+  return msg().settings.themeUnset;
+}
 
 /** True when this build has the colour values for `name`. `null` (未選択) is always honourable. */
 export function isRecorded(name: string | null): boolean {
   return name === null || RECORDED_THEME_IDS.includes(name);
 }
 
+/**
+ * What the 設定画面 calls one theme: its own name, and its 明暗 in the word a user reads
+ * (ライト／ダーク, light/dark). The word is *built* from [`RecordedTheme.scheme`] rather than written
+ * beside it, because four of the ten names carry no 明暗 in either language (Catppuccin Latte /
+ * Mocha, Rosé Pine Dawn / Rosé Pine) and a hand-written one could disagree with the ground the theme
+ * actually paints — which reads correctly in the list and is wrong on screen.
+ */
 export function themeLabel(name: string): string | null {
-  return RECORDED_THEMES.find((theme) => theme.id === name)?.label ?? null;
+  const theme = RECORDED_THEMES.find((recorded) => recorded.id === name);
+  if (theme === undefined) {
+    return null;
+  }
+  const text = msg().settings;
+  const scheme = theme.scheme === "light" ? text.themeSchemeLight : text.themeSchemeDark;
+  return theme.isDefault === true
+    ? text.themeNameDefault(theme.name, scheme)
+    : text.themeName(theme.name, scheme);
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ICONS, drawnShape } from "./icons/lucide";
 import {
-  DEFAULT_PLACEMENT_MARK,
+  defaultPlacementMark,
   DISCLOSURE_ICON,
   MAIN_COLUMN_ORDER,
   MODAL_MIN_MAIN_COLUMN_REM,
@@ -29,7 +29,7 @@ import {
   type DetailSection,
   type Disposition,
 } from "./placement";
-import { DETAIL_PLACEMENT_LABEL } from "./settings";
+import { detailPlacementLabel } from "./settings";
 import type { DetailPlacement } from "./wire";
 
 /**
@@ -72,7 +72,7 @@ describe("AC #1 3 配置", () => {
 
   it("names each of them on the switch", () => {
     for (const placement of PLACEMENTS) {
-      expect(DETAIL_PLACEMENT_LABEL[placement]).toBeTruthy();
+      expect(detailPlacementLabel(placement)).toBeTruthy();
     }
   });
 
@@ -385,13 +385,13 @@ describe("TASK-115 AC #1 関数の主列と実レイアウトの主列が一致�
 });
 
 describe("AC #3 既定の永続と、既定がどれかの表示", () => {
-  const label = (placement: DetailPlacement) => DETAIL_PLACEMENT_LABEL[placement];
+  const label = (placement: DetailPlacement) => detailPlacementLabel(placement);
 
   it("leaves the note silent while the placement on screen is the stored 既定", () => {
     const persistence = placementPersistence("modal", "modal", null);
     expect(persistence).toEqual({ state: "default" });
     expect(placementPersistenceNote(persistence, label)).toBeNull();
-    expect(DEFAULT_PLACEMENT_MARK).toBe("既定");
+    expect(defaultPlacementMark()).toBe("既定");
   });
 
   /*
@@ -401,18 +401,18 @@ describe("AC #3 既定の永続と、既定がどれかの表示", () => {
    * together: the silent note, and a name that still carries 既定.
    */
   it("carries 既定 in the switch's own name, since the 下線 reaches nothing but the eye", () => {
-    const stored = placementSwitchName(DETAIL_PLACEMENT_LABEL.modal, true);
-    expect(stored).toContain(DETAIL_PLACEMENT_LABEL.modal);
-    expect(stored).toContain(DEFAULT_PLACEMENT_MARK);
+    const stored = placementSwitchName(detailPlacementLabel("modal"), true);
+    expect(stored).toContain(detailPlacementLabel("modal"));
+    expect(stored).toContain(defaultPlacementMark());
     // And this is the case the note is silent for, so the name is the only place it is said at all.
     expect(placementPersistenceNote(placementPersistence("modal", "modal", null), label)).toBeNull();
   });
 
   it("leaves the other two switches named by their placement alone", () => {
     for (const placement of PLACEMENTS) {
-      const name = placementSwitchName(DETAIL_PLACEMENT_LABEL[placement], false);
-      expect([placement, name]).toEqual([placement, DETAIL_PLACEMENT_LABEL[placement]]);
-      expect([placement, name.includes(DEFAULT_PLACEMENT_MARK)]).toEqual([placement, false]);
+      const name = placementSwitchName(detailPlacementLabel(placement), false);
+      expect([placement, name]).toEqual([placement, detailPlacementLabel(placement)]);
+      expect([placement, name.includes(defaultPlacementMark())]).toEqual([placement, false]);
     }
   });
 

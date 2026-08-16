@@ -15,9 +15,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import Modal from "./Modal.svelte";
 import {
-  DISCARD_CONFIRM_CLOSE,
-  DISCARD_CONFIRM_KEEP,
-  DISCARD_CONFIRM_QUESTION,
+  discardConfirmClose,
+  discardConfirmKeep,
+  discardConfirmQuestion,
 } from "../lib/edit";
 import { byLabel, byText, cleanup, click, press, render, snippet } from "../lib/render";
 
@@ -138,10 +138,10 @@ describe("モーダルの閉じる出口", () => {
     });
     const dialog = dialogOf(host);
 
-    expect(dialog.textContent).toContain(DISCARD_CONFIRM_QUESTION);
+    expect(dialog.textContent).toContain(discardConfirmQuestion());
 
-    click(byText(dialog, "button", DISCARD_CONFIRM_CLOSE));
-    click(byText(dialog, "button", DISCARD_CONFIRM_KEEP));
+    click(byText(dialog, "button", discardConfirmClose()));
+    click(byText(dialog, "button", discardConfirmKeep()));
     // Neither answer is a close request of its own: the request was already made, and what the two
     // answer is whether it goes through. A button here that called `onclose` would be a route around
     // the very question it is part of.

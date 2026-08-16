@@ -17,6 +17,7 @@
  * [`SettingsWriterPorts`].
  */
 
+import { msg } from "./messages";
 import { isDirty } from "./settings";
 import type { AppSettings, LoadedSettings } from "./wire";
 
@@ -29,12 +30,20 @@ export interface SettingsWriterPorts {
   save: (settings: AppSettings) => Promise<LoadedSettings>;
   /** Take the written values as the ones now in force, so the next change starts from them. */
   adopt: (loaded: LoadedSettings) => void;
-  /** Render a rejection as text — the boundary's typed failures, not an `Error`. */
-  describeError: (error: unknown) => string;
+  /**
+   * Word a rejection — the boundary's typed failures, not an `Error`.
+   *
+   * **Returns a thunk rather than the sentence** (TASK-187). A write's failure outlives the press
+   * that made it, and since the 文言表 every such sentence carries a 表示言語 with it: a string
+   * captured here would keep the language it was worded in while the screen around it redrew.
+   */
+  describeError: (error: unknown) => () => string;
 }
 
 /** Said when a write is asked for before the first read has answered; nothing is written. */
-export const SETTINGS_NOT_READ = "設定をまだ読み込めていないため、保存していません";
+export function settingsNotRead(): string {
+  return msg().settings.notReadYet;
+}
 
 /**
  * A writer that runs changes in the order they were issued, each against the current values. Resolves
@@ -44,13 +53,13 @@ export const SETTINGS_NOT_READ = "設定をまだ読み込めていないため�
  */
 export function createSettingsWriter(
   ports: SettingsWriterPorts,
-): (change: SettingsChange) => Promise<string | null> {
+): (change: SettingsChange) => Promise<(() => string) | null> {
   let queue: Promise<void> = Promise.resolve();
-  return function write(change: SettingsChange): Promise<string | null> {
-    const issued = queue.then(async (): Promise<string | null> => {
+  return function write(change: SettingsChange): Promise<(() => string) | null> {
+    const issued = queue.then(async (): Promise<(() => string) | null> => {
       const current = ports.peek();
       if (current === null) {
-        return SETTINGS_NOT_READ;
+        return settingsNotRead;
       }
       const next = change(current);
       if (!isDirty(next, current)) {

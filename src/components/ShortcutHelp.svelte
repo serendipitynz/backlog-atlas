@@ -12,11 +12,11 @@
   // `max-height` and left the entries scrolled away above. A modal is the layer this app already has for
   // something read rather than picked (doc-7 §2.1), and it can hold all nine rows at once.
   //
-  // Printed from `SHORTCUTS`, never from a copy: doc-7 §2.1 asks for the list in 1 箇所, and a table
+  // Printed from `shortcuts()`, never from a copy: doc-7 §2.1 asks for the list in 1 箇所, and a table
   // typed out here would be a second place — one that keeps saying `⌘N` after the assignment moves.
-  import { SCOPE_LABEL, SHORTCUTS, chordLabel } from "../lib/shortcuts";
+  import { scopeLabel, shortcuts, chordLabel } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
-  import { SHORTCUT_HELP_LABEL } from "../lib/header";
+  import { shortcutHelpLabel } from "../lib/header";
   import { messages } from "../lib/messages-context";
 
   const t = messages();
@@ -30,7 +30,7 @@
        table a short window opened the list already scrolled past its own heading. The × is first in the
        dialog and at the top of it, which is the same guarantee from the layer's side. -->
   <header>
-    <h2>{SHORTCUT_HELP_LABEL}</h2>
+    <h2>{shortcutHelpLabel()}</h2>
   </header>
 
   <!-- doc-7 §2.1 の 3 列: キー・操作・使える場所。**この表は割り当て一覧そのものではない** — the 一覧 is
@@ -46,11 +46,11 @@
       </tr>
     </thead>
     <tbody>
-      {#each SHORTCUTS as binding (binding.action)}
+      {#each shortcuts() as binding (binding.action)}
         <tr>
           <td class="chord">{chordLabel(binding.chord, MAC_KEYBOARD)}</td>
           <td>{binding.operation}</td>
-          <td>{SCOPE_LABEL[binding.scope]}</td>
+          <td>{scopeLabel(binding.scope)}</td>
         </tr>
       {/each}
     </tbody>

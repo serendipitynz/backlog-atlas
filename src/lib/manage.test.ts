@@ -1,27 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
-  DOC_NOTHING_TO_UPDATE_REASON,
-  DOC_TITLE_EMPTY_REASON,
-  DOC_TITLE_REQUIRED_REASON,
+  docNothingToUpdateReason,
+  docTitleEmptyReason,
+  docTitleRequiredReason,
   DOC_TYPES,
   EMPTY_DOC_CREATE,
   EMPTY_MILESTONE_ADD,
   EMPTY_MILESTONE_REMOVE,
   EMPTY_MILESTONE_RENAME,
   EMPTY_TASK_CREATE,
-  MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
-  MILESTONE_NAME_REQUIRED_REASON,
-  MILESTONE_REASSIGN_TARGET_IS_SELF_REASON,
-  MILESTONE_REASSIGN_TARGET_REQUIRED_REASON,
-  MILESTONE_REMOVE_HANDLING_REQUIRED_REASON,
-  MILESTONE_REMOVE_MOVES_THE_FILE,
-  MILESTONE_RENAME_REQUIRED_REASON,
-  MILESTONE_RENAME_UNCHANGED_REASON,
-  TASK_CREATE_LATER_FIELDS,
-  TASK_CREATE_NOTE,
-  TASK_TITLE_REQUIRED_REASON,
-  MILESTONE_DESCRIPTION_HEADING_REASON,
-  MILESTONE_DESCRIPTION_UNCHANGED_REASON,
+  milestoneKeepLeavesDanglingReferences,
+  milestoneNameRequiredReason,
+  milestoneReassignTargetIsSelfReason,
+  milestoneReassignTargetRequiredReason,
+  milestoneRemoveHandlingRequiredReason,
+  milestoneRemoveMovesTheFile,
+  milestoneRenameRequiredReason,
+  milestoneRenameUnchangedReason,
+  taskCreateLaterFields,
+  taskCreateNote,
+  taskTitleRequiredReason,
+  milestoneDescriptionHeadingReason,
+  milestoneDescriptionUnchangedReason,
   buildDocCreate,
   buildDocUpdate,
   buildMilestoneAdd,
@@ -155,7 +155,7 @@ describe("buildTaskCreate", () => {
 
   it("refuses an empty title before building anything", () => {
     expect(blockedReason(buildTaskCreate(taskInput({ title: "   " })))).toBe(
-      TASK_TITLE_REQUIRED_REASON,
+      taskTitleRequiredReason(),
     );
   });
 
@@ -204,7 +204,7 @@ describe("buildDocCreate", () => {
   });
 
   it("refuses an empty title", () => {
-    expect(blockedReason(buildDocCreate(docInput({ title: "" })))).toBe(DOC_TITLE_REQUIRED_REASON);
+    expect(blockedReason(buildDocCreate(docInput({ title: "" })))).toBe(docTitleRequiredReason());
   });
 
   it("offers exactly the four types doc-5 §3 fixes", () => {
@@ -265,12 +265,12 @@ describe("buildDocUpdate", () => {
   it("counts a field touched and returned to its original value as unchanged", () => {
     const session = setDocField(startDocSession(document()), "title", "読み取り層 設計");
     expect(isDocDirty(session)).toBe(false);
-    expect(blockedReason(buildDocUpdate(session))).toBe(DOC_NOTHING_TO_UPDATE_REASON);
+    expect(blockedReason(buildDocUpdate(session))).toBe(docNothingToUpdateReason());
   });
 
   it("refuses emptying the title", () => {
     const session = setDocField(startDocSession(document()), "title", "  ");
-    expect(blockedReason(buildDocUpdate(session))).toBe(DOC_TITLE_EMPTY_REASON);
+    expect(blockedReason(buildDocUpdate(session))).toBe(docTitleEmptyReason());
   });
 
   // タグ全消し (doc-10 §5, TASK-109). The two tests below are the pair that keeps 空集合の tags
@@ -348,7 +348,7 @@ describe("buildMilestoneAdd", () => {
 
   it("refuses an empty name", () => {
     expect(blockedReason(buildMilestoneAdd(milestoneInput({ name: " " })))).toBe(
-      MILESTONE_NAME_REQUIRED_REASON,
+      milestoneNameRequiredReason(),
     );
   });
 });
@@ -423,13 +423,13 @@ describe("buildMilestoneRename", () => {
   it("blocks an empty name, and one the CLI would treat as the current name", () => {
     expect(buildMilestoneRename(MILESTONE, { ...EMPTY_MILESTONE_RENAME })).toEqual({
       state: "blocked",
-      reason: MILESTONE_RENAME_REQUIRED_REASON,
+      reason: milestoneRenameRequiredReason(),
     });
     // Case and surrounding space are what the CLI ignores (doc-9 §4.2.1), so this would be issued
     // as a change and land as none.
     expect(buildMilestoneRename(MILESTONE, { to: "  phase one  ", updateTasks: true })).toEqual({
       state: "blocked",
-      reason: MILESTONE_RENAME_UNCHANGED_REASON,
+      reason: milestoneRenameUnchangedReason(),
     });
   });
 });
@@ -439,7 +439,7 @@ describe("buildMilestoneRemove", () => {
     expect(EMPTY_MILESTONE_REMOVE.handling).toBeNull();
     expect(buildMilestoneRemove(MILESTONE, { ...EMPTY_MILESTONE_REMOVE })).toEqual({
       state: "blocked",
-      reason: MILESTONE_REMOVE_HANDLING_REQUIRED_REASON,
+      reason: milestoneRemoveHandlingRequiredReason(),
     });
   });
 
@@ -457,11 +457,11 @@ describe("buildMilestoneRemove", () => {
   it("requires --reassign-to for reassign, and refuses the milestone being removed", () => {
     expect(buildMilestoneRemove(MILESTONE, { handling: "reassign", reassignTo: " " })).toEqual({
       state: "blocked",
-      reason: MILESTONE_REASSIGN_TARGET_REQUIRED_REASON,
+      reason: milestoneReassignTargetRequiredReason(),
     });
     expect(buildMilestoneRemove(MILESTONE, { handling: "reassign", reassignTo: "m-1" })).toEqual({
       state: "blocked",
-      reason: MILESTONE_REASSIGN_TARGET_IS_SELF_REASON,
+      reason: milestoneReassignTargetIsSelfReason(),
     });
     expect(buildMilestoneRemove(MILESTONE, { handling: "reassign", reassignTo: "m-2" })).toEqual({
       state: "ready",
@@ -473,8 +473,8 @@ describe("buildMilestoneRemove", () => {
 
   it("says what the CLI's 削除 actually does to the file and to kept references", () => {
     // doc-10 §6: the screen keeps the CLI's word but must not let it read as an unlink.
-    expect(MILESTONE_REMOVE_MOVES_THE_FILE).toContain("archive/milestones/");
-    expect(MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES).toContain("解決先の無い");
+    expect(milestoneRemoveMovesTheFile()).toContain("archive/milestones/");
+    expect(milestoneKeepLeavesDanglingReferences()).toContain("解決先の無い");
   });
 });
 
@@ -512,13 +512,13 @@ describe("buildMilestoneDescribe", () => {
   it("blocks an unchanged description, including a milestone that never had one", () => {
     expect(buildMilestoneDescribe(described, "Phase one of two.")).toEqual({
       state: "blocked",
-      reason: MILESTONE_DESCRIPTION_UNCHANGED_REASON,
+      reason: milestoneDescriptionUnchangedReason(),
     });
     // `null` description and an empty box are the same state, so pressing 保存 there would write
     // the bytes that are already in the file.
     expect(buildMilestoneDescribe(MILESTONE, "")).toEqual({
       state: "blocked",
-      reason: MILESTONE_DESCRIPTION_UNCHANGED_REASON,
+      reason: milestoneDescriptionUnchangedReason(),
     });
   });
 
@@ -528,7 +528,7 @@ describe("buildMilestoneDescribe", () => {
     for (const text of ["## Notes", "Intro.\n\n## Notes\n- a", "  ## indented"]) {
       expect(buildMilestoneDescribe(described, text)).toEqual({
         state: "blocked",
-        reason: MILESTONE_DESCRIPTION_HEADING_REASON,
+        reason: milestoneDescriptionHeadingReason(),
       });
     }
   });
@@ -543,8 +543,8 @@ describe("buildMilestoneDescribe", () => {
     // Not "the CLI cannot do it": `milestone add -d` writes a heading-bearing description without
     // complaint (measured 2026-08-12, with a description carrying `#` and `##` headings). The
     // reason is about the round trip, and says so.
-    expect(MILESTONE_DESCRIPTION_HEADING_REASON).not.toContain("CLI");
-    expect(MILESTONE_DESCRIPTION_HEADING_REASON).toContain("##");
+    expect(milestoneDescriptionHeadingReason()).not.toContain("CLI");
+    expect(milestoneDescriptionHeadingReason()).toContain("##");
   });
 });
 
@@ -555,7 +555,7 @@ describe("発行の可否", () => {
   it("lets a caller hold issuance with its own reason, ahead of the form's state", () => {
     // プロジェクト詳細画面 holds every 区画 while a ledger write is in flight (review [P1]): if that
     // write is a move, the ids the screen holds start naming files in another root — a different
-    // fact from `ISSUE_BUSY_REASON` (another 発行 is running). Passing a reason is what lets the two
+    // fact from `issueBusyReason()` (another 発行 is running). Passing a reason is what lets the two
     // be said apart.
     const held = issueAvailability(plan, { readiness: ready, busy: false, hold: "移動中です" });
     expect(held).toEqual({ state: "blocked", reason: "移動中です" });
@@ -584,15 +584,15 @@ describe("新規タスクの注記", () => {
     // per-field reasons, so the assertion is that they did not come back — a reason here would be
     // the thing the 目視 called ノイズ, and「CLI に無い」would be false besides (v1.49.3's
     // `task create` does accept all five, measured 2026-08-12).
-    expect(TASK_CREATE_NOTE).toContain("作成後");
-    expect(TASK_CREATE_NOTE).toContain("タスクの編集");
-    expect(TASK_CREATE_NOTE).not.toContain("CLI");
-    expect(TASK_CREATE_NOTE).not.toContain("製品判断");
-    expect(TASK_CREATE_NOTE).not.toMatch(/doc-\d|decision-\d/);
+    expect(taskCreateNote()).toContain("作成後");
+    expect(taskCreateNote()).toContain("タスクの編集");
+    expect(taskCreateNote()).not.toContain("CLI");
+    expect(taskCreateNote()).not.toContain("製品判断");
+    expect(taskCreateNote()).not.toMatch(/doc-\d|decision-\d/);
   });
 
   it("names the five fields v1.49.3 accepts and this form has no input for", () => {
-    expect(TASK_CREATE_LATER_FIELDS).toEqual([
+    expect(taskCreateLaterFields()).toEqual([
       "assignee",
       "実装計画",
       "実装ノート",
@@ -605,10 +605,10 @@ describe("新規タスクの注記", () => {
     // doc-11 §8 の 発行手段の記述 lost its carve-out with TASK-123: the flags were shown so that the
     // absence could not read as「CLI に無い」, and with the reasons gone there is no false
     // explanation left for them to guard against.
-    for (const field of TASK_CREATE_LATER_FIELDS) {
+    for (const field of taskCreateLaterFields()) {
       expect(field).not.toMatch(/^-|--/);
     }
-    expect(TASK_CREATE_LATER_FIELDS.join("")).not.toContain("-a");
+    expect(taskCreateLaterFields().join("")).not.toContain("-a");
   });
 });
 
@@ -684,7 +684,7 @@ describe("issueAvailability", () => {
         readiness: READY,
         busy: false,
       }),
-    ).toEqual({ state: "blocked", reason: TASK_TITLE_REQUIRED_REASON });
+    ).toEqual({ state: "blocked", reason: taskTitleRequiredReason() });
   });
 
   it("is ready only with a supported CLI, no issue in flight and a buildable form", () => {

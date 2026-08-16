@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_ASSIGNEE_REASON,
-  EMPTY_DEPENDENCIES_REASON,
-  EMPTY_REFERENCES_REASON,
-  EMPTY_TITLE_REASON,
-  FILE_MISSING_REASON,
-  NOTHING_TO_SAVE_REASON,
+  emptyAssigneeReason,
+  emptyDependenciesReason,
+  emptyReferencesReason,
+  emptyTitleReason,
+  fileMissingReason,
+  nothingToSaveReason,
   acDeltaDroppedByRebase,
   acRows,
   buildSave,
@@ -87,7 +87,7 @@ describe("編集セッションの未保存入力", () => {
 
   it("title を空にする保存は拒む（doc-4 §3.1 の必須項目）", () => {
     const session = setField(startSession(taskView({ title: "T" })), "title", "");
-    expect(buildSave(session)).toEqual({ state: "refused", reason: EMPTY_TITLE_REASON });
+    expect(buildSave(session)).toEqual({ state: "refused", reason: emptyTitleReason() });
   });
 
   it("TASK-ID が無いタスクは対象を指定できない", () => {
@@ -121,7 +121,7 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
   it("最後の 1 件は削除できない", () => {
     // `-a ""` も、区切りだけで解析結果が空になる値も、終了コード 0 で何も変えない（実測）。
     const session = setField(startSession(taskView({ assignee: ["@takkyun"] })), "assignee", []);
-    expect(buildSave(session)).toEqual({ state: "refused", reason: EMPTY_ASSIGNEE_REASON });
+    expect(buildSave(session)).toEqual({ state: "refused", reason: emptyAssigneeReason() });
     expect(canRemoveLast(["@takkyun"])).toBe(false);
   });
 
@@ -160,15 +160,15 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
 
 describe("最後の 1 件の削除を差し控える条件 (doc-8 §6)", () => {
   it("読み取り時点で空だった一覧では差し控えない", () => {
-    expect(lastRemovalReason([], EMPTY_ASSIGNEE_REASON)).toBeNull();
-    expect(lastRemovalReason([], EMPTY_REFERENCES_REASON)).toBeNull();
-    expect(lastRemovalReason([], EMPTY_DEPENDENCIES_REASON)).toBeNull();
+    expect(lastRemovalReason([], emptyAssigneeReason())).toBeNull();
+    expect(lastRemovalReason([], emptyReferencesReason())).toBeNull();
+    expect(lastRemovalReason([], emptyDependenciesReason())).toBeNull();
   });
 
   it("読み取り時点で 1 件以上あった一覧では、その理由を述べて差し控える", () => {
-    expect(lastRemovalReason(["@takkyun"], EMPTY_ASSIGNEE_REASON)).toBe(EMPTY_ASSIGNEE_REASON);
-    expect(lastRemovalReason(["TASK-2"], EMPTY_DEPENDENCIES_REASON)).toBe(
-      EMPTY_DEPENDENCIES_REASON,
+    expect(lastRemovalReason(["@takkyun"], emptyAssigneeReason())).toBe(emptyAssigneeReason());
+    expect(lastRemovalReason(["TASK-2"], emptyDependenciesReason())).toBe(
+      emptyDependenciesReason(),
     );
   });
 });
@@ -193,7 +193,7 @@ describe("References・dependencies の非空全置換 (doc-5 §3.1)", () => {
 
   it("空集合にする保存はアダプターへ出す前に拒む", () => {
     const references = setField(startSession(taskView({ references: ["u"] })), "references", []);
-    expect(buildSave(references)).toEqual({ state: "refused", reason: EMPTY_REFERENCES_REASON });
+    expect(buildSave(references)).toEqual({ state: "refused", reason: emptyReferencesReason() });
 
     const dependencies = setField(
       startSession(taskView({ dependencies: ["TASK-1"] })),
@@ -202,7 +202,7 @@ describe("References・dependencies の非空全置換 (doc-5 §3.1)", () => {
     );
     expect(buildSave(dependencies)).toEqual({
       state: "refused",
-      reason: EMPTY_DEPENDENCIES_REASON,
+      reason: emptyDependenciesReason(),
     });
   });
 });
@@ -362,7 +362,7 @@ describe("競合後の再適用と AC 項目単位操作", () => {
 describe("ファイルが読み取り結果から消えたとき (doc-8 §6.4)", () => {
   it("内容編集を理由つきで止める", () => {
     const availability = editAvailability(taskView({}), READY, true);
-    expect(availability).toEqual({ state: "unavailable", reason: FILE_MISSING_REASON });
+    expect(availability).toEqual({ state: "unavailable", reason: fileMissingReason() });
   });
 
   it("状態遷移も止める", () => {
@@ -374,7 +374,7 @@ describe("ファイルが読み取り結果から消えたとき (doc-8 §6.4)",
     if (offers.state !== "offered") {
       throw new Error("expected offers");
     }
-    expect(offers.offers.every((offer) => offer.reason === FILE_MISSING_REASON)).toBe(true);
+    expect(offers.offers.every((offer) => offer.reason === fileMissingReason())).toBe(true);
   });
 
   it("保存できる入力があっても保存を止め、理由を出す", () => {
@@ -385,7 +385,7 @@ describe("ファイルが読み取り結果から消えたとき (doc-8 §6.4)",
     expect(plan.state).toBe("ready");
     expect(saveAvailability(plan, { fileMissing: true, busy: false })).toEqual({
       state: "blocked",
-      reason: FILE_MISSING_REASON,
+      reason: fileMissingReason(),
     });
   });
 });
@@ -411,7 +411,7 @@ describe("保存操作の可否と理由 (doc-5 §5)", () => {
     const nothing = buildSave(startSession(taskView({})));
     expect(saveAvailability(nothing, { fileMissing: false, busy: false })).toEqual({
       state: "blocked",
-      reason: NOTHING_TO_SAVE_REASON,
+      reason: nothingToSaveReason(),
     });
   });
 
@@ -421,7 +421,7 @@ describe("保存操作の可否と理由 (doc-5 §5)", () => {
     );
     expect(saveAvailability(refused, { fileMissing: false, busy: false })).toEqual({
       state: "blocked",
-      reason: EMPTY_REFERENCES_REASON,
+      reason: emptyReferencesReason(),
     });
   });
 

@@ -29,7 +29,7 @@ import App from "./App.svelte";
 import { cleanup, click, only, render } from "./lib/render";
 import { answers, ledgerFor, reset } from "./lib/fake-boundary";
 import { entry, loaded, taskView } from "./lib/fixtures";
-import { PRIORITY_STEP_LABEL } from "./lib/card";
+import { priorityStepLabel } from "./lib/card";
 import type { ProjectLoad } from "./lib/wire";
 
 async function settled(): Promise<void> {
@@ -134,10 +134,10 @@ describe("priority を述べる 4 つの表示要素が同じ段を言う (decis
       ["medium", 1],
       ["low", 1],
     ] as const) {
-      expect(label).toContain(`${PRIORITY_STEP_LABEL[step]} ${count}`);
+      expect(label).toContain(`${priorityStepLabel(step)} ${count}`);
     }
     // 未設定 と 未知 は同じ 1 つの群として数える (どちらも 段 の不在である)。
-    expect(label).toContain(`${PRIORITY_STEP_LABEL.none} 2`);
+    expect(label).toContain(`${priorityStepLabel(null)} 2`);
   });
 
   it("タスク詳細の priority の値が、そのカードと同じ段を言う", async () => {

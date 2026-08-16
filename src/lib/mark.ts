@@ -36,6 +36,7 @@
  * failure decision-6 was written against.
  */
 
+import { msg } from "./messages";
 import type {
   ConflictSet,
   FileHealth,
@@ -106,19 +107,18 @@ export function conflictKeyOf(slug: string, sourcePath: string): string {
  * computed from a model that no longer describes the root (doc-9 §4.2.3-2).
  */
 export function conflictSetDetail(set: ConflictSet): string {
+  const text = msg().mark;
+  const separator = msg().state.listSeparator;
   const parts: string[] = [];
   if (set.diverged.length > 0) {
-    parts.push(`読み取り後に外部で変わったファイル: ${set.diverged.join("・")}`);
+    parts.push(text.divergedFiles(set.diverged.join(separator)));
   }
   if (set.unread.length > 0) {
-    parts.push(
-      `読み取り後に増えたタスクファイル: ${set.unread.join("・")}` +
-        "（書き換え対象集合が読取時点と違いうるため、照合できません）",
-    );
+    parts.push(text.unreadFiles(set.unread.join(separator)));
   }
   // Neither list populated cannot happen — the boundary only reports a conflict when one of them is
   // non-empty — but the screen must still say something rather than render an empty reason.
-  return parts.length > 0 ? parts.join(" / ") : "照合対象の版が確かめられませんでした";
+  return parts.length > 0 ? parts.join(text.reasonSeparator) : text.versionUnverified;
 }
 
 /**
@@ -151,7 +151,7 @@ export function inconsistencyReasons(
   view: TaskView,
   conflict: VersionConflict | null,
 ): string[] {
-  const reasons = healthReasons(view.task.health, MANAGED_FILE_NOUN.task);
+  const reasons = healthReasons(view.task.health, managedFileNoun("task"));
   if (conflict !== null) {
     reasons.push(versionConflictReason(conflict));
   }
@@ -168,7 +168,7 @@ export function inconsistencyReasons(
  * these three kinds have no such record to consult.
  */
 export function fileInconsistencyReasons(health: FileHealth, kind: ManagedFileKind): string[] {
-  return healthReasons(health, MANAGED_FILE_NOUN[kind]);
+  return healthReasons(health, managedFileNoun(kind));
 }
 
 /**
@@ -176,11 +176,9 @@ export function fileInconsistencyReasons(health: FileHealth, kind: ManagedFileKi
  * because it *is* one — the record just carries the payload without the tag (doc-4 §5).
  */
 export function unmappedFileReason(file: UnmappedFile): string {
-  return unparseableReasons(
-    file.missingRequired,
-    file.detail,
-    MANAGED_FILE_NOUN[file.kind],
-  ).join(" / ");
+  return unparseableReasons(file.missingRequired, file.detail, managedFileNoun(file.kind)).join(
+    msg().mark.reasonSeparator,
+  );
 }
 
 /**
@@ -197,12 +195,9 @@ export type ManagedFileKind = "task" | UnmappedFile["kind"];
  * user, so they take the 画面に出る語; the read layer and the design documents keep 意思決定 for the
  * same object. The other three nouns are unaffected because their two words coincide.
  */
-const MANAGED_FILE_NOUN: Record<ManagedFileKind, string> = {
-  task: "タスク",
-  milestone: "マイルストーン",
-  document: "文書",
-  decision: "決定事項",
-};
+function managedFileNoun(kind: ManagedFileKind): string {
+  return msg().mark.managedFileNoun[kind];
+}
 
 /** The one event→line mapping every 理由行 goes through (decision-22 「導出は 1 回」). */
 function healthReasons(health: FileHealth, noun: string): string[] {
@@ -216,10 +211,12 @@ function healthReasons(health: FileHealth, noun: string): string[] {
         reasons.push(...unparseableReasons(event.missingRequired, event.detail, noun));
         break;
       case "unexpectedSchema":
-        reasons.push(`想定外スキーマ: ${event.detail}`);
+        reasons.push(msg().mark.unexpectedSchema(event.detail));
         break;
       case "danglingReference":
-        reasons.push(`参照欠損: ${REFERENCE_KIND_LABEL[event.kind]} ${event.target}`);
+        reasons.push(
+          msg().mark.danglingReference(REFERENCE_KIND_LABEL[event.kind], event.target),
+        );
         break;
     }
   }
@@ -240,15 +237,16 @@ function unparseableReasons(
   detail: string | null,
   noun: string,
 ): string[] {
+  const text = msg().mark;
   const reasons: string[] = [];
   if (missingRequired.length > 0) {
-    reasons.push(`解析不能: ${missingRequired.join("・")} を読めません`);
+    reasons.push(text.unparseableFields(missingRequired.join(msg().state.listSeparator)));
   }
   if (detail !== null) {
-    reasons.push(`解析不能: ${detail}`);
+    reasons.push(text.unparseableDetail(detail));
   }
   if (reasons.length === 0) {
-    reasons.push(`解析不能: このファイルを${noun}として写せませんでした`);
+    reasons.push(text.unparseableAs(noun));
   }
   return reasons;
 }
@@ -259,11 +257,10 @@ function unparseableReasons(
  * one — the user's question is the same in both stages, and only the evidence differs.
  */
 export function versionConflictReason(conflict: VersionConflict): string {
+  const text = msg().mark;
   return conflict.kind === "preUpdate"
-    ? `バージョン不整合: 更新前競合 — ${conflictSetDetail(conflict)}。CLI を起動せずに保存を止めました`
-    : `バージョン不整合: 照合後競合窓の事後通知 — 再読込した内容が送信した内容と一致しません（${conflict.fields.join(
-        "・",
-      )}）。窓内の外部更新が上書きで失われた可能性があります`;
+    ? text.preUpdateConflict(conflictSetDetail(conflict))
+    : text.postCheckConflict(conflict.fields.join(msg().state.listSeparator));
 }
 
 /**
@@ -284,15 +281,15 @@ export function isInconsistent(view: TaskView, conflict: VersionConflict | null)
  * a label, and `title` carries the same string for the pointer.
  */
 export function inconsistencyLabel(reasons: readonly string[]): string {
-  return `不整合: ${reasons.join(" / ")}`;
+  const text = msg().mark;
+  return text.inconsistentLabel(reasons.join(text.reasonSeparator));
 }
 
 /** 継続検出停止 (doc-9 §3) as the row's own 印チップ — `undetectable`, never 不整合 (doc-9 §5). */
-export const UNWATCHED_MARK: TaskMark = {
-  kind: "undetectable",
-  label: "継続検出停止",
-  detail:
-    "ファイル監視または変更通知の購読が動いていないため、外部変更が画面へ届きません。" +
-    "表示が実ファイルより古い可能性がありますが、版がずれているとは限りません。" +
-    "再読込で現在の内容を読み直せます。",
-};
+export function unwatchedMark(): TaskMark {
+  return {
+    kind: "undetectable",
+    label: msg().mark.unwatchedLabel,
+    detail: msg().mark.unwatchedDetail,
+  };
+}

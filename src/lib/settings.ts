@@ -15,11 +15,11 @@
  * | decision-29 外部コマンド指定 | [`EXTERNAL_COMMANDS`] + [`commandPathOf`] | the three executables the form can name, and one field ↔ one optional path |
  * | decision-29 解決結果の表示 | [`programSourceLabel`] / [`probeSummary`] | what the panel says about the program actually in use |
  * | decision-12 表示テーマ | `theme.ts` の `RECORDED_THEMES` | the colour sets this build has; named there, defined in `app.scss` |
- * | doc-7 §5.2 既定の保存区分 | [`STORAGE_SELECTION_LABEL`] + [`toggleStorage`] | which 保存区分 the filter starts with |
+ * | doc-7 §5.2 既定の保存区分 | [`storageSelectionLabel`] + [`toggleStorage`] | which 保存区分 the filter starts with |
  * | doc-8 §2.2 既定の詳細配置・doc-7 §5.4 既定の並び順（フォームの外から書かれる項目） | [`mergeDraft`] | how a value stored elsewhere lands in an open form without taking its input |
  * | doc-7 §5.4 並び順の語 | `swimlane.ts` の `CARD_ORDERS` | the ten orders and their screen words; this module only carries the value through |
- * | TASK-74 下部操作行 | [`CLOSE_WITHOUT_SAVING_LABEL`] / [`SAVE_LABEL`] | the two ways out of the モーダル, named in one place |
- * | TASK-75 場所を開く | [`OPEN_LOCATION_LABEL`] / [`openLocationAvailability`] | opening the アプリ設定ディレクトリ (decision-13), and when it cannot be opened |
+ * | TASK-74 下部操作行 | [`closeWithoutSavingLabel()`] / [`saveLabel()`] | the two ways out of the モーダル, named in one place |
+ * | TASK-75 場所を開く | [`openLocationLabel()`] / [`openLocationAvailability`] | opening the アプリ設定ディレクトリ (decision-13), and when it cannot be opened |
  * | doc-3 §2.1 フォルダの有無 | [`openLocationAvailability`] の `present` | whether the folder that control opens is there yet — the boundary's answer, not this module's |
  *
  * One rule runs through it, the same one `edit.ts` and `external-editor.ts` follow: **a withheld
@@ -42,25 +42,33 @@ import { commandErrorDetail } from "./edit";
 import { launchRefusalText, probeFailureText } from "./failure";
 import { msg } from "./messages";
 
-export const CARD_DENSITY_LABEL: Record<CardDensity, string> = {
-  s: "S（ID・priority・印・title 1 行）",
-  m: "M（＋ Type、title 2 行）",
-  l: "L（＋ 通常ラベル・assignee、title 3 行）",
-};
+/**
+ * The three 段 and the three 配置, in the order their controls list them.
+ *
+ * Written out rather than derived from the 文言表 (`Object.keys` over a catalog group would do it):
+ * the order a control offers its options in is this screen's, not the catalog's, and a catalog whose
+ * entries were re-ordered for reading would silently re-order the radios.
+ */
+export const CARD_DENSITIES: readonly CardDensity[] = ["s", "m", "l"];
 
-export const DETAIL_PLACEMENT_LABEL: Record<DetailPlacement, string> = {
-  sidebar: "併置サイドバー",
-  modal: "中央モーダル",
-  full: "全面シングルビュー",
-};
+export const DETAIL_PLACEMENTS: readonly DetailPlacement[] = ["sidebar", "modal", "full"];
 
-export const STORAGE_SELECTION_LABEL: Record<StorageSelection, string> = {
-  active: "active",
-  draft: "draft",
-  completed: "completed",
-  archive: "archive",
-  indeterminate: "不定（走査対象外の場所にあるファイル）",
-};
+export function cardDensityLabel(density: CardDensity): string {
+  return msg().settings.cardDensity[density];
+}
+
+export function detailPlacementLabel(placement: DetailPlacement): string {
+  return msg().settings.detailPlacement[placement];
+}
+
+/**
+ * 保存区分 as the 既定の保存区分 control names it. The four divisions keep their bare names for
+ * `token.ts`'s reason (decision-35 §5 の識別子); `indeterminate` is not one of them but the absence
+ * of one, so it is a sentence.
+ */
+export function storageSelectionLabel(selection: StorageSelection): string {
+  return selection === "indeterminate" ? msg().settings.storageIndeterminate : selection;
+}
 
 export const STORAGE_SELECTIONS: StorageSelection[] = [
   "active",
@@ -76,8 +84,9 @@ export const STORAGE_SELECTIONS: StorageSelection[] = [
  * 読まれかねない一点だけである。保存時に効くことも、保存が唯一の書き手であることも同じ理由で落とした
  * (2026-08-08 の目視)。
  */
-export const CARD_DENSITY_NOTE =
-  "タスクの状態（不整合・保存区分・未分類列 status）は、必ず表示されます。";
+export function cardDensityNote(): string {
+  return msg().settings.cardDensityNote;
+}
 
 /**
  * decision-13 既定値で動いている旨 (AC #6): why the values in hand are the defaults, or `null` when they
@@ -86,33 +95,23 @@ export const CARD_DENSITY_NOTE =
  * written at all.
  */
 export function statusNotice(status: SettingsStatus): string | null {
+  const text = msg().settings;
   switch (status.state) {
     case "stored":
       return null;
     case "absent":
-      return "設定ファイルはまだありません。既定値で動いています（保存すると作成します）。";
+      return text.fileAbsent;
     case "unreadable":
-      return (
-        `設定ファイルを読めませんでした（${status.detail}）。既定値で動いています` +
-        "（保存すると、この既定値で作り直します）。"
-      );
+      return text.fileUnreadable(status.detail);
     case "readOnly":
-      return (
-        `設定ファイルの schema_version ${status.version} はこのビルドが理解する版より新しいため、` +
-        "読み取り専用です。既定値で動いており、保存はできません（ファイルは書き換えません）。"
-      );
+      return text.fileReadOnly(status.version);
   }
 }
 
 /** Whether 保存 may be pressed, and why not (decision-13: an unknown newer file is never clobbered). */
 export function saveAvailability(status: SettingsStatus): { enabled: boolean; reason: string | null } {
   return status.state === "readOnly"
-    ? {
-        enabled: false,
-        reason:
-          `設定ファイルの schema_version ${status.version} はこのビルドより新しいため、` +
-          "上書きしません（新しい版で書かれた内容を壊さないため）。",
-      }
+    ? { enabled: false, reason: msg().settings.saveRefusedNewer(status.version) }
     : { enabled: true, reason: null };
 }
 
@@ -174,41 +173,27 @@ export function commandPathOf(text: string): string | undefined {
  * working when it is not found.
  */
 export const EXTERNAL_COMMANDS = [
-  {
-    field: "backlog_cli",
-    name: "backlog",
-    label: "Backlog CLI",
-    help: "作成・更新の発行に使います。解決できないと、発行そのものができません（画面上部に帯が立ちます）。",
-  },
-  {
-    field: "git_cli",
-    name: "git",
-    label: "Git",
-    help: "コミット検索と Git remote の判別に使います。解決できないと、登録済みプロジェクトが remote 無しとして記録され、Pull Request の関連解決も静かに止まります。",
-  },
-  {
-    field: "gh_cli",
-    name: "gh",
-    label: "GitHub CLI",
-    help: "Pull Request とコミットの関連解決に使います。解決できないと、その関連解決だけができません。",
-  },
+  { field: "backlog_cli", name: "backlog", label: "Backlog CLI" },
+  { field: "git_cli", name: "git", label: "Git" },
+  { field: "gh_cli", name: "gh", label: "GitHub CLI" },
 ] as const satisfies readonly {
   field: "backlog_cli" | "git_cli" | "gh_cli";
   name: string;
+  /** The product's own name, which is not translated (decision-35 §5). */
   label: string;
-  help: string;
 }[];
+
+/** Which command a row is. The three the 外部コマンド 区画 offers, and no more. */
+export type ExternalCommandField = (typeof EXTERNAL_COMMANDS)[number]["field"];
+
+/** What Atlas uses one external command *for*, and therefore what stops when it is not found. */
+export function externalCommandHelp(field: ExternalCommandField): string {
+  return msg().settings.externalCommandHelp[field];
+}
 
 /** 解決結果の出どころ (decision-29) in the panel's words. Shown inside the row's `?`, not beside it. */
 export function programSourceLabel(source: ExternalProgramSource): string {
-  switch (source) {
-    case "configured":
-      return "この画面の指定";
-    case "subPackage":
-      return "npm の配置から解決";
-    case "onPath":
-      return "PATH から解決";
-  }
+  return msg().settings.programSource[source];
 }
 
 /**
@@ -225,7 +210,7 @@ export function programSourceLabel(source: ExternalProgramSource): string {
 export function probeSummary(outcome: ProbeOutcome): string {
   return outcome.state === "launched"
     ? outcome.report
-    : `起動できません（${probeFailureText(outcome.reason, outcome.detail)}）`;
+    : msg().settings.probeUnlaunched(probeFailureText(outcome.reason, outcome.detail));
 }
 
 /**
@@ -263,9 +248,7 @@ export function toggleStorage(
  * which the user should not meet without having been told.
  */
 export function emptyStorageWarning(selection: StorageSelection[]): string | null {
-  return selection.length === 0
-    ? "保存区分をひとつも選ばないと、起動直後はどのカードも表示されません（フィルタで足せます）。"
-    : null;
+  return selection.length === 0 ? msg().settings.emptyStorageWarning : null;
 }
 
 /**
@@ -273,17 +256,22 @@ export function emptyStorageWarning(selection: StorageSelection[]): string | nul
  * *state* to look the same as a watch that failed to start — only the reason differs — so this text
  * says what stops and what still works, and does not invent a second state name.
  */
-export const WATCH_OFF_NOTE =
-  "切ると、外部エディタや別プロセスの保存が自動では画面へ届きません（行の「再読込」で読み直せます）。" +
-  "更新後の再読込と手動の再読込は切っても働きます。";
+export function watchOffNote(): string {
+  return msg().settings.watchOffNote;
+}
 
 /**
  * 下部操作行 (TASK-74) の 2 つの押下。「変更せずに閉じる」は下書きを書かずに出る経路で、「保存する」は
  * 書けたときだけ出る経路である。語を定数に持つのは、この 2 つが `Settings.svelte` の外（コンポーネント
  * テストの引き当て）からも同じ 1 か所を見て名指しされるようにするためで、寸法の変数と同じ理由による。
  */
-export const CLOSE_WITHOUT_SAVING_LABEL = "変更せずに閉じる";
-export const SAVE_LABEL = "保存する";
+export function closeWithoutSavingLabel(): string {
+  return msg().settings.closeWithoutSaving;
+}
+
+export function saveLabel(): string {
+  return msg().settings.save;
+}
 
 /**
  * 「保存する」が押せない理由のうち、変更が無いことだけを述べるもの (TASK-74 AC #3)。**可視の補助文には
@@ -291,39 +279,51 @@ export const SAVE_LABEL = "保存する";
  * それでも doc-11 §5 は理由の無い無効化を禁じているので、控えは `aria-disabled` のままフォーカスを受け、
  * この文を `aria-describedby` で読める場所に置く（同節が挙げる 2 つ目の形）。
  */
-export const NO_CHANGES_REASON = "変更はありません";
+export function noChangesReason(): string {
+  return msg().settings.noChanges;
+}
 
 /** 「保存する」が押せない理由のうち、保存の発行中であることを述べるもの。 */
-export const SAVING_REASON = "保存中です";
+export function savingReason(): string {
+  return msg().action.savingNow;
+}
 
 /** 場所を開く (TASK-75 AC #1)。開くのはアプリ設定ディレクトリで、ファイルは選択されない。 */
-export const OPEN_LOCATION_LABEL = "場所を開く";
+export function openLocationLabel(): string {
+  return msg().settings.openLocation;
+}
 
 /**
  * 開く先を「2 つのファイルのあるフォルダ」と述べる。台帳ファイルは同じフォルダにあり (doc-3 §2.1)、
  * 控えが 1 つで足りる理由がそれである。行が現に描かれているかを数えないのは、パスの解決が片方だけ
  * 失敗しても、フォルダがどちらのものかは変わらないため。
  */
-export const OPEN_LOCATION_TITLE =
-  "設定ファイルと登録ファイルのあるフォルダを OS のファイルマネージャで開きます（ファイルは選択されません）。";
+export function openLocationTitle(): string {
+  return msg().settings.openLocationTitle;
+}
 
 /** 起動を発行してから応答が返るまでの、場所を開く の理由。 */
-export const OPENING_LOCATION_REASON = "いま開いています（OS の応答を待っています）。";
+export function openingLocationReason(): string {
+  return msg().settings.openingLocation;
+}
 
 /**
  * フォルダがまだ無いときの、場所を開く の理由。**述べるのはフォルダであって、その中のファイルの有無
  * ではない** (doc-3 §2.1)。作る手立てを 2 つとも挙げるのは、どちらの保存でもフォルダが作られるから
  * である — 設定の保存はこのフォームの中にあり、登録はこのモーダルの外にある。
  */
-export const LOCATION_ABSENT_REASON =
-  "そのフォルダはまだありません（設定を保存するか、プロジェクトを登録すると作成します）。";
+export function locationAbsentReason(): string {
+  return msg().settings.locationAbsent;
+}
 
 /**
  * フォルダの有無の答えがまだ手元に無いときの、場所を開く の理由。**「フォルダが無い」と書き分ける** —
  * 問い合わせが返っていない、あるいはその問い合わせ自体が失敗した状態で、フォルダが無いことは分かって
  * いない。分けないと、測っていないことを測ったかのように述べることになる。
  */
-export const LOCATION_UNCONFIRMED_REASON = "そのフォルダがあるかどうかを確認できていません。";
+export function locationUnconfirmedReason(): string {
+  return msg().settings.locationUnconfirmed;
+}
 
 /**
  * 場所を開く の 保留判定 と 保留理由 (TASK-75 AC #3、doc-11 §5)。判定を理由文の非 null で代えないのは
@@ -344,13 +344,13 @@ export function openLocationAvailability(
   opening: boolean,
 ): { enabled: boolean; reason: string | null } {
   if (opening) {
-    return { enabled: false, reason: OPENING_LOCATION_REASON };
+    return { enabled: false, reason: openingLocationReason() };
   }
   if (present === null) {
-    return { enabled: false, reason: LOCATION_UNCONFIRMED_REASON };
+    return { enabled: false, reason: locationUnconfirmedReason() };
   }
   if (!present) {
-    return { enabled: false, reason: LOCATION_ABSENT_REASON };
+    return { enabled: false, reason: locationAbsentReason() };
   }
   return { enabled: true, reason: null };
 }
@@ -363,9 +363,12 @@ export function openLocationAvailability(
 export function openLocationFailure(error: CommandError): string {
   switch (error.kind) {
     case "editorLaunchFailed":
-      return `${error.program} で開けませんでした: ${launchRefusalText(error.reason, error.detail)}。`;
+      return msg().settings.openLocationFailed(
+        error.program,
+        launchRefusalText(error.reason, error.detail),
+      );
     case "editorUnavailable":
-      return `場所を開けませんでした: ${msg().failure.editorUnavailable}`;
+      return msg().settings.openLocationUnavailable(msg().failure.editorUnavailable);
     default:
       return commandErrorDetail(error);
   }

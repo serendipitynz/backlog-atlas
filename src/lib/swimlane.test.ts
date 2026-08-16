@@ -4,13 +4,14 @@ import { loadMap, loaded, taskView, unreadable } from "./fixtures";
 import {
   CANONICAL_COLUMNS,
   LANE_FIGURE,
-  LAST_COLUMN_FOLD_BLOCKED_REASON,
-  ROW_FOLD_ABSENT_REASON,
-  UNMAPPED_LABEL,
+  lastColumnFoldBlockedReason,
+  rowFoldAbsentReason,
+  unmappedLabel,
   buildSwimlane,
   cellCount,
   CARD_ORDERS,
   CARD_ORDER_CHOICES,
+  cardOrderLabel,
   DEFAULT_CARD_ORDER,
   cardComparator,
   columnFoldable,
@@ -273,7 +274,7 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
   it("AC #2 offers all five attributes in both directions, and nothing else", () => {
     // Against the record the controls read, so an attribute added to one and not the other fails
     // here rather than in the two components separately.
-    expect(CARD_ORDER_CHOICES.map(([order]) => order)).toEqual([
+    expect(CARD_ORDER_CHOICES).toEqual([
       "priority_asc",
       "priority_desc",
       "task_id_asc",
@@ -285,7 +286,7 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
       "milestone_asc",
       "milestone_desc",
     ]);
-    expect(CARD_ORDER_CHOICES.map(([, rule]) => rule.label)).toEqual([
+    expect(CARD_ORDER_CHOICES.map((order) => cardOrderLabel(order))).toEqual([
       "priority 昇順",
       "priority 降順",
       "task id 昇順",
@@ -491,7 +492,7 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
       createdDate: "2026-07-03",
       updatedDate: "2026-07-04",
     });
-    for (const [order] of CARD_ORDER_CHOICES) {
+    for (const order of CARD_ORDER_CHOICES) {
       const compare = cardComparator(order);
       expect(Math.sign(compare(a, b)), order).toBe(-Math.sign(compare(b, a)));
       expect(compare(a, a), order).toBe(0);
@@ -542,7 +543,7 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
       [...views].sort(before).map((view) => view.task.id),
     );
     expect(DEFAULT_CARD_ORDER).toBe("priority_desc");
-    expect(CARD_ORDERS[DEFAULT_CARD_ORDER].label).toBe("priority 降順");
+    expect(cardOrderLabel(DEFAULT_CARD_ORDER)).toBe("priority 降順");
   });
 });
 
@@ -745,11 +746,11 @@ describe("AC #3 行折畳みでレーンセル群が畳まれ、列別の件数�
     );
 
     expect(laneCounts(row(rows, "atlas"), false).map((entry) => entry.label)).not.toContain(
-      UNMAPPED_LABEL,
+      unmappedLabel(),
     );
     expect(laneCounts(row(rows, "atlas"), true).at(-1)).toEqual({
       column: null,
-      label: UNMAPPED_LABEL,
+      label: unmappedLabel(),
       count: 1,
     });
   });
@@ -798,7 +799,7 @@ describe("折畳みの対象にしないもの、および TASK-69 が対象に�
     expect(rowFoldable(row(rows, "broken"))).toBe(false);
     expect(rowFoldable(row(rows, "waiting"))).toBe(false);
     expect(rowFoldable(row(rows, "atlas"))).toBe(true);
-    expect(ROW_FOLD_ABSENT_REASON).not.toBe("");
+    expect(rowFoldAbsentReason()).not.toBe("");
   });
 
   // TASK-69: 残り 1 列は畳めない (doc-7 §2.2). The rule is about a direction, not a count, so both
@@ -814,13 +815,13 @@ describe("折畳みの対象にしないもの、および TASK-69 が対象に�
     for (const folded of threeFolded) {
       expect(columnFoldable(threeFolded, folded)).toBe(true);
     }
-    expect(LAST_COLUMN_FOLD_BLOCKED_REASON).not.toBe("");
+    expect(lastColumnFoldBlockedReason()).not.toBe("");
   });
 
   it("folds 未分類 like any column, but never lets it be the column left open", () => {
     // 未分類 is not a 正準ステータス列 (it has no entry among them and its 列別件数 carry a null column),
     // and since TASK-69 that no longer keeps it out of 列折畳み (doc-7 §2.2).
-    expect(CANONICAL_COLUMNS).not.toContain(UNMAPPED_LABEL);
+    expect(CANONICAL_COLUMNS).not.toContain(unmappedLabel());
     expect(laneCounts(row(swimlane(["atlas"], loadMap(loaded("atlas", []))), "atlas"), true).at(-1)
       ?.column).toBeNull();
 

@@ -44,10 +44,10 @@ import {
   taskView,
   unreadable,
 } from "./lib/fixtures";
-import { SHORTCUT_HELP_LABEL, SHOW_ALL_PROJECTS_LABEL } from "./lib/header";
-import { CLOSE_WITHOUT_SAVING_LABEL, SAVE_LABEL } from "./lib/settings";
+import { shortcutHelpLabel, showAllProjectsLabel } from "./lib/header";
+import { closeWithoutSavingLabel, saveLabel } from "./lib/settings";
 import { MAC_KEYBOARD } from "./lib/platform";
-import { SHORTCUTS } from "./lib/shortcuts";
+import { shortcuts } from "./lib/shortcuts";
 import { msg } from "./lib/messages";
 import type { ProjectLoad, UpdateResult } from "./lib/wire";
 
@@ -314,7 +314,7 @@ describe("起動時の設定・workspace・監視の順序", () => {
     answers.externalPrograms = [{ ...answers.externalPrograms[0], program: "/古い/backlog" }];
     openSettingsPanel(host);
     await settled();
-    click(byText(host, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
+    click(byText(host, "footer button", closeWithoutSavingLabel()));
     await settled();
 
     answers.externalPrograms = [{ ...answers.externalPrograms[0], program: "/新しい/backlog" }];
@@ -423,12 +423,48 @@ describe("起動時の設定・workspace・監視の順序", () => {
     expect(after).toBe(before);
     expect(byText(host, "button.primary", "Edit")).not.toBeNull();
     // 背後のスイムレーンも同じ描き直しで動く — 詳細パネルだけが取得子を読んでいるのではない。
-    expect(host.textContent).toContain("1 / 1 tasks");
-    // **この時点の画面は 2 言語が混ざる。** 純関数が組む文（`edit.ts`・`external-editor.ts` ほか）は
-    // まだ 文言表 を引いていないので日本語のままで、それを移すのは TASK-187 である。ここでその不在を
-    // 主張しないのは、混在が分割の帰結であって欠陥ではないからで、**混在が解けたことを固定するのは
-    // 抽出漏れの走査 (TASK-184) の役目**である。
+    expect(host.textContent).toContain("1 / 1 task");
+  });
+
+  /**
+   * **文が純関数からしか来ない区画も、同じ描き直しで英語になる** (TASK-187 AC #2)。
+   *
+   * TASK-183 の時点ではここが日本語のまま残り、あの回はそれを「分割の帰結であって欠陥ではない」と
+   * 記録して次へ送っていた。**測り直すのは上の「開いたままの画面が描き直るか」ではなく、取得子を
+   * 読まない区画が取り残されていないか**である — 下の 3 つはどれも `.svelte` が綴らない文で、
+   * `external-editor.ts`・`edit.ts`・`swimlane.ts` が組んで文字列として渡してくる。
+   *
+   * その描き直しを支えているのは `messages.ts` の 言語の出どころ で、シェルが自分の 表示言語 を
+   * 渡しているために `msg()` の呼び出し自体が言語の読み取りになる。**この検査が落ちる形で壊れる** —
+   * 出どころを外せば、区画ごとに取得子を読ませて回らないかぎりここは日本語のまま残る。
+   */
+  it("純関数だけが文を組む区画も、同じ描き直しで英語になる", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+
+    // 外部エディタ区画の注意 (`external-editor.ts`)、状態遷移の控え (`edit.ts`)、
+    // 前後移動の群の名 (`swimlane.ts` の `laneGroupLabel`)。
+    //
+    // **3 つ目は `title` から読む。** 群の名が本文へ出る場所は無く（doc-8 §2.2 が 位置表示 から
+    // 名前を落としている）、本文で読める `1 / 1 件` は同じ字を `visibleCount` も刷る — あちらは
+    // `.svelte` が取得子で読む TASK-183 の経路なので、`swimlane.ts` を literal へ戻しても気づけない。
+    // 前後の 2 つとも同じ群を名乗るので、両方の `title` をつないで見る（doc-8 §2.2）。
+    const stepTitles = () =>
+      [...host.querySelectorAll<HTMLButtonElement>("button.step")].map((b) => b.title).join(" | ");
+
     expect(host.textContent).toContain("外部エディタでは frontmatter");
+    expect(host.textContent).toContain("draft へ差し戻す");
+    expect(stepTitles()).toContain("In Progress セル");
+
+    await switchToEnglish(host);
+
+    expect(host.textContent).toContain("An external editor opens the task's Markdown file whole");
+    expect(host.textContent).toContain("Move back to drafts");
+    expect(stepTitles()).toContain("the In Progress cell");
+    expect(host.textContent).not.toContain("外部エディタでは frontmatter");
+    expect(host.textContent).not.toContain("draft へ差し戻す");
+    expect(stepTitles()).not.toContain("セル");
   });
 
   it("購読に失敗した行はどれも自動更新されないと帯が述べる", async () => {
@@ -678,7 +714,7 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
     expect(byControl.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
     // 変更せずに閉じる, the 下部操作行's own exit (TASK-74). Named from the constant the component prints,
     // so this test asks for the control by the same one word the screen does.
-    click(byText(byControl, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
+    click(byText(byControl, "footer button", closeWithoutSavingLabel()));
     expect(byControl.querySelector('[aria-label="設定"]')).toBeNull();
     expectFocusBackOnMenu(byControl);
   });
@@ -709,7 +745,7 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
     await settled();
     expect(madeTo("settings_save")).toHaveLength(1);
 
-    click(byText(host, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
+    click(byText(host, "footer button", closeWithoutSavingLabel()));
     await settled();
     expect(host.querySelector('[role="dialog"][aria-label="設定"]')).not.toBeNull();
 
@@ -762,26 +798,26 @@ describe("モーダルの出口が同じ閉じる要求へ集まる", () => {
 
     click(byLabel(byEscape, "button.header-entry", "メニュー"));
     expect(only(byEscape, '[role="dialog"][aria-label="メニュー"]').querySelector("table")).toBeNull();
-    click(byLabel(byEscape, '[role="dialog"][aria-label="メニュー"] button', SHORTCUT_HELP_LABEL));
+    click(byLabel(byEscape, '[role="dialog"][aria-label="メニュー"] button', shortcutHelpLabel()));
 
     // The layer is named by the same word as the line that opened it (TASK-130), so the query uses the
     // constant: a modal renamed away from its own menu line stops being findable here. What the word
     // itself is, is pinned in `header.test.ts` — it came from the user and nothing derives it.
-    const list = only(byEscape, `[role="dialog"][aria-label="${SHORTCUT_HELP_LABEL}"]`);
-    // Printed from `SHORTCUTS` (doc-7 §2.1 の 1 箇所), so a row missing here means a row missing there.
-    expect(list.querySelectorAll("tbody tr")).toHaveLength(SHORTCUTS.length);
-    expect(list.querySelector("h2")?.textContent).toBe(SHORTCUT_HELP_LABEL);
+    const list = only(byEscape, `[role="dialog"][aria-label="${shortcutHelpLabel()}"]`);
+    // Printed from `shortcuts()` (doc-7 §2.1 の 1 箇所), so a row missing here means a row missing there.
+    expect(list.querySelectorAll("tbody tr")).toHaveLength(shortcuts().length);
+    expect(list.querySelector("h2")?.textContent).toBe(shortcutHelpLabel());
 
     press(list, "Escape");
-    expect(byEscape.querySelector(`[aria-label="${SHORTCUT_HELP_LABEL}"]`)).toBeNull();
+    expect(byEscape.querySelector(`[aria-label="${shortcutHelpLabel()}"]`)).toBeNull();
     expectFocusBackOnMenu(byEscape);
 
     cleanup();
 
     const byControl = await startWith([loaded("atlas", [TASK])]);
-    chooseFromMenu(byControl, SHORTCUT_HELP_LABEL);
-    click(closeOf(byControl, SHORTCUT_HELP_LABEL));
-    expect(byControl.querySelector(`[aria-label="${SHORTCUT_HELP_LABEL}"]`)).toBeNull();
+    chooseFromMenu(byControl, shortcutHelpLabel());
+    click(closeOf(byControl, shortcutHelpLabel()));
+    expect(byControl.querySelector(`[aria-label="${shortcutHelpLabel()}"]`)).toBeNull();
     expectFocusBackOnMenu(byControl);
   });
 });
@@ -882,7 +918,7 @@ describe("モーダルの閉じる要求と破棄前確認", () => {
     }
 
     const byWording = await withSettingsDraft();
-    click(byText(byWording, "footer button", CLOSE_WITHOUT_SAVING_LABEL));
+    click(byText(byWording, "footer button", closeWithoutSavingLabel()));
 
     // Closed on one press, with the draft dropped — which is what its own label said would happen.
     expect(byWording.querySelector('[aria-label="設定"]')).toBeNull();
@@ -1849,14 +1885,14 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
     ]);
 
     // すべてのプロジェクトを表示 is a `rows` line too, and now has something to do.
-    toggle(host, SHOW_ALL_PROJECTS_LABEL);
+    toggle(host, showAllProjectsLabel());
     expect(menu(host)).not.toBeNull();
     expect(projectLines(host).every((line) => line.shown)).toBe(true);
 
     // A `layer` line raises one, so it closes the menu on the way.
-    toggle(host, SHORTCUT_HELP_LABEL);
+    toggle(host, shortcutHelpLabel());
     expect(menu(host)).toBeNull();
-    expect(host.querySelector(`[role="dialog"][aria-label="${SHORTCUT_HELP_LABEL}"]`)).not.toBeNull();
+    expect(host.querySelector(`[role="dialog"][aria-label="${shortcutHelpLabel()}"]`)).not.toBeNull();
   });
 
   /**
@@ -2212,7 +2248,7 @@ describe("並び順は帯と設定画面が書く 1 つの項目", () => {
     click(byLabel(host, "button.header-entry", "メニュー"));
     click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
     click(byText(host, '[aria-label="設定"] label.choice', "継続検出を使う").querySelector("input")!);
-    click(byText(host, "footer button", SAVE_LABEL));
+    click(byText(host, "footer button", saveLabel()));
     await settled();
 
     expect(madeTo("settings_save").at(-1)?.args[0]).toMatchObject({

@@ -4,9 +4,11 @@ import {
   CATALOGS,
   LANGUAGES,
   activeLanguage,
+  clearLanguageSource,
   isLanguage,
   msg,
   pluralize,
+  provideLanguageSource,
   resolveLanguage,
   setLanguage,
 } from "./messages";
@@ -59,15 +61,21 @@ describe("表示言語 の切替", () => {
 
   it("is set by provideMessages, ahead of the context it also puts in place", () => {
     // The ordering the first render pass depends on: an effect runs after its subtree is created,
-    // so a language set only from there would leave every sentence a pure module worded in that
-    // pass on the initial language — and `msg()` is not reactive, so nothing would recompute it.
+    // so a language installed only from there would leave every sentence a pure module worded in
+    // that pass on the initial language, with nothing to recompute it afterwards.
     //
     // Asserted through the throw because `setContext` is only legal during a component's
     // initialisation, and this runs outside one. That the language is already changed when the
     // throw arrives is precisely the ordering being pinned; swapping the two lines fails this.
+    const read = () => "en" as const;
     setLanguage("ja");
-    expect(() => provideMessages(() => "en")).toThrow();
+    expect(() => provideMessages(read)).toThrow();
     expect(activeLanguage()).toBe("en");
+    // Taken back here rather than in `afterEach`: the throw is what leaves it installed without the
+    // teardown `provideMessages` would otherwise have registered, and a source left behind would
+    // decide what every later test in this file reads.
+    clearLanguageSource(read);
+    expect(activeLanguage()).toBe("ja");
   });
 });
 
@@ -97,6 +105,42 @@ describe("pluralize (decision-35 §1)", () => {
     expect(pluralize(1, { one: "one", other: "many" })).toBe("one");
     setLanguage("ja");
     expect(pluralize(1, { one: "one", other: "many" })).toBe("many");
+  });
+
+  /**
+   * 言語の出どころ (TASK-187): with a shell up, **nothing writes the plain value** — so a `pluralize`
+   * that defaulted to it would answer for a language no sentence is in. The two have to read the same
+   * 表示言語, because an English entry is looked up through `msg()` and then asks `pluralize` for its
+   * form; answering `other` there prints every English singular as a plural.
+   */
+  it("reads the same 表示言語 as `msg()` once a source is installed", () => {
+    const read = () => "en" as const;
+    setLanguage("ja");
+    provideLanguageSource(read);
+    try {
+      expect(activeLanguage()).toBe("en");
+      expect(msg()).toBe(CATALOGS.en);
+      expect(pluralize(1, { one: "one", other: "many" })).toBe("one");
+    } finally {
+      clearLanguageSource(read);
+    }
+    // Taken back, the plain value answers again — which is what a component mounted without a shell
+    // gets, and what every test in the `node` project has been relying on.
+    expect(activeLanguage()).toBe("ja");
+    expect(pluralize(1, { one: "one", other: "many" })).toBe("many");
+  });
+
+  /** A reader other than the installed one must not be able to take it back (two shells, one test run). */
+  it("takes a source back only for the reader that installed it", () => {
+    const mine = () => "en" as const;
+    const someone_else = () => "ja" as const;
+    provideLanguageSource(mine);
+    try {
+      clearLanguageSource(someone_else);
+      expect(activeLanguage()).toBe("en");
+    } finally {
+      clearLanguageSource(mine);
+    }
   });
 });
 
@@ -141,9 +185,12 @@ describe("文言表 の対応", () => {
     expect(Object.keys(CATALOGS).sort()).toEqual([...LANGUAGES].sort());
   });
 
-  it("keeps 言語未選択 worded as 表示テーマ's 未選択 is (decision-35)", async () => {
+  it("keeps 言語未選択 worded as 表示テーマ's 未選択 is (decision-35)", () => {
     // The pairing decision-35 requires, held rather than left to whoever edits one of the two.
-    const { THEME_UNSET_LABEL } = await import("./theme");
-    expect(CATALOGS.ja.settings.languageUnset).toBe(THEME_UNSET_LABEL);
+    for (const language of LANGUAGES) {
+      expect(CATALOGS[language].settings.languageUnset).toBe(
+        CATALOGS[language].settings.themeUnset,
+      );
+    }
   });
 });

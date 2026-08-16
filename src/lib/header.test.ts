@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   HEADER_ENTRIES,
-  NO_PROJECTS_REASON,
-  SHORTCUT_HELP_LABEL,
-  SHOW_ALL_PROJECTS_HELD_REASON,
-  SHOW_ALL_PROJECTS_LABEL,
+  headerEntryView,
+  noProjectsReason,
+  shortcutHelpLabel,
+  showAllProjectsHeldReason,
+  showAllProjectsLabel,
   headerMenu,
   omitsSentence,
   projectMenuLabel,
@@ -13,7 +14,7 @@ import {
   type MenuItem,
   type MenuProject,
 } from "./header";
-import { SHORTCUTS } from "./shortcuts";
+import { shortcuts } from "./shortcuts";
 
 function kinds(items: MenuItem[]): string[] {
   return items.map((item) => item.kind);
@@ -36,7 +37,7 @@ describe("共通入口 (doc-7 §2.1)", () => {
 
   it("points every entry at an assignment that exists in the 割り当て一覧", () => {
     for (const entry of HEADER_ENTRIES) {
-      expect(SHORTCUTS.some((binding) => binding.action === entry.action)).toBe(true);
+      expect(shortcuts().some((binding) => binding.action === entry.action)).toBe(true);
     }
   });
 });
@@ -45,7 +46,14 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
   /** doc-7 §2.1: メニューが 共通入口 を全部持つ — since TASK-66 it is the only place they are drawn. */
   it("carries every 共通入口, in the order 共通入口 are listed", () => {
     const entries = headerMenu([]).flatMap((item) => (item.kind === "entry" ? [item.entry] : []));
-    expect(entries).toEqual([...HEADER_ENTRIES]);
+    expect(entries).toEqual(HEADER_ENTRIES.map((entry) => headerEntryView(entry)));
+    // The 語 come from the 文言表 since TASK-187, so the check is that each entry got its own pair
+    // rather than another's — a `headerEntryView` keyed wrong would still return two views.
+    for (const entry of entries) {
+      expect(entry.label).not.toBe("");
+      expect(entry.note).not.toBe("");
+    }
+    expect(entries.map((entry) => entry.label)).toEqual(["プロジェクトを登録", "設定"]);
   });
 
   /**
@@ -60,7 +68,7 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
       expect(order.indexOf("shortcutHelp")).toBeLessThan(order.indexOf("showAllProjects"));
     }
     expect(headerMenu([]).find((item) => item.kind === "shortcutHelp")?.label).toBe(
-      SHORTCUT_HELP_LABEL,
+      shortcutHelpLabel(),
     );
   });
 
@@ -95,12 +103,12 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
     const some = headerMenu([project("atlas"), project("kanri", false)]);
     const held = allShown.find((item) => item.kind === "showAllProjects");
     const free = some.find((item) => item.kind === "showAllProjects");
-    expect(held?.label).toBe(SHOW_ALL_PROJECTS_LABEL);
+    expect(held?.label).toBe(showAllProjectsLabel());
     // Which reason, not merely that there is one: `showAllProjectsHeld` takes two counts of the same
     // type, so a call site that passed them the wrong way round would withhold a full ledger with
     // 登録済みプロジェクトがありません — a sentence that is off the licence and would therefore be both
     // printed and spoken. `not.toBeNull()` cannot see that; naming the reason can.
-    expect(held?.held).toBe(SHOW_ALL_PROJECTS_HELD_REASON);
+    expect(held?.held).toBe(showAllProjectsHeldReason());
     expect(free?.held).toBeNull();
   });
 
@@ -133,7 +141,7 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
 
 describe("保留理由 (doc-11 §5)", () => {
   it("holds すべてのプロジェクトを表示 at 0 hidden rows only", () => {
-    expect(showAllProjectsHeld(3, 0)).toBe(SHOW_ALL_PROJECTS_HELD_REASON);
+    expect(showAllProjectsHeld(3, 0)).toBe(showAllProjectsHeldReason());
     expect(showAllProjectsHeld(3, 1)).toBeNull();
   });
 
@@ -144,11 +152,11 @@ describe("保留理由 (doc-11 §5)", () => {
    * them is on the licence — otherwise a fresh install draws a held line with no reason at all.
    */
   it("gives an empty ledger its own reason, and prints that one", () => {
-    expect(showAllProjectsHeld(0, 0)).toBe(NO_PROJECTS_REASON);
-    expect(omitsSentence(NO_PROJECTS_REASON)).toBe(false);
-    expect(omitsSentence(SHOW_ALL_PROJECTS_HELD_REASON)).toBe(true);
+    expect(showAllProjectsHeld(0, 0)).toBe(noProjectsReason());
+    expect(omitsSentence(noProjectsReason())).toBe(false);
+    expect(omitsSentence(showAllProjectsHeldReason())).toBe(true);
     expect(headerMenu([]).find((item) => item.kind === "showAllProjects")?.held).toBe(
-      NO_PROJECTS_REASON,
+      noProjectsReason(),
     );
   });
 
@@ -158,8 +166,8 @@ describe("保留理由 (doc-11 §5)", () => {
    * user chose. `manage.ts`'s own `omitsSentence` is pinned this way in `project-detail.test.ts`.
    */
   it("words the spoken reason as a sentence", () => {
-    expect(SHOW_ALL_PROJECTS_HELD_REASON).toBe("すべてのプロジェクトが表示されています。");
-    expect(NO_PROJECTS_REASON).toBe("登録済みプロジェクトがありません。");
+    expect(showAllProjectsHeldReason()).toBe("すべてのプロジェクトが表示されています。");
+    expect(noProjectsReason()).toBe("登録済みプロジェクトがありません。");
   });
 
   /**
@@ -227,8 +235,8 @@ describe("画面に出る語", () => {
    * which means no other test would notice the word changing.
    */
   it("names the 一覧 line and the すべて line in the user's words", () => {
-    expect(SHORTCUT_HELP_LABEL).toBe("キーボード操作一覧");
-    expect(SHOW_ALL_PROJECTS_LABEL).toBe("すべてのプロジェクトを表示");
+    expect(shortcutHelpLabel()).toBe("キーボード操作一覧");
+    expect(showAllProjectsLabel()).toBe("すべてのプロジェクトを表示");
   });
 
   /**
@@ -237,6 +245,6 @@ describe("画面に出る語", () => {
    * apart, so a `…` added back to either would be the same drift returning.
    */
   it("names the 一覧 line for the layer, with nothing trailing", () => {
-    expect(SHORTCUT_HELP_LABEL).not.toMatch(/[…．.]+$/);
+    expect(shortcutHelpLabel()).not.toMatch(/[…．.]+$/);
   });
 });

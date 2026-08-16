@@ -15,7 +15,7 @@
   import FilterPopover from "./FilterPopover.svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import { defaultFilter, type CardFilter, type Facets } from "../lib/filter";
-  import { CARD_ORDER_CHOICES } from "../lib/swimlane";
+  import { CARD_ORDER_CHOICES, cardOrderLabel } from "../lib/swimlane";
   import type { CardOrder } from "../lib/wire";
   import {
     filterTokens,
@@ -126,9 +126,9 @@
    * handed over, and this is the one value on the bar that is written to `settings.toml`.
    */
   function chooseOrder(value: string): void {
-    const found = CARD_ORDER_CHOICES.find(([order]) => order === value);
+    const found = CARD_ORDER_CHOICES.find((order) => order === value);
     if (found !== undefined) {
-      oncardorder(found[0]);
+      oncardorder(found);
     }
   }
 
@@ -272,8 +272,8 @@
     <label>
       {t().filter.orderLabel}
       <select value={cardOrder} onchange={(event) => chooseOrder(event.currentTarget.value)}>
-        {#each CARD_ORDER_CHOICES as [value, rule] (value)}
-          <option {value}>{rule.label}</option>
+        {#each CARD_ORDER_CHOICES as value (value)}
+          <option {value}>{cardOrderLabel(value)}</option>
         {/each}
       </select>
     </label>

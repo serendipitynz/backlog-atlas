@@ -14,6 +14,8 @@
  * way. The label gap is filed as TASK-155; dependencies carry TASK-IDs, whose grammar has no comma.
  */
 
+import { msg } from "./messages";
+
 /**
  * How much of the offending value the reason quotes. The quote is there to say *which* value has the
  * comma, and a head that long distinguishes it; the whole string would put no bound on the sentence.
@@ -39,10 +41,7 @@ export function commaReason(what: string, value: string): string {
   const points = [...value];
   const quoted =
     points.length > QUOTED_VALUE_LIMIT ? `${points.slice(0, QUOTED_VALUE_LIMIT).join("")}…` : value;
-  return (
-    `${what}に「,」を含められません（1 個のカンマ区切り値として扱われるため、` +
-    `「${quoted}」は 2 件に分かれます）`
-  );
+  return msg().field.commaNotAllowed(what, quoted);
 }
 
 export function firstWithComma(values: readonly string[]): string | undefined {
