@@ -2194,8 +2194,21 @@
    * the 本文画像 at its 状態の印, which is already on screen, and `markdown-image.ts` is where the
    * rejection stops. A notice would be Atlas reporting on a file's content beside that content.
    */
+  const imageReaders = new Map<string, ImageReader>();
+
   function imageReaderFor(slug: string): ImageReader {
-    return (reference) => bodyImageRead(slug, reference);
+    // **Memoized, because the prop's identity is what `Body.svelte`'s effect depends on.** Svelte
+    // re-evaluates a prop expression through a getter, so a fresh closure per read would re-run that
+    // effect on any snapshot change — and its cleanup revokes the Blob URLs of images still on
+    // screen. An image already decoded survives that, but one still loading fires `error` and falls
+    // back to its 状態の印 with no later pass to redraw it (the placeholder it would look for is gone).
+    // Keyed by slug and never evicted: the map holds one closure per registered project.
+    let reader = imageReaders.get(slug);
+    if (reader === undefined) {
+      reader = (reference) => bodyImageRead(slug, reference);
+      imageReaders.set(slug, reader);
+    }
+    return reader;
   }
 
   /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
