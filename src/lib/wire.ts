@@ -56,6 +56,17 @@ export interface UnknownSection {
   body: string;
 }
 
+/**
+ * One entry of a task's `COMMENTS` block (doc-4 §4). `author` and `created` are each absent when
+ * the CLI had no value to write, and no position number is carried — the entries are in file
+ * order, which is the order the CLI numbers them by.
+ */
+export interface Comment {
+  author: string | null;
+  created: string | null;
+  body: string;
+}
+
 /** One task mirrored from a Backlog root (doc-4 §3.1). */
 export interface Task {
   sourcePath: string;
@@ -89,6 +100,10 @@ export interface Task {
   acceptanceCriteria: AcceptanceCriterion[];
   implementationPlan: string | null;
   implementationNotes: string | null;
+  finalSummary: string | null;
+  /** Same triple as `acceptanceCriteria`, written by the same CLI code path (doc-4 §4). */
+  definitionOfDone: AcceptanceCriterion[];
+  comments: Comment[];
   unknownSections: UnknownSection[];
   health: FileHealth;
 }

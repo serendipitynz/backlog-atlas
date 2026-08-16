@@ -25,8 +25,9 @@ use crate::commands::{
     ProjectSnapshot, RegisterResponse, ReloadEvent, TaskHistory, TaskView, UpdateResult,
 };
 use crate::domain::{
-    AcceptanceCriterion, Config, Decision, DegradeEvent, Document, FileHealth, ManagedFileKind,
-    Milestone, ReferenceKind, RequiredField, StorageState, Task, UnknownSection, UnmappedFile,
+    AcceptanceCriterion, Comment, Config, Decision, DegradeEvent, Document, FileHealth,
+    ManagedFileKind, Milestone, ReferenceKind, RequiredField, StorageState, Task, UnknownSection,
+    UnmappedFile,
 };
 use crate::editor::{
     self, BodyLinkRefusal, ConfiguredEditor, EditorCommand, EditorLaunch, EditorReadiness,
@@ -126,6 +127,26 @@ fn task() -> Task {
         }],
         implementation_plan: Some("Do it.".to_string()),
         implementation_notes: Some("Done it.".to_string()),
+        final_summary: Some("It shipped.".to_string()),
+        definition_of_done: vec![AcceptanceCriterion {
+            number: 1,
+            text: "Reviewed".to_string(),
+            checked: false,
+        }],
+        // Both entries populate every field: an absent `author` agrees with any type, and the
+        // recording is what the frontend test checks the value types against.
+        comments: vec![
+            Comment {
+                author: Some("someone".to_string()),
+                created: Some("2026-08-01 09:00".to_string()),
+                body: "Looks right.".to_string(),
+            },
+            Comment {
+                author: Some("another".to_string()),
+                created: Some("2026-08-02 09:00".to_string()),
+                body: "Agreed.".to_string(),
+            },
+        ],
         unknown_sections: vec![UnknownSection {
             name: "REVIEW".to_string(),
             body: "Kept rather than dropped.".to_string(),
@@ -163,6 +184,9 @@ fn degraded_task() -> Task {
         acceptance_criteria: Vec::new(),
         implementation_plan: None,
         implementation_notes: None,
+        final_summary: None,
+        definition_of_done: Vec::new(),
+        comments: Vec::new(),
         unknown_sections: Vec::new(),
         health: FileHealth::Degraded {
             events: vec![DegradeEvent::Unparseable {
