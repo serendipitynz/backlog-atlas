@@ -4,7 +4,7 @@ title: 抽出漏れの走査を足し、英語表示のレイアウトを確か�
 status: In Review
 assignee: []
 created_date: '2026-08-15 22:19'
-updated_date: '2026-08-16 07:54'
+updated_date: '2026-08-16 08:12'
 labels:
   - i18n
   - 'kind:feature'
@@ -110,8 +110,12 @@ DOM の位置で突き合わせている。**
 
 ## 走査していないもの
 
-- **crate の `#[cfg(test)]` が付いた mod 以外の項目**（`ledger.rs` の関数 2 件、`store.rs` の試験用の型）は
-  剥がさず走査している。日本語は無いので現に通っており、**外す側ではなく見る側に倒してある。**
+- **crate の `#[cfg(test)]` が付いた「本体と同じファイルの mod」以外**は剥がさず走査している。
+  内訳は 3 つ — `ledger.rs` の関数 2 件、`store.rs` の試験用の型、そして **`lib.rs` が
+  `#[cfg(test)] mod csp;` / `mod wire_fixtures;` と宣言する別ファイル 2 つ（計 1,637 行）**である。
+  **3 つ目は 1R の [P3] で指摘されて数え直した** — 初版のこの一覧は前 2 つだけを挙げており、
+  1,637 行を数え落としていた。どれも日本語はコメントに限られるので現に通っている。
+  **外す側ではなく見る側に倒してある**（見逃すのではなく余計に鳴る向き）。
 - **1280x800 以外の寸法**と、**実機の WKWebView・WebView2・WebKitGTK。** 借り物 playwright の WebKit は
   WKWebView と同系だが同一ではない。
 <!-- SECTION:NOTES:END -->
