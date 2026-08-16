@@ -38,8 +38,8 @@ export const EN: Catalog = {
     body: "Body",
     description: "Description",
     plainLabels: "Labels",
-    addLabel: "Label to add",
-    addCriterion: "Acceptance Criterion to add",
+    addLabel: "New label",
+    addCriterion: "New criterion",
     replacesWholeSet: "Saving replaces the whole set, existing entries included.",
   },
   state: {
@@ -248,7 +248,7 @@ export const EN: Catalog = {
       "Set them again if you still want them.",
     inconsistentHeading: "Inconsistent",
     unknownSection: (name: string) => `Unknown section ${name} (kept as it is)`,
-    addAssignee: "assignee to add",
+    addAssignee: "New assignee",
     done: "Done",
     notDone: "Not done",
     criteriaModeItems: "Per item (add, remove, check)",
@@ -263,11 +263,14 @@ export const EN: Catalog = {
     addItem: "Add an item",
     replaceAllNote:
       "Saving deletes every existing item and recreates the ones listed here, in this order.",
-    planHeading: "Implementation plan",
-    notesHeading: "Implementation notes",
+    // Title Case because it is the managed file's own section heading (`## Implementation Plan`),
+    // not a name this screen chose. Japanese has a separate 画面語 for it; English does not, so a
+    // different casing would read as a different section from the one the file carries.
+    planHeading: "Implementation Plan",
+    notesHeading: "Implementation Notes",
     notesReplace: "Replace (--notes)",
     notesAppend: "Append (--append-notes)",
-    notesAppendLabel: "Implementation notes (appended)",
+    notesAppendLabel: "Implementation Notes (appended)",
     noPullRequests: "References carries no Pull Request URL",
     hostUnknown: "Host kind unknown",
     pullRequestNote:
@@ -320,7 +323,11 @@ export const EN: Catalog = {
       "lost to the overwrite, its contents can be neither shown nor restored.",
     discardAndContinue: "Discard and continue",
     backToInput: "Back to the input",
-    documentsHeading: "Documents",
+    // The word backlog.md's own UI uses for `backlog/docs/*` (its nav, its headings; its CLI
+    // subcommand is `doc`). "Documents" appears nowhere upstream — two tools naming one set of files
+    // two ways is what this avoids. An individual file is still a document, so the count and the
+    // per-item lines below keep that noun.
+    documentsHeading: "Documentation",
     documentsEmpty: "There are no documents.",
     documentsCount: (n: number) =>
       pluralize(n, { one: `${n} document`, other: `${n} documents` }),
@@ -338,7 +345,7 @@ export const EN: Catalog = {
       `The document editor holds unsaved input. Opening ${id} discards it.`,
     documentUpdateHeading: (id: string) => `Update ${id}`,
     documentUpdate: "Update the document",
-    documentCreateHeading: "Create a document",
+    documentCreateHeading: "Create new document",
     documentCreate: "Create the document",
     documentCreated: "The document is created.",
     documentUpdated: "The document is updated.",
@@ -351,7 +358,7 @@ export const EN: Catalog = {
       "The current location cannot be read (this document is not in the latest read result).",
     pathCurrent: "Current location:",
     pathPlaceholder: "Empty leaves it unchanged",
-    addTag: "Tag to add",
+    addTag: "New tag",
     docPathPlaceholder: "Sub-path under docs (optional)",
     cliDefault: "— (the CLI's default)",
     typeUnset: "type unset",
@@ -379,7 +386,7 @@ export const EN: Catalog = {
     milestoneUnsavedOnOpen: (id: string) =>
       `The milestone editor holds unsaved input. Opening ${id} discards it.`,
     milestoneEditHeading: (id: string) => `Edit ${id}`,
-    milestoneCreateHeading: "Create a milestone",
+    milestoneCreateHeading: "Add milestone",
     milestoneCreate: "Create the milestone",
     milestoneCreated: "The milestone is created.",
     milestoneDescriptionSave: "Save the description",

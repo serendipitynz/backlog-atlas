@@ -4,7 +4,7 @@ title: Atlas の 取得子側の画面文 を 文言表 へ抽出する
 status: In Review
 assignee: []
 created_date: '2026-08-15 22:19'
-updated_date: '2026-08-16 02:25'
+updated_date: '2026-08-16 02:48'
 labels:
   - i18n
   - 'kind:feature'
@@ -119,4 +119,33 @@ TASK-103 が定めた機構（decision-35 の 文言表・表示言語）の上�
 **手順の失敗を 1 件記録する。** `git add -A` で staging したため、台帳修正 3 件がコード修正のコミット
 `e89271d`（メッセージはコード修正のみを述べている）へ同居した。push 済みだったので履歴は書き換えず、
 PR 返信に明示した。**分割コミットを作る回は `git add -A` を使わない。**
+
+## 英語の語彙を backlog.md と突き合わせた
+
+**オーナーの求めで、上流（`Backlog.md` v1.50.1 の clone）の UI・CLI の語と照合した。** 最初に書いた英語は
+上流を見ずに訳したものだったので、**この照合そのものが後追いである** — 語を足す回は上流を先に見る。
+
+**一致していたもの**: `Acceptance Criteria`・`Description`・`References`・`Dependencies`・`Labels`・
+`Priority`・`Milestone(s)`・`Decisions`・`Status`・`Type`。画面に出す CLI の綴り（`--notes`・
+`--append-notes`・`--no-update-tasks`）と削除時の `clear`/`keep`/`reassign` も上流に実在する識別子だった。
+
+**直したもの、3 種。**
+
+1. **`Implementation Plan`・`Implementation Notes` は Title Case である。** 管理ファイル自身の節見出しが
+   `## Implementation Notes`（この repo に 118 件）で、**英語には日本語のような別の画面語が無い** —
+   大文字小文字を変えると「ファイルにある節とは別の何か」に読める。**これは判断ではなく誤りだった。**
+2. **文書 の英語は `Documentation` である**（オーナーの判断）。上流の nav・見出しがその語で、
+   **`Documents` は上流に 1 件も無い。** ただし**個々のファイルは document のまま**なので、件数と
+   項目行はその名詞を保つ。
+3. **追加の入力欄は上流の語を採る**（オーナーの判断）: `New criterion`・`New label`・`New assignee`・
+   `New tag`、および `Create new document`・`Add milestone`。
+
+**寄せる先が無いもの**: 保存区分・正準列・未分類・不整合・登録・継続検出・スイムレーンは Atlas の設計語で、
+上流に対応概念が無い（あちらは `Board`）。**これらの英語はこちらで決めるしかないので、上流照合の対象外である。**
+
+**TASK-187 への申し送りが 2 件ある。** どちらも `.ts` 側なので英語を書くのはあちらの回である。
+**① 保存区分の値**を Atlas は素の `active`/`draft`/`completed`/`archive` で出しているが、上流の UI は
+`Drafts`/`Completed`/`Archived` で、**`active` に当たる語を持たない**（あちらのディレクトリは `tasks/`）。
+**② 状態遷移の 3 つ**は上流の CLI help では `move task back to drafts`・`archive a task`・
+`cleanup … into completed` で、**完了整理 の英語は `cleanup` 系**になる。
 <!-- SECTION:NOTES:END -->
