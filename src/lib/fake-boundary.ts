@@ -77,7 +77,13 @@ export function deferred<T>(): Deferred<T> {
 const DEFAULT_SETTINGS: AppSettings = {
   schema_version: 1,
   theme: null,
-  language: null,
+  /**
+   * **Stated rather than left 言語未選択**, unlike every other field here. `null` means the OS decides
+   * (`resolveLanguage`), and in `jsdom` that is `navigator.language` — so the component suite's
+   * assertions would be against whichever 文言表 the runner's locale picked. They are written in
+   * Japanese, so the fake says Japanese; a test about the other language sets it itself.
+   */
+  language: "ja",
   card_density: "m",
   default_storage_filter: ["active"],
   default_detail_placement: "sidebar",
