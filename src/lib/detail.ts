@@ -35,6 +35,7 @@
  */
 
 import type {
+  AcceptanceCriterion,
   Commit,
   CommitSearch,
   DegradeEvent,
@@ -451,9 +452,17 @@ export interface AcProgress {
   total: number;
 }
 
-export function acProgress(view: TaskView): AcProgress {
-  const items = view.task.acceptanceCriteria;
+/**
+ * The same count over any `#N` checklist. Definition of Done items are the acceptance criteria's
+ * shape written by the same CLI code (doc-4 §4), so the two 区画 count through one function rather
+ * than each holding its own — a second copy is where `checked` and `total` would come to disagree.
+ */
+export function checklistProgress(items: AcceptanceCriterion[]): AcProgress {
   return { checked: items.filter((item) => item.checked).length, total: items.length };
+}
+
+export function acProgress(view: TaskView): AcProgress {
+  return checklistProgress(view.task.acceptanceCriteria);
 }
 
 /**

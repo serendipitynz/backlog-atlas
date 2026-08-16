@@ -48,8 +48,11 @@ const DOC_8_SECTION_3: Record<
   labels: { sidebar: "always", modal: "always", full: "always" },
   description: { sidebar: "always", modal: "always", full: "always" },
   ac: { sidebar: "always", modal: "always", full: "always" },
+  dod: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
   plan: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
   notes: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
+  comments: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
+  finalSummary: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
   dependencies: { sidebar: "always", modal: "always", full: "always" },
   references: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
   pullRequest: { sidebar: "always", modal: "always", full: "always" },
@@ -64,6 +67,14 @@ const DOC_8_SECTION_3: Record<
  * three placements, and only their 既定開閉 moves — so it is asserted against the figures directly.
  */
 const FOLDS_IN_EVERY_FIGURE: DetailSection[] = ["plan", "notes", "references", "transitions"];
+
+/**
+ * The 区画 doc-8 §3 gained after 画面設計案 02 (TASK-185), which the 原文 therefore has no figure for.
+ * Listed apart from [`FOLDS_IN_EVERY_FIGURE`] so the assertion above keeps saying what the figures
+ * draw: folding these is doc-8's own decision, and reading them back out of the same list would let
+ * a later 区画 claim the 原文 as its authority.
+ */
+const FOLDS_BY_DOC_8_ALONE: DetailSection[] = ["dod", "comments", "finalSummary"];
 
 describe("AC #1 3 配置", () => {
   it("offers exactly the three placements doc-8 §2.1 defines, narrowest first", () => {
@@ -145,7 +156,10 @@ describe("AC #2 配置ごとの割当（doc-8 §3）", () => {
       const folds = (Object.keys(sections) as DetailSection[]).filter((section) =>
         isFold(sections[section]),
       );
-      expect([placement, folds.sort()]).toEqual([placement, [...FOLDS_IN_EVERY_FIGURE].sort()]);
+      expect([placement, folds.sort()]).toEqual([
+        placement,
+        [...FOLDS_IN_EVERY_FIGURE, ...FOLDS_BY_DOC_8_ALONE].sort(),
+      ]);
     }
   });
 
@@ -161,6 +175,19 @@ describe("AC #2 配置ごとの割当（doc-8 §3）", () => {
     expect(open("sidebar")).toEqual([]);
     expect(open("modal")).toEqual(["plan", "references"]);
     expect(open("full")).toEqual([...FOLDS_IN_EVERY_FIGURE]);
+  });
+
+  /*
+   * The 区画 with no figure follow doc-8 §3's own 筋 rather than a drawing: 中央モーダル opens 読み物
+   * and 参照先 there, and a checklist and two records of finished work are neither. Asserted apart
+   * from the figures' test so neither can be satisfied by the other's list.
+   */
+  it("opens none of the figure-less folds until 全面 (doc-8 §3)", () => {
+    const open = (placement: DetailPlacement) =>
+      FOLDS_BY_DOC_8_ALONE.filter((section) => startsOpen(layoutFor(placement).sections[section]));
+    expect(open("sidebar")).toEqual([]);
+    expect(open("modal")).toEqual([]);
+    expect(open("full")).toEqual([...FOLDS_BY_DOC_8_ALONE]);
   });
 
   it("varies the Git 履歴欄's granularity by placement (doc-8 §5)", () => {
@@ -235,8 +262,13 @@ describe("AC #1・#2・#3 区画の並びは doc-8 §3.1 の正本", () => {
     "inconsistency",
     "description",
     "ac",
+    // 画面設計案 02 has no figure for these three, so doc-8 §3.1 places them by the managed file's own
+    // section order — which the 原文's four already agree with (TASK-185).
+    "dod",
     "plan",
     "notes",
+    "comments",
+    "finalSummary",
     "gitHistory",
   ];
   const SIDE_FROM_DOC: DetailSection[] = [
@@ -317,8 +349,16 @@ describe("AC #5 1 行の長さの上限", () => {
 
   // Git 履歴欄 is the one long block left uncapped: doc-8 §2.1 makes 全面 the place the whole commit
   // list is read, so narrowing it would cost that placement its reason to exist.
-  it("caps the four 本文 区画 and leaves the Git 履歴欄 alone", () => {
-    expect([...PROSE_SECTIONS]).toEqual(["description", "ac", "plan", "notes"]);
+  it("caps the 本文 区画 and leaves the Git 履歴欄 alone", () => {
+    expect([...PROSE_SECTIONS]).toEqual([
+      "description",
+      "ac",
+      "dod",
+      "plan",
+      "notes",
+      "comments",
+      "finalSummary",
+    ]);
     expect(PROSE_SECTIONS).not.toContain("gitHistory");
     for (const section of PROSE_SECTIONS) {
       expect([section, SECTION_COLUMN[section]]).toEqual([section, "main"]);

@@ -524,6 +524,18 @@ export const ja = {
       "保存時に既存の全項目を削除してから、ここにある項目を並び順どおり作り直します。",
     planHeading: "実装計画",
     notesHeading: "実装ノート",
+    // The managed file's own headings, kept as they are spelled there. 実装計画・実装ノート are
+    // the exception rather than the rule — doc-8 §3 itself writes `Description` and `Acceptance
+    // Criteria` in Japanese prose, and these three have no 画面語 either. Inventing one would
+    // leave a rule about which side each 区画 falls on, for no reader's benefit.
+    definitionOfDoneHeading: "Definition of Done",
+    commentsHeading: "Comments",
+    finalSummaryHeading: "Final Summary",
+    /** How many entries a Comments 区画 holds, so the count is readable while it is folded. */
+    commentCount: (count: number) => `${count} 件`,
+    /** A comment whose file carried no `author:` line (doc-4 §4). */
+    commentAuthorUnknown: "author 未記録",
+    commentCreatedUnknown: "created 未記録",
     notesReplace: "置換（--notes）",
     notesAppend: "追記（--append-notes）",
     notesAppendLabel: "実装ノート（追記）",
