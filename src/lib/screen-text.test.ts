@@ -262,8 +262,11 @@ describe("画面に置く文 (doc-11 §8)", () => {
   // what holds it there is that a source carrying Japanese fails here. The alternative — re-reading 46
   // files whenever a sentence is added — is the one-time sweep decision-35 §4 declined.
   //
-  // **The range is the four 源泉, the same set the 設計語 scan reaches**, because a user reads Japanese
-  // the crate builds too. The crate needs one thing the frontend does not, below.
+  // **The range is the four 源泉, the same set the 設計語 scan reaches.** The crate is in it the other way
+  // round from that scan's reason: decision-35 §3 took the Japanese *out* of the crate — the failure
+  // reasons it used to spell now travel as 失敗理由符号 — so this scan is what keeps §3 true, not a
+  // concession that the crate still builds sentences. The crate needs one thing the frontend does not,
+  // below.
 
   /**
    * Japanese: kana, kanji, and the punctuation a Japanese sentence is set with.
