@@ -57,8 +57,11 @@ export type DetailSection =
   | "labels"
   | "description"
   | "ac"
+  | "dod"
   | "plan"
   | "notes"
+  | "comments"
+  | "finalSummary"
   | "dependencies"
   | "references"
   | "pullRequest"
@@ -139,8 +142,14 @@ const DISPOSITIONS: Record<DetailSection, Record<DetailPlacement, Disposition>> 
   labels: { sidebar: "always", modal: "always", full: "always" },
   description: { sidebar: "always", modal: "always", full: "always" },
   ac: { sidebar: "always", modal: "always", full: "always" },
+  // The three 区画 TASK-185 added are folds in all three placements, and 中央モーダル opens none of
+  // them: doc-8 §3's 筋 opens 読み物 and 参照先 there, and these are a checklist and two records of
+  // work already finished. 実装ノート's row is the one they follow for exactly that reason.
+  dod: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
   plan: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
   notes: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
+  comments: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
+  finalSummary: { sidebar: "foldClosed", modal: "foldClosed", full: "foldOpen" },
   dependencies: { sidebar: "always", modal: "always", full: "always" },
   references: { sidebar: "foldClosed", modal: "foldOpen", full: "foldOpen" },
   pullRequest: { sidebar: "always", modal: "always", full: "always" },
@@ -164,8 +173,11 @@ export const SECTION_COLUMN: Record<DetailSection, SectionColumn> = {
   inconsistency: "main",
   description: "main",
   ac: "main",
+  dod: "main",
   plan: "main",
   notes: "main",
+  comments: "main",
+  finalSummary: "main",
   gitHistory: "main",
   assignee: "side",
   type: "side",
@@ -187,8 +199,15 @@ export const MAIN_COLUMN_ORDER: readonly DetailSection[] = [
   "inconsistency",
   "description",
   "ac",
+  // 画面設計案 02 has no row for these three, so their positions come from the managed file's own
+  // order — which is where 原文 already agrees with it for the four it does draw (Description, AC,
+  // Plan, Notes appear in the file in that order too). A reader with the file open beside the panel
+  // then meets the 区画 in one order rather than two (doc-8 §3.1).
+  "dod",
   "plan",
   "notes",
+  "comments",
+  "finalSummary",
   "gitHistory",
 ] as const;
 
@@ -360,8 +379,11 @@ export const PROSE_MAX_WIDTH_REM = 48;
 export const PROSE_SECTIONS: readonly DetailSection[] = [
   "description",
   "ac",
+  "dod",
   "plan",
   "notes",
+  "comments",
+  "finalSummary",
 ] as const;
 
 // --- 既定の永続 (doc-8 §2.2) -----------------------------------------------------------------

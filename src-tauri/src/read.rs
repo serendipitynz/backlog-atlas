@@ -332,8 +332,11 @@ fn parse_task(path: &Path, text: &str, slug: &str, dir: ScanDir, config: &Config
     task.description = body.description;
     task.implementation_plan = body.implementation_plan;
     task.implementation_notes = body.implementation_notes;
+    task.final_summary = body.final_summary;
     task.unknown_sections = body.unknown_sections;
     task.acceptance_criteria = body.acceptance_criteria;
+    task.definition_of_done = body.definition_of_done;
+    task.comments = body.comments;
     for url in body.references {
         if !task.references.contains(&url) {
             task.references.push(url);
@@ -767,6 +770,9 @@ fn empty_task(path: &Path, slug: &str, storage_state: Option<StorageState>) -> T
         acceptance_criteria: Vec::new(),
         implementation_plan: None,
         implementation_notes: None,
+        final_summary: None,
+        definition_of_done: Vec::new(),
+        comments: Vec::new(),
         unknown_sections: Vec::new(),
         health: FileHealth::Ok,
     }
@@ -1520,7 +1526,10 @@ updated_date: '2026-07-22 12:25'\n\
 ---\n\n\
 <!-- SECTION:DESCRIPTION:BEGIN -->\nthe description\n<!-- SECTION:DESCRIPTION:END -->\n\n\
 <!-- AC:BEGIN -->\n- [x] #1 done item\n- [ ] #2 open item\n<!-- AC:END -->\n\n\
-<!-- SECTION:PLAN:BEGIN -->\nthe plan\n<!-- SECTION:PLAN:END -->\n";
+<!-- SECTION:PLAN:BEGIN -->\nthe plan\n<!-- SECTION:PLAN:END -->\n\n\
+<!-- DOD:BEGIN -->\n- [ ] #1 reviewed\n<!-- DOD:END -->\n\n\
+<!-- COMMENTS:BEGIN -->\nauthor: someone\ncreated: 2026-08-16 20:34\n---\nlooks right\n---\n<!-- COMMENTS:END -->\n\n\
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->\nit shipped\n<!-- SECTION:FINAL_SUMMARY:END -->\n";
         let source = MemorySource::new()
             .file(ScanDir::Tasks, "task-28 - read.md", text)
             .file(
@@ -1553,6 +1562,15 @@ updated_date: '2026-07-22 12:25'\n\
         assert_eq!(task.acceptance_criteria.len(), 2);
         assert!(task.acceptance_criteria[0].checked);
         assert_eq!(task.acceptance_criteria[1].text, "open item");
+        // The three TASK-185 added, asserted here as well as in `parse`: this layer is where a
+        // parsed field is copied onto the task, and a field the parser filled but nothing copied
+        // would pass every test in `parse` while never reaching a screen.
+        assert_eq!(task.final_summary.as_deref(), Some("it shipped"));
+        assert_eq!(task.definition_of_done.len(), 1);
+        assert_eq!(task.definition_of_done[0].text, "reviewed");
+        assert_eq!(task.comments.len(), 1);
+        assert_eq!(task.comments[0].author.as_deref(), Some("someone"));
+        assert_eq!(task.comments[0].body, "looks right");
         assert!(!task.health.is_degraded());
     }
 

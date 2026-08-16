@@ -32,6 +32,7 @@
   import {
     crossIdUnavailable,
     acProgress,
+    checklistProgress,
     dependencyLinks,
     milestoneRef,
     referenceSplit,
@@ -268,6 +269,7 @@
   let dependencies = $derived(dependencyLinks(view, snapshot.tasks));
   let references = $derived(referenceSplit(view));
   let ac = $derived(acProgress(view));
+  let dod = $derived(checklistProgress(view.task.definitionOfDone));
   /**
    * 不整合の理由行 (decision-22), from the derivation the swimlane card shares (`lib/mark.ts`). One
    * source so the card's ⚠️, this heading's ⚠️ and the 不整合区画 below cannot disagree about the same
@@ -1517,6 +1519,83 @@
   </DetailSection>
 {/snippet}
 
+<!--
+  TASK-185 の 3 区画。**どれも 編集セッション 中も読み取りのまま描く** — 画面からの書き戻しは
+  持つと決まっているが、この回の範囲ではない (doc-5 §3.2)。編集の枝を空で置くと、その区画だけ
+  保存の宛先が無い編集卓に見える。
+-->
+{#snippet dodSection()}
+  <!-- 達成数 は出るが 達成割合のバー は出ない — バーは 区画境界 そのもので、折畳みの区画は
+       区画境界 を持たないためである (doc-8 §3)。`DetailSection` がその判定を持っているので、
+       ここは AC と同じ prop を渡すだけでよい。 -->
+  <DetailSection
+    title={t().taskDetail.definitionOfDoneHeading}
+    section="dod"
+    {layout}
+    progress={dod}
+  >
+    {#if dod.total === 0}
+      <p class="neutral">{t().state.none}</p>
+    {:else}
+      <ul class="ac">
+        <!-- 位置で鍵を作る（#N ではなく）。読み取り層は番号の一意性を保証しない — CLI は
+             max+1 を振るが、手で書いたファイルは `#1` を 2 行持てる。Svelte の
+             `each_key_duplicate` は本番でも throw するので、鍵が重なるとタスク詳細ごと落ちる。 -->
+        {#each task.definitionOfDone as item, index (index)}
+          <li class:checked={item.checked}>
+            <span class="box" role="img" aria-label={item.checked ? t().taskDetail.done : t().taskDetail.notDone}>
+              <Icon name={item.checked ? "square-check" : "square"} />
+            </span>
+            <span class="number">#{item.number}</span>
+            <span class="text">{item.text}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </DetailSection>
+{/snippet}
+
+{#snippet commentsSection()}
+  <DetailSection
+    title={t().taskDetail.commentsHeading}
+    section="comments"
+    {layout}
+    count={t().taskDetail.commentCount(task.comments.length)}
+  >
+    {#if task.comments.length === 0}
+      <p class="neutral">{t().state.none}</p>
+    {:else}
+      <ul class="comments">
+        {#each task.comments as comment, index (index)}
+          <li>
+            <!-- author と created は無いことがある (doc-4 §4)。中立表示 で「記録が無い」と述べる —
+                 欄ごと落とすと、書かれなかったことと読めなかったことが同じ絵になる (doc-11 §6)。 -->
+            <p class="comment-head">
+              <span class:neutral={comment.author === null}>
+                {comment.author ?? t().taskDetail.commentAuthorUnknown}
+              </span>
+              <span class:neutral={comment.created === null}>
+                {comment.created ?? t().taskDetail.commentCreatedUnknown}
+              </span>
+            </p>
+            <Body source={comment.body} {onopenlink} />
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </DetailSection>
+{/snippet}
+
+{#snippet finalSummarySection()}
+  <DetailSection title={t().taskDetail.finalSummaryHeading} section="finalSummary" {layout}>
+    {#if task.finalSummary}
+      <Body source={task.finalSummary} {onopenlink} />
+    {:else}
+      <p class="neutral">{t().state.none}</p>
+    {/if}
+  </DetailSection>
+{/snippet}
+
 {#snippet planSection()}
   <DetailSection title={t().taskDetail.planHeading} section="plan" {layout}>
     {#if session === null}
@@ -1812,8 +1891,11 @@
     inconsistency: inconsistencyPanel,
     description: descriptionSection,
     ac: acSection,
+    dod: dodSection,
     plan: planSection,
     notes: notesSection,
+    comments: commentsSection,
+    finalSummary: finalSummarySection,
     gitHistory: gitHistorySection,
     type: typeSection,
     labels: labelsSection,
@@ -2450,6 +2532,7 @@
   }
 
   .ac,
+  .comments,
   .deps,
   .refs,
   .prs,
@@ -2464,6 +2547,26 @@
     padding: 0;
     list-style: none;
     font-size: var(--text-md);
+  }
+
+  // 1 件ずつを面ではなく間隔で分ける — doc-11 §3 のチップ 4 系統にも カード にも当たらないものなので、
+  // 枠を与えると 5 つ目の面が現れる。
+  .comments {
+    gap: 0.6rem;
+  }
+
+  // author の長さに上限は無い — frontmatter ではなく本文の行だが、決めるのは書き手である。
+  // 併置サイドバーの 252px で実測すると、切れずに続く 60 字の author が区画の外へ出た
+  // (2026-08-17、WebKit)。**行を増やして受ける** — doc-11 §13 が長さを止めるのは固定帯の中の行で、
+  // ここは固定帯ではないので、止める理由がそのままは及ばない。
+  .comment-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--muted);
+    overflow-wrap: anywhere;
   }
 
   .ac li {

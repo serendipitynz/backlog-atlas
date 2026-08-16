@@ -8,12 +8,23 @@
 //! turn a readable task into 解析不能. Walking the tree lets a bad `labels` degrade only
 //! `labels` while `id`/`title`/`status` still land (§5, 判別できたフィールドは活かし).
 
-use crate::domain::{AcceptanceCriterion, DegradeEvent, UnknownSection};
+use crate::domain::{AcceptanceCriterion, Comment, DegradeEvent, UnknownSection};
 use serde_yaml_ng::Value;
 
 /// SECTION names this layer maps to a domain field (doc-4 §3.1). Anything else is 未知の
 /// SECTION: kept as a body fragment and flagged (§4).
-const KNOWN_SECTIONS: [&str; 3] = ["DESCRIPTION", "PLAN", "NOTES"];
+///
+/// **This is the CLI's whole SECTION vocabulary, not a subset it happens to write.** v1.49.3
+/// builds every SECTION marker from one table of four entries, and scans for them with the
+/// single pattern
+/// `<!-- (SECTION:[A-Z][A-Z0-9_]*|COMMENTS|COMMENT|AC|DOD):(BEGIN|END) -->` — so the four names
+/// here plus [`Marker`]'s other families are every delimiter a managed task body can carry
+/// (measured on v1.49.3, 2026-08-17). Docs, decisions and milestones carry no marker at all.
+const KNOWN_SECTIONS: [&str; 4] = ["DESCRIPTION", "PLAN", "NOTES", "FINAL_SUMMARY"];
+
+/// The `---` line that separates a comment's header from its body, and its body from the next
+/// comment, in the form v1.49.3 writes (measured 2026-08-17).
+const COMMENT_DELIMITER: &str = "---";
 
 /// Why a file has no frontmatter to read. Both are 解析不能 (doc-4 §5), but they are different
 /// facts about the file and the reason a screen shows says which — a `docs/README.md` that never
@@ -159,8 +170,16 @@ pub struct Body {
     pub description: Option<String>,
     pub implementation_plan: Option<String>,
     pub implementation_notes: Option<String>,
+    pub final_summary: Option<String>,
     pub unknown_sections: Vec<UnknownSection>,
     pub acceptance_criteria: Vec<AcceptanceCriterion>,
+    /// `DOD:BEGIN`…`DOD:END` items. Typed as the acceptance criterion because the CLI writes
+    /// both blocks with the same code — same `- [ ] #N` shape, same numbering, same checked
+    /// state (measured on v1.49.3, 2026-08-17). A second struct of the same three fields would
+    /// be a second place for the `#N` rule to drift.
+    pub definition_of_done: Vec<AcceptanceCriterion>,
+    /// `COMMENTS:BEGIN`…`COMMENTS:END` entries, in the order the file carries them.
+    pub comments: Vec<Comment>,
     /// URLs collected from a `## References` heading's bullet list, merged by the caller with
     /// the frontmatter `references` (doc-4 §3.1).
     pub references: Vec<String>,
@@ -281,6 +300,14 @@ enum Capture {
     Ac {
         lines: Vec<String>,
     },
+    Dod {
+        lines: Vec<String>,
+    },
+    /// A `COMMENTS` block. Its lines are kept raw — the `COMMENT` pair and the `---` delimiters
+    /// inside it are structure [`parse_comments`] reads, not markers this loop acts on.
+    Comments {
+        lines: Vec<String>,
+    },
     /// A `## References` heading's bullet list, which ends at the next heading.
     References,
 }
@@ -315,8 +342,37 @@ pub fn parse_body(body: &str) -> Body {
                     finish_ac(&mut capture, &mut out);
                     continue;
                 }
+                Some(Marker::DodBegin) => {
+                    close_dangling(&mut capture, &mut out);
+                    capture = Capture::Dod { lines: Vec::new() };
+                    continue;
+                }
+                Some(Marker::DodEnd) => {
+                    finish_dod(&mut capture, &mut out);
+                    continue;
+                }
+                Some(Marker::CommentsBegin) => {
+                    close_dangling(&mut capture, &mut out);
+                    capture = Capture::Comments { lines: Vec::new() };
+                    continue;
+                }
+                Some(Marker::CommentsEnd) => {
+                    finish_comments(&mut capture, &mut out);
+                    continue;
+                }
+                // The per-comment pair is internal structure of a COMMENTS block, so inside one
+                // it falls through to the capture below and reaches `parse_comments` as a line.
+                // Outside one it has no block to belong to, which is a structure failure.
+                Some(Marker::CommentBegin | Marker::CommentEnd)
+                    if !matches!(capture, Capture::Comments { .. }) =>
+                {
+                    out.events.push(DegradeEvent::UnexpectedSchema {
+                        detail: format!("`{marker}` outside a COMMENTS block"),
+                    });
+                    continue;
+                }
                 // A comment that is not one of our markers is ordinary body text.
-                None => {}
+                Some(_) | None => {}
             }
         }
 
@@ -333,7 +389,10 @@ pub fn parse_body(body: &str) -> Body {
         }
 
         match &mut capture {
-            Capture::Section { lines, .. } | Capture::Ac { lines } => lines.push(line.to_string()),
+            Capture::Section { lines, .. }
+            | Capture::Ac { lines }
+            | Capture::Dod { lines }
+            | Capture::Comments { lines } => lines.push(line.to_string()),
             Capture::References => {
                 if let Some(item) = bullet_item(line) {
                     out.references.push(item);
@@ -348,19 +407,37 @@ pub fn parse_body(body: &str) -> Body {
     out
 }
 
+/// Every delimiter family a managed task body can carry (doc-4 §4). The four prefix-less
+/// families are as much the CLI's output as `SECTION:` is — they are alternatives in the same
+/// pattern it scans with — so a parser that only knew `SECTION:` would drop their blocks without
+/// even a 縮退事象 to show for it, which is what TASK-185 found.
 enum Marker {
     SectionBegin(String),
     SectionEnd(String),
     AcBegin,
     AcEnd,
+    DodBegin,
+    DodEnd,
+    CommentsBegin,
+    CommentsEnd,
+    /// One entry inside a `COMMENTS` block. v1.49.3 parses this form but never writes it — it
+    /// writes the `---`-delimited form instead (measured 2026-08-17, both directions) — so a
+    /// file can carry it and the reader has to take it.
+    CommentBegin,
+    CommentEnd,
 }
 
 fn parse_marker(marker: &str) -> Option<Marker> {
-    if marker == "AC:BEGIN" {
-        return Some(Marker::AcBegin);
-    }
-    if marker == "AC:END" {
-        return Some(Marker::AcEnd);
+    match marker {
+        "AC:BEGIN" => return Some(Marker::AcBegin),
+        "AC:END" => return Some(Marker::AcEnd),
+        "DOD:BEGIN" => return Some(Marker::DodBegin),
+        "DOD:END" => return Some(Marker::DodEnd),
+        "COMMENTS:BEGIN" => return Some(Marker::CommentsBegin),
+        "COMMENTS:END" => return Some(Marker::CommentsEnd),
+        "COMMENT:BEGIN" => return Some(Marker::CommentBegin),
+        "COMMENT:END" => return Some(Marker::CommentEnd),
+        _ => {}
     }
     let rest = marker.strip_prefix("SECTION:")?;
     let (name, kind) = rest.rsplit_once(':')?;
@@ -371,9 +448,29 @@ fn parse_marker(marker: &str) -> Option<Marker> {
     }
 }
 
+/// Take the open capture, but only when it is the kind this `END` closes — otherwise leave it
+/// where it is and hand back nothing.
+///
+/// **A stray `END` must not take an unrelated open block down with it.** The CLI accepts a comment
+/// whose body is exactly another block's marker and writes it into the file verbatim (measured on
+/// v1.49.3, 2026-08-17: `task edit --comment '<!-- DOD:END -->'` succeeds — its refusals cover only
+/// `<!-- COMMENTS?:` strings and standalone `---` lines), so this is reachable from CLI output and
+/// not only from a hand edit. Replacing before checking the variant loses every comment read so far
+/// and reports the loss under the *other* block's name, which is both the content doc-4 §5 says to
+/// keep and a reason line pointing at the wrong block.
+fn take_capture(capture: &mut Capture, wanted: fn(&Capture) -> bool) -> Capture {
+    if wanted(capture) {
+        std::mem::replace(capture, Capture::None)
+    } else {
+        Capture::None
+    }
+}
+
 /// Store a finished SECTION under its domain field, or as an unknown fragment.
 fn finish_section(capture: &mut Capture, end_name: &str, out: &mut Body) {
-    let Capture::Section { name, lines } = std::mem::replace(capture, Capture::None) else {
+    let Capture::Section { name, lines } =
+        take_capture(capture, |c| matches!(c, Capture::Section { .. }))
+    else {
         out.events.push(DegradeEvent::UnexpectedSchema {
             detail: format!("SECTION:{end_name}:END without a matching BEGIN"),
         });
@@ -405,6 +502,7 @@ fn store_section_body(name: String, lines: &[String], out: &mut Body) {
     let slot = match name.as_str() {
         "DESCRIPTION" => &mut out.description,
         "PLAN" => &mut out.implementation_plan,
+        "FINAL_SUMMARY" => &mut out.final_summary,
         _ => &mut out.implementation_notes,
     };
     *slot = text;
@@ -413,7 +511,7 @@ fn store_section_body(name: String, lines: &[String], out: &mut Body) {
 /// Store a finished AC block. Every non-blank line must be a `#N` item; anything else means
 /// the numbering cannot be read (doc-4 §4).
 fn finish_ac(capture: &mut Capture, out: &mut Body) {
-    let Capture::Ac { lines } = std::mem::replace(capture, Capture::None) else {
+    let Capture::Ac { lines } = take_capture(capture, |c| matches!(c, Capture::Ac { .. })) else {
         out.events.push(DegradeEvent::UnexpectedSchema {
             detail: "AC:END without a matching AC:BEGIN".to_string(),
         });
@@ -436,6 +534,55 @@ fn collect_ac_items(lines: &[String], out: &mut Body) {
     }
 }
 
+/// Store a finished DOD block. Same shape and same 存在時構造検査 as the AC block (doc-4 §4),
+/// because the CLI writes both with the same code.
+fn finish_dod(capture: &mut Capture, out: &mut Body) {
+    let Capture::Dod { lines } = take_capture(capture, |c| matches!(c, Capture::Dod { .. })) else {
+        out.events.push(DegradeEvent::UnexpectedSchema {
+            detail: "DOD:END without a matching DOD:BEGIN".to_string(),
+        });
+        return;
+    };
+    collect_dod_items(&lines, out);
+}
+
+fn collect_dod_items(lines: &[String], out: &mut Body) {
+    for line in lines {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match parse_ac_item(line) {
+            Some(item) => out.definition_of_done.push(item),
+            None => out.events.push(DegradeEvent::UnexpectedSchema {
+                detail: format!("unreadable definition-of-done line: {}", line.trim()),
+            }),
+        }
+    }
+}
+
+/// Store a finished COMMENTS block.
+fn finish_comments(capture: &mut Capture, out: &mut Body) {
+    let Capture::Comments { lines } =
+        take_capture(capture, |c| matches!(c, Capture::Comments { .. }))
+    else {
+        out.events.push(DegradeEvent::UnexpectedSchema {
+            detail: "COMMENTS:END without a matching COMMENTS:BEGIN".to_string(),
+        });
+        return;
+    };
+    collect_comments(&lines, out);
+}
+
+fn collect_comments(lines: &[String], out: &mut Body) {
+    let (comments, unread) = parse_comments(lines);
+    out.comments.extend(comments);
+    if let Some(detail) = unread {
+        out.events.push(DegradeEvent::UnexpectedSchema {
+            detail: detail.to_string(),
+        });
+    }
+}
+
 /// Report an open block at EOF or at the start of the next block, keeping what it captured.
 /// The missing `END` is a structure failure, but the lines before it were still readable, and
 /// dropping them would lose exactly the content doc-4 §5 says to keep.
@@ -453,8 +600,183 @@ fn close_dangling(capture: &mut Capture, out: &mut Body) {
             });
             collect_ac_items(&lines, out);
         }
+        Capture::Dod { lines } => {
+            out.events.push(DegradeEvent::UnexpectedSchema {
+                detail: "DOD:BEGIN is never closed".to_string(),
+            });
+            collect_dod_items(&lines, out);
+        }
+        Capture::Comments { lines } => {
+            out.events.push(DegradeEvent::UnexpectedSchema {
+                detail: "COMMENTS:BEGIN is never closed".to_string(),
+            });
+            collect_comments(&lines, out);
+        }
         Capture::None | Capture::References => {}
     }
+}
+
+/// Read a `COMMENTS` block's lines into entries, and say whether anything was left unread.
+///
+/// **Two forms reach here, and which one applies is decided by the block, not by the entry** —
+/// the CLI takes the `COMMENT` marker form for the whole block as soon as one opening marker
+/// appears anywhere in it, and the `---`-delimited form otherwise (measured on v1.49.3,
+/// 2026-08-17). Deciding per entry would read a mixed block in a way the writer never produces
+/// and the CLI never reads.
+fn parse_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static str>) {
+    if lines.iter().any(|line| {
+        matches!(
+            marker(line).and_then(parse_marker),
+            Some(Marker::CommentBegin)
+        )
+    }) {
+        parse_marked_comments(lines)
+    } else {
+        parse_delimited_comments(lines)
+    }
+}
+
+/// The form v1.49.3 writes: header lines, `---`, body, `---`, repeated.
+fn parse_delimited_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static str>) {
+    const UNCLOSED: &str = "a COMMENTS entry has no closing `---` delimiter";
+    let is_delimiter = |line: &String| line.trim() == COMMENT_DELIMITER;
+    let mut out = Vec::new();
+    let mut rest = lines;
+    loop {
+        let start = rest.iter().position(|line| !line.trim().is_empty());
+        let Some(start) = start else {
+            return (out, None);
+        };
+        rest = &rest[start..];
+        let Some(open) = rest.iter().position(is_delimiter) else {
+            return (out, Some(UNCLOSED));
+        };
+        let header = &rest[..open];
+        let body_lines = &rest[open + 1..];
+        let Some(close) = body_lines.iter().position(is_delimiter) else {
+            return (out, Some(UNCLOSED));
+        };
+        // An entry whose body is blank is not an entry. The CLI drops it rather than showing a
+        // comment with nothing in it, and a reader that kept it would report one more comment
+        // than `backlog task <id> --plain` does for the same file.
+        if let Some(body) = join_trimmed(&body_lines[..close]) {
+            let (author, created) = comment_header(header);
+            out.push(Comment {
+                author,
+                created,
+                body,
+            });
+        }
+        rest = &body_lines[close + 1..];
+    }
+}
+
+/// The form v1.49.3 reads but does not write: `COMMENT:BEGIN` … `COMMENT:END` around each
+/// entry, whose header is separated from its body by a blank line rather than by `---`.
+fn parse_marked_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static str>) {
+    const UNREAD: &str =
+        "a COMMENTS entry's COMMENT pair does not close, or content sits outside every pair";
+    let mut out = Vec::new();
+    let mut entry: Option<Vec<String>> = None;
+    let mut unread = None;
+    for line in lines {
+        match marker(line).and_then(parse_marker) {
+            Some(Marker::CommentBegin) => {
+                // A second BEGIN before the matching END. Flush what the first one held rather
+                // than letting the assignment drop it — doc-4 §5 keeps what was discernible.
+                if let Some(open) = entry.take() {
+                    unread = Some(UNREAD);
+                    out.extend(marked_comment(&open));
+                }
+                entry = Some(Vec::new());
+            }
+            Some(Marker::CommentEnd) => match entry.take() {
+                Some(open) => out.extend(marked_comment(&open)),
+                None => unread = Some(UNREAD),
+            },
+            _ => match entry.as_mut() {
+                Some(open) => open.push(line.clone()),
+                // Inside COMMENTS but outside every COMMENT pair. A block that mixes the two
+                // forms puts its `---`-delimited entries here, and dropping them without a word
+                // is the silent loss this whole task exists to remove.
+                None => {
+                    if !line.trim().is_empty() {
+                        unread = Some(UNREAD);
+                    }
+                }
+            },
+        }
+    }
+    // A trailing BEGIN that never closed: same verdict as the other two, and the lines before it
+    // are still readable.
+    if let Some(open) = entry {
+        unread = Some(UNREAD);
+        out.extend(marked_comment(&open));
+    }
+    (out, unread)
+}
+
+fn marked_comment(lines: &[String]) -> Option<Comment> {
+    // Leading blank lines belong to neither half: the CLI trims the whole entry before it looks
+    // for the blank line that ends the header, so an entry opening with one still reads its
+    // `author:` (measured on v1.49.3, 2026-08-17 — a hand-written COMMENT block that begins with
+    // a blank line comes back from `task <id> --plain` with its author). Splitting on the first
+    // blank line as it stands would put the header into the body instead.
+    let start = lines.iter().position(|line| !line.trim().is_empty())?;
+    let lines = &lines[start..];
+    let split = lines.iter().position(|line| line.trim().is_empty());
+    let (header, body) = match split {
+        // With no blank line the entry is all body: the header is optional, and taking the first
+        // line for it would swallow a one-line comment.
+        None => (&lines[..0], lines),
+        Some(at) => (&lines[..at], &lines[at + 1..]),
+    };
+    let body = join_trimmed(body)?;
+    let (author, created) = comment_header(header);
+    Some(Comment {
+        author,
+        created,
+        body,
+    })
+}
+
+/// `author:` and `created:` out of a comment's header lines. Other `key: value` lines are the
+/// CLI's to ignore and ours too — it matches `^([a-zA-Z_]+):` and skips what it does not know.
+fn comment_header(lines: &[String]) -> (Option<String>, Option<String>) {
+    let mut author = None;
+    let mut created = None;
+    for line in lines {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        // The CLI reads a header line as `^([a-zA-Z_]+):`, so a line that merely contains a colon
+        // is body-ish text it skips. Accepting it here would take `see: below` for a field name.
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphabetic() || c == '_') {
+            continue;
+        }
+        // Lower-cased because the CLI lower-cases the key before comparing it, so `Author:` and
+        // `CREATED:` are fields to it too (measured on v1.49.3, 2026-08-17: a hand-written block
+        // with those spellings comes back from `task <id> --plain` with both values read).
+        match key.to_ascii_lowercase().as_str() {
+            // The two are not normalized alike, because the CLI does not normalize them alike:
+            // it collapses whitespace runs in an author when it writes one, and only trims a
+            // created. Collapsing a created here would show a value its own file cannot produce.
+            "author" => author = collapse_whitespace(value),
+            "created" => created = trimmed(value),
+            _ => {}
+        }
+    }
+    (author, created)
+}
+
+fn collapse_whitespace(value: &str) -> Option<String> {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!collapsed.is_empty()).then_some(collapsed)
+}
+
+fn trimmed(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 /// `- [x] #3 text` → number 3, text, checked. `None` when the shape does not match.
@@ -755,6 +1077,364 @@ notes body
             .as_deref()
             .unwrap()
             .contains("## References"));
+        assert!(parsed.events.is_empty());
+    }
+
+    /// A task body exactly as v1.49.3 wrote it, with every section it can write present at once
+    /// (measured 2026-08-17: `task create -d --plan --notes --ac --dod` then
+    /// `task edit --final-summary`, `--comment`, `--comment --comment-author`).
+    const EVERY_SECTION: &str = "\n\
+## Description\n\
+\n\
+<!-- SECTION:DESCRIPTION:BEGIN -->\n\
+desc body\n\
+<!-- SECTION:DESCRIPTION:END -->\n\
+\n\
+## Acceptance Criteria\n\
+<!-- AC:BEGIN -->\n\
+- [ ] #1 first ac\n\
+<!-- AC:END -->\n\
+\n\
+## Definition of Done\n\
+<!-- DOD:BEGIN -->\n\
+- [x] #1 first dod\n\
+- [ ] #2 second dod\n\
+<!-- DOD:END -->\n\
+\n\
+## Implementation Plan\n\
+\n\
+<!-- SECTION:PLAN:BEGIN -->\n\
+plan body\n\
+<!-- SECTION:PLAN:END -->\n\
+\n\
+## Implementation Notes\n\
+\n\
+<!-- SECTION:NOTES:BEGIN -->\n\
+notes body\n\
+<!-- SECTION:NOTES:END -->\n\
+\n\
+## Comments\n\
+\n\
+<!-- COMMENTS:BEGIN -->\n\
+created: 2026-08-16 20:34\n\
+---\n\
+first comment\n\
+---\n\
+\n\
+author: someone\n\
+created: 2026-08-16 20:34\n\
+---\n\
+second comment\n\
+---\n\
+<!-- COMMENTS:END -->\n\
+\n\
+## Final Summary\n\
+\n\
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->\n\
+summary body\n\
+<!-- SECTION:FINAL_SUMMARY:END -->\n";
+
+    #[test]
+    fn a_body_carrying_every_cli_written_section_degrades_nothing() {
+        // The point of the whole task: normal CLI output must not raise 想定外スキーマ. Before
+        // TASK-185, FINAL_SUMMARY raised one and DOD/COMMENTS were dropped without even that.
+        let parsed = parse_body(EVERY_SECTION);
+        assert_eq!(parsed.events.len(), 0, "{:?}", parsed.events);
+        assert!(parsed.unknown_sections.is_empty());
+
+        assert_eq!(parsed.description.as_deref(), Some("desc body"));
+        assert_eq!(parsed.implementation_plan.as_deref(), Some("plan body"));
+        assert_eq!(parsed.implementation_notes.as_deref(), Some("notes body"));
+        assert_eq!(parsed.final_summary.as_deref(), Some("summary body"));
+
+        assert_eq!(parsed.acceptance_criteria.len(), 1);
+        assert_eq!(parsed.definition_of_done.len(), 2);
+        assert_eq!(parsed.definition_of_done[0].number, 1);
+        assert!(parsed.definition_of_done[0].checked);
+        assert_eq!(parsed.definition_of_done[1].text, "second dod");
+        assert!(!parsed.definition_of_done[1].checked);
+
+        assert_eq!(parsed.comments.len(), 2);
+        // `--comment` without `--comment-author` writes no author line at all.
+        assert_eq!(parsed.comments[0].author, None);
+        assert_eq!(
+            parsed.comments[0].created.as_deref(),
+            Some("2026-08-16 20:34")
+        );
+        assert_eq!(parsed.comments[0].body, "first comment");
+        assert_eq!(parsed.comments[1].author.as_deref(), Some("someone"));
+        assert_eq!(parsed.comments[1].body, "second comment");
+    }
+
+    #[test]
+    fn final_summary_is_a_known_section_rather_than_an_unknown_fragment() {
+        let parsed = parse_body(
+            "<!-- SECTION:FINAL_SUMMARY:BEGIN -->\nwrapped up\n<!-- SECTION:FINAL_SUMMARY:END -->\n",
+        );
+        assert_eq!(parsed.final_summary.as_deref(), Some("wrapped up"));
+        assert!(parsed.unknown_sections.is_empty());
+        assert!(parsed.events.is_empty());
+    }
+
+    #[test]
+    fn the_marker_form_of_comments_is_read_too() {
+        // v1.49.3 parses this form and writes the other one, so a file can carry it (measured
+        // 2026-08-17 by hand-writing it and reading the task back through the CLI).
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+<!-- COMMENT:BEGIN -->\n\
+author: alice\n\
+created: 2026-08-16 21:00\n\
+\n\
+marker-form comment\n\
+<!-- COMMENT:END -->\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments.len(), 1);
+        assert_eq!(parsed.comments[0].author.as_deref(), Some("alice"));
+        assert_eq!(
+            parsed.comments[0].created.as_deref(),
+            Some("2026-08-16 21:00")
+        );
+        assert_eq!(parsed.comments[0].body, "marker-form comment");
+        assert!(parsed.events.is_empty());
+    }
+
+    #[test]
+    fn a_marked_comment_without_a_header_is_all_body() {
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+<!-- COMMENT:BEGIN -->\n\
+just the body\n\
+<!-- COMMENT:END -->\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments.len(), 1);
+        assert_eq!(parsed.comments[0].author, None);
+        assert_eq!(parsed.comments[0].body, "just the body");
+    }
+
+    #[test]
+    fn a_colon_line_that_is_not_a_field_stays_in_the_body() {
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+author: bob\n\
+---\n\
+see: below\n\
+and more\n\
+---\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments.len(), 1);
+        assert_eq!(parsed.comments[0].author.as_deref(), Some("bob"));
+        assert_eq!(parsed.comments[0].body, "see: below\nand more");
+    }
+
+    #[test]
+    fn unclosed_dod_and_comments_pairs_degrade_and_keep_what_was_read() {
+        // 存在時構造検査 (doc-4 §4), the same verdict the SECTION and AC pairs already get.
+        let dod = parse_body("<!-- DOD:BEGIN -->\n- [ ] #1 kept\n");
+        assert_eq!(dod.definition_of_done.len(), 1);
+        assert_eq!(dod.events.len(), 1);
+
+        let comments = parse_body("<!-- COMMENTS:BEGIN -->\ncreated: x\n---\nkept\n---\n");
+        assert_eq!(comments.comments.len(), 1);
+        assert_eq!(comments.events.len(), 1);
+
+        let stray = parse_body("<!-- DOD:END -->\n<!-- COMMENTS:END -->\n<!-- COMMENT:BEGIN -->\n");
+        assert_eq!(stray.events.len(), 3);
+    }
+
+    #[test]
+    fn an_unreadable_dod_line_degrades_without_taking_the_readable_ones() {
+        let parsed =
+            parse_body("<!-- DOD:BEGIN -->\n- [ ] #1 fine\n- [ ] no number\n<!-- DOD:END -->\n");
+        assert_eq!(parsed.definition_of_done.len(), 1);
+        assert_eq!(parsed.events.len(), 1);
+        // The DOD failure names its own block, so a screen reporting it cannot say AC instead.
+        let DegradeEvent::UnexpectedSchema { detail } = &parsed.events[0] else {
+            panic!("expected 想定外スキーマ");
+        };
+        assert!(detail.contains("definition-of-done"), "{detail}");
+    }
+
+    #[test]
+    fn trailing_text_with_no_delimiter_at_all_degrades() {
+        // The other early return: content after the last entry that never opens a `---` pair. It is
+        // a separate branch from the one below (that one *finds* the opener and loses the closer),
+        // and without its own case a reader that dropped it silently would still pass.
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+created: x\n\
+---\n\
+first\n\
+---\n\
+loose text nobody delimited\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments.len(), 1);
+        assert_eq!(parsed.events.len(), 1);
+    }
+
+    #[test]
+    fn a_comments_entry_with_no_closing_delimiter_degrades() {
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+created: x\n\
+---\n\
+first\n\
+---\n\
+created: y\n\
+---\n\
+never closed\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments.len(), 1);
+        assert_eq!(parsed.events.len(), 1);
+    }
+
+    #[test]
+    fn the_marker_form_reports_what_it_could_not_read() {
+        // The silent-drop mode this task exists to remove, reached through the other form: three
+        // shapes lose content, and before the fix all three left `events` empty.
+        let unclosed_entry = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+<!-- COMMENT:BEGIN -->\n\
+author: a\n\
+\n\
+kept\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(unclosed_entry.comments.len(), 1);
+        assert_eq!(unclosed_entry.events.len(), 1);
+
+        // A block mixing the two forms: the CLI takes the whole block as the marker form, so the
+        // `---` entries fall outside every pair. They are still content that went unread.
+        let mixed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+<!-- COMMENT:BEGIN -->\n\
+author: a\n\
+\n\
+marked\n\
+<!-- COMMENT:END -->\n\
+created: x\n\
+---\n\
+delimited\n\
+---\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(mixed.comments.len(), 1);
+        assert_eq!(mixed.comments[0].body, "marked");
+        assert_eq!(mixed.events.len(), 1);
+
+        let repeated_begin = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+<!-- COMMENT:BEGIN -->\n\
+first\n\
+<!-- COMMENT:BEGIN -->\n\
+second\n\
+<!-- COMMENT:END -->\n\
+<!-- COMMENTS:END -->\n",
+        );
+        // Both are kept: the missing END is the failure, not a reason to lose the first entry.
+        assert_eq!(repeated_begin.comments.len(), 2);
+        assert_eq!(repeated_begin.events.len(), 1);
+    }
+
+    #[test]
+    fn a_marked_comment_opening_with_a_blank_line_still_has_a_header() {
+        // The CLI trims the entry before splitting header from body, so the blank line does not
+        // make the entry header-less (measured on v1.49.3, 2026-08-17).
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+<!-- COMMENT:BEGIN -->\n\
+\n\
+author: alice\n\
+\n\
+the real body\n\
+<!-- COMMENT:END -->\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments.len(), 1);
+        assert_eq!(parsed.comments[0].author.as_deref(), Some("alice"));
+        assert_eq!(parsed.comments[0].body, "the real body");
+    }
+
+    #[test]
+    fn a_stray_end_marker_does_not_take_the_open_block_with_it() {
+        // `task edit --comment '<!-- DOD:END -->'` succeeds on v1.49.3 (measured 2026-08-17), so
+        // this arrives from the CLI's own output, not only from a hand edit. What is asserted is
+        // that the open COMMENTS block survives it — before this, the stray END replaced the
+        // capture and every comment read so far went with it, reported under DOD's name.
+        // The marker line itself is not body text here; doc-4 §4 records that divergence.
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+created: x\n\
+---\n\
+first\n\
+---\n\
+<!-- DOD:END -->\n\
+created: y\n\
+---\n\
+second\n\
+---\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments.len(), 2);
+        assert_eq!(parsed.comments[0].body, "first");
+        assert_eq!(parsed.comments[1].body, "second");
+        assert_eq!(parsed.events.len(), 1);
+        let DegradeEvent::UnexpectedSchema { detail } = &parsed.events[0] else {
+            panic!("expected 想定外スキーマ");
+        };
+        assert!(detail.contains("DOD:END without a matching"), "{detail}");
+    }
+
+    #[test]
+    fn header_field_names_are_read_whatever_their_case() {
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+Author: alice\n\
+CREATED: 2026-08-16 21:00\n\
+---\n\
+upper-case header keys\n\
+---\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments[0].author.as_deref(), Some("alice"));
+        assert_eq!(
+            parsed.comments[0].created.as_deref(),
+            Some("2026-08-16 21:00")
+        );
+        assert!(parsed.events.is_empty());
+    }
+
+    #[test]
+    fn only_the_author_has_its_whitespace_collapsed() {
+        // The CLI collapses runs in an author when it writes one and only trims a created, so the
+        // two are not normalized alike here either. Collapsing a created would show a value the
+        // file it came from cannot produce.
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+author:   two   words\n\
+created:   2026-08-16   21:00\n\
+---\n\
+body\n\
+---\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.comments[0].author.as_deref(), Some("two words"));
+        assert_eq!(
+            parsed.comments[0].created.as_deref(),
+            Some("2026-08-16   21:00")
+        );
+    }
+
+    #[test]
+    fn an_empty_comments_block_is_normal() {
+        // 不在は正常 (doc-4 §4): a block the CLI left empty must not degrade.
+        let parsed = parse_body("<!-- COMMENTS:BEGIN -->\n<!-- COMMENTS:END -->\n");
+        assert!(parsed.comments.is_empty());
         assert!(parsed.events.is_empty());
     }
 }

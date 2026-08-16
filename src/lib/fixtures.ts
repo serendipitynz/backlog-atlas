@@ -6,6 +6,7 @@
 import type {
   AcceptanceCriterion,
   ColumnCreateStatuses,
+  Comment,
   Commit,
   CommitSearch,
   Config,
@@ -62,6 +63,9 @@ export interface TaskViewOptions {
   acceptanceCriteria?: AcceptanceCriterion[];
   implementationPlan?: string | null;
   implementationNotes?: string | null;
+  finalSummary?: string | null;
+  definitionOfDone?: AcceptanceCriterion[];
+  comments?: Comment[];
   unknownSections?: UnknownSection[];
   createdDate?: string | null;
 }
@@ -91,6 +95,9 @@ export function taskView(options: TaskViewOptions = {}): TaskView {
     acceptanceCriteria: options.acceptanceCriteria ?? [],
     implementationPlan: options.implementationPlan ?? null,
     implementationNotes: options.implementationNotes ?? null,
+    finalSummary: options.finalSummary ?? null,
+    definitionOfDone: options.definitionOfDone ?? [],
+    comments: options.comments ?? [],
     unknownSections: options.unknownSections ?? [],
     health: options.health ?? { state: "ok" },
   };

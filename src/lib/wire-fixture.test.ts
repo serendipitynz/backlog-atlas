@@ -34,6 +34,7 @@ import type {
   AcceptanceCriterion,
   AppSettings,
   CliReadiness,
+  Comment,
   Commit,
   CommandError,
   CommitSearch,
@@ -429,6 +430,8 @@ const REFUSAL_REASONS = unionValues<LedgerRefusal["reason"]>()(
 
 const CRITERION_EXEMPLAR: AcceptanceCriterion = { number: 1, text: "x", checked: true };
 
+const COMMENT_EXEMPLAR: Comment = { author: "someone", created: "2026-08-01 09:00", body: "x" };
+
 const TASK_EXEMPLAR: Task = {
   sourcePath: "/repos/atlas/backlog/tasks/task-1 - a.md",
   project: "atlas",
@@ -451,6 +454,9 @@ const TASK_EXEMPLAR: Task = {
   acceptanceCriteria: [CRITERION_EXEMPLAR],
   implementationPlan: "Do it.",
   implementationNotes: "Done it.",
+  finalSummary: "It shipped.",
+  definitionOfDone: [CRITERION_EXEMPLAR],
+  comments: [COMMENT_EXEMPLAR],
   unknownSections: [{ name: "REVIEW", body: "Kept." }],
   health: { state: "degraded", events: [{ event: "danglingReference", kind: "documentation", target: "doc-99" }] },
 };
@@ -694,6 +700,9 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
         "acceptanceCriteria",
         "implementationPlan",
         "implementationNotes",
+        "finalSummary",
+        "definitionOfDone",
+        "comments",
         "unknownSections",
         "health",
       ),
@@ -705,6 +714,12 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
     );
     expect(keysOf(view.task.unknownSections[0])).toEqual(
       keysOfType<UnknownSection>()("name", "body"),
+    );
+    expect(keysOf(view.task.definitionOfDone[0])).toEqual(
+      keysOfType<AcceptanceCriterion>()("number", "text", "checked"),
+    );
+    expect(keysOf(view.task.comments[0])).toEqual(
+      keysOfType<Comment>()("author", "created", "body"),
     );
     const mapping = view.interpretation.status;
     if (mapping === null) {

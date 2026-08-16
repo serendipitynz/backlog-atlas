@@ -408,6 +408,12 @@ export const EN: Catalog = {
     // different casing would read as a different section from the one the file carries.
     planHeading: "Implementation Plan",
     notesHeading: "Implementation Notes",
+    definitionOfDoneHeading: "Definition of Done",
+    commentsHeading: "Comments",
+    finalSummaryHeading: "Final Summary",
+    commentCount: (count: number) => (count === 1 ? "1 comment" : `${count} comments`),
+    commentAuthorUnknown: "No author recorded",
+    commentCreatedUnknown: "No date recorded",
     notesReplace: "Replace (--notes)",
     notesAppend: "Append (--append-notes)",
     notesAppendLabel: "Implementation Notes (appended)",
