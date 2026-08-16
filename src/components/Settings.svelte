@@ -160,6 +160,9 @@
     onsaved,
   }: Props = $props();
 
+  /** The 文言表 in force (decision-35), read through the accessor so a language change redraws. */
+  const t = messages();
+
   /** The draft the form edits. Re-seeded whenever the boundary hands back a new value. */
   let draft = $state<AppSettings | null>(null);
   /** The result of the last 保存 attempt: its failure text, or `null` once it succeeded. */
@@ -205,7 +208,7 @@
   let notice = $derived(loaded === null ? null : statusNotice(loaded.status));
   let availability = $derived(
     loaded === null
-      ? { enabled: false, reason: "設定を読み込んでいます" }
+      ? { enabled: false, reason: t().settings.loadingReason }
       : saveAvailability(loaded.status),
   );
   /**
@@ -242,9 +245,6 @@
       ? RECORDED_THEME_IDS
       : [stored, ...RECORDED_THEME_IDS];
   });
-
-  /** The 文言表 in force (decision-35), read through the accessor so a language change redraws. */
-  const t = messages();
 
   /**
    * The 表示言語 to offer, built the same way `themeChoices` is and for the same reason: a stored
@@ -416,7 +416,7 @@
 <div class="settings">
   <!-- 閉じる is not here any more (TASK-74): both ways out are the 下部操作行 at the foot of this box. -->
   <header>
-    <h2>設定</h2>
+    <h2>{t().settings.heading}</h2>
   </header>
 
   <!-- The one box that scrolls. Bounded by `.settings`' own height so the 下部操作行 below stays put
@@ -431,16 +431,16 @@
     {/if}
 
     {#if draft === null}
-      <p class="hint">設定を読み込んでいます…</p>
+      <p class="hint">{t().settings.loadingHint}</p>
     {:else}
       <section>
-        <h3>表示テーマ</h3>
+        <h3>{t().settings.themeHeading}</h3>
         <label>
           <select bind:value={draft.theme}>
             <option value={null}>{THEME_UNSET_LABEL}</option>
             {#each themeChoices as name (name)}
               <option value={name}>
-                {themeLabel(name) ?? `${name}（このビルドには収録されていません）`}
+                {themeLabel(name) ?? t().settings.unrecorded(name)}
               </option>
             {/each}
           </select>
@@ -460,7 +460,7 @@
               <option value={name}>
                 {isLanguage(name)
                   ? t().settings.languageName[name]
-                  : t().settings.languageUnrecorded(name)}
+                  : t().settings.unrecorded(name)}
               </option>
             {/each}
           </select>
@@ -468,7 +468,7 @@
       </section>
 
       <section>
-        <h3>カード情報量</h3>
+        <h3>{t().settings.cardDensityHeading}</h3>
         {#each Object.entries(CARD_DENSITY_LABEL) as [value, label] (value)}
           <label class="choice">
             <input
@@ -484,7 +484,7 @@
       </section>
 
       <section>
-        <h3>既定の保存区分（フィルタの初期値）</h3>
+        <h3>{t().settings.defaultStorageHeading}</h3>
         {#each STORAGE_SELECTIONS as value (value)}
           <label class="choice">
             <input
@@ -501,7 +501,7 @@
       </section>
 
       <section>
-        <h3>既定の詳細配置</h3>
+        <h3>{t().settings.defaultPlacementHeading}</h3>
         {#each Object.entries(DETAIL_PLACEMENT_LABEL) as [value, label] (value)}
           <label class="choice">
             <input
@@ -520,7 +520,7 @@
            second place it can be set rather than the only one — which is why it is a `<select>` of the
            same ten entries, in the same order, taking its 語 from the same `CARD_ORDERS`. -->
       <section>
-        <h3>既定の並び順</h3>
+        <h3>{t().settings.defaultOrderHeading}</h3>
         <label>
           <select bind:value={draft.default_card_order}>
             {#each CARD_ORDER_CHOICES as [value, rule] (value)}
@@ -531,10 +531,10 @@
       </section>
 
       <section>
-        <h3>ファイル監視で外部変更を取り込む（継続検出）</h3>
+        <h3>{t().settings.watchHeading}</h3>
         <label class="choice">
           <input type="checkbox" bind:checked={draft.watch_external_changes} />
-          継続検出を使う
+          {t().settings.watchToggle}
         </label>
         <p class="hint">{WATCH_OFF_NOTE}</p>
       </section>
@@ -548,8 +548,8 @@
            special case of this 区画 — it is the only one taking arguments, which is why it keeps its
            own. -->
       <section>
-        <h3>外部コマンド</h3>
-        <p class="hint">Atlas が利用する外部コマンドのパスを指定します。</p>
+        <h3>{t().settings.externalCommandsHeading}</h3>
+        <p class="hint">{t().settings.externalCommandsHint}</p>
         {#each EXTERNAL_COMMANDS as command (command.field)}
           {@const report = reportFor(command.name)}
           {@const resolved = programResolved(report?.outcome ?? null)}
@@ -561,7 +561,11 @@
               class="mark"
               class:unresolved={resolved === false}
               role="img"
-              aria-label={resolved === null ? "確認中" : resolved ? "解決済み" : "解決できません"}
+              aria-label={resolved === null
+                ? t().settings.probePending
+                : resolved
+                  ? t().settings.probeResolved
+                  : t().settings.probeUnresolved}
             >
               {#if resolved === null}
                 <span class="pending" aria-hidden="true">…</span>
@@ -578,8 +582,8 @@
             <button
               type="button"
               class="help"
-              aria-label={`${command.label} の説明`}
-              title={`${command.label} の説明`}
+              aria-label={t().settings.commandHelpLabel(command.label)}
+              title={t().settings.commandHelpLabel(command.label)}
               aria-expanded={helpOpen === command.field}
               onclick={() => (helpOpen = helpOpen === command.field ? null : command.field)}
             >
@@ -601,18 +605,18 @@
       </section>
 
       <section>
-        <h3>外部エディタ指定</h3>
-        <p class="hint">
-          指定があればこれを使い、無ければ $VISUAL・$EDITOR を使います。
-          引数は 1 行に 1 つ書きます（シェルへ渡さないため、空白では区切りません）。
-          空欄にすると指定を解除します。
-        </p>
+        <h3>{t().settings.editorHeading}</h3>
+        <p class="hint">{t().settings.editorHint}</p>
         <label>
-          <span>プログラム</span>
-          <input type="text" bind:value={editorProgram} placeholder="/Applications/… または code" />
+          <span>{t().settings.editorProgramLabel}</span>
+          <input
+            type="text"
+            bind:value={editorProgram}
+            placeholder={t().settings.editorProgramPlaceholder}
+          />
         </label>
         <label>
-          <span>引数（1 行 1 つ）</span>
+          <span>{t().settings.editorArgsLabel}</span>
           <textarea rows="3" bind:value={editorArgs} placeholder="-w"></textarea>
         </label>
       </section>
@@ -625,14 +629,14 @@
            one 区画 because the control opens the *folder*, and the folder is the same one — a second
            区画 with its own heading would put the 台帳 beside a control that never mentions it. -->
       <section class="location">
-        <h3>ファイルの場所</h3>
+        <h3>{t().settings.locationHeading}</h3>
         <dl>
           {#if settingsPath !== null}
-            <dt>設定ファイル</dt>
+            <dt>{t().settings.settingsFileTerm}</dt>
             <dd class="path">{settingsPath}</dd>
           {/if}
           {#if ledgerPath !== null}
-            <dt>登録ファイル</dt>
+            <dt>{t().settings.ledgerFileTerm}</dt>
             <dd class="path">{ledgerPath}</dd>
           {/if}
         </dl>
@@ -668,13 +672,13 @@
     {#if failure !== null}
       <!-- Beside the press that produced it. The failure used to be printed at the top of the panel,
            which a scrolled form would have carried out of sight at the moment 保存する was pressed. -->
-      <p class="warn">保存できませんでした: {failure}</p>
+      <p class="warn">{t().action.saveFailed(failure)}</p>
     {/if}
     <!-- 無効化の理由 (doc-11 §5). Kept in the DOM whether or not it is printed, because a withheld
          control points at it with `aria-describedby` — a reason only rendered when it is visible
          would leave the 変更はありません case with a described-by target that is not there. -->
     <span class="hint" id={FOOTER_REASON_ID} class:unseen={!footerReasonPrinted}>
-      {footerReason === null ? "" : `いま押せません: ${footerReason}`}
+      {footerReason === null ? "" : t().modal.cannotPressNow(footerReason)}
     </span>
     <div class="actions">
       <!-- Not `.mini`: the two are peers in one row, and a smaller one drew 2px shorter than 保存する
@@ -684,7 +688,7 @@
         type="button"
         aria-disabled={closeBlocked !== null}
         aria-describedby={closeBlocked === null ? undefined : FOOTER_REASON_ID}
-        title={closeBlocked ?? "書き込まずに閉じます"}
+        title={closeBlocked ?? t().settings.discardHint}
         onclick={() => closeBlocked === null && ondiscard()}
       >
         {CLOSE_WITHOUT_SAVING_LABEL}
@@ -695,10 +699,10 @@
         type="button"
         aria-disabled={saveBlocked !== null}
         aria-describedby={saveBlocked === null ? undefined : FOOTER_REASON_ID}
-        title={saveBlocked ?? "設定を書き込んで閉じます"}
+        title={saveBlocked ?? t().settings.saveHint}
         onclick={saveAndClose}
       >
-        {saving ? "保存中…" : SAVE_LABEL}
+        {saving ? t().action.saving : SAVE_LABEL}
       </button>
     </div>
   </footer>
