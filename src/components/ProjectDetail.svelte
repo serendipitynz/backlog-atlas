@@ -50,11 +50,11 @@
     EMPTY_MILESTONE_REMOVE,
     EMPTY_MILESTONE_RENAME,
     EMPTY_TASK_CREATE,
-    ISSUE_BUSY_REASON,
-    MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES,
-    MILESTONE_REMOVE_MOVES_THE_FILE,
-    TASK_CREATE_LATER_FIELDS,
-    TASK_CREATE_NOTE,
+    issueBusyReason,
+    milestoneKeepLeavesDanglingReferences,
+    milestoneRemoveMovesTheFile,
+    taskCreateLaterFields,
+    taskCreateNote,
     buildDocCreate,
     buildDocUpdate,
     buildMilestoneAdd,
@@ -87,16 +87,17 @@
     type TaskCreateInput,
   } from "../lib/manage";
   import {
-    ALIAS_EFFECT_NOTES,
+    aliasEffectNote,
+    sectionLabel,
     DETAIL_SECTIONS,
     displayPath,
-    LEDGER_WRITE_IN_FLIGHT_REASON,
+    ledgerWriteInFlightReason,
     LIST_COLUMN_WIDTH_REM,
-    OVERVIEW_READ_ONLY_NOTE,
+    overviewReadOnlyNote,
     SECTION_NAV_WIDTH_REM,
-    SLUG_IMMUTABLE_NOTE,
+    slugImmutableNote,
     sectionCount,
-    UNREGISTER_SCOPE_NOTE,
+    unregisterScopeNote,
     gitRemoteDisagreement,
     gitRemoteLine,
     movesRoot,
@@ -208,7 +209,7 @@
   // The 台帳読取専用帯 and CLI 縮退帯 (doc-10 §3) are ③ and ② of the screen-common 上部帯 stack
   // (doc-11 §4), so the shell raises them for this screen too. Drawn from here they would sit *below*
   // the shell's 確認帯 ① and 通知帯 ⑤, which is the 出現順 doc-11 §4 forbids. What stays here is the
-  // per-操作 reason (`overviewBlocked`・`withheld`・`OVERVIEW_READ_ONLY_NOTE`), which is where the
+  // per-操作 reason (`overviewBlocked`・`withheld`・`overviewReadOnlyNote()`), which is where the
   // full text lives once the band is 縮約 to one line.
 
   // --- 発行の可否 (doc-5 §5, doc-9 §5) ----------------------------------------------------------
@@ -230,7 +231,7 @@
   let issuing = $derived(busy || ledgerSaving);
   /** Why issuance is held, for the controls that build no plan of their own (文書一覧の 編集). */
   let issuingReason = $derived(
-    ledgerSaving ? LEDGER_WRITE_IN_FLIGHT_REASON : busy ? ISSUE_BUSY_REASON : null,
+    ledgerSaving ? ledgerWriteInFlightReason() : busy ? issueBusyReason() : null,
   );
 
   /**
@@ -242,7 +243,7 @@
     return issueAvailability(plan, {
       readiness,
       busy,
-      hold: ledgerSaving ? LEDGER_WRITE_IN_FLIGHT_REASON : null,
+      hold: ledgerSaving ? ledgerWriteInFlightReason() : null,
     });
   }
   /**
@@ -1548,19 +1549,19 @@
     <!-- 区画切替 (doc-10 §1): a display change within one screen, not a screen transition. Every
          区画's input lives in this one component, so moving between them loses nothing. -->
     <nav class="sections" aria-label={t().projectDetail.sectionsLabel}>
-      {#each DETAIL_SECTIONS as item (item.id)}
-        {@const count = sectionCount(item.id, project)}
+      {#each DETAIL_SECTIONS as item (item)}
+        {@const count = sectionCount(item, project)}
         <button
           type="button"
-          class:current={section === item.id}
-          aria-current={section === item.id ? "true" : undefined}
-          onclick={() => (section = item.id)}
+          class:current={section === item}
+          aria-current={section === item ? "true" : undefined}
+          onclick={() => (section = item)}
         >
           <!-- 件数は括弧で label の隣に出す (doc-10 §1, TASK-118)。`null` のときは括弧ごと出さない —
                概要 と 新規タスク には数える対象が無く、読み取りが済むまでは件数そのものが無い。
                `(0)` と出すと、その 2 つが「空の一覧」と同じ絵になる。件数は控えの名前の一部なので
                `aria-hidden` にしない: 一覧に何件あるかは、その区画を開くかどうかの判断材料である。 -->
-          {item.label}{count === null ? "" : ` (${count})`}
+          {sectionLabel(item)}{count === null ? "" : ` (${count})`}
         </button>
       {/each}
     </nav>
@@ -1586,7 +1587,7 @@
                  count as 未保存入力, and they would later be asked whether to discard changes that
                  were never saveable (review [P2]). `disabled` is allowed because this sentence is on
                  screen near the controls at all times (doc-11 §5). -->
-            <p class="blocked-note" id={OVERVIEW_BLOCKED_ID}>{OVERVIEW_READ_ONLY_NOTE}</p>
+            <p class="blocked-note" id={OVERVIEW_BLOCKED_ID}>{overviewReadOnlyNote()}</p>
           {/if}
 
           {#if overviewNotice}
@@ -1598,7 +1599,7 @@
             <p class="value-line"><code>{entry.slug}</code></p>
             <!-- No unpressable field for it (doc-10 §4.1): what is shown is the value, and what
                  changing it would take instead. -->
-            <p class="hint">{SLUG_IMMUTABLE_NOTE}</p>
+            <p class="hint">{slugImmutableNote()}</p>
           </div>
 
           <label class="field">
@@ -1681,7 +1682,7 @@
             {#each edit.aliases as row, index (index)}
               {@const effect =
                 declaredStatuses === null ? null : aliasKeyEffect(row.key, declaredStatuses)}
-              {@const note = effect === null ? null : ALIAS_EFFECT_NOTES[effect]}
+              {@const note = effect === null ? null : aliasEffectNote(effect)}
               {@const invalidValue = !CANONICAL_STATUS_NAMES.includes(row.value)}
               <div class="alias-row">
                 <input
@@ -1829,7 +1830,7 @@
           <!-- 登録解除 (doc-10 §4.3): a 危険区画, kept apart from the other operations. -->
           <div class="danger">
             <h3>{t().projectDetail.unregisterHeading}</h3>
-            <p>{UNREGISTER_SCOPE_NOTE}</p>
+            <p>{unregisterScopeNote()}</p>
             <label class="field">
               <span class="label">{t().projectDetail.unregisterConfirmLabel}</span>
               <input
@@ -2453,7 +2454,7 @@
                           </p>
                         {:else if open === "remove"}
                           <h3>{t().projectDetail.remove}</h3>
-                          <p class="hint">{MILESTONE_REMOVE_MOVES_THE_FILE}</p>
+                          <p class="hint">{milestoneRemoveMovesTheFile()}</p>
                           <fieldset class="handling">
                             <legend>{t().projectDetail.removeTasksLegend}</legend>
                             {#each [{ mode: "clear", label: t().projectDetail.removeTasksClear }, { mode: "keep", label: t().projectDetail.removeTasksKeep }, { mode: "reassign", label: t().projectDetail.removeTasksReassign }] as choice (choice.mode)}
@@ -2473,7 +2474,7 @@
                             {/each}
                           </fieldset>
                           {#if removeInput.handling === "keep"}
-                            <p class="hint">{MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES}</p>
+                            <p class="hint">{milestoneKeepLeavesDanglingReferences()}</p>
                           {/if}
                           {#if removeInput.handling === "reassign"}
                             <label class="field">
@@ -3002,9 +3003,9 @@
            (doc-11 §7 の条件). -->
       <div class="modal-form note">
         <h2>{taskNoteLabel()}</h2>
-        <p>{TASK_CREATE_NOTE}</p>
+        <p>{taskCreateNote()}</p>
         <ul>
-          {#each TASK_CREATE_LATER_FIELDS as field (field)}
+          {#each taskCreateLaterFields() as field (field)}
             <li>{field}</li>
           {/each}
         </ul>

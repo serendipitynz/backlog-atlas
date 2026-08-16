@@ -49,6 +49,7 @@ import type {
   TaskView,
 } from "./wire";
 import { lookupFailureText } from "./failure";
+import { msg } from "./messages";
 
 /**
  * Why 横断タスクID のコピー (doc-8 §2.2) cannot be offered for this task: the read layer could not get a
@@ -58,8 +59,9 @@ import { lookupFailureText } from "./failure";
  * (doc-11 §5 wants the reason readable without hovering). Written out twice they would drift, and the
  * same refusal would be worded two ways in one line.
  */
-export const CROSS_ID_UNAVAILABLE =
-  "TASK-ID を読めないため横断タスクID を作れません（解析不能）。";
+export function crossIdUnavailable(): string {
+  return msg().taskDetail.crossIdUnavailable;
+}
 
 /**
  * The panel's own state for one task's Git・PR 履歴 read (doc-6). `noTaskId` is not a failure of
@@ -214,7 +216,7 @@ export function relationAvailability(
   if (history.state === "noTaskId") {
     return {
       state: "notRead",
-      detail: "TASK-ID が読めないため remote ホストを照会していません",
+      detail: msg().gitHistory.noTaskIdForRemote,
     };
   }
   const remote = history.history.remote;
@@ -240,19 +242,20 @@ export interface HistoryLine {
 
 /** コミット一覧を件数で言い切る 1 行 (doc-8 §5 併置サイドバーの 件数のみ). */
 export function commitCountLine(view: CommitListView): HistoryLine {
+  const text = msg().gitHistory;
   switch (view.state) {
     case "commits":
-      return { text: `コミット ${view.commits.length} 件`, kind: "neutral" };
+      return { text: text.commitCount(view.commits.length), kind: "neutral" };
     case "noCommits":
-      return { text: "対応コミット無し", kind: "neutral" };
+      return { text: text.noCommitsShort, kind: "neutral" };
     case "noRepository":
-      return { text: `Git 対象不在（${view.projectRoot} は Git リポジトリではありません）`, kind: "setting" };
+      return { text: text.noRepositoryShort(view.projectRoot), kind: "setting" };
     case "unreadable":
-      return { text: `Git 履歴を読めません: ${view.detail}`, kind: "failure" };
+      return { text: text.unreadable(view.detail), kind: "failure" };
     case "noTaskId":
-      return { text: "TASK-ID が読めないため未検索", kind: "setting" };
+      return { text: text.noTaskIdShort, kind: "setting" };
     case "loading":
-      return { text: "読み込み中…", kind: "neutral" };
+      return { text: msg().state.loading, kind: "neutral" };
   }
 }
 
@@ -338,18 +341,18 @@ export function relationAccounts(history: HistoryState): RelationAccount[] {
         return outcome.commitIds.length > 0
           ? {
               pullRequest,
-              text: `解決済み: このタスクのコミット ${outcome.commitIds.length} 件と関連`,
+              text: msg().gitHistory.accountRelated(outcome.commitIds.length),
               kind: "neutral" as const,
             }
           : {
               pullRequest,
-              text: "解決済み: 共有コミット無し（この PR にこのタスクのコミットは含まれません）",
+              text: msg().gitHistory.accountUnrelated,
               kind: "neutral" as const,
             };
       case "hostUnsupported":
         return {
           pullRequest,
-          text: "対象外: remote ホスト種別を判別できないため照会していません。Atlas が参照できるホストではないため、この原因は解消できません。",
+          text: msg().gitHistory.accountUnsupported,
           kind: "setting" as const,
         };
       case "lookupFailed":
@@ -358,7 +361,10 @@ export function relationAccounts(history: HistoryState): RelationAccount[] {
           // 「関連が無い」ではなく「今は確かめられない」であることは 4 つの原因に共通し、解消の
           // 手掛かりだけが原因ごとに違う (doc-8 §5). 解消経路を payload から確定できない
           // `queryFailed` に、確定できるかのような文言を当てない。
-          text: `参照不能: ${lookupFailureText(outcome.reason, outcome.detail)}。今は確かめられないだけで、関連が無いという意味ではありません。${lookupRemedy(outcome.reason)}`,
+          text: msg().gitHistory.accountFailed(
+            lookupFailureText(outcome.reason, outcome.detail),
+            lookupRemedy(outcome.reason),
+          ),
           kind: "failure" as const,
         };
     }
@@ -367,17 +373,18 @@ export function relationAccounts(history: HistoryState): RelationAccount[] {
 
 /** その原因が解消できるかどうか (doc-8 §5), per [`LookupFailure`]. */
 function lookupRemedy(reason: LookupFailure): string {
+  const text = msg().gitHistory.remedy;
   switch (reason.reason) {
     case "toolMissing":
-      return "参照手段を起動できていないため、gh を導入すれば解消できます。";
+      return text.toolMissing;
     case "invalidReference":
-      return "この参照からは照会先を決められないため、References の URL を直せば解消できます。";
+      return text.invalidReference;
     case "queryFailed":
-      return "照会は実行され、失敗しました。認証・権限・PR の不在・ネットワークのいずれかで、どれかはこの結果からは分かりません。再取得で解消することがあります。";
+      return text.queryFailed;
     case "timedOut":
       // `queryFailed` と別に書ける唯一の理由: 打ち切ったのは Atlas 自身なので、何が起きたかは
       // 分かっている (decision-19)。解消は約束しないが、再取得で変わり得ることは言える。
-      return "期限内に応答が無かったので Atlas が照会を打ち切りました。通信か GitHub 側が遅いときに起き、再取得で解消することがあります。";
+      return text.timedOut;
   }
 }
 
@@ -398,39 +405,43 @@ export function relationLine(
       const commits = commitList(history);
       if (commits.state !== "commits" && commits.state !== "noCommits") {
         return {
-          text: "関連 PR: 突き合わせ不能（ローカルコミット一覧を読めません）",
+          text: msg().gitHistory.relationNoCommitList,
           kind: commits.state === "unreadable" ? "failure" : "setting",
         };
       }
+      const line = msg().gitHistory;
       const tally = relationTally(history);
       const total = tally.related + tally.unrelated + tally.failed + tally.unsupported;
       if (total === 0) {
-        return { text: "関連 PR: 参照する Pull Request URL がありません", kind: "neutral" };
+        return { text: line.relationNoUrls, kind: "neutral" };
       }
       const caveats: string[] = [];
       if (tally.failed > 0) {
-        caveats.push(`${tally.failed} 件は参照不能`);
+        caveats.push(line.relationCaveatFailed(tally.failed));
       }
       if (tally.unsupported > 0) {
-        caveats.push(`${tally.unsupported} 件は対象外`);
+        caveats.push(line.relationCaveatUnsupported(tally.unsupported));
       }
       const text =
         caveats.length > 0
-          ? `関連 PR ${tally.related} 件（${caveats.join("・")}）`
-          : `関連 PR ${tally.related} 件`;
+          ? line.relationCountWithCaveats(
+              tally.related,
+              caveats.join(msg().state.listSeparator),
+            )
+          : line.relationCount(tally.related);
       // 参照不能 is the only failure family here; 対象外 is a property of the host, which decision-6
       // puts in the 中間 family beside the other things a setting explains.
       const kind = tally.failed > 0 ? "failure" : tally.unsupported > 0 ? "setting" : "neutral";
       return { text, kind };
     }
     case "remoteAbsent":
-      return { text: "関連 PR: 解決なし（Git remote 不在）", kind: "setting" };
+      return { text: msg().gitHistory.relationRemoteAbsent, kind: "setting" };
     case "hostUndetermined":
-      return { text: "関連 PR: 対象外（remote ホスト種別を判別できません）", kind: "setting" };
+      return { text: msg().gitHistory.relationHostUndetermined, kind: "setting" };
     case "notRead":
-      return { text: `関連 PR: 未実施（${availability.detail}）`, kind: "setting" };
+      return { text: msg().gitHistory.relationNotRead(availability.detail), kind: "setting" };
     case "loading":
-      return { text: "読み込み中…", kind: "neutral" };
+      return { text: msg().state.loading, kind: "neutral" };
   }
 }
 

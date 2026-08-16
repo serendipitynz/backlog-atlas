@@ -19,19 +19,22 @@
   import { untrack } from "svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import {
-    CARD_DENSITY_LABEL,
-    CARD_DENSITY_NOTE,
-    CLOSE_WITHOUT_SAVING_LABEL,
-    DETAIL_PLACEMENT_LABEL,
+    CARD_DENSITIES,
+    cardDensityLabel,
+    cardDensityNote,
+    closeWithoutSavingLabel,
+    DETAIL_PLACEMENTS,
+    detailPlacementLabel,
     EXTERNAL_COMMANDS,
-    NO_CHANGES_REASON,
-    OPEN_LOCATION_LABEL,
-    OPEN_LOCATION_TITLE,
-    SAVE_LABEL,
-    SAVING_REASON,
+    externalCommandHelp,
+    noChangesReason,
+    openLocationLabel,
+    openLocationTitle,
+    saveLabel,
+    savingReason,
     STORAGE_SELECTIONS,
-    STORAGE_SELECTION_LABEL,
-    WATCH_OFF_NOTE,
+    storageSelectionLabel,
+    watchOffNote,
     commandPathOf,
     editorArgsText,
     editorCommandOf,
@@ -46,12 +49,12 @@
     statusNotice,
     toggleStorage,
   } from "../lib/settings";
-  import { CARD_ORDER_CHOICES } from "../lib/swimlane";
+  import { CARD_ORDER_CHOICES, cardOrderLabel } from "../lib/swimlane";
   import { LANGUAGES, isLanguage } from "../lib/messages";
   import { messages } from "../lib/messages-context";
   import {
     RECORDED_THEME_IDS,
-    THEME_UNSET_LABEL,
+    themeUnsetLabel,
     themeLabel,
   } from "../lib/theme";
   import type {
@@ -315,7 +318,7 @@
    * holds, and 変更はありません is only worth saying once writing is possible at all.
    */
   let saveBlocked = $derived(
-    availability.reason ?? (saving ? SAVING_REASON : dirty ? null : NO_CHANGES_REASON),
+    availability.reason ?? (saving ? savingReason() : dirty ? null : noChangesReason()),
   );
   /**
    * 変更せずに閉じる is withheld while a save is unresolved. Leaving then would take away the panel that
@@ -323,7 +326,7 @@
    * while the write already issued goes on to store the draft. The shell holds the same flag and turns
    * away Escape with it, so both ways out are closed by one fact.
    */
-  let closeBlocked = $derived(saving ? SAVING_REASON : null);
+  let closeBlocked = $derived(saving ? savingReason() : null);
   /**
    * The one line the 下部操作行 gives for a control it is withholding, and the one element both point at.
    * One rather than two, because while a save is in flight *both* are withheld by the same one
@@ -338,7 +341,7 @@
    * the DOM and is only hidden visually. The obstacles that are not the user's own doing (a file this
    * build must not overwrite, a write still running) keep their printed line.
    */
-  let footerReasonPrinted = $derived(footerReason !== null && footerReason !== NO_CHANGES_REASON);
+  let footerReasonPrinted = $derived(footerReason !== null && footerReason !== noChangesReason());
   const FOOTER_REASON_ID = "settings-footer-reason";
 
   /** The failure of the last 場所を開く, or `null`. Reported beside the button, not as a 上部帯 通知:
@@ -437,7 +440,7 @@
         <h3>{t().settings.themeHeading}</h3>
         <label>
           <select bind:value={draft.theme}>
-            <option value={null}>{THEME_UNSET_LABEL}</option>
+            <option value={null}>{themeUnsetLabel()}</option>
             {#each themeChoices as name (name)}
               <option value={name}>
                 {themeLabel(name) ?? t().settings.unrecorded(name)}
@@ -469,18 +472,18 @@
 
       <section>
         <h3>{t().settings.cardDensityHeading}</h3>
-        {#each Object.entries(CARD_DENSITY_LABEL) as [value, label] (value)}
+        {#each CARD_DENSITIES as value (value)}
           <label class="choice">
             <input
               type="radio"
               name="card-density"
               checked={draft.card_density === value}
-              onchange={() => draft !== null && (draft.card_density = value as CardDensity)}
+              onchange={() => draft !== null && (draft.card_density = value)}
             />
-            {label}
+            {cardDensityLabel(value)}
           </label>
         {/each}
-        <p class="hint">{CARD_DENSITY_NOTE}</p>
+        <p class="hint">{cardDensityNote()}</p>
       </section>
 
       <section>
@@ -492,7 +495,7 @@
               checked={draft.default_storage_filter.includes(value)}
               onchange={(event) => setStorage(value, event.currentTarget.checked)}
             />
-            {STORAGE_SELECTION_LABEL[value]}
+            {storageSelectionLabel(value)}
           </label>
         {/each}
         {#if storageWarning !== null}
@@ -502,29 +505,29 @@
 
       <section>
         <h3>{t().settings.defaultPlacementHeading}</h3>
-        {#each Object.entries(DETAIL_PLACEMENT_LABEL) as [value, label] (value)}
+        {#each DETAIL_PLACEMENTS as value (value)}
           <label class="choice">
             <input
               type="radio"
               name="detail-placement"
               checked={draft.default_detail_placement === value}
               onchange={() =>
-                draft !== null && (draft.default_detail_placement = value as DetailPlacement)}
+                draft !== null && (draft.default_detail_placement = value)}
             />
-            {label}
+            {detailPlacementLabel(value)}
           </label>
         {/each}
       </section>
 
       <!-- 既定の並び順 (doc-7 §5.4, decision-13). The 絞り込み帯 writes the same item, so this is the
            second place it can be set rather than the only one — which is why it is a `<select>` of the
-           same ten entries, in the same order, taking its 語 from the same `CARD_ORDERS`. -->
+           same ten entries, in the same order, taking its 語 from the same `cardOrderLabel`. -->
       <section>
         <h3>{t().settings.defaultOrderHeading}</h3>
         <label>
           <select bind:value={draft.default_card_order}>
-            {#each CARD_ORDER_CHOICES as [value, rule] (value)}
-              <option {value}>{rule.label}</option>
+            {#each CARD_ORDER_CHOICES as value (value)}
+              <option {value}>{cardOrderLabel(value)}</option>
             {/each}
           </select>
         </label>
@@ -536,7 +539,7 @@
           <input type="checkbox" bind:checked={draft.watch_external_changes} />
           {t().settings.watchToggle}
         </label>
-        <p class="hint">{WATCH_OFF_NOTE}</p>
+        <p class="hint">{watchOffNote()}</p>
       </section>
 
       <!-- 外部コマンド (decision-29, TASK-156). One row per command: 状態の印, label, field, `?`.
@@ -591,7 +594,7 @@
             </button>
             {#if helpOpen === command.field}
               <p class="note" role="note">
-                {command.help}
+                {externalCommandHelp(command.field)}
                 {#if report !== undefined}
                   <br />
                   {programSourceLabel(report.source)}: {report.program}
@@ -647,10 +650,10 @@
             type="button"
             aria-disabled={!locationAvailability.enabled}
             aria-describedby={locationAvailability.reason === null ? undefined : LOCATION_BLOCKED_ID}
-            title={locationAvailability.reason ?? OPEN_LOCATION_TITLE}
+            title={locationAvailability.reason ?? openLocationTitle()}
             onclick={openLocation}
           >
-            {OPEN_LOCATION_LABEL}
+            {openLocationLabel()}
           </button>
         </div>
         {#if locationAvailability.reason !== null}
@@ -691,7 +694,7 @@
         title={closeBlocked ?? t().settings.discardHint}
         onclick={() => closeBlocked === null && ondiscard()}
       >
-        {CLOSE_WITHOUT_SAVING_LABEL}
+        {closeWithoutSavingLabel()}
       </button>
       <!-- `aria-disabled` rather than `disabled`: doc-11 §5 keeps a withheld control focusable when its
            reason is not printed beside it, which is the 変更はありません case. -->
@@ -702,7 +705,7 @@
         title={saveBlocked ?? t().settings.saveHint}
         onclick={saveAndClose}
       >
-        {saving ? t().action.saving : SAVE_LABEL}
+        {saving ? t().action.saving : saveLabel()}
       </button>
     </div>
   </footer>

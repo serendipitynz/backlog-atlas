@@ -14,17 +14,17 @@
  * | §3 区画ナビ | [`SECTION_NAV_WIDTH_REM`] | the 12rem column down the left that houses the 区画切替 — the place, where §1 is the choice |
  * | §1 一覧列 | [`LIST_COLUMN_WIDTH_REM`] | the 16rem column that keeps the selection — 文書一覧 (§5), マイルストーン一覧 (§6) and 決定事項一覧 (§10) are its three instances; the pane right of it takes the remaining width, so only the list's width is a constant |
  * | §5 表示パス | [`displayPath`] | the read layer's `source_path` made project-relative for the pane's heading — display only, never the value `-p` takes |
- * | §3 台帳読取専用帯 | `band.ts`'s [`LEDGER_READ_ONLY_BAND`] | that the ledger file has degraded to read-only, and what still works |
+ * | §3 台帳読取専用帯 | `band.ts`'s [`ledgerReadOnlyBand()`] | that the ledger file has degraded to read-only, and what still works |
  * | §3 CLI 縮退帯 | `band.ts`'s [`cliDegradedBand`] | that no supported CLI was found, and what still works |
  * | §4.1 送る属性を保存の直前に列挙する | [`SubmittedAttribute`] + [`submittedAttributes`] | 送信属性一覧: the attributes a save puts on `ledger_update`, as name, current value and value to send |
  * | §4.1 変更が無いときは保存を無効化する | [`OverviewSave`] + [`overviewSave`] | 保存 in its two states — 保留判定 is the tag, and the 保留理由 rides beside it rather than being it |
- * | §4.1 slug は編集手段を提供しない | [`SLUG_IMMUTABLE_NOTE`] | what changing it would take, and what that would break |
+ * | §4.1 slug は編集手段を提供しない | [`slugImmutableNote()`] | what changing it would take, and what that would break |
  * | §4.1 remote 現在値 | [`gitRemoteLine`] | the project root's Git remote as it reads now — one line, in decision-6's families. Never the ledger's recorded 有無属性 |
  * | §4.1 記録と検出の食い違い | [`gitRemoteDisagreement`] | 状態文: the recorded 有無属性 and the current read disagree — `null` while they agree |
  * | §4.1 再検出 | [`RedetectControl`] + [`redetectControl`] | 再検出する in its three states — ready, its own operation running, or withheld with the obstacle stated |
  * | §4.1 ルートを変えたときは Backlog ルートも併せて送る | [`rootMoveNote`] | the note under the field saying which value will travel |
  * | §4.1 移動が成立すると編集セッションは閉じる | [`movesRoot`] | whether this update is a move — the trigger for closing |
- * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`OVERVIEW_READ_ONLY_NOTE`] | the sentence, near the controls, saying the inputs are stopped too |
+ * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`overviewReadOnlyNote()`] | the sentence, near the controls, saying the inputs are stopped too |
  * | §4.2 別名が効くかの態 | [`ALIAS_EFFECT_NOTES`] | how one 別名表 row takes effect — four states, see below |
  * | §4.3 確認は slug の入力一致とする | [`unregisterBlocked`] | slug 入力一致: holds the action until the typed text matches, and says what is holding it |
  * | §8 台帳読取専用と CLI 縮退は独立 | [`overviewBlocked`] and `manage.ts`'s `issueAvailability` applying separately | one standing leaves the other's 区画 working |
@@ -46,6 +46,7 @@ import type { EntryEdit } from "./ledger";
 import type { ProjectEntry, UpdateRequest } from "./wire";
 import { remoteReadFailureText } from "./failure";
 import type { RemoteLine } from "./git-remote-read";
+import { msg } from "./messages";
 
 // --- 区画切替 (doc-10 §1/§3) -------------------------------------------------------------------
 
@@ -59,13 +60,18 @@ export type DetailSection = "overview" | "documents" | "milestones" | "decisions
  * in the order 07 gave. What decides *which* end is that 新規タスク is the one 区画 with no 一覧列 —
  * it only issues — so the three columns-and-a-pane 区画 stay adjacent.
  */
-export const DETAIL_SECTIONS: readonly { id: DetailSection; label: string }[] = [
-  { id: "overview", label: "概要" },
-  { id: "documents", label: "文書" },
-  { id: "milestones", label: "マイルストーン" },
-  { id: "decisions", label: "決定事項" },
-  { id: "newTask", label: "新規タスク" },
+export const DETAIL_SECTIONS: readonly DetailSection[] = [
+  "overview",
+  "documents",
+  "milestones",
+  "decisions",
+  "newTask",
 ] as const;
+
+/** What the 区画ナビ calls one 区画 (doc-10 §3). */
+export function sectionLabel(section: DetailSection): string {
+  return msg().projectDetail.section[section];
+}
 
 /**
  * 区画ナビ の項目に添える件数 (doc-10 §1)。**`null` は「数える対象が無い」であって 0 件ではない** —
@@ -153,7 +159,7 @@ export interface SubmittedAttribute {
 export function aliasSummary(table: Record<string, string> | undefined): string {
   const entries = Object.entries(table ?? {});
   if (entries.length === 0) {
-    return "なし";
+    return msg().state.none;
   }
   return entries
     .sort(([a], [b]) => a.localeCompare(b))
@@ -213,9 +219,9 @@ export function movesRoot(request: UpdateRequest): boolean {
 }
 
 /** Why slug has no field, and what changing it would take instead (doc-10 §4.1, doc-3 §3.1). */
-export const SLUG_IMMUTABLE_NOTE =
-  "slug は横断タスクID の左辺として全タスクの参照に使われるため、変更手段を提供しません。" +
-  "別の slug にするには登録を解除して登録し直すことになり、そのとき Git 履歴表示の同一性は切れます。";
+export function slugImmutableNote(): string {
+  return msg().projectDetail.slugImmutable;
+}
 
 /**
  * The note under the project-root field once it differs (doc-10 §4.1). The default would be
@@ -228,12 +234,8 @@ export function rootMoveNote(entry: ProjectEntry, edit: EntryEdit): string | nul
     return null;
   }
   const backlogRoot = edit.backlogRoot.trim();
-  return (
-    `同一プロジェクトの移動として扱い、slug ${entry.slug} を保ったまま project_root と backlog_root の` +
-    `両方を送ります。backlog_root は既定の <新ルート>/backlog ではなく、いま欄にある ` +
-    `${backlogRoot === "" ? "（空）" : backlogRoot} を送ります。` +
-    "移動が成立すると、このプロジェクトについて開いている編集セッションは閉じます。"
-  );
+  const text = msg().projectDetail;
+  return text.rootMoveNote(entry.slug, backlogRoot === "" ? text.emptyValue : backlogRoot);
 }
 
 // --- 概要区画: remote 現在値と再検出 (doc-10 §4.1, decision-6) ---------------------------------
@@ -262,28 +264,19 @@ export interface GitRemoteLine {
 /** `null` for a read that has not landed yet — 未取得 is not 不在 (decision-6). */
 export function gitRemoteLine(read: RemoteLine | null): GitRemoteLine {
   if (read === null) {
-    return { text: "読み込み中…", kind: "neutral", name: null, address: false };
+    return { text: msg().state.loading, kind: "neutral", name: null, address: false };
   }
+  const text = msg().projectDetail;
   switch (read.state) {
     case "configured":
       return { text: read.url, kind: "neutral", name: read.name, address: true };
     case "remoteAbsent":
-      return {
-        text: "Git remote 不在（このリポジトリに remote が構成されていません）",
-        kind: "setting",
-        name: null,
-        address: false,
-      };
+      return { text: text.remoteAbsent, kind: "setting", name: null, address: false };
     case "noRepository":
-      return {
-        text: "Git 対象不在（プロジェクトルートが Git リポジトリではありません）",
-        kind: "setting",
-        name: null,
-        address: false,
-      };
+      return { text: text.noRepository, kind: "setting", name: null, address: false };
     case "unreadable":
       return {
-        text: `remote を読めません: ${remoteReadFailureText(read.reason, read.detail)}`,
+        text: text.remoteUnreadable(remoteReadFailureText(read.reason, read.detail)),
         kind: "failure",
         name: null,
         address: false,
@@ -291,7 +284,12 @@ export function gitRemoteLine(read: RemoteLine | null): GitRemoteLine {
     // Atlas never asked (see `RemoteLine`). The same line, because what the reader has to know is
     // the same: the address on screen is not one that was read.
     case "unaskable":
-      return { text: `remote を読めません: ${read.detail}`, kind: "failure", name: null, address: false };
+      return {
+        text: text.remoteUnreadable(read.detail),
+        kind: "failure",
+        name: null,
+        address: false,
+      };
   }
 }
 
@@ -314,9 +312,8 @@ export function gitRemoteDisagreement(
   if (found === entry.git_remote_present) {
     return null;
   }
-  return found
-    ? "登録内容の Git remote 有無属性は「なし」で、いまの検出と食い違っています。"
-    : "登録内容の Git remote 有無属性は「あり」で、いまの検出と食い違っています。";
+  const text = msg().projectDetail;
+  return found ? text.remoteRecordedAbsent : text.remoteRecordedPresent;
 }
 
 /**
@@ -344,15 +341,14 @@ export function redetectControl(context: {
   busy: boolean;
   running: boolean;
 }): RedetectControl {
+  const text = msg().projectDetail;
   if (context.running) {
-    return { state: "running", label: "再検出中…" };
+    return { state: "running", label: text.redetecting };
   }
-  const reason = context.readOnly
-    ? "登録ファイルが読み取り専用のため、Git remote の再検出はできません。"
-    : overviewBlocked(context);
+  const reason = context.readOnly ? text.redetectReadOnly : overviewBlocked(context);
   return reason === null
-    ? { state: "ready", label: "再検出する" }
-    : { state: "withheld", label: "再検出する", reason };
+    ? { state: "ready", label: text.redetect }
+    : { state: "withheld", label: text.redetect, reason };
 }
 
 // --- 概要区画: status 別名表の効き方 (doc-10 §4.2) ---------------------------------------------
@@ -371,33 +367,21 @@ export interface AliasEffectNote {
   ineffective: boolean;
 }
 
-export const ALIAS_EFFECT_NOTES: Record<AliasEffect, AliasEffectNote> = {
-  declared: {
-    label: "宣言あり",
-    note: "config.yml の statuses にある status です。別名が効きます。",
-    ineffective: false,
-  },
-  draft: {
-    label: "draft 専用",
-    note:
-      "config.yml は宣言していませんが、既知の draft 状態として扱う値です。別名が効きます。",
-    ineffective: false,
-  },
-  noDeclaredSet: {
-    label: "宣言集合なし",
-    note:
-      "config.yml が statuses を 1 つも宣言していないため、宣言済みかを判定できません" +
-      "（statuses を 1 つも宣言していない未初期化のルート）。宣言が矛盾しないので別名は効きます。",
-    ineffective: false,
-  },
-  undeclared: {
-    label: "宣言なし → 効果なし",
-    note:
-      "どこにも宣言が無い status です。別名を書いてもこの status のタスクは未分類区画に残ります。" +
-      "登録内容からは削除しません。",
-    ineffective: true,
-  },
+/**
+ * `ineffective` is data and stays here; the two words are the 文言表's. doc-10 §4.2 gives the
+ * 不整合 colour to `undeclared` alone, which is what keeps `noDeclaredSet` — where the alias works,
+ * just without a declaration behind it — out of the same mark.
+ */
+const ALIAS_EFFECT_INEFFECTIVE: Record<AliasEffect, boolean> = {
+  declared: false,
+  draft: false,
+  noDeclaredSet: false,
+  undeclared: true,
 };
+
+export function aliasEffectNote(effect: AliasEffect): AliasEffectNote {
+  return { ...msg().projectDetail.aliasEffect[effect], ineffective: ALIAS_EFFECT_INEFFECTIVE[effect] };
+}
 
 // --- 概要区画: 登録解除 (doc-10 §4.3) ----------------------------------------------------------
 
@@ -406,10 +390,11 @@ export const ALIAS_EFFECT_NOTES: Record<AliasEffect, AliasEffectNote> = {
  * A save may be a move, and a move changes which files this screen's ids name: the boundary detaches
  * the old session and reopens the slug against the new root, so an issue made in that window arrives
  * after the reopen and is checked against the *new* root's read. It would pass, and `--content`
- * replaces a document whole. Distinct from `ISSUE_BUSY_REASON`, which is about another 発行 running.
+ * replaces a document whole. Distinct from `issueBusyReason()`, which is about another 発行 running.
  */
-export const LEDGER_WRITE_IN_FLIGHT_REASON =
-  "登録内容の更新を実行中です。ルートが変わることがあるため、完了するまで発行できません";
+export function ledgerWriteInFlightReason(): string {
+  return msg().projectDetail.ledgerWriteInFlight;
+}
 
 /**
  * The sentence that says a read-only ledger stops the 概要区画's *inputs* as well (doc-10 §8). Placed
@@ -423,26 +408,25 @@ export const LEDGER_WRITE_IN_FLIGHT_REASON =
  * lets the user change values that can never be written — and that input then counts as 未保存入力,
  * so they are later asked whether to discard changes that were never saveable.
  */
-export const OVERVIEW_READ_ONLY_NOTE =
-  "登録ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。" +
-  "この区画の入力・保存・登録解除はすべてできません。" +
-  "文書・マイルストーン・新規タスクは登録ファイルを書かないので、そちらは操作できます。";
+export function overviewReadOnlyNote(): string {
+  return msg().projectDetail.overviewReadOnly;
+}
 
 /** What 登録解除 removes and what it leaves (doc-3 §4.2). Body text, not a note beside the button. */
-export const UNREGISTER_SCOPE_NOTE =
-  "登録解除はこのプロジェクトの登録内容を消し、スイムレーンからこの行を外します。" +
-  "対象プロジェクトの Backlog ルート・管理ファイル・Git リポジトリには触れません。" +
-  "タスクはそのまま残ります。";
+export function unregisterScopeNote(): string {
+  return msg().projectDetail.unregisterScope;
+}
 
 /**
  * Why the 概要区画's update is held, if it is (doc-11 §5). Only 台帳読取専用 counts, never CLI 縮退:
  * a ledger operation runs no Backlog CLI (doc-10 §3/§8).
  */
 export function overviewBlocked(context: { readOnly: boolean; busy: boolean }): string | null {
+  const text = msg().projectDetail;
   if (context.readOnly) {
-    return "登録ファイルが読み取り専用のため、登録内容の更新はできません。";
+    return text.overviewReadOnlyBlocked;
   }
-  return context.busy ? "登録の更新を実行中です。完了するまで次の操作は始められません。" : null;
+  return context.busy ? text.overviewBusy : null;
 }
 
 /**
@@ -457,24 +441,25 @@ export function unregisterBlocked(
   slug: string,
   context: { readOnly: boolean; busy: boolean },
 ): string | null {
+  const text = msg().projectDetail;
   const blocked = overviewBlocked(context);
   if (blocked !== null) {
-    return context.readOnly
-      ? "登録ファイルが読み取り専用のため、登録解除はできません。"
-      : blocked;
+    return context.readOnly ? text.unregisterReadOnly : blocked;
   }
-  return typed.trim() === slug
-    ? null
-    : `確認のため、この欄に slug「${slug}」をそのまま入力してください。一致するまで実行できません。`;
+  return typed.trim() === slug ? null : text.unregisterConfirmSlug(slug);
 }
 
 // --- 概要区画: 保存の保留判定 (doc-10 §4.1, doc-11 §5) -----------------------------------------
 
 /** 変更が無いとき (doc-10 §4.1). The 送信属性一覧 above the control states the same thing. */
-export const OVERVIEW_NO_CHANGES_REASON = "変更がありません（送る属性がありません）。";
+export function overviewNoChangesReason(): string {
+  return msg().projectDetail.overviewNoChanges;
+}
 
 /** 入力に問題があるとき (doc-10 §4.1). Each problem is already printed under the field it is about. */
-export const OVERVIEW_INPUT_PROBLEMS_REASON = "入力に問題があります（各欄の指摘を参照）。";
+export function overviewInputProblemsReason(): string {
+  return msg().projectDetail.overviewInputProblems;
+}
 
 /**
  * 保存 in its two states (doc-10 §4.1「変更が無いときは『変更なし』として保存を無効化する」).
@@ -510,9 +495,9 @@ export function overviewSave(context: {
     return { state: "withheld", reason: outside };
   }
   if (context.hasProblems) {
-    return { state: "withheld", reason: OVERVIEW_INPUT_PROBLEMS_REASON };
+    return { state: "withheld", reason: overviewInputProblemsReason() };
   }
   return context.hasChanges
     ? { state: "ready" }
-    : { state: "withheld", reason: OVERVIEW_NO_CHANGES_REASON };
+    : { state: "withheld", reason: overviewNoChangesReason() };
 }

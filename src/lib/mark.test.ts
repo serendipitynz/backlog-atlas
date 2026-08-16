@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  UNWATCHED_MARK,
+  unwatchedMark,
   conflictKeyOf,
   fileInconsistencyReasons,
   inconsistencyLabel,
@@ -129,9 +129,9 @@ describe("継続検出停止", () => {
   // doc-9 §5 forbids 照合不能 from reading as a conflict; the same holds for a stopped watch, which
   // is likewise "no way to look" rather than "a divergence was found".
   it("is undetectable, never バージョン不整合", () => {
-    const kind: MarkKind = UNWATCHED_MARK.kind;
+    const kind: MarkKind = unwatchedMark().kind;
     expect(kind).toBe("undetectable");
-    expect(UNWATCHED_MARK.detail).toContain("版がずれているとは限りません");
+    expect(unwatchedMark().detail).toContain("版がずれているとは限りません");
   });
 });
 

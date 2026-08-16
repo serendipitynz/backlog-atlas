@@ -37,9 +37,15 @@ import type {
   RemoteReadFailure,
 } from "./wire";
 
-/** A 文言表 sentence with the diagnostic text after it, when there is one. */
+/**
+ * A 文言表 sentence with the diagnostic text after it, when there is one.
+ *
+ * The brackets come from the 文言表 as well: 全角 and 半角 parentheses are not the same character, and
+ * a 半角 pair around a Japanese sentence — or a 全角 pair around an English one — is the wrong
+ * punctuation for the language the sentence is in.
+ */
 function withDetail(sentence: string, detail: string): string {
-  return detail === "" ? sentence : `${sentence}（${detail}）`;
+  return detail === "" ? sentence : msg().state.withDetail(sentence, detail);
 }
 
 /**

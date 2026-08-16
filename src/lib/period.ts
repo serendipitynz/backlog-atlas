@@ -32,6 +32,8 @@
  * by twelve hours.
  */
 
+import { msg } from "./messages";
+
 /**
  * Minutes **east** of UTC at a given instant — the sign convention of the offset as it is written
  * (`+12:00` → `720`), which is the opposite of `Date.prototype.getTimezoneOffset`.
@@ -50,11 +52,9 @@ export type PeriodUnit = "day" | "week" | "month";
 export const PERIOD_UNITS: readonly PeriodUnit[] = ["day", "week", "month"];
 
 /** The screen's word for each unit. */
-export const PERIOD_UNIT_LABEL: Record<PeriodUnit, string> = {
-  day: "日",
-  week: "週",
-  month: "月",
-};
+export function periodUnitLabel(unit: PeriodUnit): string {
+  return msg().filter.periodUnit[unit];
+}
 
 /**
  * The largest 相対指定 the control takes: four digits, which is 27 years in 日, 191 in 週 and 833 in

@@ -3,7 +3,7 @@ import * as sass from "sass";
 import {
   RECORDED_THEMES,
   RECORDED_THEME_IDS,
-  THEME_UNSET_LABEL,
+  themeUnsetLabel,
   type ThemeScheme,
   isRecorded,
   themeAttribute,
@@ -30,10 +30,15 @@ describe("themeAttribute", () => {
 
 // --- 設定画面が読む語 (TASK-126) ---------------------------------------------------------------
 //
-// The labels are the only place a user meets a theme, and `scheme` is the only place the build says
-// which ground the theme paints. Nothing joined the two before this: a theme recorded as ライト with
-// `scheme: "dark"` reads correctly in the list and paints the other ground, and the mismatch is
+// The 呼び名 are the only place a user meets a theme, and `scheme` is the only place the build says
+// which ground the theme paints. Nothing joined the two until TASK-126: a theme recorded as ライト
+// with `scheme: "dark"` read correctly in the list and painted the other ground, and the mismatch was
 // invisible on screen for the same reason decision-12 gives about the 収録条件 検算.
+//
+// **TASK-187 made the disagreement unrepresentable** rather than checked: the 明暗 word is chosen by
+// `themeLabel` from `scheme`, so there is no second place to write it wrong. What is checked here is
+// therefore that the word actually reaches the 呼び名 — a `themeLabel` that dropped it would leave the
+// four names carrying no 明暗 in either language, which is the state TASK-126 was raised to fix.
 
 const SCHEME_WORD: Record<ThemeScheme, string> = { light: "ライト", dark: "ダーク" };
 
@@ -43,8 +48,10 @@ describe("設定画面のテーマ一覧の語", () => {
     (id) => {
       const theme = RECORDED_THEMES.find((recorded) => recorded.id === id)!;
       const other: ThemeScheme = theme.scheme === "light" ? "dark" : "light";
-      expect(theme.label).toContain(SCHEME_WORD[theme.scheme]);
-      expect(theme.label).not.toContain(SCHEME_WORD[other]);
+      const label = themeLabel(theme.id)!;
+      expect(label).toContain(theme.name);
+      expect(label).toContain(SCHEME_WORD[theme.scheme]);
+      expect(label).not.toContain(SCHEME_WORD[other]);
     },
   );
 
@@ -53,7 +60,7 @@ describe("設定画面のテーマ一覧の語", () => {
   // very wording this task was raised to remove. Recorded here for the same reason the 実測 numbers
   // are recorded — a value that cannot be re-derived is held as data or not held at all.
   it("offers 未選択 in the words the user asked for", () => {
-    expect(THEME_UNSET_LABEL).toBe("システム設定に従う");
+    expect(themeUnsetLabel()).toBe("システム設定に従う");
   });
 
   // 未選択 selects the state of following the system, not either theme that state resolves to. It
@@ -61,8 +68,8 @@ describe("設定画面のテーマ一覧の語", () => {
   // theme would stop following the system, which is the one thing this option does.
   it("offers 未選択 as a state, naming none of the themes it resolves to", () => {
     for (const theme of RECORDED_THEMES) {
-      expect(THEME_UNSET_LABEL).not.toContain(theme.id);
-      expect(THEME_UNSET_LABEL).not.toContain(theme.label.split("（")[0]);
+      expect(themeUnsetLabel()).not.toContain(theme.id);
+      expect(themeUnsetLabel()).not.toContain(theme.name);
     }
   });
 });

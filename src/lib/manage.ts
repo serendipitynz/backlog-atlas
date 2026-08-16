@@ -19,8 +19,8 @@
  * | doc-9 §4.2.2 参照タスク集合 | [`referencingTasks`] | the active tasks a 参照追随書き換え may rewrite, shown before the user commits |
  * | doc-9 §4.2.2 参照追随書き換えを伴うか | [`followsReferences`] | which of the six operations carries the fan-out |
  * | doc-5 §1/§3 マイルストーン説明の更新（直接書き込み操作） | [`buildMilestoneDescribe`] | the 説明 edit and the one operation on this screen that is not a CLI call (decision-21) |
- * | doc-10 §6 行頭 `##` を拒む入力検査 | [`MILESTONE_DESCRIPTION_HEADING_REASON`] | why a heading in the 説明 is refused: it would fall outside the range read back |
- * | doc-10 §7 注記モーダル | [`TASK_CREATE_NOTE`] + [`TASK_CREATE_LATER_FIELDS`] | 代替経路の案内 (doc-11 §8): where the fields this form has no input for are added instead |
+ * | doc-10 §6 行頭 `##` を拒む入力検査 | [`milestoneDescriptionHeadingReason()`] | why a heading in the 説明 is refused: it would fall outside the range read back |
+ * | doc-10 §7 注記モーダル | [`taskCreateNote()`] + [`taskCreateLaterFields()`] | 代替経路の案内 (doc-11 §8): where the fields this form has no input for are added instead |
  * | doc-5 §5 縮退 | [`issueAvailability`] via `readinessReason` | no supported CLI, so no operation is offered at all |
  * | doc-9 §5 提示の区別 | [`IssueOutcome`] + [`outcomeMessage`] | 更新前競合 / 照合不能 / CLI 失敗 stated apart |
  *
@@ -40,9 +40,10 @@
  */
 
 import { commaReason, firstWithComma } from "./comma";
-import { NOTHING_TO_SAVE_REASON, readinessReason } from "./edit";
+import { msg } from "./messages";
+import { nothingToSaveReason, readinessReason } from "./edit";
 import { conflictSetDetail } from "./mark";
-import { OVERVIEW_INPUT_PROBLEMS_REASON, OVERVIEW_NO_CHANGES_REASON } from "./project-detail";
+import { overviewInputProblemsReason, overviewNoChangesReason } from "./project-detail";
 import type {
   CliReadiness,
   ConflictSet,
@@ -71,7 +72,9 @@ export type IssueAvailability = { state: "ready" } | { state: "blocked"; reason:
  * screen withholds for the same reason — 文書の編集 among them, which builds no plan of its own — say
  * it in the same words as the ones `issueAvailability` speaks for (doc-11 §5 理由の無い無効化を残さない).
  */
-export const ISSUE_BUSY_REASON = "発行中です";
+export function issueBusyReason(): string {
+  return msg().projectDetail.issueBusy;
+}
 
 /**
  * Whether a form's 発行 control may be pressed, and the reason when it may not. One decision for
@@ -87,7 +90,7 @@ export function issueAvailability(
      * A screen-specific reason to hold issuance, or `null`. Taken as a reason rather than a flag so
      * the caller's own cause is what the control states: プロジェクト詳細画面 holds every 区画 while
      * a ledger write is in flight, because that write may move the roots — a different thing from
-     * `busy`, and one `ISSUE_BUSY_REASON` would misdescribe.
+     * `busy`, and one `issueBusyReason()` would misdescribe.
      */
     hold?: string | null;
   },
@@ -103,7 +106,7 @@ export function issueAvailability(
     return { state: "blocked", reason: context.hold };
   }
   if (context.busy) {
-    return { state: "blocked", reason: ISSUE_BUSY_REASON };
+    return { state: "blocked", reason: issueBusyReason() };
   }
   return plan.state === "ready" ? { state: "ready" } : { state: "blocked", reason: plan.reason };
 }
@@ -156,8 +159,9 @@ export const EMPTY_TASK_CREATE: TaskCreateInput = {
   acceptanceCriteria: [],
 };
 
-export const TASK_TITLE_REQUIRED_REASON =
-  "title は必須です";
+export function taskTitleRequiredReason(): string {
+  return msg().field.titleRequiredReason;
+}
 
 /**
  * Whether the 新規タスク作成 form holds anything the user typed. Part of the screen's 未保存入力
@@ -180,13 +184,13 @@ export function hasTaskCreateInput(input: TaskCreateInput): boolean {
 export function buildTaskCreate(input: TaskCreateInput): IssuePlan {
   const title = input.title.trim();
   if (title === "") {
-    return { state: "blocked", reason: TASK_TITLE_REQUIRED_REASON };
+    return { state: "blocked", reason: taskTitleRequiredReason() };
   }
 
   const labels = cleaned(input.labels);
   const badLabel = firstWithComma(labels);
   if (badLabel !== undefined) {
-    return { state: "blocked", reason: commaReason("ラベル", badLabel) };
+    return { state: "blocked", reason: commaReason(msg().field.labelWord, badLabel) };
   }
 
   const operation: Extract<UpdateOperation, { op: "taskCreate" }> = { op: "taskCreate", title };
@@ -230,8 +234,9 @@ export interface DocCreateInput {
 
 export const EMPTY_DOC_CREATE: DocCreateInput = { title: "", docType: "", path: "" };
 
-export const DOC_TITLE_REQUIRED_REASON =
-  "title は必須です";
+export function docTitleRequiredReason(): string {
+  return msg().field.titleRequiredReason;
+}
 
 /** Whether the 文書作成 form holds anything the user typed — see [`hasTaskCreateInput`]. */
 export function hasDocCreateInput(input: DocCreateInput): boolean {
@@ -241,7 +246,7 @@ export function hasDocCreateInput(input: DocCreateInput): boolean {
 export function buildDocCreate(input: DocCreateInput): IssuePlan {
   const title = input.title.trim();
   if (title === "") {
-    return { state: "blocked", reason: DOC_TITLE_REQUIRED_REASON };
+    return { state: "blocked", reason: docTitleRequiredReason() };
   }
 
   const operation: Extract<UpdateOperation, { op: "docCreate" }> = { op: "docCreate", title };
@@ -341,10 +346,13 @@ export function isDocDirty(session: DocSession): boolean {
   return docDirtyFields(session).length > 0;
 }
 
-export const DOC_NOTHING_TO_UPDATE_REASON = "変更はまだありません";
+export function docNothingToUpdateReason(): string {
+  return msg().state.nothingToSaveYet;
+}
 
-export const DOC_TITLE_EMPTY_REASON =
-  "title を空にはできません（空にすると文書として読めなくなります）";
+export function docTitleEmptyReason(): string {
+  return msg().projectDetail.docTitleEmpty;
+}
 
 /** The values a 文書更新 asserts, kept so the re-read can be checked against them ([`docDivergence`]). */
 export interface DocSubmitted {
@@ -368,7 +376,7 @@ export type DocUpdatePlan =
 export function buildDocUpdate(session: DocSession): DocUpdatePlan {
   const dirty = docDirtyFields(session);
   if (dirty.length === 0) {
-    return { state: "blocked", reason: DOC_NOTHING_TO_UPDATE_REASON };
+    return { state: "blocked", reason: docNothingToUpdateReason() };
   }
 
   const draft = session.draft;
@@ -378,7 +386,7 @@ export function buildDocUpdate(session: DocSession): DocUpdatePlan {
     switch (field) {
       case "title":
         if (draft.title.trim() === "") {
-          return { state: "blocked", reason: DOC_TITLE_EMPTY_REASON };
+          return { state: "blocked", reason: docTitleEmptyReason() };
         }
         update.title = draft.title.trim();
         submitted.title = update.title;
@@ -403,7 +411,7 @@ export function buildDocUpdate(session: DocSession): DocUpdatePlan {
         const tags = cleaned(draft.tags);
         const bad = firstWithComma(tags);
         if (bad !== undefined) {
-          return { state: "blocked", reason: commaReason("タグ", bad) };
+          return { state: "blocked", reason: commaReason(msg().field.tagWord, bad) };
         }
         update.tags = tags;
         submitted.tags = tags;
@@ -432,7 +440,7 @@ export function buildDocUpdate(session: DocSession): DocUpdatePlan {
  */
 export function docDivergence(submitted: DocSubmitted, document: Document | null): string[] {
   if (document === null) {
-    return ["文書（再読込結果に見当たりません）"];
+    return [msg().projectDetail.divergedDocument];
   }
   const diverged: string[] = [];
   const text = (label: string, sent: string | undefined, got: string | null) => {
@@ -441,7 +449,7 @@ export function docDivergence(submitted: DocSubmitted, document: Document | null
     }
   };
   text("title", submitted.title, document.title);
-  text("本文", submitted.content, document.body);
+  text(msg().field.body, submitted.content, document.body);
   text("type", submitted.docType, document.type);
   if (submitted.tags !== undefined && !sameSet(submitted.tags, document.tags)) {
     diverged.push("tags");
@@ -464,8 +472,9 @@ export interface MilestoneAddInput {
 
 export const EMPTY_MILESTONE_ADD: MilestoneAddInput = { name: "", description: "" };
 
-export const MILESTONE_NAME_REQUIRED_REASON =
-  "名称は必須です";
+export function milestoneNameRequiredReason(): string {
+  return msg().projectDetail.nameRequiredReason;
+}
 
 /** Whether the マイルストーン作成 form holds anything the user typed — see [`hasTaskCreateInput`]. */
 export function hasMilestoneAddInput(input: MilestoneAddInput): boolean {
@@ -475,7 +484,7 @@ export function hasMilestoneAddInput(input: MilestoneAddInput): boolean {
 export function buildMilestoneAdd(input: MilestoneAddInput): IssuePlan {
   const name = input.name.trim();
   if (name === "") {
-    return { state: "blocked", reason: MILESTONE_NAME_REQUIRED_REASON };
+    return { state: "blocked", reason: milestoneNameRequiredReason() };
   }
   const operation: Extract<UpdateOperation, { op: "milestoneAdd" }> = { op: "milestoneAdd", name };
   if (input.description.trim() !== "") {
@@ -539,11 +548,13 @@ export interface MilestoneRenameInput {
  * exception, so it is the box the user has to clear. */
 export const EMPTY_MILESTONE_RENAME: MilestoneRenameInput = { to: "", updateTasks: true };
 
-export const MILESTONE_RENAME_REQUIRED_REASON =
-  "新しい名称は必須です";
+export function milestoneRenameRequiredReason(): string {
+  return msg().projectDetail.renameRequiredReason;
+}
 
-export const MILESTONE_RENAME_UNCHANGED_REASON =
-  "現在の名称と同じです（変更が無いので発行しません）";
+export function milestoneRenameUnchangedReason(): string {
+  return msg().projectDetail.renameUnchanged;
+}
 
 export function buildMilestoneRename(
   milestone: Milestone,
@@ -551,12 +562,12 @@ export function buildMilestoneRename(
 ): IssuePlan {
   const to = input.to.trim();
   if (to === "") {
-    return { state: "blocked", reason: MILESTONE_RENAME_REQUIRED_REASON };
+    return { state: "blocked", reason: milestoneRenameRequiredReason() };
   }
   // The CLI compares titles ignoring case and surrounding space (doc-9 §4.2.1), so a rename that
   // differs only there would be issued as a change and land as none.
   if (to.toLowerCase() === milestone.title.trim().toLowerCase()) {
-    return { state: "blocked", reason: MILESTONE_RENAME_UNCHANGED_REASON };
+    return { state: "blocked", reason: milestoneRenameUnchangedReason() };
   }
   return {
     state: "ready",
@@ -578,14 +589,17 @@ export interface MilestoneRemoveInput {
 
 export const EMPTY_MILESTONE_REMOVE: MilestoneRemoveInput = { handling: null, reassignTo: "" };
 
-export const MILESTONE_REMOVE_HANDLING_REQUIRED_REASON =
-  "参照するタスクの扱いを選んでください";
+export function milestoneRemoveHandlingRequiredReason(): string {
+  return msg().projectDetail.removeHandlingRequired;
+}
 
-export const MILESTONE_REASSIGN_TARGET_REQUIRED_REASON =
-  "付け替え先のマイルストーンは必須です";
+export function milestoneReassignTargetRequiredReason(): string {
+  return msg().projectDetail.reassignTargetRequired;
+}
 
-export const MILESTONE_REASSIGN_TARGET_IS_SELF_REASON =
-  "付け替え先が削除するマイルストーン自身です";
+export function milestoneReassignTargetIsSelfReason(): string {
+  return msg().projectDetail.reassignTargetIsSelf;
+}
 
 /**
  * 削除はファイルを消さない (doc-9 §4.2.1 実測): the milestone file moves to `archive/milestones/`.
@@ -593,19 +607,21 @@ export const MILESTONE_REASSIGN_TARGET_IS_SELF_REASON =
  * to keep the CLI's word while saying what actually happens. **The version measured stays in doc-9
  * §4.2.1 and off the screen** (decision-27).
  */
-export const MILESTONE_REMOVE_MOVES_THE_FILE =
-  "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します（実測）";
+export function milestoneRemoveMovesTheFile(): string {
+  return msg().projectDetail.removeMovesTheFile;
+}
 
 /** `keep` leaves referencing tasks pointing at a milestone that is no longer in the root. */
-export const MILESTONE_KEEP_LEAVES_DANGLING_REFERENCES =
-  "「そのまま保持」では、参照するタスクが解決先の無い milestone 値を持ったまま残ります";
+export function milestoneKeepLeavesDanglingReferences(): string {
+  return msg().projectDetail.keepLeavesDangling;
+}
 
 export function buildMilestoneRemove(
   milestone: Milestone,
   input: MilestoneRemoveInput,
 ): IssuePlan {
   if (input.handling === null) {
-    return { state: "blocked", reason: MILESTONE_REMOVE_HANDLING_REQUIRED_REASON };
+    return { state: "blocked", reason: milestoneRemoveHandlingRequiredReason() };
   }
   if (input.handling !== "reassign") {
     return {
@@ -621,10 +637,10 @@ export function buildMilestoneRemove(
   }
   const to = input.reassignTo.trim();
   if (to === "") {
-    return { state: "blocked", reason: MILESTONE_REASSIGN_TARGET_REQUIRED_REASON };
+    return { state: "blocked", reason: milestoneReassignTargetRequiredReason() };
   }
   if (to === milestone.id) {
-    return { state: "blocked", reason: MILESTONE_REASSIGN_TARGET_IS_SELF_REASON };
+    return { state: "blocked", reason: milestoneReassignTargetIsSelfReason() };
   }
   return {
     state: "ready",
@@ -656,13 +672,15 @@ export function buildMilestoneArchive(milestone: Milestone): IssuePlan {
  * description without complaint (measured 2026-08-12). doc-10 §1 asks that a stated reason be a
  * true one.
  */
-export const MILESTONE_DESCRIPTION_HEADING_REASON =
-  "説明の行頭に `##` は置けません。読み取りは次の `##` までを説明として扱うため、" +
-  "その先に書いた分は保存しても画面に出なくなります";
+export function milestoneDescriptionHeadingReason(): string {
+  return msg().projectDetail.descriptionHeading;
+}
 
 /** A description whose text is unchanged has nothing to issue — the same 触っていない判定 the
  * document update form makes (doc-10 §5). */
-export const MILESTONE_DESCRIPTION_UNCHANGED_REASON = "説明は変更されていません";
+export function milestoneDescriptionUnchangedReason(): string {
+  return msg().projectDetail.descriptionUnchanged;
+}
 
 /**
  * The 保留理由 drawn without a visible sentence (doc-11 §8's two licences).
@@ -671,10 +689,10 @@ export const MILESTONE_DESCRIPTION_UNCHANGED_REASON = "説明は変更されて�
  *
  * - **① the 区画 states the reason** — a field marked「（必須）」sitting empty is itself the 常時表示
  *   補助文 §5's first form asks for, so those controls stay `disabled`
- *   (`TASK_TITLE_REQUIRED_REASON`, `DOC_TITLE_REQUIRED_REASON`, `DOC_TITLE_EMPTY_REASON`,
- *   `MILESTONE_NAME_REQUIRED_REASON`, `MILESTONE_RENAME_REQUIRED_REASON`), and so do the 概要区画's
- *   two (`OVERVIEW_INPUT_PROBLEMS_REASON` — every problem is printed under the field it is about;
- *   `OVERVIEW_NO_CHANGES_REASON` — the 送信属性一覧 directly above the control says 変更なし).
+ *   (`taskTitleRequiredReason()`, `docTitleRequiredReason()`, `docTitleEmptyReason()`,
+ *   `milestoneNameRequiredReason()`, `milestoneRenameRequiredReason()`), and so do the 概要区画's
+ *   two (`overviewInputProblemsReason()` — every problem is printed under the field it is about;
+ *   `overviewNoChangesReason()` — the 送信属性一覧 directly above the control says 変更なし).
  *   **概要区画の保存 keeps §5's second form even so**, because two of its four 保留理由 are 台帳読取専用
  *   and 発行中, which are on neither licence and keep a printed line: one control cannot take focus or
  *   not depending on *why* it is withheld. ① licences omitting the sentence, and that is what is
@@ -682,32 +700,39 @@ export const MILESTONE_DESCRIPTION_UNCHANGED_REASON = "説明は変更されて�
  * - **② nothing typed / nothing changed yet**, where the form itself makes the next move obvious.
  *   No marker states it, so these two take §5's *second* form — the control is `aria-disabled` and
  *   focusable, and `aria-describedby` names a span that is always in the DOM
- *   (`DOC_NOTHING_TO_UPDATE_REASON`, `MILESTONE_DESCRIPTION_UNCHANGED_REASON`, and
- *   `NOTHING_TO_SAVE_REASON` — the タスク詳細's 保存, added 2026-08-10 from the 目視 on TASK-135).
- *   **`NOTHING_TO_SAVE_REASON` is the first entry from outside プロジェクト詳細**, which is why this
+ *   (`docNothingToUpdateReason()`, `milestoneDescriptionUnchangedReason()`, and
+ *   `nothingToSaveReason()` — the タスク詳細's 保存, added 2026-08-10 from the 目視 on TASK-135).
+ *   **`nothingToSaveReason()` is the first entry from outside プロジェクト詳細**, which is why this
  *   list sits beside `omitsSentence` rather than beside any one screen: the licence is a fact about
  *   the reason and its 区画, and both screens ask the same question of it.
  *
  * **Reasons caused from outside the form are on neither licence and keep their sentence** — CLI 縮退,
  * 台帳読取専用, 発行中, 競合. That is why this is a listed set and not a rule over all 保留理由: which
  * licence a reason has is a fact about its 区画, and adding an entry means checking that 区画.
+ *
+ * **Built where it is asked rather than once at load** (TASK-187): each entry now comes from the
+ * 文言表, so a list frozen at import would answer for whichever 表示言語 happened to be in force then.
+ * The comparison stays a string one — [`omitsSentence`] is handed a reason that was worded in the
+ * same pass, so both sides are in the same language whichever language that is.
  */
-const REASONS_WITHOUT_SENTENCE: readonly string[] = [
-  TASK_TITLE_REQUIRED_REASON,
-  DOC_TITLE_REQUIRED_REASON,
-  DOC_TITLE_EMPTY_REASON,
-  DOC_NOTHING_TO_UPDATE_REASON,
-  MILESTONE_NAME_REQUIRED_REASON,
-  MILESTONE_RENAME_REQUIRED_REASON,
-  MILESTONE_DESCRIPTION_UNCHANGED_REASON,
-  NOTHING_TO_SAVE_REASON,
-  OVERVIEW_INPUT_PROBLEMS_REASON,
-  OVERVIEW_NO_CHANGES_REASON,
-];
+function reasonsWithoutSentence(): readonly string[] {
+  return [
+    taskTitleRequiredReason(),
+    docTitleRequiredReason(),
+    docTitleEmptyReason(),
+    docNothingToUpdateReason(),
+    milestoneNameRequiredReason(),
+    milestoneRenameRequiredReason(),
+    milestoneDescriptionUnchangedReason(),
+    nothingToSaveReason(),
+    overviewInputProblemsReason(),
+    overviewNoChangesReason(),
+  ];
+}
 
 /** Whether this reason is drawn without a visible sentence (doc-11 §8). */
 export function omitsSentence(reason: string): boolean {
-  return REASONS_WITHOUT_SENTENCE.includes(reason);
+  return reasonsWithoutSentence().includes(reason);
 }
 
 /**
@@ -725,10 +750,10 @@ export function omitsSentence(reason: string): boolean {
  */
 export function buildMilestoneDescribe(milestone: Milestone, description: string): IssuePlan {
   if (description.split("\n").some((line) => line.trimStart().startsWith("##"))) {
-    return { state: "blocked", reason: MILESTONE_DESCRIPTION_HEADING_REASON };
+    return { state: "blocked", reason: milestoneDescriptionHeadingReason() };
   }
   if (description === (milestone.description ?? "")) {
-    return { state: "blocked", reason: MILESTONE_DESCRIPTION_UNCHANGED_REASON };
+    return { state: "blocked", reason: milestoneDescriptionUnchangedReason() };
   }
   return {
     state: "ready",
@@ -750,7 +775,9 @@ export function buildMilestoneDescribe(milestone: Milestone, description: string
  * external-editor route there. Stating it here would hand the reader a limit they can do nothing about
  * from this form.
  */
-export const TASK_CREATE_NOTE = "以下の内容は作成後、タスクの編集で追加・編集してください。";
+export function taskCreateNote(): string {
+  return msg().projectDetail.taskCreateNote;
+}
 
 /**
  * The fields `task create` accepts that this 区画 has no input for (doc-10 §7), as the 注記モーダル
@@ -761,13 +788,16 @@ export const TASK_CREATE_NOTE = "以下の内容は作成後、タスクの編�
  * (doc-5 §3, measured 2026-08-12). With the reasons gone there is no false explanation left to guard
  * against, and a flag name is doc-11 §8's 発行手段の記述 with nothing exempting it any more.
  */
-export const TASK_CREATE_LATER_FIELDS: readonly string[] = [
-  "assignee",
-  "実装計画",
-  "実装ノート",
-  "References",
-  "依存",
-];
+export function taskCreateLaterFields(): readonly string[] {
+  const text = msg();
+  return [
+    "assignee",
+    text.taskDetail.planHeading,
+    text.taskDetail.notesHeading,
+    "References",
+    text.projectDetail.dependenciesField,
+  ];
+}
 
 // --- 発行結果の提示 (doc-9 §5) -----------------------------------------------------------------
 
@@ -789,10 +819,7 @@ export function outcomeMessage(outcome: IssueOutcome, done: string): string {
     case "applied":
       return done;
     case "conflict":
-      return (
-        `${conflictSetDetail(outcome)}。CLI を起動せずに中止しました` +
-        "（更新前競合）。最新を読み直したので、内容を確かめてからやり直してください"
-      );
+      return msg().projectDetail.outcomeConflict(conflictSetDetail(outcome));
     case "uncheckable":
       return outcome.detail;
     case "failed":

@@ -15,6 +15,7 @@
  * | decision-23 畳んだ列の四角 | [`priorityTally`] | the 段 breakdown a 畳んだ列 draws and announces |
  */
 
+import { msg } from "./messages";
 import type { CardDensity, TaskView } from "./wire";
 
 /**
@@ -119,13 +120,15 @@ export function priorityTally(views: readonly TaskView[]): PriorityTallyGroup[] 
   }));
 }
 
-/** How a 畳んだ列 says its tally in words — the aggregate an `aria-hidden` run of figures cannot. */
-export const PRIORITY_STEP_LABEL: Record<string, string> = {
-  high: "high",
-  medium: "medium",
-  low: "low",
-  none: "priority 未設定・未知",
-};
+/**
+ * How a 畳んだ列 says its tally in words — the aggregate an `aria-hidden` run of figures cannot.
+ *
+ * The three 段 keep the spelling `priority` itself carries in a管理ファイル (decision-35 §5 の識別子);
+ * only 未設定・未知, which is Atlas's own account of a value it could not place, is a sentence.
+ */
+export function priorityStepLabel(step: PriorityStep | null): string {
+  return step ?? msg().swimlane.priorityNone;
+}
 
 /**
  * The accessible name of a 畳んだ列 のレーンセル: the column, the total, and the 段 breakdown.
@@ -135,14 +138,16 @@ export const PRIORITY_STEP_LABEL: Record<string, string> = {
  * from being read out as N nameless figures.
  */
 export function collapsedCellLabel(label: string, views: readonly TaskView[]): string {
+  const text = msg().swimlane;
   const groups = priorityTally(views);
+  const total = text.collapsedCellCount(label, views.length);
   if (groups.length === 0) {
-    return `${label} ${views.length} 件`;
+    return total;
   }
   const breakdown = groups
-    .map((group) => `${PRIORITY_STEP_LABEL[group.step ?? "none"]} ${group.count}`)
-    .join("・");
-  return `${label} ${views.length} 件（${breakdown}）`;
+    .map((group) => `${priorityStepLabel(group.step)} ${group.count}`)
+    .join(msg().state.listSeparator);
+  return text.collapsedCellBreakdown(total, breakdown);
 }
 
 /** The items doc-7 §3 の割当表 varies by 段, as one card's worth of answers. */

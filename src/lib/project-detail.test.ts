@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  ALIAS_EFFECT_NOTES,
+  aliasEffectNote,
   DETAIL_SECTIONS,
+  sectionLabel,
   sectionCount,
-  OVERVIEW_INPUT_PROBLEMS_REASON,
-  OVERVIEW_NO_CHANGES_REASON,
-  OVERVIEW_READ_ONLY_NOTE,
-  SLUG_IMMUTABLE_NOTE,
-  UNREGISTER_SCOPE_NOTE,
+  overviewInputProblemsReason,
+  overviewNoChangesReason,
+  overviewReadOnlyNote,
+  slugImmutableNote,
+  unregisterScopeNote,
   aliasSummary,
   displayPath,
   gitRemoteDisagreement,
@@ -44,7 +45,7 @@ function submittedFor(base: ProjectEntry, edit: EntryEdit) {
 
 describe("区画切替", () => {
   it("holds the five 区画 doc-10 §3 puts on this screen, in the doc's order", () => {
-    expect(DETAIL_SECTIONS.map((section) => section.id)).toEqual([
+    expect([...DETAIL_SECTIONS]).toEqual([
       "overview",
       "documents",
       "milestones",
@@ -57,7 +58,7 @@ describe("区画切替", () => {
   // relative order of the four that design 07 fixes states what the placement rule protects: an
   // item added later must leave every pair of them where 07 put them (doc-12 §8).
   it("leaves design 07's four in the relative order 07 gave them", () => {
-    const ids = DETAIL_SECTIONS.map((section) => section.id);
+    const ids = [...DETAIL_SECTIONS];
     expect(ids.filter((id) => id !== "decisions")).toEqual([
       "overview",
       "documents",
@@ -67,8 +68,8 @@ describe("区画切替", () => {
   });
 
   it("labels 決定事項 with the 画面に出る語, not doc-4 §1's 意思決定", () => {
-    const decisions = DETAIL_SECTIONS.find((section) => section.id === "decisions");
-    expect(decisions?.label).toBe("決定事項");
+    expect(DETAIL_SECTIONS).toContain("decisions");
+    expect(sectionLabel("decisions")).toBe("決定事項");
   });
 });
 
@@ -98,7 +99,7 @@ describe("区画ナビの件数", () => {
   // 読み取りが済むまでは件数が無い。0 を返すと、読めていないことと空であることが同じ絵になる。
   it("has no count before the root has been read", () => {
     for (const section of DETAIL_SECTIONS) {
-      expect([section.id, sectionCount(section.id, null)]).toEqual([section.id, null]);
+      expect([section, sectionCount(section, null)]).toEqual([section, null]);
     }
   });
 });
@@ -120,10 +121,10 @@ describe("台帳読取専用の及ぶ範囲", () => {
     // doc-10 §8 asks for both the inputs and 登録解除 to be disabled. With only the save held back,
     // the user could edit values that can never be written, that input would count as 未保存入力,
     // and they would later be asked whether to discard changes that were never saveable.
-    expect(OVERVIEW_READ_ONLY_NOTE).toContain("入力");
-    expect(OVERVIEW_READ_ONLY_NOTE).toContain("登録解除");
+    expect(overviewReadOnlyNote()).toContain("入力");
+    expect(overviewReadOnlyNote()).toContain("登録解除");
     // And the same sentence says the stop reaches this 区画 only (doc-10 §3's independence).
-    expect(OVERVIEW_READ_ONLY_NOTE).toContain("文書・マイルストーン・新規タスク");
+    expect(overviewReadOnlyNote()).toContain("文書・マイルストーン・新規タスク");
   });
 });
 
@@ -309,7 +310,7 @@ describe("保存の保留判定", () => {
   it("withholds 保存 while there is nothing to send (doc-10 §4.1)", () => {
     const shown = control(edited(base));
     expect(shown.state).toBe("withheld");
-    expect(shown.state === "withheld" && shown.reason).toBe(OVERVIEW_NO_CHANGES_REASON);
+    expect(shown.state === "withheld" && shown.reason).toBe(overviewNoChangesReason());
   });
 
   it("withholds 保存 while the input has a problem, before it looks at what changed", () => {
@@ -317,7 +318,7 @@ describe("保存の保留判定", () => {
     // problem is what the reason names: sending is not the next move, fixing the field is.
     const shown = control(edited(base, { projectRoot: "" }));
     expect(shown.state).toBe("withheld");
-    expect(shown.state === "withheld" && shown.reason).toBe(OVERVIEW_INPUT_PROBLEMS_REASON);
+    expect(shown.state === "withheld" && shown.reason).toBe(overviewInputProblemsReason());
   });
 
   it("is ready only when a sound form has something to send", () => {
@@ -354,8 +355,8 @@ describe("保存の保留判定", () => {
     // 入力に問題があるとき is printed under each field it is about, and 変更が無いとき is what the
     // 送信属性一覧 directly above the control says. Printing either again under 保存 would state one
     // situation twice within the same 区画.
-    expect(omitsSentence(OVERVIEW_NO_CHANGES_REASON)).toBe(true);
-    expect(omitsSentence(OVERVIEW_INPUT_PROBLEMS_REASON)).toBe(true);
+    expect(omitsSentence(overviewNoChangesReason())).toBe(true);
+    expect(omitsSentence(overviewInputProblemsReason())).toBe(true);
     // The obstacles from outside the form are on neither licence and keep their printed line.
     expect(omitsSentence(overviewBlocked({ readOnly: true, busy: false }) ?? "")).toBe(false);
     expect(omitsSentence(overviewBlocked({ readOnly: false, busy: true }) ?? "")).toBe(false);
@@ -381,8 +382,8 @@ describe("ルート移動の断り", () => {
   });
 
   it("explains what changing the slug would cost, instead of offering a disabled field", () => {
-    expect(SLUG_IMMUTABLE_NOTE).toContain("登録を解除して登録し直す");
-    expect(SLUG_IMMUTABLE_NOTE).toContain("同一性は切れます");
+    expect(slugImmutableNote()).toContain("登録を解除して登録し直す");
+    expect(slugImmutableNote()).toContain("同一性は切れます");
   });
 });
 
@@ -430,24 +431,24 @@ describe("別名が効くかの提示", () => {
   it("covers every state `aliasKeyEffect` can return", () => {
     // The implementation has four states, so four are shown; doc-10 §4.2 was revised to match.
     const declared = ["To Do", "In Progress"];
-    expect(ALIAS_EFFECT_NOTES[aliasKeyEffect("To Do", declared)].label).toBe("宣言あり");
-    expect(ALIAS_EFFECT_NOTES[aliasKeyEffect("Draft", declared)].label).toBe("draft 専用");
-    expect(ALIAS_EFFECT_NOTES[aliasKeyEffect("Doing", declared)].label).toBe("宣言なし → 効果なし");
-    expect(ALIAS_EFFECT_NOTES[aliasKeyEffect("Doing", [])].label).toBe("宣言集合なし");
+    expect(aliasEffectNote(aliasKeyEffect("To Do", declared)).label).toBe("宣言あり");
+    expect(aliasEffectNote(aliasKeyEffect("Draft", declared)).label).toBe("draft 専用");
+    expect(aliasEffectNote(aliasKeyEffect("Doing", declared)).label).toBe("宣言なし → 効果なし");
+    expect(aliasEffectNote(aliasKeyEffect("Doing", [])).label).toBe("宣言集合なし");
   });
 
   it("marks only the one state where the alias changes nothing", () => {
     // Under `NoDeclaredSet` the alias applies — `map_status` does not cut the column mapping — so
     // giving it the ineffective mark would tell the user to fix something that is not broken.
-    expect(ALIAS_EFFECT_NOTES.undeclared.ineffective).toBe(true);
-    expect(ALIAS_EFFECT_NOTES.noDeclaredSet.ineffective).toBe(false);
-    expect(ALIAS_EFFECT_NOTES.declared.ineffective).toBe(false);
-    expect(ALIAS_EFFECT_NOTES.draft.ineffective).toBe(false);
+    expect(aliasEffectNote("undeclared").ineffective).toBe(true);
+    expect(aliasEffectNote("noDeclaredSet").ineffective).toBe(false);
+    expect(aliasEffectNote("declared").ineffective).toBe(false);
+    expect(aliasEffectNote("draft").ineffective).toBe(false);
   });
 
   it("says the ineffective alias is kept in the ledger, not dropped (doc-3 §3.3, TASK-42)", () => {
-    expect(ALIAS_EFFECT_NOTES.undeclared.note).toContain("未分類区画");
-    expect(ALIAS_EFFECT_NOTES.undeclared.note).toContain("登録内容からは削除しません");
+    expect(aliasEffectNote("undeclared").note).toContain("未分類区画");
+    expect(aliasEffectNote("undeclared").note).toContain("登録内容からは削除しません");
   });
 });
 
@@ -505,7 +506,7 @@ describe("登録解除", () => {
   });
 
   it("states what is not deleted, which is what makes the button safe to press", () => {
-    expect(UNREGISTER_SCOPE_NOTE).toContain("触れません");
-    expect(UNREGISTER_SCOPE_NOTE).toContain("タスクはそのまま残ります");
+    expect(unregisterScopeNote()).toContain("触れません");
+    expect(unregisterScopeNote()).toContain("タスクはそのまま残ります");
   });
 });

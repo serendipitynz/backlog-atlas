@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_DEPENDENCIES_REASON,
-  EMPTY_REFERENCES_REASON,
-  EXTERNAL_EDITOR_ROUTE,
+  emptyDependenciesReason,
+  emptyReferencesReason,
+  externalEditorRoute,
   editAvailability,
 } from "./edit";
 import {
-  CONFIGURED_TERMINAL_CAVEAT,
-  EDITOR_PROBE_PENDING_REASON,
-  FILE_MISSING_EDITOR_REASON,
-  FRONTMATTER_NOTICE,
-  NO_CONFIGURED_EDITOR_REASON,
-  UNSAVED_INPUT_WARNING,
+  configuredTerminalCaveat,
+  editorProbePendingReason,
+  fileMissingEditorReason,
+  frontmatterNotice,
+  noConfiguredEditorReason,
+  unsavedInputWarning,
   editorOffers,
   launchConfirmation,
   launchFailureDetail,
@@ -74,7 +74,7 @@ describe("editorOffers", () => {
     expect(offer(WITHOUT_EDITOR, "association").enabled).toBe(true);
     const configured = offer(WITHOUT_EDITOR, "configured");
     expect(configured.enabled).toBe(false);
-    expect(configured.reason).toBe(NO_CONFIGURED_EDITOR_REASON);
+    expect(configured.reason).toBe(noConfiguredEditorReason());
     // The reason has to name both ways out, since アプリ設定 is now the first of them (doc-8 §7).
     expect(configured.reason).toContain("設定画面");
   });
@@ -96,29 +96,29 @@ describe("editorOffers", () => {
     // and that has to be readable before the launch rather than diagnosed after it.
     const configured = offer(WITH_EDITOR, "configured");
     expect(configured.enabled).toBe(true);
-    expect(configured.reason).toBe(CONFIGURED_TERMINAL_CAVEAT);
+    expect(configured.reason).toBe(configuredTerminalCaveat());
   });
 
   it("withholds both methods while the probe is unfinished", () => {
     const offers = editorOffers(null, { fileMissing: false });
     expect(offers.every((entry) => !entry.enabled)).toBe(true);
-    expect(offers.every((entry) => entry.reason === EDITOR_PROBE_PENDING_REASON)).toBe(true);
+    expect(offers.every((entry) => entry.reason === editorProbePendingReason())).toBe(true);
   });
 
   it("withholds both methods when the file left the read result", () => {
     // Nothing can be named as the target, and a launch on a stale path is what the boundary refuses.
     const offers = editorOffers(WITH_EDITOR, { fileMissing: true });
     expect(offers.every((entry) => !entry.enabled)).toBe(true);
-    expect(offers.every((entry) => entry.reason === FILE_MISSING_EDITOR_REASON)).toBe(true);
+    expect(offers.every((entry) => entry.reason === fileMissingEditorReason())).toBe(true);
   });
 });
 
 describe("開く前の表示 (AC #3)", () => {
   it("states the frontmatter exposure, the 不整合表示 it causes, and the missing CLI check", () => {
-    expect(FRONTMATTER_NOTICE).toContain("frontmatter");
-    expect(FRONTMATTER_NOTICE).toContain("不整合表示");
+    expect(frontmatterNotice()).toContain("frontmatter");
+    expect(frontmatterNotice()).toContain("不整合表示");
     // The exception doc-8 §7 names: these bytes do not pass the CLI's option checking.
-    expect(FRONTMATTER_NOTICE).toContain("検査は実施されません");
+    expect(frontmatterNotice()).toContain("検査は実施されません");
   });
 
 });
@@ -132,9 +132,9 @@ describe("二重取り込みの回避 (AC #4)", () => {
   it("promises the input is kept and names both halves of the doc-8 §6.4 handling", () => {
     // Neither half may be dropped from the wording: the launch does not take the 未保存入力, and the
     // divergence is acted on where doc-8 §6.4 puts it — 外部変更の検出 and 保存時の更新前競合検出.
-    expect(UNSAVED_INPUT_WARNING).toContain("破棄しません");
-    expect(UNSAVED_INPUT_WARNING).toContain("外部変更");
-    expect(UNSAVED_INPUT_WARNING).toContain("更新前競合検出");
+    expect(unsavedInputWarning()).toContain("破棄しません");
+    expect(unsavedInputWarning()).toContain("外部変更");
+    expect(unsavedInputWarning()).toContain("更新前競合検出");
   });
 
   it("問いは区画が出している注意文そのもので、両方の答えが起動を名乗る (doc-11 §12)", () => {
@@ -142,7 +142,7 @@ describe("二重取り込みの回避 (AC #4)", () => {
     // §7 already settled that the same thing is not worded a second way for the second place.
     for (const offer of editorOffers(WITH_EDITOR, { fileMissing: false })) {
       const confirmation = launchConfirmation(offer);
-      expect(confirmation.question).toBe(UNSAVED_INPUT_WARNING);
+      expect(confirmation.question).toBe(unsavedInputWarning());
       expect(confirmation.title).toBe(offer.label);
       expect(confirmation.proceed).toBe(offer.label);
       // 語尾の … belongs to the 控え, not to the layer's name (doc-11 §12 の ②).
@@ -155,8 +155,8 @@ describe("CLI で不能な操作の案内先 (AC #5)", () => {
   it("is the destination every withheld operation points at", () => {
     // The reasons and the control have to name the same place: a reason pointing at "外部エディタ経路"
     // in the abstract is what made this route unfindable before it existed as a control.
-    expect(EMPTY_REFERENCES_REASON).toContain(EXTERNAL_EDITOR_ROUTE);
-    expect(EMPTY_DEPENDENCIES_REASON).toContain(EXTERNAL_EDITOR_ROUTE);
+    expect(emptyReferencesReason()).toContain(externalEditorRoute());
+    expect(emptyDependenciesReason()).toContain(externalEditorRoute());
     for (const storageState of ["draft", "completed", "archive"] as const) {
       const availability = editAvailability(taskView({ storageState }), {
         state: "ready",
@@ -166,7 +166,7 @@ describe("CLI で不能な操作の案内先 (AC #5)", () => {
       if (availability.state !== "unavailable") {
         return;
       }
-      expect(availability.reason).toContain(EXTERNAL_EDITOR_ROUTE);
+      expect(availability.reason).toContain(externalEditorRoute());
     }
   });
 

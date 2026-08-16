@@ -12,8 +12,8 @@
  *
  * | term | here | is |
  * |---|---|---|
- * | doc-7 §2.1 割り当て一覧 | [`SHORTCUTS`] + [`ShortcutBinding`] | the 記録, all five 欄: chord, operation, 適用範囲, whether it fires in a text field, and what default it stops. §2.1 names this side and not the three columns the モーダル prints (TASK-125) |
- * | doc-7 §2.1 使える場所 | [`ShortcutScope`] + [`SCOPE_LABEL`] | 適用範囲: the closed set of 6 places an assignment is answered in |
+ * | doc-7 §2.1 割り当て一覧 | [`shortcuts`] + [`ShortcutBinding`] | the 記録, all five 欄: chord, operation, 適用範囲, whether it fires in a text field, and what default it stops. §2.1 names this side and not the three columns the モーダル prints (TASK-125) |
+ * | doc-7 §2.1 使える場所 | [`ShortcutScope`] + [`scopeLabel`] | 適用範囲: the closed set of 6 places an assignment is answered in |
  * | doc-7 §2.1 入力欄・編集部品の内側では単独キーを発火させない | [`textEntryFocused`] + [`ShortcutBinding.firesInTextEntry`] | 文字入力中: focus is inside an element that takes characters, so a bare key belongs to the text |
  * | doc-7 §2.1 修飾キーは macOS で Command、Windows・Linux で Control | [`Chord.mod`] + [`modifierLabel`] | 共通修飾キー: one modifier on the assignment's side, mapped to this OS's real key for matching, ARIA and spelling alike |
  * | doc-7 §2.1 preventDefault は要るキーだけに限り一覧に明記する | [`ShortcutBinding.preventsDefault`] | the default this key would otherwise take, or `null` when nothing is stopped |
@@ -41,6 +41,8 @@
  * browser — and the two facts stay one call each rather than being sniffed at every key press.
  */
 
+import { msg } from "./messages";
+
 // --- 適用範囲 (doc-7 §2.1 使える場所) -----------------------------------------------------------
 
 /**
@@ -66,16 +68,11 @@ export type ShortcutScope =
  * The 使える場所 column, as the on-screen 一覧 words it. `bothScreens` names both screens rather than
  * counting them (TASK-125): 両画面 left *which* two off the screen entirely — the pair was only in the
  * TSDoc above. It is spelled with the same 短縮形 the `swimlane` row below uses, and that the way back
- * from プロジェクト詳細 prints (「← スイムレーン」), so the two rows can be read against each other.
+ * from プロジェクト詳細 prints, so the two rows can be read against each other.
  */
-export const SCOPE_LABEL: Record<ShortcutScope, string> = {
-  bothScreens: "スイムレーン・プロジェクト詳細",
-  swimlane: "スイムレーン",
-  overlay: "モーダル・メニュー・ポップオーバーの内側",
-  modal: "モーダルの内側",
-  editPart: "編集部品の内側",
-  laneCreate: "列内新規タスク入力の内側",
-};
+export function scopeLabel(scope: ShortcutScope): string {
+  return msg().shortcutHelp.scope[scope];
+}
 
 // --- キーの組 (doc-7 §2.1 修飾キーの OS 対応) --------------------------------------------------
 
@@ -112,25 +109,18 @@ export type ShortcutAction =
   | "saveEditSession"
   | "submitLaneCreate";
 
-/** One row of the 割り当て一覧, minus the action that keys it. */
+/**
+ * One row of the 割り当て一覧, minus the action that keys it and minus the two 欄 that are words.
+ *
+ * 操作 and the name of the default this key stops are the 文言表's (`shortcutHelp.assignment`), keyed
+ * by the same [`ShortcutAction`] — so the row's rule and the row's words are still one list, read
+ * together by [`shortcutOf`].
+ */
 interface Assignment {
   chord: Chord;
-  /** 操作: the words the 一覧 and the hint beside the control both use, so the two cannot diverge. */
-  operation: string;
   scope: ShortcutScope;
   /** 入力欄内で発火するか (doc-7 §2.1). */
   firesInTextEntry: boolean;
-  /**
-   * What default this key would otherwise take, or `null` when nothing is stopped. doc-7 §2.1 limits
-   * `preventDefault` to the keys that need it and requires the list to say so — a boolean would record
-   * that a default is stopped without recording *which*, which is the part that can turn out wrong.
-   *
-   * A 単独キー needs one whenever its operation moves focus into something that takes characters:
-   * [`firesInTextEntry`] keeps the press out of a field that *already* holds the caret, but it cannot
-   * see a field the operation itself opens, and the key's own character reaches that field after the
-   * handler returns (TASK-129).
-   */
-  preventsDefault: string | null;
 }
 
 /**
@@ -144,24 +134,18 @@ const ASSIGNMENTS: Record<ShortcutAction, Assignment> = {
   // stopped working while the フィルタ帯's box had focus would be a hole the user cannot see.
   openRegister: {
     chord: { key: "n", mod: true },
-    operation: "プロジェクトを登録",
     scope: "bothScreens",
     firesInTextEntry: true,
-    preventsDefault: "WebView の新規ウィンドウ",
   },
   openSettings: {
     chord: { key: ",", mod: true },
-    operation: "設定",
     scope: "bothScreens",
     firesInTextEntry: true,
-    preventsDefault: null,
   },
   toggleMenu: {
     chord: { key: "m" },
-    operation: "メニューを開く／閉じる",
     scope: "bothScreens",
     firesInTextEntry: false,
-    preventsDefault: null,
   },
   // A bare key is only answered while the caret is *outside* a field, so its character normally lands
   // nowhere — but this operation moves the caret into one. The popover focuses its 検索欄 from an
@@ -173,50 +157,35 @@ const ASSIGNMENTS: Record<ShortcutAction, Assignment> = {
   // default ties the popover to when a particular engine performs it.
   addFilter: {
     chord: { key: "f" },
-    operation: "絞り込みを追加（値一覧を開く）",
     scope: "swimlane",
     firesInTextEntry: false,
-    preventsDefault: "開いた検索欄への f の入力",
   },
   undoFilter: {
     chord: { key: "Backspace" },
-    operation: "直前の絞り込みを 1 件戻す",
     scope: "swimlane",
     firesInTextEntry: false,
-    preventsDefault: "履歴の「戻る」",
   },
   closeOverlay: {
     chord: { key: "Escape" },
-    operation: "開いている層を閉じる",
     scope: "overlay",
     // See the module header: a modal keeps focus inside itself, so an Escape suppressed in fields
     // would leave it with no key that closes it — and Escape enters no character.
     firesInTextEntry: true,
-    preventsDefault: null,
   },
   cycleModalFocus: {
     chord: { key: "Tab", shift: "either" },
-    operation: "モーダル内の次／前の操作へ移動",
     scope: "modal",
     firesInTextEntry: true,
-    preventsDefault: "フォーカスがモーダルの外へ出る",
   },
   saveEditSession: {
     chord: { key: "Enter", mod: true },
-    // One operation with two words for it, because that is what the surface is: the chord confirms the
-    // 編集部品 it is pressed in — 明示保存 in an 編集セッション (doc-8 §6.3), 作成 in the 新規タスク区画's
-    // description field (doc-10 §7). Naming only 保存 would make the row wrong at the second.
-    operation: "編集部品から発行（編集セッションは保存、作成フォームは作成）",
     scope: "editPart",
     firesInTextEntry: true,
-    preventsDefault: "改行の入力",
   },
   submitLaneCreate: {
     chord: { key: "Enter", mod: true },
-    operation: "列内新規タスクを作成",
     scope: "laneCreate",
     firesInTextEntry: true,
-    preventsDefault: "改行の入力",
   },
 };
 
@@ -236,17 +205,31 @@ export const SHORTCUT_ORDER: readonly ShortcutAction[] = [
 /** One row of the 割り当て一覧 as anything reading the list sees it. */
 export interface ShortcutBinding extends Assignment {
   action: ShortcutAction;
+  /** 操作: the words the 一覧 and the hint beside the control both use, so the two cannot diverge. */
+  operation: string;
+  /**
+   * What default this key would otherwise take, or `null` when nothing is stopped. doc-7 §2.1 limits
+   * `preventDefault` to the keys that need it and requires the list to say so — a boolean would record
+   * that a default is stopped without recording *which*, which is the part that can turn out wrong.
+   * The 文言表 answers for every action, `null` included, so a key that stops a default in one
+   * language cannot stop nothing in the other.
+   *
+   * A 単独キー needs one whenever its operation moves focus into something that takes characters:
+   * [`firesInTextEntry`] keeps the press out of a field that *already* holds the caret, but it cannot
+   * see a field the operation itself opens, and the key's own character reaches that field after the
+   * handler returns (TASK-129).
+   */
+  preventsDefault: string | null;
 }
 
 /** 割り当て一覧 (doc-7 §2.1), in reading order. The only list; nothing assigns a key outside it. */
-export const SHORTCUTS: readonly ShortcutBinding[] = SHORTCUT_ORDER.map((action) => ({
-  action,
-  ...ASSIGNMENTS[action],
-}));
+export function shortcuts(): ShortcutBinding[] {
+  return SHORTCUT_ORDER.map((action) => shortcutOf(action));
+}
 
 /** One assignment by its operation, for the hint that has to sit beside that operation (AC #4). */
 export function shortcutOf(action: ShortcutAction): ShortcutBinding {
-  return { action, ...ASSIGNMENTS[action] };
+  return { action, ...ASSIGNMENTS[action], ...msg().shortcutHelp.assignment[action] };
 }
 
 // --- 表記 (doc-7 §2.1 修飾キーの OS 対応) -------------------------------------------------------
@@ -436,7 +419,8 @@ export function matchShortcut(
   if (event.isComposing || event.keyCode === 229) {
     return null;
   }
-  for (const binding of SHORTCUTS) {
+  for (const action of SHORTCUT_ORDER) {
+    const binding = { action, ...ASSIGNMENTS[action] };
     if (!context.scopes.includes(binding.scope)) {
       continue;
     }
@@ -444,7 +428,7 @@ export function matchShortcut(
       continue;
     }
     if (chordMatches(binding.chord, event, context.mac)) {
-      return binding;
+      return shortcutOf(action);
     }
   }
   return null;

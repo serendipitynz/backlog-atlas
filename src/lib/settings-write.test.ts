@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SETTINGS_NOT_READ, createSettingsWriter } from "./settings-write";
+import { createSettingsWriter, settingsNotRead } from "./settings-write";
 import { mergeDraft } from "./settings";
 import type { AppSettings, LoadedSettings } from "./wire";
 
@@ -118,7 +118,7 @@ describe("アプリ設定の 2 writer を直列化する", () => {
 
   it("says so, and writes nothing, before the first read has answered", async () => {
     const app = harness({ initial: null });
-    expect(await app.write((current) => current)).toBe(SETTINGS_NOT_READ);
+    expect(await app.write((current) => current)).toBe(settingsNotRead());
     expect(app.written).toHaveLength(0);
   });
 

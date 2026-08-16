@@ -28,6 +28,8 @@ export const ja = {
     edit: "編集",
     save: "保存",
     saving: "保存中…",
+    /** 保留理由 while this screen's own save is in flight. */
+    savingNow: "保存中です",
     saveFailed: (detail: string) => `保存できませんでした: ${detail}`,
     pick: "選択…",
     reload: "再読み込み",
@@ -36,6 +38,8 @@ export const ja = {
   /** 入力欄そのものの名と補助文, for the fields more than one screen draws. */
   field: {
     titleRequired: "title（必須）",
+    /** 保留理由 for a form whose required title is still empty (doc-11 §8 licence ①). */
+    titleRequiredReason: "title は必須です",
     projectRootRequired: "プロジェクトルート（必須）",
     backlogRootOptional: "Backlog ルート（任意）",
     slugOptional: "slug（任意）",
@@ -49,6 +53,17 @@ export const ja = {
     addCriterion: "追加する Acceptance Criterion",
     /** Every 全集合置換 field says this; the CLI replaces the set rather than appending. */
     replacesWholeSet: "保存時は既存を含む全集合で置き換えます。",
+    /**
+     * Why one member of a comma-separated CLI option cannot hold a comma (`comma.ts`). `what` is the
+     * field's own name and `quoted` the head of the value, already cut to a length the 固定行 can
+     * hold — the cut is the caller's, because doc-11 §13 bounds the row and not the sentence.
+     */
+    commaNotAllowed: (what: string, quoted: string) =>
+      `${what}に「,」を含められません（1 個のカンマ区切り値として扱われるため、` +
+      `「${quoted}」は 2 件に分かれます）`,
+    /** 入力欄の名として使う語, for the fields whose name is only ever a word in a sentence. */
+    labelWord: "ラベル",
+    tagWord: "タグ",
   },
   /**
    * 読み取り結果そのものの状態を言う短い文, for the states more than one screen shows. **A failure's
@@ -61,13 +76,31 @@ export const ja = {
     statusUnknown: "status 不明",
     storageUnknown: "保存区分不明",
     typeUnset: "Type 未設定",
+    /** decision-5 の未知 Type: a `kind:` label the read layer could not place. */
+    typeUnknown: "未知 Type",
     /** Appended to a value the read layer could not place among the known ones. */
     valueUnknown: "（未知）",
     count: (n: number) => `${n} 件`,
+    /** Nothing has been typed yet, so there is nothing an issue could carry (doc-11 §5 の保留理由). */
+    nothingToSaveYet: "変更はまだありません",
+    /**
+     * What goes between the members of a list built into a sentence. A punctuation mark rather than
+     * a word, and one of the places the two languages differ in the character itself: 中黒 joins a
+     * Japanese list and a comma joins an English one.
+     */
+    listSeparator: "・",
+    /**
+     * A sentence with the diagnostic text after it (`failure.ts`, and the reasons built like it).
+     * The brackets are here for `listSeparator`'s reason — 全角 and 半角 parentheses are different
+     * characters, and each belongs to one of the two languages.
+     */
+    withDetail: (sentence: string, detail: string) => `${sentence}（${detail}）`,
   },
   /** 被せ層 itself: `Modal.svelte`, and the footer 設定画面 draws in the same shape. */
   modal: {
     cannotPressNow: (reason: string) => `いま押せません: ${reason}`,
+    /** 戻る側の答え (doc-11 §12): one word, for every 実行前確認. */
+    issueConfirmCancel: "やめる",
   },
   /**
    * 画面の外側の文: the bands, the notices, the states drawn where no screen is mounted, and the two
@@ -125,6 +158,56 @@ export const ja = {
     },
     detailGone: (path: string) =>
       `${path} は現在の読み取り結果にありません（削除・移動、またはルート読取不能の可能性）。`,
+    /**
+     * 共通入口 (doc-7 §2.1) — the two entries the ☰ always offers, each with the one line saying
+     * what it reaches. Keyed by `HeaderEntryId`, so an entry added there has to be worded here.
+     */
+    headerEntry: {
+      register: {
+        label: "プロジェクトを登録",
+        note: "プロジェクトを 1 件登録します。グリッドの末尾に行が 1 本増えます。",
+      },
+      settings: { label: "設定", note: "アプリ設定を開きます。" },
+    },
+    /**
+     * The menu line that opens the 一覧モーダル (doc-7 §2.1) — the same string the modal carries as
+     * its `Modal label` and its `<h2>`, which is how the two 共通入口 already work.
+     */
+    shortcutHelpLabel: "キーボード操作一覧",
+    /** The line that puts every project row back on screen (doc-7 §2.1), in the user's own words. */
+    showAllProjectsLabel: "すべてのプロジェクトを表示",
+    /**
+     * 保留理由 for that line while every registered row is already on screen. A sentence rather than
+     * parenthetical shorthand because nothing prints it — it is read aloud or not at all.
+     */
+    showAllProjectsHeld: "すべてのプロジェクトが表示されています。",
+    /** 保留理由 for the same line when the ledger holds nothing at all. This one *is* printed. */
+    noProjectsRegistered: "登録済みプロジェクトがありません。",
+    /** 上部帯 (doc-11 §4), each 縮約 to the one line the band has room for. */
+    ledgerReadOnlyBand:
+      "登録ファイルが読み取り専用です。登録内容の更新・登録解除・行の並べ替えはできません" +
+      "（文書・マイルストーン・新規タスクは影響を受けません）。",
+    cliChecking: "backlog CLI を確認中です",
+    cliUnavailable: "backlog CLI の実行ファイルを解決できません",
+    cliUnsupported: (version: string, minimum: string) =>
+      `backlog CLI ${version} は動作確認範囲外です（必要: ${minimum} 以上）`,
+    cliDegradedBand: (summary: string) =>
+      `${summary}。作成・更新は発行できません（登録内容の更新は影響を受けません）。`,
+    unwatchedBand: (reason: string) => `${reason}（表示が実ファイルより古い可能性があります）。`,
+    /**
+     * 破棄前確認 (doc-8 §6.3) — one question for all five routes, because §6.3 asks for exactly that.
+     * Here rather than in the panel because two of the five are the shell's, and a per-caller wording
+     * is how the five would end up describing the same loss five ways.
+     */
+    discardConfirmQuestion: "編集中の未保存入力があります。このまま進むと破棄されます。",
+    discardConfirmProceed: "破棄して続ける",
+    /**
+     * The same answer where a モーダル asks it (doc-11 §7). 続ける is as wide as it is only to cover
+     * five routes that do not share a destination; a モーダル's two are both ways of closing one
+     * layer, so the wider word would name something wider than what the press does.
+     */
+    discardConfirmClose: "破棄して閉じる",
+    discardConfirmKeep: "編集に戻る",
   },
   /** スイムレーン画面 (doc-7): the grid, its heads, and a row's own controls. */
   swimlane: {
@@ -154,6 +237,49 @@ export const ja = {
     rootUnreadable: (detail: string) => `ルート読取不能: ${detail}`,
     /** 空セル (doc-7 §6). 該当タスクが無い is a different fact from ルートが読めない. */
     emptyCell: "該当タスクなし",
+    /**
+     * 畳んだ列のレーンセル の読み上げ名 (decision-23): the column, the total, and the 段 breakdown the
+     * `aria-hidden` squares carry only as colour. The two are separate entries because a cell whose
+     * tally is empty says the first alone.
+     */
+    collapsedCellCount: (label: string, n: number) => `${label} ${n} 件`,
+    collapsedCellBreakdown: (total: string, breakdown: string) => `${total}（${breakdown}）`,
+    /** The 段 for a priority the read layer could not place (decision-23). The other three are `priority`'s own spellings. */
+    priorityNone: "priority 未設定・未知",
+    /** 行折畳み が置けない行 (doc-7 §2.3): every cell is unreadable, so there is nothing to fold. */
+    rowFoldAbsent:
+      "ルートが読めず畳む対象のセルがないため、この行に行折畳みは置きません。" +
+      "この行を画面から外すには、ヘッダのメニューのプロジェクト一覧を使います。",
+    /** 列折畳み の下限 (doc-7 §2.2): the last column standing may not be folded. */
+    lastColumnHeld: "残り 1 列は畳めません。すべて畳むと、どの列のカードも読めない画面になります。",
+    /** 表示 / 総数 の比 (doc-7 §2.1 総件数), both ratios on one line. */
+    totals: (shownCards: string, shownLanes: string) => `表示 ${shownCards}${shownLanes}`,
+    totalsCards: (shown: number, total: number) => `${shown} / ${total} 件`,
+    totalsLanes: (shown: number, total: number) => ` ・ ${shown} / ${total} プロジェクト`,
+    /** 前後移動 の群 (doc-8 §2.2): which run of cards the 前後 step through. */
+    laneGroupCell: (label: string) => `${label} セル`,
+    laneGroupUnmapped: (label: string) => `${label}区画`,
+    /** 位置表示 (doc-8 §2.2): where in that run the open task sits. */
+    lanePosition: (position: number, total: number) => `${position} / ${total} 件`,
+    /** Why 前後移動 has no run to step through — the task is not on the grid as it now stands. */
+    laneAbsent:
+      "このタスクは今のスイムレーンに出ていないため（行の非表示・ルート読取不能・絞り込みのいずれか）、" +
+      "前後のタスクを決められません。",
+    /** 並び順 (doc-7 §5.4), as the 並び順 control lists them. */
+    order: {
+      priority_asc: "priority 昇順",
+      priority_desc: "priority 降順",
+      task_id_asc: "task id 昇順",
+      task_id_desc: "task id 降順",
+      updated_asc: "updated 昇順",
+      updated_desc: "updated 降順",
+      created_asc: "created 昇順",
+      created_desc: "created 降順",
+      milestone_asc: "milestone 昇順",
+      milestone_desc: "milestone 降順",
+    },
+    /** 未分類区画 (doc-7 §2.2), wherever it is named beside the four canonical columns. */
+    unmapped: "未分類",
   },
   /** フィルタ帯 と 値の一覧のポップオーバー (doc-7 §5.2・§5.4). */
   filter: {
@@ -187,6 +313,31 @@ export const ja = {
     noMatch: (query: string) => `「${query}」に一致する値はありません`,
     selectedCount: (n: number) => `選択中 ${n} 件`,
     clearSearch: "検索を消す",
+    /**
+     * 属性名 (doc-7 §5.2), for the token and for the value list's section heading alike. `updated`
+     * carries the attribute *and* what is being filtered by it, because the heading has to say what
+     * its section is when the two 端 fields are the only other words in it.
+     */
+    facet: {
+      storage: "保存区分",
+      type: "Type",
+      label: "ラベル",
+      priority: "priority",
+      assignee: "assignee",
+      text: "テキスト",
+      inconsistent: "不整合",
+      updated: "updated 期間",
+    },
+    /** 更新期間の端 where a control has to name one; the token itself says 以降・以前 instead. */
+    periodEnd: { from: "始端", to: "終端" },
+    /** 相対指定 の単位 (doc-7 §5.2), as the unit list offers them. */
+    periodUnit: { day: "日", week: "週", month: "月" },
+    /**
+     * One 端 as its token reads it — 端の包含 (doc-7 §5.2) stated on the token rather than left to
+     * the doc: both ends take the named day in.
+     */
+    periodBound: (day: string, end: "from" | "to") =>
+      `${day} ${end === "from" ? "以降" : "以前"}`,
   },
   /** レーンセルの新規タスク入力 (doc-7 §4.1). */
   laneCreate: {
@@ -198,6 +349,17 @@ export const ja = {
     titleLabel: (column: string) => `${column} 列の新規タスクの title`,
     create: "作成",
     createHint: "このセルにタスクを作成します",
+    /**
+     * Why a canonical column has no 入口 at all (doc-7 §4.1 の入口を置かない). Names the column,
+     * because this is a per-project fact — the same column has 候補 in a project that declares one.
+     */
+    noCandidate: (column: string) => `${column} 未設定`,
+    /**
+     * Why nothing is issued from a cell whose status never resolved to a 候補. Reachable only through
+     * a caller that issues from a cell with no 入口, and kept for exactly that: an omitted `-s` is
+     * not a neutral default but a create that lands in `default_status`'s column (doc-5 §3).
+     */
+    noStatusToPass: "この列で渡す status が決まっていないため発行しません。",
   },
   /** プロジェクト登録の層 (doc-3 §4.1). */
   projectRegister: {
@@ -231,12 +393,60 @@ export const ja = {
     submit: "登録",
     submitting: "登録中…",
     submitHint: "入力の内容でプロジェクトを登録します",
+    /** Why the 登録モーダル will not take a close request right now (doc-11 §7). */
+    registering: "登録中です",
+    /** 入力の指摘 (doc-3 §4.1/§4.3), printed under the field each is about. */
+    problem: {
+      projectRootRequired: "プロジェクトルートを指定してください。",
+      projectRootEmpty: "プロジェクトルートは空にできません。",
+      projectRootNotAbsolute: "プロジェクトルートは絶対パスで指定してください。",
+      backlogRootEmpty: "Backlog ルートは空にできません。",
+      backlogRootNotAbsolute: "Backlog ルートは絶対パスで指定してください。",
+      slugTaken: (slug: string) => `slug ${slug} は既に登録済みです。別の slug を指定してください。`,
+      /** doc-3 §3.1 の slug の文法. The value is quoted, so an empty one needs a word of its own. */
+      slugGrammar: (slug: string) =>
+        `slug ${slug} は使えません。` +
+        "英小文字・数字で始まり、以降は英小文字・数字・ハイフンのみ（: と空白は不可）です。",
+      emptySlug: "（空）",
+      aliasKeyMissing: "別名表に status 名の無い行があります。",
+      /** 名称一致 (decision-4): two keys differing only in case or space are one status. */
+      aliasKeyDuplicate: (key: string) =>
+        `別名表の status ${key} が重複しています（大文字小文字・前後空白は同一と見なします）。`,
+      aliasValueNotCanonical: (key: string, value: string) =>
+        `${key} の対応先 ${value} は正準ステータス列ではありません。`,
+      aliasValueUnset: "（未選択）",
+    },
+    /** 台帳操作の拒否 (doc-3 §4), one per typed `LedgerRefusal`. No message text is ever parsed. */
+    refusal: {
+      notARefusal: (detail: string) => `登録を更新できません: ${detail}`,
+      readOnly: (schemaVersion: number) =>
+        `登録ファイルの schema_version ${schemaVersion} はこのビルドが読める版より新しい` +
+        "ため、上書きを拒否しました（読み取り専用）。Atlas を更新するまで登録は変更できません。",
+      backlogRootInvalid: (path: string) =>
+        `${path} は Backlog ルートとして読めません（config.yml と tasks/ が必要です）。` +
+        "Backlog ルートを指定し直してください。",
+      slugNotFound: (slug: string) =>
+        `slug ${slug} の登録内容がありません（別の画面で削除された可能性）。一覧を読み直してください。`,
+      nonAbsoluteRoot: (path: string) =>
+        `${path} は絶対パスではありません。絶対パスで指定してください。`,
+      duplicateRoot: (slug: string) =>
+        `このプロジェクトルート／Backlog ルートは既に slug ${slug} に登録されています。` +
+        "1 プロジェクト 1 エントリのため、別のルートを指定するか、そのエントリを編集してください。",
+      invalidStatusAlias: (key: string, value: string, canonical: string) =>
+        `別名 ${key} → ${value} は不正です。対応先は ${canonical} のいずれかにしてください。`,
+    },
   },
   /** タスク詳細パネル (doc-8): the heading, the 編集卓, and the 区画 it draws. */
   taskDetail: {
     panelLabel: "タスク詳細",
     copyCrossId: "横断タスクID をコピー",
     crossIdLabel: "横断タスクID",
+    /**
+     * Why no 横断タスクID can be built (doc-4 §5 の解析不能, doc-3 §5.3). One string for the two
+     * places the screen says it — the control's `title` and the sentence beside it — because
+     * doc-11 §5 wants the reason readable without hovering, and two copies would drift.
+     */
+    crossIdUnavailable: "TASK-ID を読めないため横断タスクID を作れません（解析不能）。",
     copied: "横断タスクID をコピーしました。",
     copyFailed: "クリップボードへ書けませんでした。次の文字列を選択してコピーしてください。",
     /** 解析不能 (doc-4 §5): a required field the read layer could not get, named where it would be. */
@@ -250,6 +460,18 @@ export const ja = {
     withinGroup: (group: string, step: string) => `${group}内の${step}`,
     positionUnknown: "スイムレーン上の位置不明",
     placementGroup: "詳細配置",
+    /**
+     * 既定印 (doc-8 §2.2) — the word alone, and the switch name that carries it. The three switches
+     * are アイコンのみのボタン (doc-11 §2.4), so the visible 既定印 is the underline 画面設計案 02 puts
+     * there and this word is how the same fact reaches a screen reader.
+     */
+    placementDefaultMark: "既定",
+    placementIsDefault: (label: string, mark: string) => `${label}（${mark}）`,
+    /** What the switch says about the 既定 beyond the mark, when the two differ. */
+    placementStoredElsewhere: (label: string) =>
+      `次回起動時は「${label}」で開きます（既定はそちらのままです）。`,
+    placementNotStored: (reason: string) =>
+      `この配置を既定として保存できませんでした（${reason}）。今の表示には効いています。`,
     statusUnreadable: "status を読めません",
     canonicalUnmapped: "正準列 未分類",
     canonicalColumn: (label: string) => `正準列: ${label}`,
@@ -313,11 +535,353 @@ export const ja = {
     referenceMissing: "参照欠損",
     transitionsHeading: "状態遷移",
     externalEditorHeading: "外部エディタで開く",
+    /**
+     * 外部エディタ経路 (doc-8 §7). Its own group inside this screen's, because the whole route is one
+     * 区画 of the panel and its sentences are read together — the two notices before the launch, the
+     * two controls, and what each failure means.
+     */
+    editor: {
+      /** 開く前の注意表示 (doc-8 §7 難点と受け方). The two facts that make this the exception route. */
+      frontmatterNotice:
+        "外部エディタでは frontmatter を含むタスクの Markdown ファイルを開きます。" +
+        "編集時に id・status・labels などの構造化フィールドについて Backlog.md による検査は実施されません" +
+        "（壊れると不整合表示になります）。",
+      /**
+       * 書き戻し when 継続検出 is stopped (doc-8 §7): the save will not arrive on its own. One text
+       * for both causes — doc-9 §3.1 keeps the state and its mark the same either way.
+       */
+      watchStoppedNote:
+        "このルートは継続検出が止まっているため、外部エディタでの保存は自動では反映されません。" +
+        "編集を終えたら、下の「このルートを再読込」を押してください（タスクを開き直すだけでは読み直しません）。",
+      rereadRoot: "このルートを再読込",
+      /** The press itself discovered the stop, so the notice appears at the same moment. */
+      watchStoppedBeforeLaunch:
+        "このルートの継続検出が止まっていることが分かったため、まだ開いていません。上の注意を読んでから、" +
+        "もう一度押すと開きます。",
+      /** doc-8 §6.4: an open 編集セッション plus an external edit is the double intake to avoid. */
+      unsavedInputWarning:
+        "GUI 側に未保存入力があります。このまま外部エディタでも編集すると、同じタスクを二重に編集する" +
+        "ことになります。入力は破棄しませんが、外部エディタの保存は外部変更として検出し、GUI の保存時は" +
+        "更新前競合検出で止めます。先に保存またはキャンセルすることを推奨します。",
+      /** A terminal editor started from a GUI process has no terminal to draw in. */
+      terminalCaveat:
+        "端末専用エディタ（vim・nano など）を指している場合、GUI から起動しても画面は出ません。" +
+        "その場合は OS の関連付けで開いてください。",
+      /**
+       * 起動指定の出所 (doc-8 §7 の解決順). アプリ設定 is spelled as itself rather than as a variable
+       * name — it is the 指定手段 for users whose environment never reaches the process, and a `$…`
+       * would send them looking for a variable that does not exist. The other two *are* variables,
+       * so `external-editor.ts` spells those from the value and they need no entry.
+       */
+      sourceAppSettings: "アプリ設定の外部エディタ指定",
+      openWithConfigured: (source: string, program: string) => `${source} で開く（${program}）`,
+      openWithConfiguredAbsent: "$EDITOR で開く",
+      openWithAssociation: "OS の関連付けで開く",
+      associationMethod: "OS の関連付け",
+      noConfigured:
+        "アプリ設定の外部エディタ指定も VISUAL・EDITOR も設定されていないため、この方式は提供しません" +
+        "（設定画面で指定するか、環境変数を設定して Atlas を起動し直すか、OS の関連付けで開いてください）",
+      probePending: "外部エディタの確認中です",
+      fileMissing:
+        "このタスクのファイルが現在の読み取り結果にありません（外部での移動・削除の可能性）。" +
+        "開く対象を特定できないため、外部エディタでも開けません",
+      /** Stands for the file in the command shown to the user; the real argument is the full path. */
+      filePlaceholder: "<このタスクのファイル>",
+      launched: (how: string, command: string) => `${how} で起動しました: ${command}`,
+      /** The path the panel held is not in the current read — the screen is behind the root. */
+      unknownTaskFile: (path: string) =>
+        `${path} は現在の読み取り結果のタスクファイルではないため、起動しませんでした` +
+        "（外部での移動・削除の可能性）。タスクを開き直してください。",
+      /** 「で開けませんでした」rather than 「を起動できませんでした」; the correction follows the method. */
+      launchFailed: (program: string, reason: string, fix: string) =>
+        `${program} で開けませんでした: ${reason}。${fix}`,
+      fixAssociation:
+        ".md に関連付けられたアプリケーションが OS に登録されているか確認してください" +
+        "（アプリ設定・$VISUAL・$EDITOR での起動は使えます）。",
+      fixConfigured:
+        "アプリ設定の外部エディタ指定・VISUAL・EDITOR の値（プログラム名とオプション）を確認してください。",
+    },
     gitHistoryHeading: "Git 履歴欄",
+    /**
+     * Why Type is not editable here (decision-20 gave Type two 導出元, and the reason differs per
+     * source). Stated as one fact with its two grounds rather than implying one half can be reached.
+     */
+    typeNotEditable:
+      "Type の編集はこの画面では提供しません。kind ラベル由来の値は、読み取り層が保持するのが" +
+      "接頭辞を外した値で、元のラベル文字列と一致する保証がないためです。frontmatter の type 由来の値は、" +
+      "更新アダプターが --type の操作写像を持たないためです（通常ラベルは編集できます）",
+    /**
+     * The route the withheld-operation reasons send the user to (doc-5 §3.1・doc-8 §7). Named once,
+     * so every one of them points at the same control rather than at an abstraction.
+     */
+    externalEditorRoute: "この画面下部の「外部エディタで開く」",
+    /**
+     * 非空全置換 の下限 (doc-5 §3.1): the CLI has no way to write an empty set, so the last element
+     * stays. **Names no version** (decision-27) — which version was measured is doc-5 §3.1's to hold,
+     * and these reasons are reached while `CliReadiness` may carry no version at all.
+     */
+    lastElementHeld: (field: string, route: string) =>
+      `${field} は最後の 1 件を削除できません（CLI に空集合化の手段がないため）。` +
+      `空にする場合は${route}から管理ファイルを直接編集します`,
+    emptyTitle: "title は空にできません（必須項目で、空にすると解析不能として不整合表示になります）",
+    noTaskIdForUpdate: "TASK-ID を読めないため更新操作の対象を指定できません",
+    noTaskIdForUpdateUnparsed: "TASK-ID を読めないため更新操作の対象を指定できません（解析不能）",
+    noStorageForUpdate: "保存区分を判別できないため更新操作を提供しません",
+    noEditSession: "編集セッションを開いていません",
+    /** 保存区分別の可否 (doc-8 §6.5): why the two closed divisions and draft are read-only. */
+    draftReadOnly: (route: string) =>
+      "draft の内容編集は提供しません（CLI に draft の内容を編集する手段がないため）。" +
+      `編集するにはタスクへ昇格するか、${route}から管理ファイルを直接編集します`,
+    closedReadOnly: (route: string) =>
+      "completed・archive のタスクは、CLI が更新を受け付けないため読み取り専用です。" +
+      `内容を変えるには${route}から管理ファイルを直接編集します`,
+    /**
+     * The task's file left the read result while the panel was open. The 未保存入力 is not the file's
+     * to take (doc-8 §6.4 keeps it), which is why the sentence says what to do with it.
+     */
+    fileMissing:
+      "このタスクのファイルが現在の読み取り結果にありません（外部での移動・削除の可能性）。" +
+      "CLI 経由の更新はできません。未保存入力は保持しているので、必要な内容を控えてから破棄してください",
+    /** 縮退 (doc-5 §5): why updates are not offered while the CLI is missing or out of range. */
+    readiness: {
+      checking: "backlog CLI の確認中です",
+      unavailable: (detail: string) =>
+        `backlog CLI の実行ファイルを解決できないため更新操作を提供しません（${detail}）`,
+      /**
+       * **The one screen sentence that names a version** (decision-27 §2): its subject *is* the
+       * difference between the user's CLI and the confirmed one, and both numbers are read off
+       * `CliReadiness` rather than spelled here.
+       */
+      unsupported: (version: string, minimum: string) =>
+        `backlog CLI ${version} は動作確認範囲外のため更新操作を提供しません（必要: ${minimum} 以上）`,
+    },
+    /** A CLI failure as the panel states it (doc-5 §5). */
+    commandFailed: (what: string, how: string, reloadNote: string, stderr: string) =>
+      `${what} が失敗しました（${how}）${reloadNote}: ${stderr}`,
+    failureCause: {
+      spawn: "起動できません",
+      nonZero: (code: number | null) => `終了コード ${code ?? "不明"}`,
+      timedOut: (seconds: number) => `${seconds} 秒以内に終了しなかったため中断しました`,
+      /** 直接書き込み操作 (decision-21): no exit code to quote and no process to blame. */
+      write: "書き込めません",
+    },
+    /**
+     * What 要再読込 means for *this* failure. The two read differently on purpose: after an earlier
+     * invocation the screen can say what already landed, while a 期限到達 cannot — Atlas killed the
+     * process and nothing tells it whether the write happened (decision-18).
+     */
+    reloadNoteApplied: (completed: number) =>
+      `（この操作の ${completed} 件は既に適用済みで、再読込済みです）`,
+    reloadNoteUnknown:
+      "（この操作が管理ファイルを変更したかどうかは分かりません。再読込済みです）",
+    /** A boundary failure as the panel states it, one entry per `CommandError` kind. */
+    commandError: {
+      cliUncheckable: "backlog CLI を確認できません",
+      updateRejected: (detail: string) => `更新アダプターが実行前に拒否しました: ${detail}`,
+      /**
+       * 照合不能 (doc-9 §4.2) worded so it does not read as a conflict — no version divergence was
+       * observed, and there is no defined way to look for one (doc-9 §5).
+       */
+      uncheckableTarget: (what: string, detail: string) =>
+        `照合不能: ${what} は書き換え対象の照合方法が定まっていないため、CLI を起動せずに` +
+        `拒否しました。版がずれていることを検出したわけではありません。${detail}`,
+      reloadFailedNotApplied: (detail: string) =>
+        `再読込に失敗しました（更新は実行していません）: ${detail}`,
+      reloadFailedApplied: (detail: string) =>
+        `更新は適用されましたが再読込に失敗しました。同じ操作をやり直さないでください: ${detail}`,
+      versionProbeFailed: (detail: string) =>
+        `更新前競合検出の版読み取りに失敗しました: ${detail}`,
+      taskNotFound: (taskId: string) =>
+        `${taskId} は現在の読み取り結果にありません（削除・移動の可能性）`,
+      projectNotOpen: (slug: string) => `プロジェクト ${slug} が開かれていません`,
+      unknownProject: (slug: string) => `プロジェクト ${slug} は登録されていません`,
+      rootUnreadable: (detail: string) => `ルートを読めません: ${detail}`,
+      unknownTaskFile: (path: string) =>
+        `${path} は現在の読み取り結果のタスクファイルではありません（移動・削除の可能性）`,
+      editorUnavailable: (reason: string) => `外部エディタを起動できません: ${reason}`,
+      editorLaunchFailed: (program: string, reason: string) =>
+        `${program} を起動できません: ${reason}`,
+      settingsSaveFailed: (detail: string) => `設定を保存できませんでした: ${detail}`,
+      historyCancelled: "Git 履歴の読み取りは画面の側で取り消されました",
+      bodyLinkFailed: (reason: string) => `リンクを開けませんでした: ${reason}`,
+    },
+    /** 照合後競合窓の事後通知 (doc-9 §5) where the re-read holds no such file at all. */
+    divergedTaskFile: "タスクファイル（再読込結果に見当たりません）",
+    noTaskIdForTransition: "TASK-ID を読めないため状態遷移の対象を指定できません",
+    noStorageForTransition: "保存区分を判別できないため状態遷移を提供しません",
+    noWayBackFromClosed: "completed・archive から戻す操作は CLI にないため提供しません",
+    unsavedBeforeTransition: "未保存の入力があります。保存またはキャンセルしてから実行します",
+    completableOnly: (status: string, current: string) =>
+      `status が ${status} のときのみ実行可能です（現在: ${current}）`,
+    /** Where a status is quoted inside another sentence and the read layer had none. */
+    statusUnreadableShort: "不明",
+    /**
+     * 状態遷移 (doc-8 §6.5) — four strings per transition, keyed by `TransitionKind` so a sixth
+     * cannot be added without the compiler asking what each of its four says.
+     *
+     * `effect` states 遷移が何を変えるか だけ (doc-11 §8 の結果の予告): the 写像 is on the button and
+     * the 保存区分 is on screen beside it, so what is left is whether the id survives and whether the
+     * move can be taken back. **The five are deliberately not parallel** — each says only what its
+     * own transition raises.
+     *
+     * `question` is not built from `effect`: that line answers 「この控えは何をするか」 before the press
+     * and carries 完了整理's precondition, which is already satisfied by the time the question stands.
+     * `proceed` names the act (doc-11 §12), so it cannot be derived from the question either. **The
+     * three one-way moves say 戻せません plainly and name no version** (the user's wording, 2026-08-11;
+     * decision-27 §2 later made that the general rule).
+     */
+    transition: {
+      draftPromote: {
+        label: "タスクへ昇格",
+        effect: "id は採番し直されます",
+        question: "この draft をタスクへ昇格します。id は採番し直されます。",
+        proceed: "タスクへ昇格する",
+      },
+      draftArchive: {
+        label: "アーカイブ",
+        effect: "id・status は保持されます",
+        question: "この draft をアーカイブします。この操作は戻せません。",
+        proceed: "アーカイブする",
+      },
+      taskDemote: {
+        label: "draft へ差し戻す",
+        effect: "id は採番し直されます",
+        question: "このタスクを draft へ差し戻します。id は採番し直されます。",
+        proceed: "draft へ差し戻す",
+      },
+      taskArchive: {
+        label: "アーカイブ",
+        effect: "元に戻せません",
+        question: "このタスクをアーカイブします。この操作は戻せません。",
+        proceed: "アーカイブする",
+      },
+      taskComplete: {
+        label: "完了整理",
+        effect: "status が Done のときのみ実行可能です。元に戻せません",
+        question: "このタスクを完了整理します。この操作は戻せません。",
+        proceed: "完了整理する",
+      },
+    },
+    /** A value the file carries that `config.yml` does not declare (decision-4 未分類 status). */
+    undeclaredValue: (value: string) => `${value}（config.yml 未宣言）`,
+    milestoneNotInRoot: (id: string) => `${id}（このルートに無い）`,
   },
   /** プロジェクト詳細画面 (doc-10): 概要・文書・マイルストーン・決定事項 と、その発行の層. */
   projectDetail: {
     breadcrumbLabel: "現在地",
+    /** 区画ナビ の 5 項目 (doc-10 §3), in the order that section's table gives them. */
+    section: {
+      overview: "概要",
+      documents: "文書",
+      milestones: "マイルストーン",
+      decisions: "決定事項",
+      newTask: "新規タスク",
+    },
+    /** 発行 が 1 つ走っている間、どの 発行 も保留になる (doc-11 §5). */
+    issueBusy: "発行中です",
+    /** A value quoted inside a sentence where the field is empty. */
+    emptyValue: "（空）",
+    /** Why slug has no field, and what changing it would take instead (doc-10 §4.1, doc-3 §3.1). */
+    slugImmutable:
+      "slug は横断タスクID の左辺として全タスクの参照に使われるため、変更手段を提供しません。" +
+      "別の slug にするには登録を解除して登録し直すことになり、そのとき Git 履歴表示の同一性は切れます。",
+    /** The note under the project-root field once it differs (doc-10 §4.1). */
+    rootMoveNote: (slug: string, backlogRoot: string) =>
+      `同一プロジェクトの移動として扱い、slug ${slug} を保ったまま project_root と backlog_root の` +
+      `両方を送ります。backlog_root は既定の <新ルート>/backlog ではなく、いま欄にある ` +
+      `${backlogRoot} を送ります。` +
+      "移動が成立すると、このプロジェクトについて開いている編集セッションは閉じます。",
+    /** Git remote の現在値 (doc-10 §4.1, decision-6). */
+    remoteAbsent: "Git remote 不在（このリポジトリに remote が構成されていません）",
+    noRepository: "Git 対象不在（プロジェクトルートが Git リポジトリではありません）",
+    remoteUnreadable: (detail: string) => `remote を読めません: ${detail}`,
+    /** 状態文 (doc-11 §8): what the registry recorded and what Git says now disagree. */
+    remoteRecordedAbsent: "登録内容の Git remote 有無属性は「なし」で、いまの検出と食い違っています。",
+    remoteRecordedPresent: "登録内容の Git remote 有無属性は「あり」で、いまの検出と食い違っています。",
+    redetect: "再検出する",
+    redetecting: "再検出中…",
+    redetectReadOnly: "登録ファイルが読み取り専用のため、Git remote の再検出はできません。",
+    /** status 別名表の効き方 (doc-10 §4.2), one per `interpret::status`'s `StatusDeclaration`. */
+    aliasEffect: {
+      declared: {
+        label: "宣言あり",
+        note: "config.yml の statuses にある status です。別名が効きます。",
+      },
+      draft: {
+        label: "draft 専用",
+        note: "config.yml は宣言していませんが、既知の draft 状態として扱う値です。別名が効きます。",
+      },
+      noDeclaredSet: {
+        label: "宣言集合なし",
+        note:
+          "config.yml が statuses を 1 つも宣言していないため、宣言済みかを判定できません" +
+          "（statuses を 1 つも宣言していない未初期化のルート）。宣言が矛盾しないので別名は効きます。",
+      },
+      undeclared: {
+        label: "宣言なし → 効果なし",
+        note:
+          "どこにも宣言が無い status です。別名を書いてもこの status のタスクは未分類区画に残ります。" +
+          "登録内容からは削除しません。",
+      },
+    },
+    /**
+     * Why every 区画 stops issuing while this screen's own ledger write is in flight. A save may be a
+     * move, and a move changes which files this screen's ids name. Distinct from `issueBusy`, which
+     * is about another 発行 running.
+     */
+    ledgerWriteInFlight: "登録内容の更新を実行中です。ルートが変わることがあるため、完了するまで発行できません",
+    /** The 上部帯 ③ is 縮約 to one line; this is the 別の場所 it sends the reader to (doc-10 §8). */
+    overviewReadOnly:
+      "登録ファイルの schema_version がこのビルドより新しいため、読み取り専用で開いています。" +
+      "この区画の入力・保存・登録解除はすべてできません。" +
+      "文書・マイルストーン・新規タスクは登録ファイルを書かないので、そちらは操作できます。",
+    overviewReadOnlyBlocked: "登録ファイルが読み取り専用のため、登録内容の更新はできません。",
+    overviewBusy: "登録の更新を実行中です。完了するまで次の操作は始められません。",
+    overviewNoChanges: "変更がありません（送る属性がありません）。",
+    overviewInputProblems: "入力に問題があります（各欄の指摘を参照）。",
+    /** What 登録解除 removes and what it leaves (doc-3 §4.2). */
+    unregisterScope:
+      "登録解除はこのプロジェクトの登録内容を消し、スイムレーンからこの行を外します。" +
+      "対象プロジェクトの Backlog ルート・管理ファイル・Git リポジトリには触れません。" +
+      "タスクはそのまま残ります。",
+    unregisterReadOnly: "登録ファイルが読み取り専用のため、登録解除はできません。",
+    unregisterConfirmSlug: (slug: string) =>
+      `確認のため、この欄に slug「${slug}」をそのまま入力してください。一致するまで実行できません。`,
+    /** 文書更新 (doc-10 §5). */
+    docTitleEmpty: "title を空にはできません（空にすると文書として読めなくなります）",
+    divergedDocument: "文書（再読込結果に見当たりません）",
+    /** マイルストーン (doc-10 §6). */
+    nameRequiredReason: "名称は必須です",
+    renameRequiredReason: "新しい名称は必須です",
+    renameUnchanged: "現在の名称と同じです（変更が無いので発行しません）",
+    removeHandlingRequired: "参照するタスクの扱いを選んでください",
+    reassignTargetRequired: "付け替え先のマイルストーンは必須です",
+    reassignTargetIsSelf: "付け替え先が削除するマイルストーン自身です",
+    /**
+     * 削除はファイルを消さない (doc-9 §4.2.1 実測): the file moves to `archive/milestones/`. Stated
+     * beside the control because 削除 otherwise reads as an unlink. **The version measured stays in
+     * doc-9 §4.2.1 and off the screen** (decision-27).
+     */
+    removeMovesTheFile: "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します（実測）",
+    keepLeavesDangling:
+      "「そのまま保持」では、参照するタスクが解決先の無い milestone 値を持ったまま残ります",
+    /**
+     * Why a `##` may not start a line of the 説明 (doc-10 §6). **Not「CLI にできない」** — v1.49.3's
+     * `milestone add -d` writes such a description without complaint; what happens is that the read
+     * stops at the next `##`, so the rest would be saved and invisible.
+     */
+    descriptionHeading:
+      "説明の行頭に `##` は置けません。読み取りは次の `##` までを説明として扱うため、" +
+      "その先に書いた分は保存しても画面に出なくなります",
+    descriptionUnchanged: "説明は変更されていません",
+    /** 注記モーダル (doc-10 §7): where the fields this form has no input for are added instead. */
+    taskCreateNote: "以下の内容は作成後、タスクの編集で追加・編集してください。",
+    /** One of those field names. The other four are identifiers or already in `taskDetail`. */
+    dependenciesField: "依存",
+    /** 発行結果 (doc-9 §5) for the one outcome that is not simply the operation's own report. */
+    outcomeConflict: (detail: string) =>
+      `${detail}。CLI を起動せずに中止しました` +
+      "（更新前競合）。最新を読み直したので、内容を確かめてからやり直してください",
     sectionsLabel: "区画",
     taskCount: (n: number) => `タスク ${n}`,
     countUnreadable: "件数はルート読取不能のため出せません",
@@ -468,6 +1032,54 @@ export const ja = {
       "Type（kind ラベル）はここでは扱いません。ラベルは 1 個のカンマ区切り値として扱われる" +
       "ため、「,」を含むラベルは発行しません。",
   },
+  /**
+   * 印 と 理由行 (decision-22, doc-9 §5): the words a ⚠️ or a 継続検出停止 chip stands for, wherever
+   * either is drawn. **Not one screen's** — the card, the detail heading and the row's own chip all
+   * read the same lines, which is what keeps two screens from disagreeing about one file's state.
+   */
+  mark: {
+    /** What separates two 理由行 inside one label. Not `state.listSeparator`: these are clauses. */
+    reasonSeparator: " / ",
+    divergedFiles: (files: string) => `読み取り後に外部で変わったファイル: ${files}`,
+    unreadFiles: (files: string) =>
+      `読み取り後に増えたタスクファイル: ${files}` +
+      "（書き換え対象集合が読取時点と違いうるため、照合できません）",
+    versionUnverified: "照合対象の版が確かめられませんでした",
+    /**
+     * What a file is called in a 理由行 — the noun of the thing that failed, not a family name.
+     * `decision` reads 決定事項 and not doc-4 §1's 意思決定 (TASK-118): these are printed for the
+     * user, so they take the 画面に出る語.
+     */
+    managedFileNoun: {
+      task: "タスク",
+      milestone: "マイルストーン",
+      document: "文書",
+      decision: "決定事項",
+    },
+    unexpectedSchema: (detail: string) => `想定外スキーマ: ${detail}`,
+    danglingReference: (kind: string, target: string) => `参照欠損: ${kind} ${target}`,
+    /**
+     * 解析不能 as lines. All three say 解析不能, the `detail` one included: doc-4 §5 defines
+     * 想定外スキーマ as 「frontmatter は読めるが」, and 解析不能 is the case where it could not be read
+     * at all.
+     */
+    unparseableFields: (fields: string) => `解析不能: ${fields} を読めません`,
+    unparseableDetail: (detail: string) => `解析不能: ${detail}`,
+    unparseableAs: (noun: string) => `解析不能: このファイルを${noun}として写せませんでした`,
+    /** バージョン不整合 (doc-9 §5): both stages, told apart by their evidence rather than by name. */
+    preUpdateConflict: (detail: string) =>
+      `バージョン不整合: 更新前競合 — ${detail}。CLI を起動せずに保存を止めました`,
+    postCheckConflict: (fields: string) =>
+      `バージョン不整合: 照合後競合窓の事後通知 — 再読込した内容が送信した内容と一致しません（${fields}）。` +
+      "窓内の外部更新が上書きで失われた可能性があります",
+    /** The ⚠️'s accessible name (doc-11 §2.4) — the figure leaves nothing behind for a reader. */
+    inconsistentLabel: (reasons: string) => `不整合: ${reasons}`,
+    unwatchedLabel: "継続検出停止",
+    unwatchedDetail:
+      "ファイル監視または変更通知の購読が動いていないため、外部変更が画面へ届きません。" +
+      "表示が実ファイルより古い可能性がありますが、版がずれているとは限りません。" +
+      "再読込で現在の内容を読み直せます。",
+  },
   /** Git 履歴欄 (doc-8 §5): the commit list, and the state of 関連解決. */
   gitHistory: {
     reload: "再取得",
@@ -493,12 +1105,103 @@ export const ja = {
      * nothing left to expand.
      */
     expand: "全面表示で開く →",
+    /** 併置サイドバー の 1 行 (doc-8 §5 の件数のみ): the commit list said as a count. */
+    commitCount: (n: number) => `コミット ${n} 件`,
+    noCommitsShort: "対応コミット無し",
+    noRepositoryShort: (root: string) => `Git 対象不在（${root} は Git リポジトリではありません）`,
+    noTaskIdShort: "TASK-ID が読めないため未検索",
+    noTaskIdForRemote: "TASK-ID が読めないため remote ホストを照会していません",
+    /**
+     * 原因ごとに書き分けた関連解決の状態 (doc-8 §5 全面シングルビュー), one per Pull Request. The
+     * 参照不能 line carries its remedy, because 「関連が無い」 and 「今は確かめられない」 are what a
+     * reader has to be able to tell apart.
+     */
+    accountRelated: (n: number) => `解決済み: このタスクのコミット ${n} 件と関連`,
+    accountUnrelated: "解決済み: 共有コミット無し（この PR にこのタスクのコミットは含まれません）",
+    accountUnsupported:
+      "対象外: remote ホスト種別を判別できないため照会していません。" +
+      "Atlas が参照できるホストではないため、この原因は解消できません。",
+    accountFailed: (reason: string, remedy: string) =>
+      `参照不能: ${reason}。今は確かめられないだけで、関連が無いという意味ではありません。${remedy}`,
+    /** その原因が解消できるかどうか (doc-8 §5), one per `LookupFailure`. */
+    remedy: {
+      toolMissing: "参照手段を起動できていないため、gh を導入すれば解消できます。",
+      invalidReference:
+        "この参照からは照会先を決められないため、References の URL を直せば解消できます。",
+      /** 解消経路が payload から確定できないので、確定できるかのような文言を当てない。 */
+      queryFailed:
+        "照会は実行され、失敗しました。認証・権限・PR の不在・ネットワークのいずれかで、" +
+        "どれかはこの結果からは分かりません。再取得で解消することがあります。",
+      timedOut:
+        "期限内に応答が無かったので Atlas が照会を打ち切りました。" +
+        "通信か GitHub 側が遅いときに起き、再取得で解消することがあります。",
+    },
+    /** 関連 PR を 1 行で言う (doc-8 §5). The caveats keep a bare count from reading as 関連が無い. */
+    relationNoCommitList: "関連 PR: 突き合わせ不能（ローカルコミット一覧を読めません）",
+    relationNoUrls: "関連 PR: 参照する Pull Request URL がありません",
+    relationCaveatFailed: (n: number) => `${n} 件は参照不能`,
+    relationCaveatUnsupported: (n: number) => `${n} 件は対象外`,
+    relationCount: (n: number) => `関連 PR ${n} 件`,
+    relationCountWithCaveats: (n: number, caveats: string) => `関連 PR ${n} 件（${caveats}）`,
+    relationRemoteAbsent: "関連 PR: 解決なし（Git remote 不在）",
+    relationHostUndetermined: "関連 PR: 対象外（remote ホスト種別を判別できません）",
+    relationNotRead: (detail: string) => `関連 PR: 未実施（${detail}）`,
   },
   /** 一覧モーダル's table (doc-7 §2.1). */
   shortcutHelp: {
     keyColumn: "キー",
     actionColumn: "操作",
     scopeColumn: "使える場所",
+    /** 使える場所 (doc-7 §2.1), one word per 適用範囲. A closed set — a seventh place needs a row here. */
+    scope: {
+      bothScreens: "スイムレーン・プロジェクト詳細",
+      swimlane: "スイムレーン",
+      overlay: "モーダル・メニュー・ポップオーバーの内側",
+      modal: "モーダルの内側",
+      editPart: "編集部品の内側",
+      laneCreate: "列内新規タスク入力の内側",
+    },
+    /**
+     * The two 欄 of the 割り当て一覧 that are words: 操作, and the name of the default this key stops.
+     * Keyed by `ShortcutAction`, so a new chord cannot be added without both being written — and
+     * `preventsDefault` is answered for every action, `null` included, so the set of keys that stop
+     * a default cannot differ between the two languages.
+     */
+    assignment: {
+      openRegister: {
+        operation: "プロジェクトを登録",
+        preventsDefault: "WebView の新規ウィンドウ",
+      },
+      openSettings: { operation: "設定", preventsDefault: null },
+      toggleMenu: { operation: "メニューを開く／閉じる", preventsDefault: null },
+      addFilter: {
+        operation: "絞り込みを追加（値一覧を開く）",
+        preventsDefault: "開いた検索欄への f の入力",
+      },
+      undoFilter: {
+        operation: "直前の絞り込みを 1 件戻す",
+        preventsDefault: "履歴の「戻る」",
+      },
+      closeOverlay: { operation: "開いている層を閉じる", preventsDefault: null },
+      cycleModalFocus: {
+        operation: "モーダル内の次／前の操作へ移動",
+        preventsDefault: "フォーカスがモーダルの外へ出る",
+      },
+      /**
+       * One operation with two words for it, because that is what the surface is: the chord confirms
+       * the 編集部品 it is pressed in — 明示保存 in an 編集セッション (doc-8 §6.3), 作成 in the
+       * 新規タスク区画's description field (doc-10 §7). Naming only 保存 would make the row wrong at
+       * the second.
+       */
+      saveEditSession: {
+        operation: "編集部品から発行（編集セッションは保存、作成フォームは作成）",
+        preventsDefault: "改行の入力",
+      },
+      submitLaneCreate: {
+        operation: "列内新規タスクを作成",
+        preventsDefault: "改行の入力",
+      },
+    },
   },
   /** 本文編集の入力域. The one sentence it has is the fallback notice. */
   editor: {
@@ -534,6 +1237,23 @@ export const ja = {
     loadingHint: "設定を読み込んでいます…",
     loadingReason: "設定を読み込んでいます",
     themeHeading: "表示テーマ",
+    /**
+     * 表示テーマ の 未選択 (decision-12). Worded identically to `languageUnset`, which is the pairing
+     * decision-35 requires — the two are the same kind of choice, so they may not read two ways.
+     */
+    themeUnset: "システム設定に従う",
+    /**
+     * One 収録テーマ's 呼び名: its own name (never translated — `theme.ts` says why) and its 明暗.
+     * The 明暗 word is *chosen from* [`themeSchemeLight`]/[`themeSchemeDark`] by the theme's declared
+     * `scheme`, so a 呼び名 cannot state a ground the theme does not paint.
+     */
+    themeSchemeLight: "ライト",
+    themeSchemeDark: "ダーク",
+    themeName: (name: string, scheme: string) => `${name}（${scheme}）`,
+    /** The two 未選択 resolves to say so in their own 呼び名 (decision-12 の既定). */
+    themeNameDefault: (name: string, scheme: string) => `${name}（${scheme}・既定）`,
+    /** A write asked for before the first read answered; nothing was written. */
+    notReadYet: "設定をまだ読み込めていないため、保存していません",
     cardDensityHeading: "カード情報量",
     defaultStorageHeading: "既定の保存区分（フィルタの初期値）",
     defaultPlacementHeading: "既定の詳細配置",
@@ -555,6 +1275,83 @@ export const ja = {
     editorProgramPlaceholder: "/Applications/… または code",
     editorArgsLabel: "引数（1 行 1 つ）",
     locationHeading: "ファイルの場所",
+    /** カード情報量 (doc-7 §3) の 3 段, each naming what it adds over the one before. */
+    cardDensity: {
+      s: "S（ID・priority・印・title 1 行）",
+      m: "M（＋ Type、title 2 行）",
+      l: "L（＋ 通常ラベル・assignee、title 3 行）",
+    },
+    /**
+     * カード情報量 が**減らさないもの**だけを言う。段の違いは選択肢そのものが述べているので、何が
+     * 増えるかは書かない (doc-11 §8 の状態の言い換え) — 残すのは、S を選ぶと不整合印まで消えると
+     * 読まれかねない一点だけである。
+     */
+    cardDensityNote: "タスクの状態（不整合・保存区分・未分類列 status）は、必ず表示されます。",
+    /** 詳細配置 (doc-8 §2.1) の 3 つ. */
+    detailPlacement: {
+      sidebar: "併置サイドバー",
+      modal: "中央モーダル",
+      full: "全面シングルビュー",
+    },
+    storageIndeterminate: "不定（走査対象外の場所にあるファイル）",
+    /** decision-13 既定値で動いている旨 (AC #6), split by cause: the three lead to different acts. */
+    fileAbsent: "設定ファイルはまだありません。既定値で動いています（保存すると作成します）。",
+    fileUnreadable: (detail: string) =>
+      `設定ファイルを読めませんでした（${detail}）。既定値で動いています` +
+      "（保存すると、この既定値で作り直します）。",
+    fileReadOnly: (version: number) =>
+      `設定ファイルの schema_version ${version} はこのビルドが理解する版より新しいため、` +
+      "読み取り専用です。既定値で動いており、保存はできません（ファイルは書き換えません）。",
+    saveRefusedNewer: (version: number) =>
+      `設定ファイルの schema_version ${version} はこのビルドより新しいため、` +
+      "上書きしません（新しい版で書かれた内容を壊さないため）。",
+    /**
+     * 外部コマンドの用途, shown behind the row's `?` rather than beside the field (doc-11 §8). The
+     * row's own 印 already says whether the command resolved, so this carries only what the 印
+     * cannot: what Atlas uses the command for, and therefore what stops without it.
+     */
+    externalCommandHelp: {
+      backlog_cli:
+        "作成・更新の発行に使います。解決できないと、発行そのものができません（画面上部に帯が立ちます）。",
+      git_cli:
+        "コミット検索と Git remote の判別に使います。解決できないと、登録済みプロジェクトが remote 無し" +
+        "として記録され、Pull Request の関連解決も静かに止まります。",
+      gh_cli:
+        "Pull Request とコミットの関連解決に使います。解決できないと、その関連解決だけができません。",
+    },
+    /** 解決結果の出どころ (decision-29), shown inside the row's `?`. */
+    programSource: {
+      configured: "この画面の指定",
+      subPackage: "npm の配置から解決",
+      onPath: "PATH から解決",
+    },
+    probeUnlaunched: (reason: string) => `起動できません（${reason}）`,
+    emptyStorageWarning:
+      "保存区分をひとつも選ばないと、起動直後はどのカードも表示されません（フィルタで足せます）。",
+    /**
+     * 継続検出を切っている旨 (doc-9 §3.1). §3.1 requires the *state* to look the same as a watch that
+     * failed to start — only the reason differs — so this says what stops and what still works, and
+     * invents no second state name.
+     */
+    watchOffNote:
+      "切ると、外部エディタや別プロセスの保存が自動では画面へ届きません（行の「再読込」で読み直せます）。" +
+      "更新後の再読込と手動の再読込は切っても働きます。",
+    /** 下部操作行 (TASK-74) の 2 つの押下 and the two reasons 保存する can be held. */
+    closeWithoutSaving: "変更せずに閉じる",
+    save: "保存する",
+    noChanges: "変更はありません",
+    /** 場所を開く (TASK-75). What is opened is the settings directory; no file is selected. */
+    openLocation: "場所を開く",
+    openLocationTitle:
+      "設定ファイルと登録ファイルのあるフォルダを OS のファイルマネージャで開きます（ファイルは選択されません）。",
+    openingLocation: "いま開いています（OS の応答を待っています）。",
+    /** **述べるのはフォルダであって、その中のファイルの有無ではない** (doc-3 §2.1). */
+    locationAbsent: "そのフォルダはまだありません（設定を保存するか、プロジェクトを登録すると作成します）。",
+    /** 「フォルダが無い」と書き分ける — 問い合わせが返っていない状態で、無いことは分かっていない。 */
+    locationUnconfirmed: "そのフォルダがあるかどうかを確認できていません。",
+    openLocationFailed: (program: string, reason: string) =>
+      `${program} で開けませんでした: ${reason}。`,
+    openLocationUnavailable: (reason: string) => `場所を開けませんでした: ${reason}`,
     settingsFileTerm: "設定ファイル",
     ledgerFileTerm: "登録ファイル",
     discardHint: "書き込まずに閉じます",

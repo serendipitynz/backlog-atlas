@@ -17,6 +17,7 @@
  * [`SettingsWriterPorts`].
  */
 
+import { msg } from "./messages";
 import { isDirty } from "./settings";
 import type { AppSettings, LoadedSettings } from "./wire";
 
@@ -34,7 +35,9 @@ export interface SettingsWriterPorts {
 }
 
 /** Said when a write is asked for before the first read has answered; nothing is written. */
-export const SETTINGS_NOT_READ = "設定をまだ読み込めていないため、保存していません";
+export function settingsNotRead(): string {
+  return msg().settings.notReadYet;
+}
 
 /**
  * A writer that runs changes in the order they were issued, each against the current values. Resolves
@@ -50,7 +53,7 @@ export function createSettingsWriter(
     const issued = queue.then(async (): Promise<string | null> => {
       const current = ports.peek();
       if (current === null) {
-        return SETTINGS_NOT_READ;
+        return settingsNotRead();
       }
       const next = change(current);
       if (!isDirty(next, current)) {

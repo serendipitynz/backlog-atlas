@@ -16,8 +16,8 @@
     setPeriodEnd,
     toggleCondition,
     typeLabel,
-    FACET_LABEL,
-    PERIOD_END_LABEL,
+    facetLabel,
+    periodEndLabel,
     PERIOD_ENDS,
     type FilterCondition,
     type FilterFacet,
@@ -28,7 +28,7 @@
     usableCount,
     MAX_RELATIVE_COUNT,
     PERIOD_UNITS,
-    PERIOD_UNIT_LABEL,
+    periodUnitLabel,
     type PeriodUnit,
   } from "../lib/period";
   import type { CardFilter, Facets } from "../lib/filter";
@@ -71,7 +71,7 @@
     return {
       key: conditionKey(condition),
       condition,
-      label: label ?? conditionValueLabel(condition) ?? FACET_LABEL[condition.facet],
+      label: label ?? conditionValueLabel(condition) ?? facetLabel(condition.facet),
       count,
     };
   }
@@ -116,7 +116,7 @@
         facet: "inconsistent" as const,
         entries: [entry({ facet: "inconsistent" }, facets.inconsistent, t().filter.inconsistentOnly)],
       },
-    ].map((section) => ({ ...section, label: FACET_LABEL[section.facet] })),
+    ].map((section) => ({ ...section, label: facetLabel(section.facet) })),
   );
 
   // The search box filters the *list*, not the cards, but it takes the bar's IME treatment for the
@@ -159,7 +159,7 @@
   // and it is drawn whenever nothing is being searched for, like a section whose entries all matched.
   let periodShown = $derived.by(() => {
     const needle = query.trim().toLowerCase();
-    return needle === "" || FACET_LABEL.updated.toLowerCase().includes(needle);
+    return needle === "" || facetLabel("updated").toLowerCase().includes(needle);
   });
 
   function endValue(end: PeriodEnd): string {
@@ -282,10 +282,10 @@
          panel's height stays the one the value list decides. -->
     {#if periodShown}
       <section class="period">
-        <h3>{FACET_LABEL.updated}</h3>
+        <h3>{facetLabel("updated")}</h3>
         {#each PERIOD_ENDS as end (end)}
           <label class="end">
-            <span class="caption">{PERIOD_END_LABEL[end]}</span>
+            <span class="caption">{periodEndLabel(end)}</span>
             <!-- 端は暦日 (doc-7 §5.2), which is exactly what a date input yields: `YYYY-MM-DD` or
                  the empty string. Emptying it takes the end off, the same as pressing its token's ×.
                  `change` rather than `input`, so a half-typed year is not applied as a condition. -->
@@ -303,7 +303,7 @@
           </label>
           <select bind:value={unit} aria-label={t().filter.relativeUnitLabel}>
             {#each PERIOD_UNITS as value (value)}
-              <option {value}>{PERIOD_UNIT_LABEL[value]}</option>
+              <option {value}>{periodUnitLabel(value)}</option>
             {/each}
           </select>
           <!-- 無効化提示 (doc-11 §5): the control stays in place with `aria-disabled` and the reason

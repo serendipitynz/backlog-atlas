@@ -7,14 +7,14 @@ import { DEFAULT_FILTER } from "./filter";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import { CREATE_STATUS_CANDIDATES, loadMap, loaded, taskView, unreadable } from "./fixtures";
 import {
-  NO_STATUS_TO_PASS_REASON,
+  noStatusToPassReason,
   buildLaneTaskCreate,
   laneCreate,
   laneCreateHold,
   laneCreateStatus,
   noCandidateAbsentReason,
 } from "./lane-create";
-import { ISSUE_BUSY_REASON, TASK_TITLE_REQUIRED_REASON, issueAvailability } from "./manage";
+import { issueBusyReason, taskTitleRequiredReason, issueAvailability } from "./manage";
 import { buildSwimlane } from "./swimlane";
 import type { ColumnCreateStatuses } from "./wire";
 
@@ -172,7 +172,7 @@ describe("発行する task create", () => {
   it("refuses an empty title with the 新規タスク区画's own reason (AC #3)", () => {
     expect(buildLaneTaskCreate("", "To Do")).toEqual({
       state: "blocked",
-      reason: TASK_TITLE_REQUIRED_REASON,
+      reason: taskTitleRequiredReason(),
     });
     expect(buildLaneTaskCreate("   ", "To Do").state).toBe("blocked");
   });
@@ -182,7 +182,7 @@ describe("発行する task create", () => {
   it("issues nothing while no candidate has been resolved to pass", () => {
     expect(buildLaneTaskCreate("題名", "")).toEqual({
       state: "blocked",
-      reason: NO_STATUS_TO_PASS_REASON,
+      reason: noStatusToPassReason(),
     });
   });
 });
@@ -217,7 +217,7 @@ describe("CLI 縮退 (doc-5 §5)", () => {
 
   it("closes every cell's 入口 while a create is in flight", () => {
     expect(laneCreateHold({ readiness: { state: "ready", version: CONFIRMED_CLI_VERSION }, busy: true })).toBe(
-      ISSUE_BUSY_REASON,
+      issueBusyReason(),
     );
   });
 
@@ -235,7 +235,7 @@ describe("CLI 縮退 (doc-5 §5)", () => {
     ).toBe("ready");
     expect(issueAvailability(buildLaneTaskCreate("", "To Do"), { readiness, busy: false })).toEqual({
       state: "blocked",
-      reason: TASK_TITLE_REQUIRED_REASON,
+      reason: taskTitleRequiredReason(),
     });
   });
 });

@@ -53,11 +53,11 @@
     windowTitleSet,
     workspaceOpen,
   } from "./lib/commands";
-  import { REGISTERING_REASON, refusalReport, type LedgerActionResult } from "./lib/ledger";
+  import { registeringReason, refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
   import type { RemoteLine } from "./lib/git-remote-read";
   import { topBands } from "./lib/band";
-  import { SHORTCUT_HELP_LABEL, headerMenu, type HeaderEntryId, type MenuItem } from "./lib/header";
+  import { shortcutHelpLabel, headerMenu, type HeaderEntryId, type MenuItem } from "./lib/header";
   import {
     ariaKeyShortcuts,
     continuesHeldPress,
@@ -69,9 +69,9 @@
   import { MAC_KEYBOARD, OVERLAY_TITLE_BAR } from "./lib/platform";
   import { windowTitle } from "./lib/title";
   import {
-    DISCARD_CONFIRM_KEEP,
-    DISCARD_CONFIRM_PROCEED,
-    ISSUE_CONFIRM_CANCEL,
+    discardConfirmKeep,
+    discardConfirmProceed,
+    issueConfirmCancel,
     commandErrorDetail,
     failureDetail,
     type ApplyOutcome,
@@ -94,7 +94,7 @@
     type DragSource,
   } from "./lib/lane-drop";
   import {
-    WATCH_STOPPED_BEFORE_LAUNCH,
+    watchStoppedBeforeLaunch,
     launchFailureDetail,
     type OpenOutcome,
   } from "./lib/external-editor";
@@ -111,7 +111,7 @@
     type HistoryInputs,
     type HistoryRead,
   } from "./lib/history-read";
-  import { SAVING_REASON, openLocationFailure } from "./lib/settings";
+  import { savingReason, openLocationFailure } from "./lib/settings";
   import { createSettingsWriter } from "./lib/settings-write";
   import { messages, provideMessages } from "./lib/messages-context";
   import { osLanguage, resolveLanguage } from "./lib/messages";
@@ -2146,7 +2146,7 @@
       // The press is what discovered the stop — the watch had not failed yet when the panel was drawn,
       // or the startup watch had not answered. `startWatch` has now put the root in `unwatched`, so the
       // panel draws the notice and the re-read; the launch waits for the next press.
-      return { state: "deferred", detail: WATCH_STOPPED_BEFORE_LAUNCH };
+      return { state: "deferred", detail: watchStoppedBeforeLaunch() };
     }
     try {
       return { state: "launched", launch: await taskFileOpen(ref.slug, ref.sourcePath, method) };
@@ -2516,7 +2516,7 @@
       aria-expanded={menuOpen}
       aria-haspopup="dialog"
       aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
-      title={t().shell.menuHint(shortcutHint("toggleMenu", MAC_KEYBOARD), SHORTCUT_HELP_LABEL)}
+      title={t().shell.menuHint(shortcutHint("toggleMenu", MAC_KEYBOARD), shortcutHelpLabel())}
       onclick={() => (menuOpen ? closeMenu() : openMenu())}
     >
       <Icon name="menu" />
@@ -2556,7 +2556,7 @@
          same flag while the registration is unresolved and both ask first when there is input. -->
     <Modal
       label={t().projectRegister.heading}
-      closeBlocked={registerSubmitting ? REGISTERING_REASON : null}
+      closeBlocked={registerSubmitting ? registeringReason() : null}
       confirmDiscard={modalConfirm}
       onclose={closeRegister}
     >
@@ -2583,7 +2583,7 @@
          becomes of the 下書き in its own words, so the question would ask what the label answered. -->
     <Modal
       label={t().settings.heading}
-      closeBlocked={settingsSaving ? SAVING_REASON : null}
+      closeBlocked={settingsSaving ? savingReason() : null}
       confirmDiscard={modalConfirm}
       onclose={() => closeSettings(false)}
     >
@@ -2610,7 +2610,7 @@
     <!-- Named by the same constant the menu line prints (`header.ts`): the line is named for the layer
          it opens, so a second literal here is the drift that left this modal one character away from
          its own menu line until TASK-130. -->
-    <Modal label={SHORTCUT_HELP_LABEL} onclose={() => (shortcutHelpOpen = false)}>
+    <Modal label={shortcutHelpLabel()} onclose={() => (shortcutHelpOpen = false)}>
       <ShortcutHelp />
     </Modal>
   {/if}
@@ -2657,7 +2657,7 @@
           <button type="button" disabled={dropAskBlocked !== null} onclick={confirmDropAsk}>
             {t().shell.dropAskConfirm}
           </button>
-          <button type="button" onclick={cancelDropAsk}>{ISSUE_CONFIRM_CANCEL}</button>
+          <button type="button" onclick={cancelDropAsk}>{issueConfirmCancel()}</button>
         </div>
         <!-- 無効化提示 (doc-11 §5): the reason is 常時表示 beside the control rather than a `title`,
              which a disabled button cannot be reached through. -->
@@ -2683,7 +2683,7 @@
              so it is the caller's word rather than a 実行する this file could spell. -->
         <div class="answers">
           <button type="button" onclick={issueConfirmed}>{pendingIssue.confirmation.proceed}</button>
-          <button type="button" onclick={cancelIssue}>{ISSUE_CONFIRM_CANCEL}</button>
+          <button type="button" onclick={cancelIssue}>{issueConfirmCancel()}</button>
         </div>
       </section>
     </Modal>
@@ -2714,8 +2714,8 @@
         <!-- 破棄前確認 (doc-8 §6.3): one band, one wording, for all five routes — キャンセル・閉じる・
              別タスクを開く・前後移動・詳細配置の切替. It stays above the grid area, so it is readable
              and answerable while the 中央モーダル is up. -->
-        <button type="button" onclick={discardConfirmed}>{DISCARD_CONFIRM_PROCEED}</button>
-        <button type="button" onclick={keepEditing}>{DISCARD_CONFIRM_KEEP}</button>
+        <button type="button" onclick={discardConfirmed}>{discardConfirmProceed()}</button>
+        <button type="button" onclick={keepEditing}>{discardConfirmKeep()}</button>
       {:else if band.kind === "unwatched"}
         <!-- 帯が持つ操作は縮約しても帯に残す (doc-11 §4): 継続検出停止 is resolved by re-reading, so the
              再読込 is here and not only on each row's mark — a row that may be scrolled out of view. -->

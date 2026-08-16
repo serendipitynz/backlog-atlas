@@ -30,6 +30,7 @@
 import MarkdownIt from "markdown-it";
 import type { MarkdownIt as Renderer, StateCore, Token } from "markdown-it";
 import { iconMarkup } from "./icons/lucide";
+import { msg } from "./messages";
 
 /** Class on a 本文リンク the screen may open (doc-8 §9.3). Also how `Body.svelte` finds them. */
 export const BODY_LINK_CLASS = "body-link";
@@ -190,7 +191,9 @@ function bodyTaskLists(state: StateCore): boolean {
     // content left, and `aria-label` on a bare span is not announced. Same shape as ACCEPTANCE
     // CRITERIA's 印 (doc-8 §3) — including the two words, so the same state reads the same way.
     mark.content =
-      `<span class="${BODY_TASK_MARK_CLASS}" role="img" aria-label="${checked ? "完了" : "未完了"}">` +
+      `<span class="${BODY_TASK_MARK_CLASS}" role="img" aria-label="${
+        checked ? msg().taskDetail.done : msg().taskDetail.notDone
+      }">` +
       `${iconMarkup(checked ? "square-check" : "square")}</span>`;
     token.children?.unshift(mark);
 

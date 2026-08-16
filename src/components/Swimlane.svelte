@@ -7,14 +7,14 @@
   import LaneCreate from "./LaneCreate.svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import { laneCreate } from "../lib/lane-create";
-  import { UNWATCHED_MARK, type VersionConflict } from "../lib/mark";
+  import { unwatchedMark, type VersionConflict } from "../lib/mark";
   import {
     CANONICAL_COLUMNS,
     CANONICAL_COLUMN_LABEL,
     LANE_FIGURE,
-    LAST_COLUMN_FOLD_BLOCKED_REASON,
-    ROW_FOLD_ABSENT_REASON,
-    UNMAPPED_LABEL,
+    lastColumnFoldBlockedReason,
+    rowFoldAbsentReason,
+    unmappedLabel,
     columnFoldable,
     laneCounts,
     laneScrollDelta,
@@ -379,7 +379,7 @@
           ? folded
             ? t().swimlane.columnUnfoldHint
             : t().swimlane.columnFoldHint
-          : LAST_COLUMN_FOLD_BLOCKED_REASON}
+          : lastColumnFoldBlockedReason()}
         onclick={() => foldable && oncolumnFold(column)}
       >
         <Icon name={folded ? LANE_FIGURE.columnFold.unfold : LANE_FIGURE.columnFold.fold} />
@@ -404,7 +404,7 @@
          to be excluded was only that it is not a 正準ステータス列 — which says nothing about folding.
          What stays apart is [`columnFoldable`]'s guarantee: this one never counts as the column left
          open, because it vanishes on its own once no row has an 未分類 status task. -->
-    {@render columnHead("unmapped", UNMAPPED_LABEL, t().swimlane.unmappedHeadName)}
+    {@render columnHead("unmapped", unmappedLabel(), t().swimlane.unmappedHeadName)}
   {/if}
 
   {#if !CANONICAL_COLUMNS.every((column) => columnFoldable(collapsedColumns, column))}
@@ -412,7 +412,7 @@
          spanning them all (the same treatment the 並べ替え block below gets). Present only while the
          state holds, since a reason for a block that is not in force reads as a warning about
          nothing. -->
-    <p class="blocked-note" id={LAST_COLUMN_REASON_ID}>{LAST_COLUMN_FOLD_BLOCKED_REASON}</p>
+    <p class="blocked-note" id={LAST_COLUMN_REASON_ID}>{lastColumnFoldBlockedReason()}</p>
   {/if}
 
   {#if !canReorder}
@@ -502,11 +502,11 @@
              確かめられない — a distinct family from 不整合 (doc-9 §3/§5). -->
         <span
           class="mark"
-          data-kind={UNWATCHED_MARK.kind}
-          title={UNWATCHED_MARK.detail}
-          aria-label="{UNWATCHED_MARK.label}: {UNWATCHED_MARK.detail}"
+          data-kind={unwatchedMark().kind}
+          title={unwatchedMark().detail}
+          aria-label="{unwatchedMark().label}: {unwatchedMark().detail}"
         >
-          {UNWATCHED_MARK.label}
+          {unwatchedMark().label}
         </span>
       {/if}
       <div class="controls">
@@ -623,7 +623,7 @@
                未分類区画 is in no 正準列, so every canonical column is a real move for it. -->
           <LaneCell
             tasks={row.unmapped}
-            label={UNMAPPED_LABEL}
+            label={unmappedLabel()}
             unmapped
             collapsed={collapsedColumns.includes("unmapped")}
             {density}
@@ -644,7 +644,7 @@
       <div class="row-message">
         <span class="reason">{t().swimlane.rootUnreadable(row.detail)}</span>
         <button type="button" onclick={() => onretry(row.slug)}>{t().action.reload}</button>
-        <span class="withheld">{ROW_FOLD_ABSENT_REASON}</span>
+        <span class="withheld">{rowFoldAbsentReason()}</span>
       </div>
     {:else}
       <div class="row-message pending">{t().state.loading}</div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  SCOPE_LABEL,
-  SHORTCUTS,
+  scopeLabel,
+  shortcuts,
   SHORTCUT_ORDER,
   ariaKeyShortcuts,
   chordLabel,
@@ -48,13 +48,13 @@ function spelled(chord: Chord): { mac: string; other: string } {
 
 describe("割り当て一覧 (doc-7 §2.1)", () => {
   it("holds every assignment in one list, in SHORTCUT_ORDER", () => {
-    expect(SHORTCUTS.map((binding) => binding.action)).toEqual([...SHORTCUT_ORDER]);
+    expect(shortcuts().map((binding) => binding.action)).toEqual([...SHORTCUT_ORDER]);
   });
 
   it("gives every row an operation and a 使える場所 the 一覧 can print", () => {
-    for (const binding of SHORTCUTS) {
+    for (const binding of shortcuts()) {
       expect(binding.operation).not.toBe("");
-      expect(SCOPE_LABEL[binding.scope]).not.toBe("");
+      expect(scopeLabel(binding.scope)).not.toBe("");
     }
   });
 
@@ -77,7 +77,7 @@ describe("割り当て一覧 (doc-7 §2.1)", () => {
     ];
     for (const scopes of together) {
       const seen = new Set<string>();
-      for (const binding of SHORTCUTS.filter((entry) => scopes.includes(entry.scope))) {
+      for (const binding of shortcuts().filter((entry) => scopes.includes(entry.scope))) {
         const key = `${binding.chord.mod === true ? "mod+" : ""}${
           binding.chord.shift === true ? "shift+" : ""
         }${binding.chord.key.toLowerCase()}`;
@@ -89,7 +89,7 @@ describe("割り当て一覧 (doc-7 §2.1)", () => {
 
   /** doc-7 §2.1: 既定動作の打ち消しは、それが要るキーだけに限る。 */
   it("records what each preventDefault stops, and stops nothing elsewhere", () => {
-    const stopping = SHORTCUTS.filter((binding) => binding.preventsDefault !== null);
+    const stopping = shortcuts().filter((binding) => binding.preventsDefault !== null);
     expect(stopping.map((binding) => binding.action)).toEqual([
       "openRegister",
       "addFilter",
@@ -129,7 +129,7 @@ describe("割り当て一覧 (doc-7 §2.1)", () => {
    * ⌘Enter is 明示保存 in the editor — so the rule is about the bare ones.
    */
   it("keeps every bare-key assignment out of text fields, except the ones that type nothing", () => {
-    for (const binding of SHORTCUTS) {
+    for (const binding of shortcuts()) {
       if (binding.chord.mod === true || !binding.firesInTextEntry) {
         continue;
       }

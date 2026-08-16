@@ -14,7 +14,7 @@
  * | 入口を置く／置かない | [`LaneCreate`] | one cell's entry: offered with its candidates, or absent with its reason |
  * | 渡す値は入力欄で読める | [`laneCreateStatus`] | the candidate the entry shows and will pass, for both the 1 件 and 複数件 cases |
  * | 候補 0 件の列には入口を置かない | [`NO_CANDIDATE_ABSENT_REASON`] | why a column this project declares nothing for has no entry |
- * | title は必須 | `TASK_TITLE_REQUIRED_REASON` (`manage.ts`) | the same requirement the 新規タスク区画 states, in the same words |
+ * | title は必須 | `taskTitleRequiredReason()` (`manage.ts`) | the same requirement the 新規タスク区画 states, in the same words |
  * | 発行するのは同じ task create | [`buildLaneTaskCreate`] over `buildTaskCreate` | one `task create`, built by the 新規タスク区画's own builder |
  *
  * Two rules this module holds to:
@@ -29,6 +29,7 @@
  */
 
 import { EMPTY_TASK_CREATE, buildTaskCreate, issueAvailability, type IssuePlan } from "./manage";
+import { msg } from "./messages";
 import { CANONICAL_COLUMN_LABEL } from "./swimlane";
 import type { CliReadiness, ColumnCreateStatuses, StatusColumn } from "./wire";
 
@@ -45,9 +46,7 @@ export type LaneCreate =
  * this is a per-project fact — the same column has candidates in a project that declares one.
  */
 export function noCandidateAbsentReason(column: StatusColumn): string {
-  return (
-    `${CANONICAL_COLUMN_LABEL[column]} 未設定`
-  );
+  return msg().laneCreate.noCandidate(CANONICAL_COLUMN_LABEL[column]);
 }
 
 /**
@@ -103,8 +102,9 @@ export function laneCreateStatus(entry: LaneCreate, held: string): string {
  * neutral default but a create that lands in `default_status`'s column (doc-5 §3) — i.e. in a column
  * other than the one clicked, silently.
  */
-export const NO_STATUS_TO_PASS_REASON =
-  "この列で渡す status が決まっていないため発行しません。";
+export function noStatusToPassReason(): string {
+  return msg().laneCreate.noStatusToPass;
+}
 
 /**
  * Turn one cell's entry into the `task create` doc-7 §4.1 maps it to. The 新規タスク区画's builder does
@@ -114,7 +114,7 @@ export const NO_STATUS_TO_PASS_REASON =
  */
 export function buildLaneTaskCreate(title: string, status: string): IssuePlan {
   if (status === "") {
-    return { state: "blocked", reason: NO_STATUS_TO_PASS_REASON };
+    return { state: "blocked", reason: noStatusToPassReason() };
   }
   return buildTaskCreate({ ...EMPTY_TASK_CREATE, title, status });
 }

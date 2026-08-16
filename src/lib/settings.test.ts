@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   probeSummary,
-  CARD_DENSITY_LABEL,
-  CARD_DENSITY_NOTE,
+  cardDensityLabel,
+  cardDensityNote,
   STORAGE_SELECTIONS,
   commandPathOf,
   editorArgsText,
@@ -10,9 +10,9 @@ import {
   emptyStorageWarning,
   isDirty,
   mergeDraft,
-  LOCATION_ABSENT_REASON,
-  LOCATION_UNCONFIRMED_REASON,
-  OPENING_LOCATION_REASON,
+  locationAbsentReason,
+  locationUnconfirmedReason,
+  openingLocationReason,
   openLocationAvailability,
   openLocationFailure,
   saveAvailability,
@@ -83,7 +83,7 @@ describe("場所を開く (TASK-75)", () => {
   it("withholds the control while there is no folder, saying so (TASK-144 AC #2・#3)", () => {
     const availability = openLocationAvailability(false, false);
     expect(availability.enabled).toBe(false);
-    expect(availability.reason).toBe(LOCATION_ABSENT_REASON);
+    expect(availability.reason).toBe(locationAbsentReason());
     // AC #3: 理由の指示対象はフォルダであり、設定ファイルの有無を述べない。
     expect(availability.reason).toContain("フォルダ");
     expect(availability.reason).not.toContain("設定ファイル");
@@ -94,8 +94,8 @@ describe("場所を開く (TASK-75)", () => {
     // 測ったかのように書くことになる。押せないのは同じでも、述べられる事実が違う。
     const availability = openLocationAvailability(null, false);
     expect(availability.enabled).toBe(false);
-    expect(availability.reason).toBe(LOCATION_UNCONFIRMED_REASON);
-    expect(availability.reason).not.toBe(LOCATION_ABSENT_REASON);
+    expect(availability.reason).toBe(locationUnconfirmedReason());
+    expect(availability.reason).not.toBe(locationAbsentReason());
   });
 
   it("gives the launch in flight a reason of its own, whatever the folder's state", () => {
@@ -105,7 +105,7 @@ describe("場所を開く (TASK-75)", () => {
     for (const present of [true, false, null]) {
       expect(openLocationAvailability(present, true)).toEqual({
         enabled: false,
-        reason: OPENING_LOCATION_REASON,
+        reason: openingLocationReason(),
       });
     }
   });
@@ -228,14 +228,14 @@ describe("カード情報量", () => {
   it("says the 状態の印 survive every 段 (doc-7 §3, AC #2)", () => {
     // Otherwise S reads as "fewer items, so probably fewer warnings too", and a user who wants a
     // dense grid would be choosing — as far as they could tell — to stop being told about 不整合.
-    expect(CARD_DENSITY_NOTE).toContain("タスクの状態");
-    expect(CARD_DENSITY_NOTE).toContain("必ず表示されます");
+    expect(cardDensityNote()).toContain("タスクの状態");
+    expect(cardDensityNote()).toContain("必ず表示されます");
   });
 
   it("names what each 段 adds, so the choice is readable before it is made", () => {
-    expect(CARD_DENSITY_LABEL.s).toContain("1 行");
-    expect(CARD_DENSITY_LABEL.m).toContain("Type");
-    expect(CARD_DENSITY_LABEL.l).toContain("assignee");
+    expect(cardDensityLabel("s")).toContain("1 行");
+    expect(cardDensityLabel("m")).toContain("Type");
+    expect(cardDensityLabel("l")).toContain("assignee");
   });
 });
 

@@ -37,6 +37,7 @@
  *   the user can see the result of.
  */
 
+import { msg } from "./messages";
 import {
   hasTypeSelection,
   isDefaultFilter,
@@ -66,10 +67,9 @@ export type PeriodEnd = "from" | "to";
 export const PERIOD_ENDS: readonly PeriodEnd[] = ["from", "to"];
 
 /** The screen's word for each end, where the control has to name one (the token says 以降・以前). */
-export const PERIOD_END_LABEL: Record<PeriodEnd, string> = {
-  from: "始端",
-  to: "終端",
-};
+export function periodEndLabel(end: PeriodEnd): string {
+  return msg().filter.periodEnd[end];
+}
 
 /** One 絞り込み条件: a facet and, for all but 不整合, the value selected inside it. */
 export type FilterCondition =
@@ -84,20 +84,17 @@ export type FilterCondition =
   // a facet name alone would not tell them apart.
   | { facet: "updated"; end: PeriodEnd; value: string };
 
-/** 属性名 as the bar and the popover name it (doc-7 §5.2 lists the facets in this order). */
-export const FACET_LABEL: Record<FilterFacet, string> = {
-  storage: "保存区分",
-  type: "Type",
-  label: "ラベル",
-  priority: "priority",
-  assignee: "assignee",
-  text: "テキスト",
-  inconsistent: "不整合",
-  // The attribute's word (the one doc-7 §5.4 の並び順 already prints) and what is being filtered by
-  // it, as one label — this is both the token's 属性名 and the value list's section heading, and the
-  // heading has to say what the section is when its two fields are the only other words in it.
-  updated: "updated 期間",
-};
+/**
+ * 属性名 as the bar and the popover name it (doc-7 §5.2 lists the facets in this order).
+ *
+ * `updated` carries the attribute's word (the one doc-7 §5.4 の並び順 already prints) *and* what is
+ * being filtered by it, because the same string is both the token's 属性名 and the value list's
+ * section heading, and the heading has to say what the section is when its two fields are the only
+ * other words in it.
+ */
+export function facetLabel(facet: FilterFacet): string {
+  return msg().filter.facet[facet];
+}
 
 /** The order facets are drawn in, wherever they are listed together (bar tokens, popover sections). */
 export const FACET_ORDER: readonly FilterFacet[] = [
@@ -113,18 +110,20 @@ export const FACET_ORDER: readonly FilterFacet[] = [
   "updated",
 ];
 
-const STORAGE_LABEL: Record<StorageSelection, string> = {
-  active: "active",
-  draft: "draft",
-  completed: "completed",
-  archive: "archive",
-  // Not a division a task is filed under but the absence of one (doc-4 §3.4), so it is named rather
-  // than shown as a fourth-and-a-half division.
-  indeterminate: "保存区分不明",
-};
-
+/**
+ * 保存区分 as a token names it.
+ *
+ * **The four divisions keep their bare names in both languages** (decision-35 §5 の識別子). Three of
+ * them are the directories the CLI files a task under — `drafts/`・`completed/`・`archive/` — so the
+ * word on the token is what the reader finds in their own Backlog tree; translating them would break
+ * that correspondence, and upstream's own UI has no word at all for the fourth (its directory is
+ * `tasks/`), so there is nothing to translate them *into* as a set.
+ *
+ * 保存区分不明 is not one of the four but the absence of one (doc-4 §3.4), so it is a sentence about
+ * the read result and is worded like the other such states.
+ */
 export function storageLabel(value: StorageSelection): string {
-  return STORAGE_LABEL[value];
+  return value === "indeterminate" ? msg().state.storageUnknown : value;
 }
 
 /** decision-5's three cases, worded as the value list and the tokens both show them. */
@@ -133,9 +132,9 @@ export function typeLabel(selection: TypeSelection): string {
     case "value":
       return selection.value;
     case "unset":
-      return "Type 未設定";
+      return msg().state.typeUnset;
     case "unknown":
-      return "未知 Type";
+      return msg().state.typeUnknown;
   }
 }
 
@@ -173,10 +172,10 @@ export function conditionValueLabel(condition: FilterCondition): string | null {
       return typeLabel(condition.value);
     case "inconsistent":
       return null;
-    // 端の包含 (doc-7 §5.2) read out of the token itself: 以降・以前 both take the named day in, so
-    // the row states the rule rather than leaving it to the doc.
+    // 端の包含 (doc-7 §5.2) read out of the token itself: both ends take the named day in, so the
+    // row states the rule rather than leaving it to the doc.
     case "updated":
-      return `${condition.value} ${condition.end === "from" ? "以降" : "以前"}`;
+      return msg().filter.periodBound(condition.value, condition.end);
     default:
       return condition.value;
   }
@@ -339,7 +338,7 @@ export function filterTokens(filter: CardFilter): FilterToken[] {
     .map((condition) => ({
       key: conditionKey(condition),
       condition,
-      facet: FACET_LABEL[condition.facet],
+      facet: facetLabel(condition.facet),
       value: conditionValueLabel(condition),
       baseline: !filter.order.includes(conditionKey(condition)),
     }));

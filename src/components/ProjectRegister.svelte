@@ -25,7 +25,7 @@
     type RegisterInput,
   } from "../lib/ledger";
   import { omitsSentence } from "../lib/manage";
-  import { OVERVIEW_INPUT_PROBLEMS_REASON } from "../lib/project-detail";
+  import { overviewInputProblemsReason } from "../lib/project-detail";
   import { createSlugPreviewLoader, type SlugPreview } from "../lib/slug-preview";
   import { messages } from "../lib/messages-context";
   import type { ProjectEntry, RegisterRequest } from "../lib/wire";
@@ -111,7 +111,7 @@
       : busy || submitting
         ? t().projectRegister.busyBlocked
         : issues.length > 0
-          ? OVERVIEW_INPUT_PROBLEMS_REASON
+          ? overviewInputProblemsReason()
           : null,
   );
 

@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   BAND_ORDER,
-  LEDGER_READ_ONLY_BAND,
+  ledgerReadOnlyBand,
   cliDegradedBand,
   topBands,
   unwatchedBand,
   type BandInputs,
   type BandKind,
 } from "./band";
-import { DISCARD_CONFIRM_QUESTION } from "./edit";
+import { discardConfirmQuestion } from "./edit";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import type { CliReadiness } from "./wire";
 
@@ -120,7 +120,7 @@ describe("CLI 縮退帯 (②)", () => {
     // one can stand without the other (AC #3 独立した帯). Side by side they must not read as one
     // failure, which is why each says what it does *not* reach.
     expect(cliDegradedBand(null)).toContain("登録内容の更新は影響を受けません");
-    expect(LEDGER_READ_ONLY_BAND).toContain("文書・マイルストーン・新規タスク");
+    expect(ledgerReadOnlyBand()).toContain("文書・マイルストーン・新規タスク");
     expect(kinds({ ...QUIET, ledgerReadOnly: true })).toEqual(["ledgerReadOnly"]);
     expect(kinds({ ...QUIET, readiness: null })).toEqual(["cliDegraded"]);
   });
@@ -145,6 +145,6 @@ describe("帯の 1 行 (doc-11 §4 の縮約)", () => {
   });
 
   it("asks the 破棄前確認 in the same words the other four routes use", () => {
-    expect(topBands({ ...QUIET, confirming: true })[0]?.text).toBe(DISCARD_CONFIRM_QUESTION);
+    expect(topBands({ ...QUIET, confirming: true })[0]?.text).toBe(discardConfirmQuestion());
   });
 });

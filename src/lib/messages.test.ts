@@ -141,9 +141,12 @@ describe("文言表 の対応", () => {
     expect(Object.keys(CATALOGS).sort()).toEqual([...LANGUAGES].sort());
   });
 
-  it("keeps 言語未選択 worded as 表示テーマ's 未選択 is (decision-35)", async () => {
+  it("keeps 言語未選択 worded as 表示テーマ's 未選択 is (decision-35)", () => {
     // The pairing decision-35 requires, held rather than left to whoever edits one of the two.
-    const { THEME_UNSET_LABEL } = await import("./theme");
-    expect(CATALOGS.ja.settings.languageUnset).toBe(THEME_UNSET_LABEL);
+    for (const language of LANGUAGES) {
+      expect(CATALOGS[language].settings.languageUnset).toBe(
+        CATALOGS[language].settings.themeUnset,
+      );
+    }
   });
 });

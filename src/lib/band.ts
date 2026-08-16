@@ -15,7 +15,7 @@
  * | doc-11 §4 重要度の固定順 | [`BAND_ORDER`] | the order they stack in, as data rather than as markup order |
  * | doc-11 §4 ⑤ だけが × で閉じられる | [`TopBand.closable`] | whether the band offers a close control |
  * | doc-11 §4 縮約 | the texts below | the one-line form; the full reason stays where the operation is |
- * | doc-10 §3 台帳読取専用帯 | [`LEDGER_READ_ONLY_BAND`] | the ledger file degraded to read-only (doc-3 §2.2) |
+ * | doc-10 §3 台帳読取専用帯 | [`ledgerReadOnlyBand`] | the ledger file degraded to read-only (doc-3 §2.2) |
  * | doc-10 §3 CLI 縮退帯 | [`cliDegradedBand`] | no supported CLI, so nothing can be issued (doc-5 §5) |
  *
  * ## Why the texts here are shorter than the reasons elsewhere
@@ -23,11 +23,12 @@
  * doc-11 §4 keeps every band to one line and forbids wrapping: フィルタ帯 1 行 ＋ 本表の帯 で頭打ち
  * という性質が、折り返しを許すと崩れる. So each band carries a 縮約 and the full reason stays at the
  * operation it is about — `readinessReason` beside every withheld operation for ②,
- * `OVERVIEW_READ_ONLY_NOTE` in the 概要区画 for ③, and `UNWATCHED_MARK.detail` on the row's mark
+ * `overviewReadOnlyNote()` in the 概要区画 for ③, and `unwatchedMark().detail` on the row's mark
  * for ④. §4 asks for this duplication rather than a band that can only be read by hovering.
  */
 
-import { DISCARD_CONFIRM_QUESTION } from "./edit";
+import { discardConfirmQuestion } from "./edit";
+import { msg } from "./messages";
 import type { CliReadiness } from "./wire";
 
 /**
@@ -98,9 +99,9 @@ export interface BandInputs {
  * hedges with the same verb, and both bands can stand at once — so neither may say the other's
  * operations *can* be issued.
  */
-export const LEDGER_READ_ONLY_BAND =
-  "登録ファイルが読み取り専用です。登録内容の更新・登録解除・行の並べ替えはできません" +
-  "（文書・マイルストーン・新規タスクは影響を受けません）。";
+export function ledgerReadOnlyBand(): string {
+  return msg().shell.ledgerReadOnlyBand;
+}
 
 /**
  * The CLI state in as few words as the band has room for. Deliberately not `readinessReason`'s
@@ -110,18 +111,19 @@ export const LEDGER_READ_ONLY_BAND =
  * 検出できない lead the user to different acts.
  */
 function cliDegradedSummary(readiness: CliReadiness | null): string | null {
+  const text = msg().shell;
   if (readiness === null) {
-    return "backlog CLI を確認中です";
+    return text.cliChecking;
   }
   switch (readiness.state) {
     case "ready":
       return null;
-    // Not "PATH 上に見つかりません": since decision-16 the resolution is アプリ設定 → npm の
+    // Not「PATH 上に見つかりません」: since decision-16 the resolution is アプリ設定 → npm の
     // サブパッケージ → PATH, so naming PATH alone would state a reason that is not the one that held.
     case "unavailable":
-      return "backlog CLI の実行ファイルを解決できません";
+      return text.cliUnavailable;
     case "unsupported":
-      return `backlog CLI ${readiness.version} は動作確認範囲外です（必要: ${readiness.minimum} 以上）`;
+      return text.cliUnsupported(readiness.version, readiness.minimum);
   }
 }
 
@@ -131,17 +133,17 @@ export function cliDegradedBand(readiness: CliReadiness | null): string | null {
   if (summary === null) {
     return null;
   }
-  return `${summary}。作成・更新は発行できません（登録内容の更新は影響を受けません）。`;
+  return msg().shell.cliDegradedBand(summary);
 }
 
 /**
  * 継続検出停止 (doc-9 §3), 縮約 — the reason and what it costs. The 再読込 itself stays *in* the band
  * (doc-11 §4: 帯が持つ操作は縮約しても帯に残し、操作へ到達するために別の場所を開かせない), so the
  * text does not send the user to a row's mark to resolve the state — a row that may be scrolled out
- * of view. The per-row mark keeps `UNWATCHED_MARK.detail`, which is the rest of the explanation.
+ * of view. The per-row mark keeps `unwatchedMark().detail`, which is the rest of the explanation.
  */
 export function unwatchedBand(reason: string): string {
-  return `${reason}（表示が実ファイルより古い可能性があります）。`;
+  return msg().shell.unwatchedBand(reason);
 }
 
 /**
@@ -151,9 +153,9 @@ export function unwatchedBand(reason: string): string {
  */
 export function topBands(inputs: BandInputs): TopBand[] {
   const texts: Record<BandKind, string | null> = {
-    confirm: inputs.confirming ? DISCARD_CONFIRM_QUESTION : null,
+    confirm: inputs.confirming ? discardConfirmQuestion() : null,
     cliDegraded: cliDegradedBand(inputs.readiness),
-    ledgerReadOnly: inputs.ledgerReadOnly ? LEDGER_READ_ONLY_BAND : null,
+    ledgerReadOnly: inputs.ledgerReadOnly ? ledgerReadOnlyBand() : null,
     unwatched: inputs.unwatchedReason === null ? null : unwatchedBand(inputs.unwatchedReason),
     notice: inputs.notice,
   };
