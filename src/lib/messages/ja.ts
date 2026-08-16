@@ -72,6 +72,8 @@ export const ja = {
   state: {
     none: "なし",
     loading: "読み込み中…",
+    /** 描かれなかった 本文画像 の 状態の印 の読み上げ名 (doc-11 §14.7)。alt が空のときは、これだけが画像の存在を述べる。 */
+    imageNotDrawn: "画像（表示できません）",
     titleUnknown: "（title 不明）",
     statusUnknown: "status 不明",
     storageUnknown: "保存区分不明",

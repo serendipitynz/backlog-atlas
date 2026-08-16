@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 // the assertion is about either way.
 import bodyComponent from "../components/Body.svelte?raw";
 import { FIGURE_DRAWN_CLASS } from "./markdown-figure";
+import { msg } from "./messages";
 import {
   BODY_FIGURE_CLASS,
   BODY_IMAGE_CLASS,
+  BODY_IMAGE_MARK_CLASS,
   BODY_IMAGE_REFERENCE_ATTRIBUTE,
   BODY_LINK_CLASS,
   BODY_LINK_URL_ATTRIBUTE,
@@ -118,6 +120,24 @@ describe("本文画像 (doc-8 §9.2)", () => {
     expect(out).toContain(BODY_IMAGE_CLASS);
     expect(out).toContain("<svg");
     expect(out).toContain(`${BODY_IMAGE_REFERENCE_ATTRIBUTE}="/assets/TASK-82.png"`);
+  });
+
+  it("gives the 状態の印 a name a screen reader reaches — doc-11 §2.4", () => {
+    const out = html("![](/assets/TASK-82.png)");
+    // `iconMarkup` marks the figure `aria-hidden`, so without a role of its own the wrapper has no
+    // content left and a label on it is not announced (doc-11 §2.4 says so in as many words, and
+    // §14.4's タスクリスト の印 already takes this shape). With an alt-less image — which is every
+    // image in this 台帳 — the alternative is silence, the state AC #4 exists to end.
+    expect(out).toContain(`class="${BODY_IMAGE_MARK_CLASS}" role="img" aria-label=`);
+    expect(out).toContain(msg().state.imageNotDrawn);
+  });
+
+  it("keeps the alt readable beside that name rather than replacing it", () => {
+    const out = html("![図の説明](/assets/TASK-82.png)");
+    // The label is on the inner element: `aria-label` on the outer span would replace its contents,
+    // so the 本文's own alt would stop being announced.
+    expect(out).toContain("図の説明</span>");
+    expect(out).toContain('role="img"');
   });
 
   it("draws a 遠隔 image as a pressable 本文リンク and never fetches it", () => {

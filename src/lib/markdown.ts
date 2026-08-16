@@ -293,6 +293,9 @@ export const BODY_IMAGE_CLASS = "body-image";
 /** Where a 本文画像 waiting to be drawn keeps the reference the 本文 wrote. */
 export const BODY_IMAGE_REFERENCE_ATTRIBUTE = "data-body-image";
 
+/** Class on the 状態の印 inside an undrawn 本文画像 (doc-11 §14.7). Carries the accessible name. */
+export const BODY_IMAGE_MARK_CLASS = "body-image-mark";
+
 /**
  * An image is drawn in place of its own placeholder, or not at all (doc-8 §9.2).
  *
@@ -321,12 +324,21 @@ function bodyImages(md: Renderer): void {
       );
     }
     const reference = plan.kind === "attachment" ? plan.reference : null;
+    // **The figure is wrapped in its own `role="img"` element**, the same shape §14.4's タスクリスト の印
+    // takes and for the same reason: `iconMarkup` marks the SVG `aria-hidden`, so without a role the
+    // span has no content left and an `aria-label` on it is not announced. With an empty alt — which
+    // is what both image references in this 台帳 have — that would leave a screen reader with silence,
+    // which is precisely the state doc-8 §9.2's old rule produced and AC #4 exists to end.
+    //
+    // The label goes on the inner element rather than the outer one so that the alt beside it is still
+    // read: `aria-label` on the outer span would replace its contents instead of introducing them.
     return (
       `<span class="${BODY_IMAGE_CLASS}"` +
       (reference === null
         ? ""
         : ` ${BODY_IMAGE_REFERENCE_ATTRIBUTE}="${md.utils.escapeHtml(reference)}"`) +
-      `>${iconMarkup("image-off")}${alt}</span>`
+      `><span class="${BODY_IMAGE_MARK_CLASS}" role="img" aria-label="${md.utils.escapeHtml(msg().state.imageNotDrawn)}">` +
+      `${iconMarkup("image-off")}</span>${alt}</span>`
     );
   };
 }

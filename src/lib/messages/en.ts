@@ -54,6 +54,7 @@ export const EN: Catalog = {
   state: {
     none: "None",
     loading: "Loading…",
+    imageNotDrawn: "Image (not shown)",
     titleUnknown: "(title unknown)",
     statusUnknown: "status unknown",
     storageUnknown: "storage state unknown",
