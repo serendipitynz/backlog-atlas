@@ -130,7 +130,9 @@ TASK-103 AC #3 の手段は 2 つの判定の組である。**片方だけでは
   書かれており（`an_unset_指定_leaves_the_bare_name_for_the_os`）、走査を通すために識別子を書き換えるのは、
   走査が守っている対象ではないものを動かすことになる。**これは AGENTS が定めた規則ではなく、現に在る
   書き方である** — 規則として縛るなら、まず AGENTS.md と AGENTS.ja.md へ書く。AGENTS がいま持つのは
-  「コードコメントは英語、利用者向けの説明は既定で日本語」の 1 行だけで、識別子には触れていない。
+  「作業上の規約」の 1 行、`AGENTS.ja.md` の「コードコメントは英語、利用者向け説明は日本語を基本にする。」
+  （`AGENTS.md` の "Code comments in English; user-facing explanations in Japanese by default." が同じ行）
+  だけで、識別子には触れていない。
 
 ### 5. 訳さないもの
 
