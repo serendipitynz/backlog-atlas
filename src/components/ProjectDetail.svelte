@@ -2102,7 +2102,7 @@
                          (doc-7 §2.1)。可視の 1 行はここに置かない。 -->
                     <div class="actions">
                       <!-- 取りやめ → 発行 (doc-11 §11): one order everywhere, since the row is centred. -->
-                      <button type="button" onclick={closeEditor}>{t().projectDetail.stopEditing}</button>
+                      <button type="button" onclick={closeEditor}>{t().action.cancel}</button>
                       <button
                         type="button"
                         aria-disabled={docUpdateIssue.state !== "ready"}
@@ -2369,7 +2369,7 @@
                     <!-- Not pinned (doc-11 §11): this column holds 改称・削除・アーカイブ as well, so no
                          one 発行 owns its bottom row. 取りやめ → 発行 all the same. -->
                     <div class="actions">
-                      <button type="button" onclick={closeMilestoneEdit}>{t().projectDetail.stopEditing}</button>
+                      <button type="button" onclick={closeMilestoneEdit}>{t().action.cancel}</button>
                       <button
                         type="button"
                         aria-disabled={describeIssue.state !== "ready"}
