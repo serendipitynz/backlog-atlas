@@ -1,10 +1,10 @@
 ---
 id: TASK-183
 title: Atlas の 取得子側の画面文 を 文言表 へ抽出する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-15 22:19'
-updated_date: '2026-08-16 03:01'
+updated_date: '2026-08-16 03:12'
 labels:
   - i18n
   - 'kind:feature'
