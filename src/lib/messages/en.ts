@@ -294,12 +294,12 @@ export const EN: Catalog = {
     submitHint: "Registers a project from what you entered",
     registering: "A registration is in progress",
     problem: {
-      projectRootRequired: "Give a project root.",
+      projectRootRequired: "Enter a project root.",
       projectRootEmpty: "The project root cannot be empty.",
-      projectRootNotAbsolute: "Give the project root as an absolute path.",
+      projectRootNotAbsolute: "Enter the project root as an absolute path.",
       backlogRootEmpty: "The Backlog root cannot be empty.",
-      backlogRootNotAbsolute: "Give the Backlog root as an absolute path.",
-      slugTaken: (slug: string) => `slug ${slug} is already registered. Give a different slug.`,
+      backlogRootNotAbsolute: "Enter the Backlog root as an absolute path.",
+      slugTaken: (slug: string) => `slug ${slug} is already registered. Enter a different slug.`,
       slugGrammar: (slug: string) =>
         `slug ${slug} cannot be used. It must start with a lower-case letter or digit, and hold ` +
         "only lower-case letters, digits and hyphens after that (no colon and no space).",
@@ -318,10 +318,10 @@ export const EN: Catalog = {
         "the overwrite was refused (read-only). Registrations cannot change until Atlas is updated.",
       backlogRootInvalid: (path: string) =>
         `${path} cannot be read as a Backlog root (config.yml and tasks/ are required). ` +
-        "Give the Backlog root again.",
+        "Enter the Backlog root again.",
       slugNotFound: (slug: string) =>
         `There is no registration for slug ${slug} (it may have been removed on another screen). Reload the list.`,
-      nonAbsoluteRoot: (path: string) => `${path} is not an absolute path. Give an absolute path.`,
+      nonAbsoluteRoot: (path: string) => `${path} is not an absolute path. Enter an absolute path.`,
       duplicateRoot: (slug: string) =>
         `This project root or Backlog root is already registered under slug ${slug}. ` +
         "One project has one entry, so give a different root or edit that entry.",
@@ -386,7 +386,7 @@ export const EN: Catalog = {
     criteriaReordered:
       "The Acceptance Criteria are in a different order in the latest version, so the removals and checks you had pointed at by number were cancelled (the same number now points at another item). " +
       "Set them again if you still want them.",
-    inconsistentHeading: "Inconsistent",
+    inconsistentHeading: "Inconsistencies",
     unknownSection: (name: string) => `Unknown section ${name} (kept as it is)`,
     addAssignee: "New assignee",
     done: "Done",
@@ -764,7 +764,7 @@ export const EN: Catalog = {
     typeUnset: "type unset",
     tagsNone: "no tags",
     bodyEmpty: "There is no body.",
-    stopEditing: "Stop editing",
+    stopEditing: "Cancel editing",
     editing: "Editing",
     unsaved: "Unsaved",
     unmappedFiles: (n: number) =>
@@ -834,7 +834,7 @@ export const EN: Catalog = {
     taskCreate: "Create the task",
     taskCreated: "The task is created.",
     taskNoteLabel: "Items that can be added after it is created",
-    configDefaultStatus: "— (leave it to config.yml's default status)",
+    configDefaultStatus: "— (use the default status in config.yml)",
     unset: "— (unset)",
     labelNote:
       "Type (the kind label) is not handled here. A label is treated as one comma-separated value, " +
