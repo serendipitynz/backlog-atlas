@@ -909,7 +909,24 @@
     };
   }
 
-  async function runMilestoneOp(milestone: Milestone, done: () => string): Promise<void> {
+  /**
+   * Issue 改称・削除・アーカイブ.
+   *
+   * **`kind` is a value, not a read of `milestoneOp`.** The 発行結果 is worded lazily so it follows
+   * 表示言語 (decision-35), and on success this function clears `milestoneOp` — so a thunk that
+   * looked the operation up when the banner is *read* would find `null` and word every success as
+   * アーカイブ. Capturing the kind at the press keeps the sentence lazy and its subject fixed.
+   */
+  async function runMilestoneOp(
+    milestone: Milestone,
+    kind: "rename" | "remove" | "archive",
+  ): Promise<void> {
+    const done = (): string =>
+      kind === "rename"
+        ? t().projectDetail.renamed
+        : kind === "remove"
+          ? t().projectDetail.removed
+          : t().projectDetail.archived;
     const plan = milestoneOpPlan(milestone);
     if (plan === null || plan.state !== "ready") {
       return;
@@ -2514,13 +2531,7 @@
                             disabled={opIssue?.state !== "ready"}
                             title={opIssue === null ? "" : why(opIssue)}
                             onclick={() =>
-                              runMilestoneOp(milestone, () =>
-                                open === "rename"
-                                  ? t().projectDetail.renamed
-                                  : open === "remove"
-                                    ? t().projectDetail.removed
-                                    : t().projectDetail.archived,
-                              )}
+                              open !== null && runMilestoneOp(milestone, open)}
                           >
                             {open === "rename"
                               ? t().projectDetail.issueRename

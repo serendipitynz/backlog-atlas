@@ -1465,6 +1465,40 @@ describe("プロジェクト詳細が自分で上げる被せ層", () => {
     expect(banner()).toContain("The document is created");
     expect(banner()).not.toContain("文書を作成しました");
   });
+  it("改称の成功を伝える帯は、言語を変えてもアーカイブの文に化けない", async () => {
+    // 発行結果 is worded lazily so it follows 表示言語 — but `runMilestoneOp` clears `milestoneOp` on
+    // success, so a thunk that looked the operation up when the banner is *read* would find `null`
+    // and word every success as アーカイブ. The kind is captured at the press for that reason, and
+    // this holds it: 改称 has to stay 改称 through the language change.
+    answers.update = () =>
+      Promise.resolve({
+        state: "ran",
+        outcome: { state: "succeeded" },
+        project: snapshot("atlas", [TASK], [MILESTONE]),
+      } as UpdateResult);
+    const host = await startWith([loaded("atlas", [TASK], undefined, [], [MILESTONE])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+    click(sectionTab(host, "マイルストーン"));
+    await settled();
+    click(only(host, "button.card"));
+    await settled();
+    click(byText(host, "button", "編集"));
+    await settled();
+    click(byText(host, "button", "改称"));
+    await settled();
+    fill(only<HTMLInputElement>(host, '.sub-panel input[type="text"]'), "新しい節目");
+    click(byText(host, "button", "改称を発行"));
+    await settled();
+
+    const banner = () => host.querySelector("p.ok")?.textContent ?? "";
+    expect(banner()).toContain("マイルストーンを改称しました");
+
+    await switchToEnglish(host);
+
+    expect(banner()).toContain("The milestone is renamed");
+    expect(banner()).not.toContain("archived");
+  });
 });
 
 // -------------------------------------------------------------------------------------------------
