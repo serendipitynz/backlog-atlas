@@ -12,6 +12,7 @@
   import { onMount } from "svelte";
   import { loadAce, type AceEditor } from "../lib/ace";
   import { matchShortcut } from "../lib/shortcuts";
+  import { messages } from "../lib/messages-context";
   import { MAC_KEYBOARD } from "../lib/platform";
 
   interface Props {
@@ -31,6 +32,8 @@
   }
 
   let { value, label, rows = 6, onchange, onsave }: Props = $props();
+
+  const t = messages();
 
   let host = $state<HTMLDivElement | null>(null);
   let editor: AceEditor | null = null;
@@ -137,7 +140,7 @@
   <div class="ace-host" class:promoted bind:this={host} aria-label={label} role="presentation"></div>
   {#if fallbackReason !== null}
     <p class="fallback">
-      Ace を読み込めなかったため textarea のまま編集します（操作は変わりません）: {fallbackReason}
+      {t().editor.aceFallback(fallbackReason)}
     </p>
   {/if}
 </div>

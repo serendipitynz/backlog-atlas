@@ -17,6 +17,9 @@
   import { SCOPE_LABEL, SHORTCUTS, chordLabel } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import { SHORTCUT_HELP_LABEL } from "../lib/header";
+  import { messages } from "../lib/messages-context";
+
+  const t = messages();
 </script>
 
 <section>
@@ -37,9 +40,9 @@
   <table>
     <thead>
       <tr>
-        <th scope="col">キー</th>
-        <th scope="col">操作</th>
-        <th scope="col">使える場所</th>
+        <th scope="col">{t().shortcutHelp.keyColumn}</th>
+        <th scope="col">{t().shortcutHelp.actionColumn}</th>
+        <th scope="col">{t().shortcutHelp.scopeColumn}</th>
       </tr>
     </thead>
     <tbody>

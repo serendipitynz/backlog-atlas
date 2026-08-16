@@ -11,6 +11,7 @@
   import { omitsSentence } from "../lib/manage";
   import { ariaKeyShortcuts, matchShortcut, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
+  import { messages } from "../lib/messages-context";
   import Icon from "../lib/icons/Icon.svelte";
 
   interface Props {
@@ -58,6 +59,8 @@
     onstatus,
     onsubmit,
   }: Props = $props();
+
+  const t = messages();
 
   /** The input, so opening the entry puts the caret in it rather than leaving it to be found. */
   let titleInput = $state<HTMLInputElement | null>(null);
@@ -115,9 +118,9 @@
     class="open"
     aria-disabled={held !== null}
     aria-label={held === null
-      ? `${label} 列に新規タスクを作る`
-      : `${label} 列の新規タスク入力は使えません: ${held}`}
-    title={held ?? `${label} 列に新規タスクを作ります`}
+      ? t().laneCreate.openLabel(label)
+      : t().laneCreate.openBlocked(label, held)}
+    title={held ?? t().laneCreate.openHint(label)}
     onclick={() => held === null && onopen()}
   >
     <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4). The same `plus` the 文書・マイルストーン の
@@ -129,7 +132,7 @@
          画面全体に効く, so it lives on the 上部帯 (the paragraph above) and there is no element beside
          this button for `aria-describedby` to point at. Until the `＋` became a figure the type did
          not apply here at all. -->
-    <Icon name="plus" />新規
+    <Icon name="plus" />{t().laneCreate.open}
   </button>
 {:else}
   <div class="entry">
@@ -137,8 +140,8 @@
       bind:this={titleInput}
       type="text"
       value={title}
-      placeholder="title（必須）"
-      aria-label="{label} 列の新規タスクの title"
+      placeholder={t().field.titleRequired}
+      aria-label={t().laneCreate.titleLabel(label)}
       aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate", MAC_KEYBOARD)}
       oninput={(event) => ontitle(event.currentTarget.value)}
       onkeydown={keydown}
@@ -168,7 +171,7 @@
     <!-- 発行の行 (doc-11 §11), left where it is: this 層 does not scroll, so nothing can carry the
          controls off screen and there is no pinning to do. 取りやめ → 発行 all the same. -->
     <div class="actions">
-      <button type="button" onclick={onclose}>キャンセル</button>
+      <button type="button" onclick={onclose}>{t().action.cancel}</button>
       <!-- 無効化提示 (doc-11 §5): the control stays and keeps a reason. The sentence below is drawn
            only when the 区画 does not already state it — a title marked「（必須）」sitting empty is
            itself the 常時表示 reason §5 asks for (doc-11 §8). -->
@@ -176,10 +179,10 @@
         type="button"
         disabled={blocked !== null}
         aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate", MAC_KEYBOARD)}
-        title={blocked ?? "このセルにタスクを作成します"}
+        title={blocked ?? t().laneCreate.createHint}
         onclick={onsubmit}
       >
-        作成
+        {t().laneCreate.create}
         <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4); the chord is on `aria-keyshortcuts` as data. -->
         <span class="hint" aria-hidden="true">{shortcutHint("submitLaneCreate", MAC_KEYBOARD)}</span>
       </button>
