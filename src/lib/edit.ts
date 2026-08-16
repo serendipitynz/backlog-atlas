@@ -54,7 +54,7 @@ import type {
   UpdateOperation,
 } from "./wire";
 import { commaReason, firstWithComma } from "./comma";
-import { bodyLinkRefusalText, launchRefusalText } from "./failure";
+import { bodyLinkRefusalText, imageRefusalText, launchRefusalText } from "./failure";
 import { msg } from "./messages";
 import { refusalReport } from "./ledger";
 
@@ -895,6 +895,12 @@ export function commandErrorDetail(error: CommandError): string {
     // to: nothing else on screen changed when the browser failed to come forward.
     case "bodyLinkFailed":
       return text.bodyLinkFailed(bodyLinkRefusalText(error.reason, error.detail));
+    // 添付画像 (doc-8 §9.2) cannot arise from an edit either, and unlike the link above it does not
+    // reach ⑤ 通知 from anywhere: the 本文画像 stays at its 状態の印 and `markdown-image.ts` stops the
+    // rejection. Worded for the same reason 履歴読取の取消 is — the switch is exhaustive, and a
+    // sentence beats a variant name if a route ever appears.
+    case "bodyImageRefused":
+      return text.bodyImageRefused(imageRefusalText(error.reason, error.detail));
   }
 }
 

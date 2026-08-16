@@ -287,6 +287,21 @@ export function bodyLinkOpen(url: string): Promise<void> {
 }
 
 /**
+ * The bytes of one 添付画像, so a 本文画像 can be drawn (doc-8 §9.2).
+ *
+ * `reference` is what the 本文 wrote, unchanged; the rule that turns it into a path is Backlog CLI's
+ * and runs at the boundary, which is also what makes `slug` necessary — `/assets/` is relative to one
+ * of several Backlog roots (AGENTS の Project model), and the root is looked up there rather than sent
+ * from here.
+ *
+ * Comes back raw: `ArrayBuffer`, not JSON. The media type is not part of the answer — the 媒体型表 in
+ * `markdown-image.ts` holds it, and this is only called for a reference already found in it.
+ */
+export function bodyImageRead(slug: string, reference: string): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("body_image_read", { slug, reference });
+}
+
+/**
  * Issue one screen action (doc-5 §3, doc-9 §4). The boundary derives each operation's target from
  * its own read model and runs the 更新前競合検出 before launching anything, so a `conflict` result
  * means the CLI never ran — the caller keeps its 未保存入力 and chooses a path (doc-9 §5).

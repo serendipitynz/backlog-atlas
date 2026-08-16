@@ -721,6 +721,7 @@ export const ja = {
       settingsSaveFailed: (detail: string) => `設定を保存できませんでした: ${detail}`,
       historyCancelled: "Git 履歴の読み取りは画面の側で取り消されました",
       bodyLinkFailed: (reason: string) => `リンクを開けませんでした: ${reason}`,
+      bodyImageRefused: (reason: string) => `画像を読めませんでした: ${reason}`,
     },
     /** 照合後競合窓の事後通知 (doc-9 §5) where the re-read holds no such file at all. */
     divergedTaskFile: "タスクファイル（再読込結果に見当たりません）",
@@ -1413,6 +1414,11 @@ export const ja = {
     bodyLink: {
       schemeNotAllowed: "http:// と https:// のリンクだけを開きます",
       controlCharacter: "URL に制御文字が入っています",
+    },
+    bodyImage: {
+      outsideAssets: "assets/ の外を指しています",
+      absent: "ファイルがありません",
+      unreadable: "ファイルを読めません",
     },
     probe: {
       spawnFailed: (program: string) => `${program} を起動できません`,
