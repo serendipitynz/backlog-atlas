@@ -35,6 +35,7 @@
   import { matchShortcut, textEntryFocused } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import Icon from "../lib/icons/Icon.svelte";
+  import { messages } from "../lib/messages-context";
 
   interface Props {
     filter: CardFilter;
@@ -50,6 +51,8 @@
   }
 
   let { filter, facets, boundary, onchange, onclose }: Props = $props();
+
+  const t = messages();
 
   interface ValueEntry {
     key: string;
@@ -111,7 +114,7 @@
       // rather than as a section that would otherwise be missing from the search results.
       {
         facet: "inconsistent" as const,
-        entries: [entry({ facet: "inconsistent" }, facets.inconsistent, "不整合のみ")],
+        entries: [entry({ facet: "inconsistent" }, facets.inconsistent, t().filter.inconsistentOnly)],
       },
     ].map((section) => ({ ...section, label: FACET_LABEL[section.facet] })),
   );
@@ -232,16 +235,16 @@
 <div
   class="popover"
   role="dialog"
-  aria-label="絞り込みを追加"
+  aria-label={t().filter.popoverLabel}
   tabindex="-1"
   bind:this={root}
   onkeydown={keydown}
 >
   <label class="search">
-    <span class="caption">値を検索</span>
+    <span class="caption">{t().filter.searchCaption}</span>
     <input
       type="search"
-      placeholder="値・属性名"
+      placeholder={t().filter.searchPlaceholder}
       bind:this={field}
       bind:value={search}
       oninput={typed}
@@ -295,10 +298,10 @@
         {/each}
         <div class="relative">
           <label>
-            いまから
+            {t().filter.relativeFrom}
             <input type="number" min="1" max={MAX_RELATIVE_COUNT} step="1" bind:value={count} />
           </label>
-          <select bind:value={unit} aria-label="いまから数える単位">
+          <select bind:value={unit} aria-label={t().filter.relativeUnitLabel}>
             {#each PERIOD_UNITS as value (value)}
               <option {value}>{PERIOD_UNIT_LABEL[value]}</option>
             {/each}
@@ -311,11 +314,11 @@
             class="plain"
             aria-disabled={!countUsable}
             aria-describedby={countUsable ? undefined : RELATIVE_BLOCKED_ID}
-            onclick={() => countUsable && applyRelative()}>始端にする</button
+            onclick={() => countUsable && applyRelative()}>{t().filter.applyRelative}</button
           >
           {#if !countUsable}
             <span class="blocked" id={RELATIVE_BLOCKED_ID}>
-              1 〜 {MAX_RELATIVE_COUNT} の整数を入れてください
+              {t().filter.relativeRange(MAX_RELATIVE_COUNT)}
             </span>
           {/if}
         </div>
@@ -325,16 +328,16 @@
     {#if shown.length === 0 && !periodShown}
       <!-- 正常な不在 (doc-11 §6): a search that matched nothing is not an error, so it gets the
            neutral mark and a sentence, never a colour. -->
-      <p class="none"><span class="dash">—</span> 「{query.trim()}」に一致する値はありません</p>
+      <p class="none"><span class="dash">—</span> {t().filter.noMatch(query.trim())}</p>
     {/if}
   </div>
 
   <footer>
-    <span class="selected">選択中 {selected} 件</span>
+    <span class="selected">{t().filter.selectedCount(selected)}</span>
     {#if query.trim() !== ""}
-      <button type="button" class="plain" onclick={clearSearch}>検索を消す</button>
+      <button type="button" class="plain" onclick={clearSearch}>{t().filter.clearSearch}</button>
     {/if}
-    <button type="button" class="plain" onclick={onclose}>閉じる</button>
+    <button type="button" class="plain" onclick={onclose}>{t().action.close}</button>
   </footer>
 </div>
 

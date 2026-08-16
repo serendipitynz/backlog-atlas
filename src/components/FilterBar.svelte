@@ -27,6 +27,7 @@
   } from "../lib/token";
   import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
+  import { messages } from "../lib/messages-context";
   import type { StorageSelection } from "../lib/wire";
 
   interface Props {
@@ -72,6 +73,8 @@
     menu,
   }: Props = $props();
 
+  const t = messages();
+
   // The text box keeps its own state and is bound (DOM → state), never written back on every
   // keystroke: writing the value back mid-composition is what breaks IME input, and the filter
   // is not worth re-running on each intermediate 変換 candidate either. `isComposing` holds the
@@ -109,11 +112,9 @@
   // whenever it is pointed at, so the reason is hidden rather than dropped.
   let blockedReason = $derived(
     clearBlocked
-      ? "絞り込みは既定のままです。"
+      ? t().filter.alreadyDefault
       : undoBlocked
-        ? // Names the control by what it does, not by the glyph it used to print: since TASK-139 the
-          // token's remove control is a figure, and a figure has no words for a sentence to quote.
-          "自分で足した条件がないため、直前の 1 つは戻せません（保存区分の既定は各トークンの解除で外します）。"
+        ? t().filter.nothingToUndo
         : null,
   );
   /** Whether the 帯 itself already shows the reason, so it is not printed a second time (doc-11 §8). */
@@ -159,8 +160,8 @@
        the same reason it is not a label: it points at the whole bar (doc-11 §2.4). -->
   <input
     type="search"
-    aria-label="テキストで絞り込み"
-    placeholder="横断タスクID・title"
+    aria-label={t().filter.textLabel}
+    placeholder={t().filter.textPlaceholder}
     bind:value={text}
     oninput={commitText}
   />
@@ -180,7 +181,7 @@
       aria-keyshortcuts={ariaKeyShortcuts("addFilter", MAC_KEYBOARD)}
       onclick={() => (popoverOpen ? close() : onpopover(true))}
     >
-      ＋ 絞り込み
+      {t().filter.add}
       <!-- 操作の近くに併記する (doc-7 §2.1 / AC #4); the chord itself is on `aria-keyshortcuts`. -->
       <span class="hint" aria-hidden="true">{shortcutHint("addFilter", MAC_KEYBOARD)}</span>
     </button>
@@ -203,7 +204,9 @@
         <button
           type="button"
           class="drop"
-          aria-label="{token.facet}{token.value === null ? '' : ` ${token.value}`} を解除"
+          aria-label={t().filter.removeToken(
+            `${token.facet}${token.value === null ? "" : ` ${token.value}`}`,
+          )}
           onclick={() => onchange(removeCondition(filter, token.condition))}
         >
           <Icon name="x" />
@@ -213,7 +216,7 @@
       <!-- Only reachable by taking every 保存区分 off: the selection is positive (doc-7 §5.2), so an
            empty one shows nothing. Said plainly, because an empty grid otherwise reads as a workspace
            with no tasks in it. -->
-      <span class="empty">保存区分がひとつも選ばれていないため、カードは出ません</span>
+      <span class="empty">{t().filter.noStorageSelected}</span>
     {/each}
   </div>
 
@@ -229,13 +232,13 @@
     <button
       type="button"
       class="control icon"
-      aria-label="直前の 1 つを戻す"
+      aria-label={t().filter.undoLabel}
       aria-disabled={undoBlocked}
       aria-describedby={undoBlocked ? BLOCKED_ID : undefined}
       aria-keyshortcuts={ariaKeyShortcuts("undoFilter", MAC_KEYBOARD)}
       title={undoBlocked
         ? (blockedReason ?? undefined)
-        : `最後に足した条件を 1 件戻します（${shortcutHint("undoFilter", MAC_KEYBOARD)}）`}
+        : t().filter.undoHint(shortcutHint("undoFilter", MAC_KEYBOARD))}
       onclick={() => !undoBlocked && onchange(removeLastCondition(filter))}
     >
       <Icon name="undo" />
@@ -246,10 +249,10 @@
     <button
       type="button"
       class="control icon"
-      aria-label="既定に戻す"
+      aria-label={t().filter.clearLabel}
       aria-disabled={clearBlocked}
       aria-describedby={clearBlocked ? BLOCKED_ID : undefined}
-      title={clearBlocked ? (blockedReason ?? undefined) : "すべての条件を外し、保存区分を既定へ戻します"}
+      title={clearBlocked ? (blockedReason ?? undefined) : t().filter.clearHint}
       onclick={() => !clearBlocked && onchange(defaultFilter(defaultStorage))}
     >
       <Icon name="refresh-ccw" />
@@ -267,7 +270,7 @@
        pressing, and doc-11 §2.4 gains no new form. -->
   <div class="order">
     <label>
-      並び順
+      {t().filter.orderLabel}
       <select value={cardOrder} onchange={(event) => chooseOrder(event.currentTarget.value)}>
         {#each CARD_ORDER_CHOICES as [value, rule] (value)}
           <option {value}>{rule.label}</option>

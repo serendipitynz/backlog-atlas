@@ -24,6 +24,7 @@
     type SwimlaneRow,
   } from "../lib/swimlane";
   import { laneDropTarget, type DragSource } from "../lib/lane-drop";
+  import { messages } from "../lib/messages-context";
   import type { CardDensity, StatusColumn, TaskView } from "../lib/wire";
 
   interface Props {
@@ -302,11 +303,10 @@
    * are projects. The arrows stay `aria-disabled` rather than `disabled` so they keep taking focus:
    * that is what makes the binding reachable from the keyboard and from a screen reader.
    */
+  const t = messages();
+
   const REORDER_REASON_ID = "swimlane-reorder-blocked";
   const LAST_COLUMN_REASON_ID = "swimlane-last-column-fold-blocked";
-  const REORDER_BLOCKED_REASON =
-    "登録ファイルが読み取り専用のため、行の並べ替えはできません。" +
-    "プロジェクト詳細の概要区画で理由を確認できます。";
 
   // 未分類区画は常設ではない (doc-7 §2.2): the column appears only while some row has a task in
   // it, and disappears again once none does.
@@ -339,10 +339,6 @@
   // 行折畳み は 行非表示 と別の語・別の操作 (doc-7 §5.1), and since TASK-131 it is the only one of the
   // two this row offers: 表示・非表示 は メニューのプロジェクト一覧 が 1 か所で扱う。The sentences below
   // therefore say 件数を残す without a second control beside them saying 件数も読めなくなる.
-  const ROW_FOLD_HINT = "行折畳み: レーンセルを畳み、列別の件数をこの行に残します。";
-  const ROW_UNFOLD_HINT = "行折畳みを解き、レーンセルを戻します。";
-  const COLUMN_FOLD_HINT = "列折畳み: この列を全行同時に畳み、列名を残します（件数は行ごとに残ります）。";
-  const COLUMN_UNFOLD_HINT = "列折畳みを解き、この列のカードを全行で戻します。";
 </script>
 
 <div
@@ -378,11 +374,11 @@
         aria-expanded={!folded}
         aria-disabled={!foldable}
         aria-describedby={foldable ? undefined : LAST_COLUMN_REASON_ID}
-        aria-label="{name}の列折畳みを{folded ? '解く' : '行う'}"
+        aria-label={t().swimlane.columnFoldLabel(name, folded)}
         title={foldable
           ? folded
-            ? COLUMN_UNFOLD_HINT
-            : COLUMN_FOLD_HINT
+            ? t().swimlane.columnUnfoldHint
+            : t().swimlane.columnFoldHint
           : LAST_COLUMN_FOLD_BLOCKED_REASON}
         onclick={() => foldable && oncolumnFold(column)}
       >
@@ -397,14 +393,18 @@
   {/snippet}
 
   {#each CANONICAL_COLUMNS as column (column)}
-    {@render columnHead(column, CANONICAL_COLUMN_LABEL[column], `${CANONICAL_COLUMN_LABEL[column]} 列`)}
+    {@render columnHead(
+      column,
+      CANONICAL_COLUMN_LABEL[column],
+      t().swimlane.columnHeadName(CANONICAL_COLUMN_LABEL[column]),
+    )}
   {/each}
   {#if hasUnmapped}
     <!-- 未分類区画も列折畳みの対象 (doc-7 §2.2). It holds cards like any column, and the reason it used
          to be excluded was only that it is not a 正準ステータス列 — which says nothing about folding.
          What stays apart is [`columnFoldable`]'s guarantee: this one never counts as the column left
          open, because it vanishes on its own once no row has an 未分類 status task. -->
-    {@render columnHead("unmapped", UNMAPPED_LABEL, "未分類区画")}
+    {@render columnHead("unmapped", UNMAPPED_LABEL, t().swimlane.unmappedHeadName)}
   {/if}
 
   {#if !CANONICAL_COLUMNS.every((column) => columnFoldable(collapsedColumns, column))}
@@ -416,7 +416,7 @@
   {/if}
 
   {#if !canReorder}
-    <p class="blocked-note" id={REORDER_REASON_ID}>{REORDER_BLOCKED_REASON}</p>
+    <p class="blocked-note" id={REORDER_REASON_ID}>{t().swimlane.reorderBlocked}</p>
   {/if}
 
   {#each rows as row (row.slug)}
@@ -455,8 +455,8 @@
           type="button"
           class="fold"
           aria-expanded={!folded}
-          aria-label="{row.slug} の行折畳みを{folded ? '解く' : '行う'}"
-          title={folded ? ROW_UNFOLD_HINT : ROW_FOLD_HINT}
+          aria-label={t().swimlane.rowFoldLabel(row.slug, folded)}
+          title={folded ? t().swimlane.rowUnfoldHint : t().swimlane.rowFoldHint}
           onclick={() => onrowFold(row.slug)}
         >
           <Icon name={folded ? LANE_FIGURE.rowFold.folded : LANE_FIGURE.rowFold.open} />
@@ -471,9 +471,9 @@
         <button
           type="button"
           class="project"
-          title="{row.state === 'loaded' && row.projectName
-            ? row.projectName
-            : row.slug} のプロジェクト詳細画面を開きます"
+          title={t().swimlane.openProjectHint(
+            row.state === "loaded" && row.projectName ? row.projectName : row.slug,
+          )}
           onclick={() => onopenProject(row.slug)}
         >
           {row.state === "loaded" && row.projectName ? row.projectName : row.slug}
@@ -483,7 +483,7 @@
         {/if}
       </div>
       {#if row.state === "loaded"}
-        <span class="count">{visibleCount(row)} / {row.totalBeforeFilter} 件</span>
+        <span class="count">{t().swimlane.visibleCount(visibleCount(row), row.totalBeforeFilter)}</span>
       {/if}
       {#if folded}
         <!-- 畳んでも件数は読める (doc-7 §2.3・§5.1): the cells are gone, so their counts come up here
@@ -519,20 +519,20 @@
              and the 脇パネル配置 is where both are on screen at once. -->
         <button
           type="button"
-          aria-label="{row.slug} を上へ"
+          aria-label={t().swimlane.moveUpLabel(row.slug)}
           aria-disabled={!canReorder}
           aria-describedby={canReorder ? undefined : REORDER_REASON_ID}
-          title={canReorder ? "表示順を上へ" : REORDER_BLOCKED_REASON}
+          title={canReorder ? t().swimlane.moveUpHint : t().swimlane.reorderBlocked}
           onclick={() => canReorder && onmove(row.slug, -1)}
         >
           <Icon name={LANE_FIGURE.moveUp} />
         </button>
         <button
           type="button"
-          aria-label="{row.slug} を下へ"
+          aria-label={t().swimlane.moveDownLabel(row.slug)}
           aria-disabled={!canReorder}
           aria-describedby={canReorder ? undefined : REORDER_REASON_ID}
-          title={canReorder ? "表示順を下へ" : REORDER_BLOCKED_REASON}
+          title={canReorder ? t().swimlane.moveDownHint : t().swimlane.reorderBlocked}
           onclick={() => canReorder && onmove(row.slug, 1)}
         >
           <Icon name={LANE_FIGURE.moveDown} />
@@ -542,8 +542,8 @@
                cards may be stale has to carry the one control that resolves that. -->
           <button
             type="button"
-            title="このルートを読み直す（継続検出が動いていないため自動では更新されません）"
-            onclick={() => onreread(row.slug)}>再読込</button
+            title={t().swimlane.rereadHint}
+            onclick={() => onreread(row.slug)}>{t().swimlane.reread}</button
           >
         {/if}
         <!-- 行末の入口 (doc-7 §2.3's sketch, doc-10 §2): the same destination as the project name, as
@@ -554,8 +554,8 @@
              pointed at rather than how it was drawn. -->
         <button
           type="button"
-          aria-label="{row.slug} のプロジェクト詳細画面を開く"
-          title="プロジェクト詳細画面を開きます"
+          aria-label={t().swimlane.openProjectLabel(row.slug)}
+          title={t().swimlane.openProjectPlainHint}
           onclick={() => onopenProject(row.slug)}
         >
           <Icon name={LANE_FIGURE.openProject} />
@@ -642,12 +642,12 @@
       <!-- ルート読取不能 (doc-7 §6): the row stays and states why it has no cards. Nothing is
            drawn in the columns, so this can never be mistaken for an empty cell. -->
       <div class="row-message">
-        <span class="reason">ルート読取不能: {row.detail}</span>
-        <button type="button" onclick={() => onretry(row.slug)}>再読み込み</button>
+        <span class="reason">{t().swimlane.rootUnreadable(row.detail)}</span>
+        <button type="button" onclick={() => onretry(row.slug)}>{t().action.reload}</button>
         <span class="withheld">{ROW_FOLD_ABSENT_REASON}</span>
       </div>
     {:else}
-      <div class="row-message pending">読み込み中…</div>
+      <div class="row-message pending">{t().state.loading}</div>
     {/if}
   {/each}
 </div>
