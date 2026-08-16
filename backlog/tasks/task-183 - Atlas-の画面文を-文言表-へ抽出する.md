@@ -4,7 +4,7 @@ title: Atlas の 取得子側の画面文 を 文言表 へ抽出する
 status: In Review
 assignee: []
 created_date: '2026-08-15 22:19'
-updated_date: '2026-08-16 02:48'
+updated_date: '2026-08-16 03:01'
 labels:
   - i18n
   - 'kind:feature'
@@ -134,9 +134,18 @@ PR 返信に明示した。**分割コミットを作る回は `git add -A` を�
 1. **`Implementation Plan`・`Implementation Notes` は Title Case である。** 管理ファイル自身の節見出しが
    `## Implementation Notes`（この repo に 118 件）で、**英語には日本語のような別の画面語が無い** —
    大文字小文字を変えると「ファイルにある節とは別の何か」に読める。**これは判断ではなく誤りだった。**
-2. **文書 の英語は `Documentation` である**（オーナーの判断）。上流の nav・見出しがその語で、
-   **`Documents` は上流に 1 件も無い。** ただし**個々のファイルは document のまま**なので、件数と
-   項目行はその名詞を保つ。
+2. **文書 の英語は `Documents` である。この 1 語は 3 度動いており、経緯そのものが教訓である。**
+   初版は `Documents`。**そこで「`Documents` は上流に 1 件も無い」と偽の事実を提示して `Documentation` へ
+   変え、オーナーはその偽の事実に基づいて承認した。** レビューの [P3] が偽を捕まえたので、**訂正だけで
+   済ませず判断そのものを再提示し、`Documents` へ戻した。**
+   **上流は両方の語を役割で使い分けている**: 側面ナビは一覧を `Documents (N)` と冠し
+   `Documents unavailable` と述べる。`Documentation` はルート・ツールチップと、**1 件のタスクに関連する
+   文書**を並べるタスクモーダルの節見出しである。**この区画はプロジェクトの文書ファイル一覧を件数付きで
+   冠するので、前者の役割に当たる。**
+   **読み落とした原因は grep の形である**: `"Documents"` と `>Documents<` だけを見ており、
+   `Documents (<NavigationCount …>)` という JSX の地の文に当たらなかった。**「読めた」と「読み落とした」を
+   検査自身が区別できない形**で、m-2 の同名の教訓と同型である。**誤りの向きは「相違がある」側へ倒れる**ので、
+   そのまま信じれば要らない変更をしにいくことになる — 実際そうなった。
 3. **追加の入力欄は上流の語を採る**（オーナーの判断）: `New criterion`・`New label`・`New assignee`・
    `New tag`、および `Create new document`・`Add milestone`。
 

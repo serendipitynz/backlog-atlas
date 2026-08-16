@@ -323,11 +323,15 @@ export const EN: Catalog = {
       "lost to the overwrite, its contents can be neither shown nor restored.",
     discardAndContinue: "Discard and continue",
     backToInput: "Back to the input",
-    // The word backlog.md's own UI uses for `backlog/docs/*` (its nav, its headings; its CLI
-    // subcommand is `doc`). "Documents" appears nowhere upstream — two tools naming one set of files
-    // two ways is what this avoids. An individual file is still a document, so the count and the
-    // per-item lines below keep that noun.
-    documentsHeading: "Documentation",
+    /**
+     * **backlog.md uses both words, in different roles** (measured on the v1.50.1 clone): its side
+     * navigation heads the file list `Documents (N)` and states `Documents unavailable`, while
+     * `Documentation` is the route, the sidebar tooltip, and the section header the task modal draws
+     * over the docs related to *one task*. This 区画 heads a list of the project's doc files with a
+     * count under it, which is the first of those two roles — so `Documents`, and the count and the
+     * per-item lines below keep the same noun.
+     */
+    documentsHeading: "Documents",
     documentsEmpty: "There are no documents.",
     documentsCount: (n: number) =>
       pluralize(n, { one: `${n} document`, other: `${n} documents` }),
