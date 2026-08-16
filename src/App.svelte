@@ -45,6 +45,7 @@
     settingsLocationOpen,
     settingsRead,
     settingsSave,
+    bodyImageRead,
     bodyLinkOpen,
     taskFileOpen,
     taskHistoryRead,
@@ -53,6 +54,7 @@
     windowTitleSet,
     workspaceOpen,
   } from "./lib/commands";
+  import type { ImageReader } from "./lib/markdown-image";
   import { registeringReason, refusalReport, type LedgerActionResult } from "./lib/ledger";
   import type { HistoryState } from "./lib/detail";
   import type { RemoteLine } from "./lib/git-remote-read";
@@ -2181,6 +2183,21 @@
     }
   }
 
+  /**
+   * The bytes of one 添付画像, for one project (doc-8 §9.2).
+   *
+   * **Curried by slug rather than taking one**, because the component that ends up calling it is
+   * `Body.svelte`, which is handed a 本文 and nothing else — it does not know which project the string
+   * came from, and giving it the slug would be telling it something it has no other use for.
+   *
+   * **Nothing is caught here.** Unlike 既定ブラウザ起動 above, a refusal is not ⑤ 通知: doc-8 §9.2 leaves
+   * the 本文画像 at its 状態の印, which is already on screen, and `markdown-image.ts` is where the
+   * rejection stops. A notice would be Atlas reporting on a file's content beside that content.
+   */
+  function imageReaderFor(slug: string): ImageReader {
+    return (reference) => bodyImageRead(slug, reference);
+  }
+
   /** Read one task's Git 履歴 (doc-6). Ordering — which in-flight call wins — is the loader's. */
   const historyLoader = createHistoryLoader({
     read: taskHistoryRead,
@@ -2781,6 +2798,7 @@
           onremove={removeProject}
           onissue={issue}
           onopenlink={openBodyLink}
+          readimage={imageReaderFor(detailEntry.slug)}
           ondirty={(dirty) => (projectDirty = dirty)}
           onoverlay={detailOverlay}
           onback={() => leaveProject(false)}
@@ -2884,6 +2902,7 @@
       watchStopped={selectedWatchStopped}
       onreread={() => rereadRow(view.task.project)}
       onopenlink={openBodyLink}
+      readimage={imageReaderFor(view.task.project)}
       conflict={selectedConflict}
       onconflict={noteConflict}
       onapply={apply}

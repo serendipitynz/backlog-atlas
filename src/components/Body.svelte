@@ -18,6 +18,7 @@
     bodyView,
   } from "../lib/markdown";
   import { currentScheme, drawFigures, onSchemeChange } from "../lib/markdown-figure";
+  import { drawImages, releaseImages, type ImageReader } from "../lib/markdown-image";
   import type { ThemeScheme } from "../lib/theme";
 
   interface Props {
@@ -28,9 +29,18 @@
      * given something it may hand to 既定ブラウザ起動, and the boundary checks it again.
      */
     onopenlink: (url: string) => void;
+    /**
+     * The bytes of one 添付画像 (doc-8 §9.2), for the project this 本文 came from.
+     *
+     * A prop for the same reason `onopenlink` is one: this component reaches no boundary, and the
+     * project is not something it is told. **Absent means no 本文画像 is drawn** — every one stays at
+     * its 状態の印, which is a state the screen already has to draw, so a caller with no project in
+     * hand needs nothing extra.
+     */
+    readimage?: ImageReader;
   }
 
-  let { source, onopenlink }: Props = $props();
+  let { source, onopenlink, readimage }: Props = $props();
 
   let view = $derived(bodyView(source));
   let block = $state<HTMLElement | null>(null);
@@ -53,6 +63,21 @@
       return;
     }
     void drawFigures(root, scheme);
+  });
+
+  // 添付画像 (doc-8 §9.2, doc-11 §14.7). Re-runs when the 本文 changes, which is what puts the 状態の印
+  // back for `drawImages` to find; the 明暗 is not a dependency, because a picture carries no colours of
+  // Atlas's. The blobs a previous pass opened are revoked here rather than left to the window: this
+  // component redraws on every keystroke of an edit beside it.
+  $effect(() => {
+    const root = block;
+    const html = view.kind === "formatted" ? view.html : null;
+    const read = readimage;
+    if (root === null || html === null || read === undefined) {
+      return;
+    }
+    void drawImages(root, read);
+    return () => releaseImages(root);
   });
 
   /**
@@ -373,6 +398,44 @@
     :global(.body-figure-drawn svg) {
       max-width: 100%;
       height: auto;
+    }
+
+    // 本文画像 that has not been drawn (doc-11 §14.7): the 状態の印 and whatever alt the 本文 wrote.
+    // Inline-flex for the same reason as the タスクリスト の印 — the figure inside is a block.
+    //
+    // **This is a value, not a控え**, so doc-11 §5's 無効化提示 does not apply: nothing is being
+    // withheld, and there was never a button here.
+    :global(.body-image) {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      vertical-align: -0.15em;
+      color: var(--muted);
+    }
+
+    // The remote half is also a 本文リンク, so §14.3's colour and underline win over the muted ground
+    // above — it is pressable, and that is what a pressable thing looks like here.
+    :global(.body-image.body-link) {
+      color: var(--info);
+    }
+
+    :global(.body-image svg) {
+      width: 1em;
+      height: 1em;
+      display: block;
+    }
+
+    // 添付画像 (doc-11 §14.7): bounded by the 本文ブロック like the 作図結果, and never taller than a
+    // screenful — a full-window screenshot in a 本文 would otherwise push everything below it off the
+    // panel.
+    :global(.body-image-drawn) {
+      display: block;
+      max-width: 100%;
+      max-height: 60vh;
+      height: auto;
+      margin: 0.45rem 0;
+      border: 1px solid var(--line);
+      border-radius: 3px;
     }
   }
 </style>

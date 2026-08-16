@@ -20,6 +20,7 @@
   // capability this build does not have.
   import { onDestroy, type Snippet } from "svelte";
   import Body from "./Body.svelte";
+  import type { ImageReader } from "../lib/markdown-image";
   import DetailSection from "./DetailSection.svelte";
   import Editor from "./Editor.svelte";
   import GitHistory from "./GitHistory.svelte";
@@ -185,6 +186,11 @@
      */
     onopenlink: (url: string) => void;
     /**
+     * The bytes of one 添付画像 named by a 本文 of this task (doc-8 §9.2), for this task's project.
+     * Passed straight to `Body`, for the same reason `onopenlink` is: this panel reaches no boundary.
+     */
+    readimage: ImageReader;
+    /**
      * バージョン不整合 (doc-9) recorded for this task, or `null`. Held by the shell so the mark outlives the
      * panel and reaches the swimlane card (AC #4); the panel reads it back so the two surfaces say
      * the same thing about the same task.
@@ -240,6 +246,7 @@
     watchStopped,
     onreread,
     onopenlink,
+    readimage,
     conflict,
     onconflict,
     onapply,
@@ -1352,7 +1359,7 @@
   <DetailSection title="Description" section="description" {layout}>
     {#if session === null}
       {#if task.description}
-        <Body source={task.description} {onopenlink} />
+        <Body source={task.description} {onopenlink} {readimage} />
       {:else}
         <p class="neutral">{t().state.none}</p>
       {/if}
@@ -1578,7 +1585,7 @@
                 {comment.created ?? t().taskDetail.commentCreatedUnknown}
               </span>
             </p>
-            <Body source={comment.body} {onopenlink} />
+            <Body source={comment.body} {onopenlink} {readimage} />
           </li>
         {/each}
       </ul>
@@ -1589,7 +1596,7 @@
 {#snippet finalSummarySection()}
   <DetailSection title={t().taskDetail.finalSummaryHeading} section="finalSummary" {layout}>
     {#if task.finalSummary}
-      <Body source={task.finalSummary} {onopenlink} />
+      <Body source={task.finalSummary} {onopenlink} {readimage} />
     {:else}
       <p class="neutral">{t().state.none}</p>
     {/if}
@@ -1600,7 +1607,7 @@
   <DetailSection title={t().taskDetail.planHeading} section="plan" {layout}>
     {#if session === null}
       {#if task.implementationPlan}
-        <Body source={task.implementationPlan} {onopenlink} />
+        <Body source={task.implementationPlan} {onopenlink} {readimage} />
       {:else}
         <p class="neutral">{t().state.none}</p>
       {/if}
@@ -1619,7 +1626,7 @@
   <DetailSection title={t().taskDetail.notesHeading} section="notes" {layout}>
     {#if session === null}
       {#if task.implementationNotes}
-        <Body source={task.implementationNotes} {onopenlink} />
+        <Body source={task.implementationNotes} {onopenlink} {readimage} />
       {:else}
         <p class="neutral">{t().state.none}</p>
       {/if}
