@@ -68,7 +68,9 @@ export type IconName =
   | "square-check"
   | "square"
   | "undo"
-  | "refresh-ccw";
+  | "refresh-ccw"
+  | "image"
+  | "image-off";
 
 /**
  * One drawn element of an icon, as lucide's `__iconNode` has it. Only the element kinds that the
@@ -100,7 +102,8 @@ export type IconShape =
       rx: string;
       ry?: string;
     }
-  | { shape: "circle"; cx: string; cy: string; r: string };
+  | { shape: "circle"; cx: string; cy: string; r: string }
+  | { shape: "line"; x1: string; x2: string; y1: string; y2: string };
 
 /** The frame the coordinates below are in (`defaultAttributes.mjs`). */
 export const ICON_VIEWBOX = "0 0 24 24";
@@ -172,6 +175,13 @@ export function drawnShape(shape: IconShape): DrawnShape {
       };
     case "circle":
       return { tag: "circle", attrs: { cx: shape.cx, cy: shape.cy, r: shape.r } };
+    case "line":
+      // Attribute order is lucide's own (`x1, x2, y1, y2`), not SVG's conventional pairing, so this
+      // file stays diffable against `__iconNode` character for character.
+      return {
+        tag: "line",
+        attrs: { x1: shape.x1, x2: shape.x2, y1: shape.y1, y2: shape.y2 },
+      };
   }
 }
 
@@ -349,6 +359,24 @@ export const ICONS: Record<IconName, readonly IconShape[]> = {
     { shape: "path", d: "M3 3v5h5" },
     { shape: "path", d: "M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" },
     { shape: "path", d: "M16 16h5v5" },
+  ],
+  // lucide `image`.
+  image: [
+    { shape: "rect", width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2" },
+    { shape: "circle", cx: "9", cy: "9", r: "2" },
+    { shape: "path", d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" },
+  ],
+  // lucide `image-off`. The first figure this file draws with `line`.
+  "image-off": [
+    { shape: "line", x1: "2", x2: "22", y1: "2", y2: "22" },
+    { shape: "path", d: "M10.41 10.41a2 2 0 1 1-2.83-2.83" },
+    { shape: "line", x1: "13.5", x2: "6", y1: "13.5", y2: "21" },
+    { shape: "line", x1: "18", x2: "21", y1: "12", y2: "15" },
+    {
+      shape: "path",
+      d: "M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59",
+    },
+    { shape: "path", d: "M21 15V5a2 2 0 0 0-2-2H9" },
   ],
 };
 

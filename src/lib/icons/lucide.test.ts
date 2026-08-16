@@ -69,7 +69,13 @@ describe("iconMarkup", () => {
   it("draws every shape of every icon, in lucide's element order", () => {
     for (const [name, shapes] of Object.entries(ICONS)) {
       const markup = iconMarkup(name as IconName);
-      const tags = [...markup.matchAll(/<(path|rect|circle)\b/g)].map((match) => match[1]);
+      // Every element but the wrapping `<svg>`, matched by shape rather than by a named alternation:
+      // a list of kinds here would have to be widened for each new one, and until it was, the figure
+      // that used it would compare an empty tag list against an empty expectation and pass. TASK-186
+      // added `line` and found exactly that.
+      const tags = [...markup.matchAll(/<([a-z]+)\b/g)]
+        .map((match) => match[1])
+        .filter((tag) => tag !== "svg");
       expect(tags).toEqual(shapes.map((shape) => shape.shape));
       for (const shape of shapes) {
         for (const [attr, value] of Object.entries(drawnShape(shape).attrs)) {
