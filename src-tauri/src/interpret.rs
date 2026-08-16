@@ -109,6 +109,9 @@ mod tests {
             acceptance_criteria: vec![],
             implementation_plan: None,
             implementation_notes: None,
+            final_summary: None,
+            definition_of_done: vec![],
+            comments: vec![],
             unknown_sections: vec![],
             health: FileHealth::Ok,
         }

@@ -148,6 +148,21 @@ pub struct AcceptanceCriterion {
     pub checked: bool,
 }
 
+/// One entry of a task's `COMMENTS` block (doc-4 §4).
+///
+/// `author` and `created` are optional because the CLI writes each only when it has one:
+/// `task edit --comment` without `--comment-author` writes a `created:` line and no `author:`
+/// line (measured on v1.49.3, 2026-08-17). **No position number is carried.** The CLI writes no
+/// `index:` header — it numbers the entries by their order in the block — so a number here would
+/// be one only a hand-edited file could set, and the screen shows them in file order either way.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub author: Option<String>,
+    pub created: Option<String>,
+    pub body: String,
+}
+
 /// A required identity field (doc-4 §4). Its absence makes a task 解析不能 (§5), which is why
 /// the corresponding [`Task`] field is optional and the gap is named here rather than guessed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -319,6 +334,13 @@ pub struct Task {
     pub implementation_plan: Option<String>,
     /// `SECTION:NOTES` body (optional).
     pub implementation_notes: Option<String>,
+    /// `SECTION:FINAL_SUMMARY` body (optional).
+    pub final_summary: Option<String>,
+    /// `DOD:BEGIN`…`DOD:END` items in order. Same triple as the acceptance criteria and written
+    /// by the same CLI code (doc-4 §4).
+    pub definition_of_done: Vec<AcceptanceCriterion>,
+    /// `COMMENTS:BEGIN`…`COMMENTS:END` entries in file order.
+    pub comments: Vec<Comment>,
     /// Bodies of SECTION names outside the known set, kept rather than dropped (§4).
     pub unknown_sections: Vec<UnknownSection>,
     /// Parse health and, when degraded, the missing/out-of-range account (§5, AC #4).
@@ -417,6 +439,9 @@ mod tests {
             acceptance_criteria: vec![],
             implementation_plan: None,
             implementation_notes: None,
+            final_summary: None,
+            definition_of_done: vec![],
+            comments: vec![],
             unknown_sections: vec![],
             health,
         }
