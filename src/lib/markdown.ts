@@ -229,13 +229,106 @@ function figureFence(md: Renderer): void {
 }
 
 /**
- * An image is not drawn; its alt text is (doc-8 §9.2).
+ * What the screen should do with one 本文画像 (doc-8 §9.2).
  *
- * An image with no alt text therefore contributes nothing — there is no text to show, and the alternative
- * (printing the URL) would put a path or a data URI into the prose in place of a picture.
+ * Three answers, and they are the three the doc names. `attachment` carries the reference unchanged —
+ * the boundary, not this module, decides whether it resolves — and `remote` carries a URL that
+ * [`bodyLinkTarget`] has already accepted, so a caller may hand it straight to 既定ブラウザ起動.
  */
-function altTextOnly(md: Renderer): void {
-  md.renderer.rules.image = (tokens, idx) => md.utils.escapeHtml(tokens[idx].content);
+export type BodyImagePlan =
+  | { kind: "attachment"; reference: string }
+  | { kind: "remote"; url: string }
+  | { kind: "neither" };
+
+/** The one prefix a 本文 uses to name a 添付画像 — Backlog CLI v1.49.3's, copied (doc-8 §9.2). */
+const ATTACHMENT_PREFIX = "/assets/";
+
+/**
+ * `src` with its percent-escapes undone, or `null` when they are not valid ones.
+ *
+ * `null` rather than the string as it stands: a malformed escape is not a path Atlas can resolve, and
+ * passing the raw form on would ask the boundary for a file whose name contains a `%` — a different
+ * file from the one the author meant, if it existed at all.
+ */
+function decodePath(src: string): string | null {
+  try {
+    return decodeURIComponent(src);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which of doc-8 §9.2's three a `src` is.
+ *
+ * **Exported because the boundary is not the only reader of this rule**: the `.svelte` side needs the
+ * same answer to decide what to draw, and a second copy of "is this remote" would be a second place
+ * for `http` to be spelled.
+ */
+export function bodyImagePlan(src: string): BodyImagePlan {
+  // **Decoded first, and only for this branch.** markdown-it percent-encodes what it parsed, so a
+  // `/assets/図.png` arrives here as `/assets/%E5%9B%B3.png` — and the file on disk is named with the
+  // characters, not the escapes. Backlog CLI decodes at the same point (`decodeURIComponent` is the
+  // first thing `handleAssetRequest` does), so this is that rule rather than a convenience: doing it
+  // *before* the prefix and `..` checks is also what keeps `%2e%2e` from being a way past them.
+  const decoded = decodePath(src);
+  if (decoded !== null && decoded.startsWith(ATTACHMENT_PREFIX)) {
+    return { kind: "attachment", reference: decoded };
+  }
+  // A remote URL keeps every byte it was written with — doc-8 §9.3 hands that value to the OS, and a
+  // normalized copy would make what the screen shows and what is opened two different strings.
+  const url = bodyLinkTarget(src);
+  if (url !== null) {
+    return { kind: "remote", url };
+  }
+  // Relative paths, `data:`, `file:` and the rest. Backlog CLI resolves none of them either — its
+  // browser mode answers 404 to anything without the prefix — so drawing them would be Atlas showing
+  // something the other tool does not.
+  return { kind: "neither" };
+}
+
+/** Class on one 本文画像 that has not been drawn (doc-8 §9.2, doc-11 §14.7). */
+export const BODY_IMAGE_CLASS = "body-image";
+
+/** Where a 本文画像 waiting to be drawn keeps the reference the 本文 wrote. */
+export const BODY_IMAGE_REFERENCE_ATTRIBUTE = "data-body-image";
+
+/**
+ * An image is drawn in place of its own placeholder, or not at all (doc-8 §9.2).
+ *
+ * **What this rule emits is never an `<img>`.** It emits the failure state, and `markdown-image.ts`
+ * replaces it once the bytes have arrived — the same shape as the 作図フェンス (doc-11 §14.5), for the
+ * same reason: what the reader sees when the picture does not come is then a fact about the 本文
+ * rather than a gap, and it needs no failure path of its own.
+ *
+ * **The印 goes in whether or not there is alt text.** doc-8 §9.2 used to say an image contributes its
+ * alt and nothing else, which for the two image references in this very 台帳 — both `![](…)` — meant
+ * the reader could not tell a picture had been named at all (AC #4).
+ */
+function bodyImages(md: Renderer): void {
+  md.renderer.rules.image = (tokens, idx) => {
+    const token = tokens[idx];
+    const plan = bodyImagePlan(String(token.attrGet("src") ?? ""));
+    const alt = md.utils.escapeHtml(token.content);
+    if (plan.kind === "remote") {
+      // Not drawn, but openable: doc-8 §9.2 hands a remote image to the same控え as a 本文リンク
+      // (§9.3), which is what keeps 台帳 の内容がネットワークを叩く false while still letting the
+      // reader see the picture — in their browser, on a press they made.
+      return (
+        `<span class="${BODY_IMAGE_CLASS} ${BODY_LINK_CLASS}" ${BODY_LINK_URL_ATTRIBUTE}="${md.utils.escapeHtml(plan.url)}"` +
+        ` role="link" tabindex="0" title="${md.utils.escapeHtml(plan.url)}">` +
+        `${iconMarkup("image")}${alt === "" ? md.utils.escapeHtml(plan.url) : alt}</span>`
+      );
+    }
+    const reference = plan.kind === "attachment" ? plan.reference : null;
+    return (
+      `<span class="${BODY_IMAGE_CLASS}"` +
+      (reference === null
+        ? ""
+        : ` ${BODY_IMAGE_REFERENCE_ATTRIBUTE}="${md.utils.escapeHtml(reference)}"`) +
+      `>${iconMarkup("image-off")}${alt}</span>`
+    );
+  };
 }
 
 function build(): Renderer {
@@ -248,7 +341,7 @@ function build(): Renderer {
   md.core.ruler.push("body-links", bodyLinks);
   md.core.ruler.after("inline", "body-task-lists", bodyTaskLists);
   figureFence(md);
-  altTextOnly(md);
+  bodyImages(md);
   return md;
 }
 

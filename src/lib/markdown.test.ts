@@ -5,10 +5,13 @@ import bodyComponent from "../components/Body.svelte?raw";
 import { FIGURE_DRAWN_CLASS } from "./markdown-figure";
 import {
   BODY_FIGURE_CLASS,
+  BODY_IMAGE_CLASS,
+  BODY_IMAGE_REFERENCE_ATTRIBUTE,
   BODY_LINK_CLASS,
   BODY_LINK_URL_ATTRIBUTE,
   BODY_TASK_CLASS,
   BODY_TASK_MARK_CLASS,
+  bodyImagePlan,
   bodyLinkTarget,
   bodyView,
 } from "./markdown";
@@ -61,12 +64,108 @@ describe("整形表示 の記法 (doc-8 §9.2)", () => {
     expect(out).not.toContain("<script>");
   });
 
-  it("shows an image's alt text and never an image", () => {
-    const out = html("![図の説明](./diagram.png) と ![](./nameless.png)");
-    expect(out).toContain("図の説明");
+  it("never renders an image itself — every 本文画像 leaves this module as its 状態の印", () => {
+    // The `<img>` is `markdown-image.ts`'s, put in only once bytes have arrived (doc-8 §9.2). What
+    // comes out of here is the failure state, which is what a reader sees when they do not.
+    const out = html("![a](/assets/x.png) ![b](https://e.test/y.png) ![c](./z.png) ![](/assets/w.png)");
     expect(out).not.toContain("<img");
-    // Nothing to show for an alt-less image: doc-8 §9.2 puts the alt on screen, and there is none.
-    expect(out).not.toContain("nameless");
+  });
+});
+
+describe("本文画像 (doc-8 §9.2)", () => {
+  it("sorts a src into 添付画像 / 遠隔 / neither", () => {
+    expect(bodyImagePlan("/assets/TASK-82.png")).toEqual({
+      kind: "attachment",
+      reference: "/assets/TASK-82.png",
+    });
+    expect(bodyImagePlan("/assets/shots/a.png")).toEqual({
+      kind: "attachment",
+      reference: "/assets/shots/a.png",
+    });
+    expect(bodyImagePlan("https://example.test/a.png")).toEqual({
+      kind: "remote",
+      url: "https://example.test/a.png",
+    });
+    expect(bodyImagePlan("http://example.test/a.png")).toEqual({
+      kind: "remote",
+      url: "http://example.test/a.png",
+    });
+    // Backlog CLI resolves none of these either — its browser mode answers 404 to anything without
+    // the `/assets/` prefix — so Atlas drawing one would show what the other tool does not.
+    for (const neither of [
+      "./relative.png",
+      "assets/no-leading-slash.png",
+      "../assets/up.png",
+      "data:image/png;base64,AAAA",
+      "file:///etc/passwd",
+      "",
+    ]) {
+      expect(bodyImagePlan(neither)).toEqual({ kind: "neither" });
+    }
+  });
+
+  it("carries a 添付画像's reference unchanged, for the boundary to resolve", () => {
+    const out = html("![図の説明](/assets/TASK-82.png)");
+    expect(out).toContain(`${BODY_IMAGE_REFERENCE_ATTRIBUTE}="/assets/TASK-82.png"`);
+    expect(out).toContain(BODY_IMAGE_CLASS);
+    expect(out).toContain("図の説明");
+  });
+
+  it("marks an alt-less 本文画像 too — AC #4, and both images in this 台帳 are alt-less", () => {
+    const out = html("![](/assets/TASK-82.png)");
+    // The 状態の印 is the whole of what says a picture was named here. doc-8 §9.2 used to put the alt
+    // on screen and nothing else, which for this exact 本文 put nothing on screen at all.
+    expect(out).toContain(BODY_IMAGE_CLASS);
+    expect(out).toContain("<svg");
+    expect(out).toContain(`${BODY_IMAGE_REFERENCE_ATTRIBUTE}="/assets/TASK-82.png"`);
+  });
+
+  it("draws a 遠隔 image as a pressable 本文リンク and never fetches it", () => {
+    const out = html("![](https://example.test/a.png)");
+    // The owner's decision (2026-08-17): not drawn, but openable — so the 台帳 still reaches no
+    // network on its own, and the reader can see the picture on a press they made.
+    expect(out).toContain(`${BODY_LINK_URL_ATTRIBUTE}="https://example.test/a.png"`);
+    expect(out).toContain('role="link"');
+    expect(out).toContain('tabindex="0"');
+    expect(out).not.toContain(`${BODY_IMAGE_REFERENCE_ATTRIBUTE}=`);
+    // With no alt there would otherwise be nothing to press, so the URL is the label.
+    expect(out).toContain("https://example.test/a.png");
+  });
+
+  it("gives neither a reference nor a link to a src it will not resolve", () => {
+    const out = html("![説明](./relative.png)");
+    expect(out).toContain(BODY_IMAGE_CLASS);
+    expect(out).toContain("説明");
+    expect(out).not.toContain(`${BODY_IMAGE_REFERENCE_ATTRIBUTE}=`);
+    expect(out).not.toContain(BODY_LINK_URL_ATTRIBUTE);
+  });
+
+  it("undoes markdown-it's percent-encoding, the way Backlog CLI does", () => {
+    // markdown-it normalises what it parsed, so the reference arrives here escaped while the file on
+    // disk carries the characters. The CLI decodes at the same point; without this, every 添付画像
+    // whose name is not plain ASCII would be reported absent.
+    // `<…>` is CommonMark's form for a src with a space in it; a bare space is not an image at all.
+    const out = html("![](</assets/図 1.png>)");
+    expect(out).toContain(`${BODY_IMAGE_REFERENCE_ATTRIBUTE}="/assets/図 1.png"`);
+    expect(bodyImagePlan("/assets/%E5%9B%B3.png")).toEqual({
+      kind: "attachment",
+      reference: "/assets/図.png",
+    });
+    // Decoded *before* the checks, so an escaped traversal is a traversal by the time it is judged.
+    expect(bodyImagePlan("/assets/%2e%2e/config.yml")).toEqual({
+      kind: "attachment",
+      reference: "/assets/../config.yml",
+    });
+    // A malformed escape names no file, so it is not a 添付画像 at all.
+    expect(bodyImagePlan("/assets/%zz.png")).toEqual({ kind: "neither" });
+  });
+
+  it("leaves no attribute a reference or a URL could close", () => {
+    const out = html('![](/assets/"onerror=x".png) ![](https://e.test/"onerror=x".png)');
+    expect(out).not.toContain('onerror=x".png"');
+    // markdown-it escapes the quote to `%22` on its own; what this holds is that neither value
+    // reaches the output as a bare `"`, whichever of the two mechanisms got there first.
+    expect(out).not.toMatch(/data-body-(image|link)="[^"]*"[^ >]/);
   });
 });
 
