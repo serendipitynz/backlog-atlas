@@ -1,10 +1,10 @@
 ---
 id: TASK-150
 title: 作図結果 の失敗経路のテストが、まれに落ちるのを直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-12 00:00'
-updated_date: '2026-08-17 23:00'
+updated_date: '2026-08-17 23:30'
 labels:
   - 'kind:bug'
   - test
