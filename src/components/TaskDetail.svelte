@@ -1321,7 +1321,6 @@
         t().taskDetail.addAssignee,
         lastRemovalReason(session.baseline.task.assignee, emptyAssigneeReason()),
       )}
-      <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
   </DetailSection>
 {/snippet}
@@ -1459,9 +1458,6 @@
           />
           <button type="button" class="mini" onclick={addCriterion}>{t().action.add}</button>
         </div>
-        <p class="hint">
-          {t().taskDetail.criteriaBodyNote}
-        </p>
       {:else}
         {@const items = session.draft.ac.mode === "replace" ? session.draft.ac.items : []}
         <ul class="ac-replace">
@@ -1695,7 +1691,6 @@
         "TASK-ID",
         lastRemovalReason(session.baseline.task.dependencies, emptyDependenciesReason()),
       )}
-      <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
   </DetailSection>
 {/snippet}
@@ -1766,7 +1761,6 @@
         "URL",
         lastRemovalReason(session.baseline.task.references, emptyReferencesReason()),
       )}
-      <p class="hint">{t().field.replacesWholeSet}</p>
     {/if}
   </DetailSection>
 {/snippet}

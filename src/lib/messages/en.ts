@@ -42,7 +42,6 @@ export const EN: Catalog = {
     plainLabels: "Labels",
     addLabel: "New label",
     addCriterion: "New criterion",
-    replacesWholeSet: "Saving replaces the whole set, existing entries included.",
     // Opens with `what`, which may be a translated word or a bare field name (`assignee`), so the
     // sentence takes no article — one that fitted the words here would not fit the identifiers.
     commaNotAllowed: (what: string, quoted: string) =>
@@ -398,9 +397,6 @@ export const EN: Catalog = {
       checked ? `Mark #${number} not done` : `Mark #${number} done`,
     undoRemove: "Undo the removal",
     pendingAdd: (text: string) => `To be added: ${text}`,
-    criteriaBodyNote:
-      "An existing item's text cannot be changed per item (the CLI has no means of editing it). " +
-      "Use the whole-set replacement to change the text.",
     addItem: "Add an item",
     replaceAllNote:
       "Saving deletes every existing item and recreates the ones listed here, in this order.",
@@ -421,7 +417,7 @@ export const EN: Catalog = {
     noPullRequests: "References carries no Pull Request URL",
     hostUnknown: "Host kind unknown",
     pullRequestNote:
-      "Registering a Pull Request URL is an edit of References. Adding one to the References field below replaces the whole non-empty set, existing references included.",
+      "Pull Requests are extracted from References. Add the Pull Request URL to the References field.",
     referenceMissing: "Reference missing",
     transitionsHeading: "Transitions",
     externalEditorHeading: "Open in an external editor",
@@ -474,14 +470,8 @@ export const EN: Catalog = {
         "Check the app settings' external editor, VISUAL and EDITOR values (the program name and its options).",
     },
     gitHistoryHeading: "Git history",
-    typeNotEditable:
-      "Type cannot be edited on this screen. A value derived from a kind label is shown with its " +
-      "prefix stripped, so the original label's own text cannot be restored. A value derived from " +
-      "the frontmatter type has no operation in Atlas that rewrites it. (Plain labels are editable.)",
-    externalEditorRoute: '"Open in an external editor", at the foot of this screen',
-    lastElementHeld: (field: string, route: string) =>
-      `The last ${field} entry cannot be removed: the CLI has no way to write an empty set. ` +
-      `To empty it, edit the management file directly from ${route}.`,
+    typeNotEditable: "Type cannot be edited in Atlas.",
+    lastElementHeld: (field: string) => `Atlas cannot remove the last ${field} entry`,
     emptyTitle:
       "title cannot be empty: it is required, and an empty one reads as unparsable and shows as inconsistent",
     noTaskIdForUpdate: "The TASK-ID cannot be read, so no update has a target to name",
@@ -489,12 +479,11 @@ export const EN: Catalog = {
       "The TASK-ID cannot be read, so no update has a target to name (unparsable)",
     noStorageForUpdate: "The storage division cannot be determined, so updates are not offered",
     noEditSession: "No edit session is open",
-    draftReadOnly: (route: string) =>
+    draftReadOnly:
       "Editing a draft's content is not offered: the CLI has no way to edit it. " +
-      `Promote it to a task, or edit the management file directly from ${route}.`,
-    closedReadOnly: (route: string) =>
-      "completed and archive tasks are read-only, because the CLI accepts no update for them. " +
-      `To change one, edit the management file directly from ${route}.`,
+      "Promote it to a task to edit it.",
+    closedReadOnly:
+      "completed and archive tasks are read-only, because the CLI accepts no update for them",
     fileMissing:
       "This task's file is not in the current read result (it may have been moved or deleted outside Atlas). " +
       "No update can go through the CLI. The unsaved input is kept, so note down what you need before discarding it",
@@ -842,9 +831,7 @@ export const EN: Catalog = {
     taskNoteLabel: "Items that can be added after it is created",
     configDefaultStatus: "— (use the default status in config.yml)",
     unset: "— (unset)",
-    labelNote:
-      "Type (the kind label) is not handled here. A label is treated as one comma-separated value, " +
-      "so a label containing “,” is not issued.",
+    labelNote: "A label containing a comma cannot be registered.",
   },
   mark: {
     reasonSeparator: " / ",
@@ -1056,8 +1043,8 @@ export const EN: Catalog = {
     emptyStorageWarning:
       "With no storage division selected, no card is shown at startup (the filter can add them back).",
     watchOffNote:
-      "With this off, a save from an external editor or another process does not reach the screen on its own " +
-      '(a row\'s "Reload" reads it again). The reload after an update and manual reloads still work.',
+      "With this off, a change made outside Atlas does not reach the screen on its own. " +
+      "It arrives only after an update made in Atlas, or on a manual reload.",
     closeWithoutSaving: "Close without saving",
     save: "Save",
     noChanges: "Nothing has changed",

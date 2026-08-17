@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  emptyAssigneeReason,
   emptyDependenciesReason,
   emptyReferencesReason,
-  externalEditorRoute,
   editAvailability,
 } from "./edit";
 import {
@@ -18,6 +18,7 @@ import {
   launchSummary,
   needsConfirmation,
 } from "./external-editor";
+import { CATALOGS } from "./messages";
 import { taskView } from "./fixtures";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import type { EditorReadiness } from "./wire";
@@ -151,12 +152,14 @@ describe("二重取り込みの回避 (AC #4)", () => {
   });
 });
 
-describe("CLI で不能な操作の案内先 (AC #5)", () => {
-  it("is the destination every withheld operation points at", () => {
-    // The reasons and the control have to name the same place: a reason pointing at "外部エディタ経路"
-    // in the abstract is what made this route unfindable before it existed as a control.
-    expect(emptyReferencesReason()).toContain(externalEditorRoute());
-    expect(emptyDependenciesReason()).toContain(externalEditorRoute());
+describe("CLI で不能な操作の理由 (AC #5, doc-11 §8)", () => {
+  it("names Atlas's own boundary, and does not send the reader to this route", () => {
+    // TASK-192: the route is one 区画 of this same panel and the same destination for every 不可, so
+    // each reason naming it said one thing five times without widening what the reader could do. The
+    // referent guarded here is the 区画 itself — its 見出し — rather than any phrasing of the advice.
+    const heading = (catalog: (typeof CATALOGS)[keyof typeof CATALOGS]) =>
+      catalog.taskDetail.externalEditorHeading;
+    const reasons = [emptyReferencesReason(), emptyDependenciesReason(), emptyAssigneeReason()];
     for (const storageState of ["draft", "completed", "archive"] as const) {
       const availability = editAvailability(taskView({ storageState }), {
         state: "ready",
@@ -166,7 +169,22 @@ describe("CLI で不能な操作の案内先 (AC #5)", () => {
       if (availability.state !== "unavailable") {
         return;
       }
-      expect(availability.reason).toContain(externalEditorRoute());
+      reasons.push(availability.reason);
+    }
+    for (const reason of reasons) {
+      expect(reason).not.toContain(heading(CATALOGS.ja));
+    }
+    // The 3 非空全置換 reasons keep the scope doc-11 §5 asks for: Atlas's boundary, not a fault. The
+    // two 保存区分 reasons name their own mechanism instead, so they are not held to this.
+    for (const reason of [emptyReferencesReason(), emptyDependenciesReason(), emptyAssigneeReason()]) {
+      expect(reason).toContain("Atlas");
+    }
+    for (const field of ["References", "dependencies", "assignee"] as const) {
+      expect(CATALOGS.en.taskDetail.lastElementHeld(field)).not.toContain(heading(CATALOGS.en));
+      expect(CATALOGS.en.taskDetail.lastElementHeld(field)).toContain("Atlas");
+    }
+    for (const closed of [CATALOGS.en.taskDetail.draftReadOnly, CATALOGS.en.taskDetail.closedReadOnly]) {
+      expect(closed).not.toContain(heading(CATALOGS.en));
     }
   });
 
