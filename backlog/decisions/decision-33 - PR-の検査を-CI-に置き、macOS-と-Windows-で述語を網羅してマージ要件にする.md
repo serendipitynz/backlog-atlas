@@ -13,7 +13,7 @@ status: accepted
 走らせるしかなかった。decision-32 が Biome を入れたときも、その最後の項がこの穴を名指ししたまま
 「別に判断する」で終わっている。**この decision がその判断である。**
 
-語と指示対象は `_sandbox/handoff/referent-table/referent-table-decision-33.md` で本文より先に固定した。
+語と指示対象は本決定の対応表で本文より先に固定した。
 以下で使う **CI ワークフロー**・**マージ要件の検査**・**admin の迂回**・**述語の網羅** はその表の語である。
 
 ### 実測基準版

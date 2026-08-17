@@ -46,7 +46,7 @@ status: accepted
   中の版文字列（2 箇所）。AGENTS のテスト節が手編集を禁じており、ソース側の見本が変われば再記録で
   追随する。189 に数えない。
 
-語と指示対象は `_sandbox/handoff/referent-table/referent-table-task-154.md` 第 1 版で先に固定した。
+語と指示対象は TASK-154 の対応表 第 1 版で先に固定した。
 
 ## Decision
 
