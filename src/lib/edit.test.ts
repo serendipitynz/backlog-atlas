@@ -530,27 +530,20 @@ describe("保存区分別の編集可否 (doc-8 §6.5)", () => {
 });
 
 describe("Type 編集の非提供 (doc-8 §4)", () => {
-  it("keeps both grounds while naming neither the read layer nor the update adapter", () => {
-    // doc-8 §4 asks the screen for both grounds, so this is a rewrite and not a removal — but
-    // 読み取り層・更新アダプター・操作写像 are doc-8's words for its own model, which doc-11 §8 の
-    // 設計文の写し keeps off the screen (TASK-188).
-    // The positive half names content from each ground, not just the two nouns: asserting `kind` and
-    // `frontmatter` alone would pass a rewrite that kept both subjects and dropped both reasons.
-    expect(typeNotEditable()).toContain("kind ラベル");
-    expect(typeNotEditable()).toContain("綴りに戻せない");
-    expect(typeNotEditable()).toContain("frontmatter");
-    expect(typeNotEditable()).toContain("操作を持たない");
-    expect(CATALOGS.en.taskDetail.typeNotEditable).toContain("kind label");
-    expect(CATALOGS.en.taskDetail.typeNotEditable).toContain("cannot be restored");
-    expect(CATALOGS.en.taskDetail.typeNotEditable).toContain("frontmatter");
-    expect(CATALOGS.en.taskDetail.typeNotEditable).toContain("no operation");
-    // All three of doc-8 §4's words, not two — 「…は、操作写像がないためです」 would otherwise pass.
-    expect(typeNotEditable()).not.toContain("読み取り層");
-    expect(typeNotEditable()).not.toContain("更新アダプター");
-    expect(typeNotEditable()).not.toContain("操作写像");
-    expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("read layer");
-    expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("update adapter");
-    expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("mapping");
+  it("says Atlas has no route, and names neither 導出元", () => {
+    // doc-8 §4 dropped its 掲示要求 for the two grounds with TASK-192. The 区画 puts kind ラベル 由来
+    // and frontmatter 由来 values in one list without distinguishing them (doc-8 §4 の 2 つ目の項), so
+    // a sentence carrying one ground is false of the other half of what the reader is looking at.
+    // The grounds stay in doc-8 §4; what the screen states is whose boundary this is.
+    for (const sentence of [typeNotEditable(), CATALOGS.en.taskDetail.typeNotEditable]) {
+      // The scope, not the mere word 編集できません: 「この画面では」 was what the owner read on
+      // 2026-08-17 as promising some other route inside Atlas (doc-11 §5 asks a reason for this much).
+      expect(sentence).toContain("Atlas");
+      expect(sentence).not.toContain("kind");
+      expect(sentence).not.toContain("frontmatter");
+    }
+    expect(typeNotEditable()).not.toContain("この画面");
+    expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("on this screen");
   });
 
   it("states a reason that is true of v1.49.3 (doc-10 §1)", () => {
