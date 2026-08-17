@@ -1106,12 +1106,19 @@ export const ja = {
     unparseableFields: (fields: string) => `解析不能: ${fields} を読めません`,
     unparseableDetail: (detail: string) => `解析不能: ${detail}`,
     unparseableAs: (noun: string) => `解析不能: このファイルを${noun}として写せませんでした`,
-    /** バージョン不整合 (doc-9 §5): both stages, told apart by their evidence rather than by name. */
+    /**
+     * バージョン不整合 (doc-9 §5): both stages, told apart by their evidence rather than by name.
+     * **The second one does not name 照合後競合窓** (TASK-188): doc-9 §1 defines that as the interval
+     * from the end of the check to the end of the write, and no part of the screen shows it — what §5
+     * asks for is that the two 理由行 be told apart, which 更新前 / 保存後 already does. 更新前競合 stays
+     * because the screen uses it elsewhere (`conflictStopped`・`outcomeConflict`), so it is a word the
+     * reader has met.
+     */
     preUpdateConflict: (detail: string) =>
       `バージョン不整合: 更新前競合 — ${detail}。CLI を起動せずに保存を止めました`,
     postCheckConflict: (fields: string) =>
-      `バージョン不整合: 照合後競合窓の事後通知 — 再読込した内容が送信した内容と一致しません（${fields}）。` +
-      "窓内の外部更新が上書きで失われた可能性があります",
+      `バージョン不整合: 保存後に判明 — 再読込した内容が送信した内容と一致しません（${fields}）。` +
+      "保存中に入った外部更新が上書きで失われた可能性があります",
     /** The ⚠️'s accessible name (doc-11 §2.4) — the figure leaves nothing behind for a reader. */
     inconsistentLabel: (reasons: string) => `不整合: ${reasons}`,
     unwatchedLabel: "継続検出停止",

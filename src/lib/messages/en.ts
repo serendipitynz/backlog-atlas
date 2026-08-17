@@ -611,8 +611,8 @@ export const EN: Catalog = {
       "It cannot be changed. To use a different slug, unregister and register again — the Git " +
       "history view's identity is broken at that point.",
     rootMoveNote: (slug: string, backlogRoot: string) =>
-      `slug ${slug} is kept and both project_root and ` +
-      `backlog_root are sent. backlog_root is sent as ${backlogRoot}, what the field currently holds, ` +
+      `The slug ${slug} is kept and both project_root and backlog_root are sent. ` +
+      `backlog_root is sent as ${backlogRoot}, what the field currently holds, ` +
       "not as the default <new root>/backlog. " +
       "Once the move goes through, any edit session open for this project is closed.",
     remoteAbsent: "No Git remote (this repository has none configured)",
@@ -867,8 +867,8 @@ export const EN: Catalog = {
     preUpdateConflict: (detail: string) =>
       `Version mismatch: pre-update conflict — ${detail}. The save was stopped without starting the CLI`,
     postCheckConflict: (fields: string) =>
-      `Version mismatch: post-check window notice — the reload does not match what was sent (${fields}). ` +
-      "An external update inside the window may have been lost to the overwrite",
+      `Version mismatch: found after the save — the reload does not match what was sent (${fields}). ` +
+      "An external update made during the save may have been lost to the overwrite",
     inconsistentLabel: (reasons: string) => `Inconsistent: ${reasons}`,
     unwatchedLabel: "Detection stopped",
     unwatchedDetail:
