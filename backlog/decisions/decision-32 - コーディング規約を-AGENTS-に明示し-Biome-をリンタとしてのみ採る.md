@@ -18,7 +18,7 @@ Functions・API documentation comments の 4 つの規則群は所有者個人�
 「run the relevant tests, formatter, and static analysis」。フロントエンドに formatter は無く、
 `pnpm run check` は `svelte-check` で型だけを見る。リンタも無い。
 
-語と指示対象は `_sandbox/handoff/referent-table/referent-table-decision-32.md` で本文より先に固定した。
+語と指示対象は本決定の対応表で本文より先に固定した。
 以下で使う **コーディング規約**（上の 4 規則群）・**Biome のリンタ**（規則違反を報告する側。`.svelte`
 は `<script>` ブロックだけを読む）・**Biome のフォーマッタ**（整形して書き戻す側）・**波括弧の 3 行形**
 （開き波括弧を条件行の末尾に置き、本体を次行へ 1 段下げ、閉じ波括弧を条件行と同じ桁に置く形）は
