@@ -1,10 +1,10 @@
 ---
 id: TASK-188
 title: 画面に残る設計文の写しを数え直して落とす
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-16 11:13'
-updated_date: '2026-08-17 03:49'
+updated_date: '2026-08-17 09:53'
 labels:
   - 'kind:chore'
 milestone: m-3
