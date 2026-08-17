@@ -1,10 +1,10 @@
 ---
 id: TASK-186
 title: 管理ファイル本文の画像を描き、doc-8 §9.2 を改訂する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-16 00:28'
-updated_date: '2026-08-16 23:23'
+updated_date: '2026-08-17 00:26'
 labels:
   - 'kind:feature'
   - ui
@@ -37,7 +37,7 @@ Backlog CLI のブラウザモードは本文の画像を描くが（https://git
 - [x] #3 decision-28 が改訂され、img-src の行が何を許し、失うと何が起きるかを持っている。csp.rs の期待値がそれと一致する
 - [x] #4 描けなかった画像（不在・読取不能・拒んだ経路）が画面から分かる。alt が空でも欠落が分かる
 - [x] #5 遠隔 URL の画像が決めたとおりに扱われる（描かないなら描かず、その理由が画面から分かる）
-- [ ] #6 TASK-82 の DESCRIPTION の画像が実際に描かれることを、ユーザーの目視で確かめてある
+- [x] #6 TASK-82 の DESCRIPTION の画像が実際に描かれることを、ユーザーの目視で確かめてある
 <!-- AC:END -->
 
 ## Implementation Notes
