@@ -264,6 +264,18 @@ that are rendered — by the rule the app's call depends on (`hidden`, inline
 `display: none`, a closed `details`), never by measuring. No test may assert on the
 numbers it returns.
 
+**A dynamic `import()` reached from inside a test body is paid inside that test's
+timeout.** `drawFigures` loads mermaid that way (decision-25 の 遅延読込) and nothing caches
+the transform between runs, so `markdown-figure.component.test.ts` spent its budget
+fetching a package rather than drawing one: 569ms on an idle machine against 19,946ms with
+twelve spinning processes on eight cores, measured on 2026-08-18 (TASK-150). **Name the
+module among the test file's own imports instead** — a file's imports are on no budget at
+all, and the dynamic import then resolves from the module cache, so the load stops being a
+term in what the test is timed against. **Do not answer this with a larger `testTimeout`.**
+Neither project sets one, deliberately: a raised budget hides the next occurrence rather
+than removing it, and a budget wide enough to absorb a slow load is wide enough to leave a
+hang unreported for as long.
+
 **Wire payloads are recorded, with the Rust side as their source.** `src/lib/wire.ts`
 mirrors this crate's serde output by hand and neither compiler checks the other.
 `src-tauri/src/wire_fixtures.rs` serializes one sample per payload and compares it with
