@@ -558,8 +558,10 @@ describe("buildMilestoneDescribe", () => {
   it("says the consequence rather than doc-10 §6's parsing rule (doc-11 §8 の設計文の写し)", () => {
     // 「読み取りは次の `##` までを説明として扱う」 is §6's sentence about the read layer. What the
     // writer can act on is what becomes of the text they wrote past it (TASK-188).
+    // Both halves name the referent rather than a phrase: "The read takes" would pass on the most
+    // natural restoration of §6's sentence, "… The read layer takes everything up to the next ## …".
     expect(milestoneDescriptionHeadingReason()).not.toContain("読み取り");
-    expect(CATALOGS.en.projectDetail.descriptionHeading).not.toContain("The read takes");
+    expect(CATALOGS.en.projectDetail.descriptionHeading).not.toContain("read");
   });
 });
 
