@@ -96,7 +96,9 @@ where rewriting would edit the record of a finished session. Write new ones in t
 
 **`src/lib/sandbox-reference.test.ts` holds this**, over all six files. It also rejects a referent
 table named by file rather than by the task that produced it — the one form the rot took without the
-prefix. A bare filename of some other family still slips both patterns, which is why the rule above
+prefix. **Neither pattern spells the name characters as an ASCII set**: every managed file here is
+named in Japanese, so an ASCII set would pass exactly the citations this repo is most likely to
+write. A bare filename of some other family still slips both patterns, which is why the rule above
 is stated as what to write, not only as what to avoid. **A decision quoting a violation verbatim
 fails the scan too**, so describe the broken form rather than spelling it.
 

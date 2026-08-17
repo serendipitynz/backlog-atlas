@@ -45,21 +45,30 @@ const PROSE: Record<string, string> = import.meta.glob(
 );
 
 /**
- * `_sandbox/` followed by a name character. The trailing character class is the whole of decision-36
- * §3: naming the directory itself (`` `_sandbox/` ``, as decision-32 does when it says which trees
- * Biome swept) leaves a backtick after the slash and stays legal, while one more name character makes
- * it a location a reader is sent to.
+ * `_sandbox/` followed by anything that continues a path. The trailing character class is the whole
+ * of decision-36 §3: naming the directory itself (`` `_sandbox/` ``, as decision-32 does when it says
+ * which trees Biome swept) closes the code span right after the slash and stays legal, while one more
+ * character makes it a location a reader is sent to.
+ *
+ * **The class is a negation rather than an ASCII name set**, because every managed file in this repo
+ * is named in Japanese: an ASCII set passes a citation like `_sandbox/対応表/表.md` while decision-36
+ * forbids it, and nothing else would notice. The two excluded characters are the only ways a
+ * reference ends here — the closing backtick, or whitespace when the path is written bare. Prose
+ * running straight into the slash without a code span reports a false positive, which is the
+ * direction of error this check wants: a loud failure on a form the house style does not use, rather
+ * than a silent pass on one it does.
  */
-const SANDBOX_PATH = /_sandbox\/[A-Za-z0-9_.-]/;
+const SANDBOX_PATH = /_sandbox\/[^\s`]/;
 
 /**
  * A referent table named by file rather than by the task that produced it. This is the one form the
- * rot took *without* the `_sandbox/` prefix — decision-23 cited `referent-table-task-77.md` bare, and
- * that citation was as dead as its prefixed neighbours. A bare filename of some other kind would
- * still slip through both patterns; that gap is real and stated rather than implied, and it is the
- * reason the rule in decision-36 §2 is about what to write, not only about what to avoid.
+ * rot took *without* the `_sandbox/` prefix — decision-23 cited one that way, and that citation was
+ * as dead as its prefixed neighbours. The middle is negated for the reason given above. A bare
+ * filename of some other kind would still slip through both patterns; that gap is real and stated
+ * rather than implied, and it is the reason the rule in decision-36 §2 is about what to write, not
+ * only about what to avoid.
  */
-const BARE_TABLE_FILE = /referent-table[A-Za-z0-9_.-]*\.md/;
+const BARE_TABLE_FILE = /referent-table[^\s`]*\.md/;
 
 function offendingLines(body: string, pattern: RegExp): string[] {
   const hits: string[] = [];
@@ -113,6 +122,16 @@ describe("decision-36 _sandbox/ 配下のパスを名乗らない", () => {
    */
   it("sees a path planted in a body", () => {
     const planted = ["手順は `_sandbox/csp-check/measure-csp.mjs` にある。"].join("\n");
+    expect(offendingLines(planted, SANDBOX_PATH)).toHaveLength(1);
+  });
+
+  /**
+   * The form an ASCII-only class would have passed. Every managed file in this repo is named in
+   * Japanese, so a citation shaped like this is the likely one, not an exotic case — which is why it
+   * is planted beside the ASCII form rather than left to the class definition to promise.
+   */
+  it("sees a path whose name is not ASCII", () => {
+    const planted = ["語と指示対象は `_sandbox/対応表/表.md` 初版で固定した。"].join("\n");
     expect(offendingLines(planted, SANDBOX_PATH)).toHaveLength(1);
   });
 
