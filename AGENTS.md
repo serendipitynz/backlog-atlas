@@ -76,6 +76,30 @@ The value itself is decision-7's; these five rules are about its expression.
   is not in decision-27**, which stops at code, screen text, docs and 実測註 — TASK-162
   writes it in there, and until it does, this bullet is where the rule lives.
 
+## Where a claim's origin is written
+
+**Decisions, design documents, both AGENTS files and both READMEs name no path under `_sandbox/`**
+(decision-36). README sends a reader to `backlog/decisions/` and `backlog/docs/` and to nothing
+else, and `_sandbox/` is git-ignored — so a path into it is a claim no check in this tree can keep
+true. Write **what was done** instead: "measured with the real `App.svelte` on a playwright harness", "fixed in TASK-82's
+referent table 初版", "指摘 2 of the 2026-08-01 implementation report". **The date, the thing
+measured and the value stay** — only the whereabouts go, and the version literals decision-27 §4
+keeps are untouched.
+
+**Naming `_sandbox/` itself is not a path.** decision-32 says which trees Biome swept, and
+`.gitignore` and `biome.jsonc` name the directory too; nothing after the slash means nothing to
+follow.
+
+**`backlog/tasks/` and code comments are deliberately out of scope**, and decision-36 §4 carries the
+reason. **Do not raise their `_sandbox/` paths as a defect** — 137 of the 153 sit in Done tasks,
+where rewriting would edit the record of a finished session. Write new ones in the same form anyway.
+
+**`src/lib/sandbox-reference.test.ts` holds this**, over all six files. It also rejects a referent
+table named by file rather than by the task that produced it — the one form the rot took without the
+prefix. A bare filename of some other family still slips both patterns, which is why the rule above
+is stated as what to write, not only as what to avoid. **A decision quoting a violation verbatim
+fails the scan too**, so describe the broken form rather than spelling it.
+
 ## Git and Pull Request references
 
 - Search Git history for a task ID in the repository of the project that owns the
