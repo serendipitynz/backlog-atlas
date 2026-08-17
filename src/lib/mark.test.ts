@@ -12,6 +12,7 @@ import {
   type MarkKind,
   type VersionConflict,
 } from "./mark";
+import { CATALOGS } from "./messages";
 import { taskView } from "./fixtures";
 import type { FileHealth, UnmappedFile } from "./wire";
 
@@ -120,8 +121,19 @@ describe("versionConflictReason", () => {
     expect(post.startsWith("バージョン不整合: ")).toBe(true);
     expect(pre).toContain("更新前競合");
     expect(pre).toContain("backlog/tasks/task-1.md");
-    expect(post).toContain("照合後競合窓");
+    expect(post).toContain("保存後");
     expect(post).toContain("title");
+  });
+
+  it("tells the two apart without naming doc-9 §1's 照合後競合窓 (doc-11 §8 の設計文の写し)", () => {
+    // §1 defines it as the interval from the end of the check to the end of the write — nothing on
+    // screen shows that interval. §5 asks only that the two 理由行 be told apart, which 更新前 /
+    // 保存後 does (TASK-188). 更新前競合 stays: `conflictStopped` and `outcomeConflict` already
+    // put that word in front of the reader, so it is not a name met here for the first time.
+    const post = versionConflictReason(POST_WINDOW);
+    expect(post).not.toContain("照合後競合窓");
+    expect(post).not.toContain("窓");
+    expect(CATALOGS.en.mark.postCheckConflict("title")).not.toContain("window");
   });
 });
 

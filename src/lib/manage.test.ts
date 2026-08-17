@@ -48,6 +48,7 @@ import {
   type TaskCreateInput,
 } from "./manage";
 import { readinessReason } from "./edit";
+import { CATALOGS } from "./messages";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import { taskView } from "./fixtures";
 import type { CliReadiness, DocUpdate, Document, Milestone } from "./wire";
@@ -476,6 +477,13 @@ describe("buildMilestoneRemove", () => {
     expect(milestoneRemoveMovesTheFile()).toContain("archive/milestones/");
     expect(milestoneKeepLeavesDanglingReferences()).toContain("解決先の無い");
   });
+
+  it("says it without doc-9 §4.2.1's evidence marker (doc-11 §8 の設計文の写し)", () => {
+    // decision-27 keeps the version measured off the screen. 実測 is off it for the same reason
+    // (TASK-188): it points at doc-9 §4.2.1's act of measuring, which the reader cannot act on.
+    expect(milestoneRemoveMovesTheFile()).not.toContain("実測");
+    expect(CATALOGS.en.projectDetail.removeMovesTheFile).not.toContain("measured");
+  });
 });
 
 describe("buildMilestoneArchive", () => {
@@ -545,6 +553,15 @@ describe("buildMilestoneDescribe", () => {
     // reason is about the round trip, and says so.
     expect(milestoneDescriptionHeadingReason()).not.toContain("CLI");
     expect(milestoneDescriptionHeadingReason()).toContain("##");
+  });
+
+  it("says the consequence rather than doc-10 §6's parsing rule (doc-11 §8 の設計文の写し)", () => {
+    // 「読み取りは次の `##` までを説明として扱う」 is §6's sentence about the read layer. What the
+    // writer can act on is what becomes of the text they wrote past it (TASK-188).
+    // Both halves name the referent rather than a phrase: "The read takes" would pass on the most
+    // natural restoration of §6's sentence, "… The read layer takes everything up to the next ## …".
+    expect(milestoneDescriptionHeadingReason()).not.toContain("読み取り");
+    expect(CATALOGS.en.projectDetail.descriptionHeading).not.toContain("read");
   });
 });
 

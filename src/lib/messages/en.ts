@@ -475,9 +475,9 @@ export const EN: Catalog = {
     },
     gitHistoryHeading: "Git history",
     typeNotEditable:
-      "Type cannot be edited on this screen. A value derived from a kind label is held by the read layer " +
-      "with the prefix stripped, which is not guaranteed to match the original label text. A value derived " +
-      "from the frontmatter type has no --type mapping in the update adapter. (Plain labels are editable.)",
+      "Type cannot be edited on this screen. A value derived from a kind label is shown with its " +
+      "prefix stripped, so the original label's own text cannot be restored. A value derived from " +
+      "the frontmatter type has no operation in Atlas that rewrites it. (Plain labels are editable.)",
     externalEditorRoute: '"Open in an external editor", at the foot of this screen',
     lastElementHeld: (field: string, route: string) =>
       `The last ${field} entry cannot be removed: the CLI has no way to write an empty set. ` +
@@ -526,7 +526,7 @@ export const EN: Catalog = {
       " (whether this operation changed a management file is unknown; the reload has been done)",
     commandError: {
       cliUncheckable: "The backlog CLI cannot be checked",
-      updateRejected: (detail: string) => `The update adapter refused before running: ${detail}`,
+      updateRejected: (detail: string) => `The update was refused before running: ${detail}`,
       uncheckableTarget: (what: string, detail: string) =>
         `Cannot be checked: ${what} has no defined way of matching the target of the rewrite, so it was ` +
         `refused without starting the CLI. No version divergence was observed. ${detail}`,
@@ -608,12 +608,11 @@ export const EN: Catalog = {
     issueBusy: "An issue is in progress",
     emptyValue: "(empty)",
     slugImmutable:
-      "The slug is the left-hand side of every cross-project task ID, so it is referenced by every task " +
-      "and no way to change it is offered. Using a different one means unregistering and registering " +
-      "again, and the Git history view's identity is broken at that point.",
+      "It cannot be changed. To use a different slug, unregister and register again — the Git " +
+      "history view's identity is broken at that point.",
     rootMoveNote: (slug: string, backlogRoot: string) =>
-      `This is treated as a move of the same project: slug ${slug} is kept and both project_root and ` +
-      `backlog_root are sent. backlog_root is sent as ${backlogRoot}, what the field currently holds, ` +
+      `The slug ${slug} is kept and both project_root and backlog_root are sent. ` +
+      `backlog_root is sent as ${backlogRoot}, what the field currently holds, ` +
       "not as the default <new root>/backlog. " +
       "Once the move goes through, any edit session open for this project is closed.",
     remoteAbsent: "No Git remote (this repository has none configured)",
@@ -674,12 +673,12 @@ export const EN: Catalog = {
     reassignTargetRequired: "A milestone to reassign to is required",
     reassignTargetIsSelf: "The reassignment target is the milestone being removed",
     removeMovesTheFile:
-      "Removing does not delete the milestone's file: it moves it into `archive/milestones/` (measured)",
+      "Removing does not delete the milestone's file: it moves it into `archive/milestones/`",
     keepLeavesDangling:
       'With "keep", the referencing tasks are left holding a milestone value that resolves to nothing',
     descriptionHeading:
-      "A line of the description cannot start with `##`. The read takes everything up to the next `##` " +
-      "as the description, so anything written past it is saved and never shown",
+      "A line of the description cannot start with `##`. Anything written past that `##` is saved " +
+      "and never shown",
     descriptionUnchanged: "The description has not changed",
     taskCreateNote: "Add or edit the following after creation, by editing the task.",
     dependenciesField: "Dependencies",
@@ -868,8 +867,8 @@ export const EN: Catalog = {
     preUpdateConflict: (detail: string) =>
       `Version mismatch: pre-update conflict — ${detail}. The save was stopped without starting the CLI`,
     postCheckConflict: (fields: string) =>
-      `Version mismatch: post-check window notice — the reload does not match what was sent (${fields}). ` +
-      "An external update inside the window may have been lost to the overwrite",
+      `Version mismatch: found after the save — the reload does not match what was sent (${fields}). ` +
+      "An external update made during the save may have been lost to the overwrite",
     inconsistentLabel: (reasons: string) => `Inconsistent: ${reasons}`,
     unwatchedLabel: "Detection stopped",
     unwatchedDetail:
