@@ -130,12 +130,13 @@ export interface EditSession {
 }
 
 /**
- * Why Type values are not editable here, stated once so the panel and the tests agree.
+ * Why Type values are not editable, stated once so the panel and the tests agree.
  *
- * Two reasons because decision-20 gave Type two 導出元, and the reason differs per source — the
- * old text explained every visible Type as a kind label, which stopped being true the moment a
- * `type:` field could produce one. Neither source is editable, so the message states that as one
- * fact with its two grounds rather than implying one half can be reached.
+ * **Names neither 導出元.** decision-20 gave Type two of them and the ground differs per source, but
+ * doc-8 §4 puts both kinds of value in one undistinguished list — so a sentence carrying one ground
+ * is false of the other half of what the reader is looking at. doc-8 §4 dropped its 掲示要求 for the
+ * two grounds with TASK-192; they stay in the doc. What the screen owes the reader is the scope
+ * (doc-11 §5): Atlas has no route to it, so this is a boundary and not a fault.
  */
 export function typeNotEditable(): string {
   return msg().taskDetail.typeNotEditable;
@@ -392,23 +393,20 @@ export type SavePlan =
   | { state: "refused"; reason: string };
 
 /**
- * The route these reasons send the user to (doc-5 §3.1・doc-8 §7). Named once so every withheld
- * operation points at the same control instead of at "外部エディタ経路" as an abstraction — TASK-37
- * put the launch in this panel, so the guidance can name where it is.
- */
-export function externalEditorRoute(): string {
-  return msg().taskDetail.externalEditorRoute;
-}
-
-/**
- * **None of the withheld-operation reasons names a version** (decision-27). Which version was
+ * **None of the withheld-operation reasons names the 外部エディタ経路** (doc-11 §8, TASK-192). It is
+ * one 区画 of this same panel and the same destination for every one of them, so naming it per field
+ * said the same thing three times and added no route the reader could not already take. What each
+ * reason does keep is the scope — `Atlas からは` — because that is what doc-11 §5 asks a reason for:
+ * telling a deliberate boundary apart from a fault.
+ *
+ * **None of them names a version either** (decision-27). Which version was
  * measured is doc-5 §3.1's to hold; on screen it would answer something the user did not ask, and
  * Atlas cannot name it truthfully anyway — these reasons are reached while `CliReadiness` may still be
  * `null` or `unavailable`, neither of which carries a version. The one sentence that does name one is
  * [`readinessReason`]'s unsupported branch, whose subject *is* the difference between two versions.
  */
 export function emptyReferencesReason(): string {
-  return msg().taskDetail.lastElementHeld("References", externalEditorRoute());
+  return msg().taskDetail.lastElementHeld("References");
 }
 
 /**
@@ -418,11 +416,11 @@ export function emptyReferencesReason(): string {
  * as a success and not happen (doc-5 §3.1, the same silent-no-op as `--ref ""`).
  */
 export function emptyAssigneeReason(): string {
-  return msg().taskDetail.lastElementHeld("assignee", externalEditorRoute());
+  return msg().taskDetail.lastElementHeld("assignee");
 }
 
 export function emptyDependenciesReason(): string {
-  return msg().taskDetail.lastElementHeld("dependencies", externalEditorRoute());
+  return msg().taskDetail.lastElementHeld("dependencies");
 }
 
 /**
@@ -984,11 +982,11 @@ export function readinessReason(readiness: CliReadiness | null): string | null {
 }
 
 function draftReadOnly(): string {
-  return msg().taskDetail.draftReadOnly(externalEditorRoute());
+  return msg().taskDetail.draftReadOnly;
 }
 
 function closedReadOnly(): string {
-  return msg().taskDetail.closedReadOnly(externalEditorRoute());
+  return msg().taskDetail.closedReadOnly;
 }
 
 /**

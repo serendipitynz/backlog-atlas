@@ -51,8 +51,6 @@ export const ja = {
     plainLabels: "通常ラベル",
     addLabel: "追加するラベル",
     addCriterion: "追加する Acceptance Criterion",
-    /** Every 全集合置換 field says this; the CLI replaces the set rather than appending. */
-    replacesWholeSet: "保存時は既存を含む全集合で置き換えます。",
     /**
      * Why one member of a comma-separated CLI option cannot hold a comma (`comma.ts`). `what` is the
      * field's own name and `quoted` the head of the value, already cut to a length the 固定行 can
@@ -518,9 +516,6 @@ export const ja = {
       `#${number} を${checked ? "未完了" : "完了"}にする`,
     undoRemove: "削除を取り消す",
     pendingAdd: (text: string) => `追加予定: ${text}`,
-    criteriaBodyNote:
-      "既存項目の本文は項目単位では変えられません（CLI に本文編集の手段がないため）。本文を変える" +
-      "ときは全体差し替えを使います。",
     addItem: "項目を追加",
     replaceAllNote:
       "保存時に既存の全項目を削除してから、ここにある項目を並び順どおり作り直します。",
@@ -544,8 +539,8 @@ export const ja = {
     noPullRequests: "References に Pull Request URL はありません",
     hostUnknown: "ホスト種別 不明",
     pullRequestNote:
-      "Pull Request URL の登録は References の編集です。下の References 欄へ足すと、" +
-      "既存参照を含む非空全集合で置き換えます。",
+      "Pull Request は References から抽出されます。References 欄に Pull Request URL を" +
+      "追加してください。",
     referenceMissing: "参照欠損",
     transitionsHeading: "状態遷移",
     externalEditorHeading: "外部エディタで開く",
@@ -622,45 +617,35 @@ export const ja = {
     },
     gitHistoryHeading: "Git 履歴欄",
     /**
-     * Why Type is not editable here (decision-20 gave Type two 導出元, and the reason differs per
-     * source). doc-8 §4 asks the screen for **both** grounds, so neither may be dropped — but each
-     * says it about what the reader has in front of them (TASK-188). 読み取り層・更新アダプター・
-     * 操作写像 and the flag name are doc-8's own words for the same two facts, and doc-11 §8 の
-     * 設計文の写し keeps those off the screen.
-     *
-     * **The second ground is not「CLI に手段が無い」**: v1.49.3's `task edit` and `task create` both
-     * take `--type` (measured 2026-08-17). What is absent is an operation on Atlas's side, and
-     * doc-10 §1 asks that a stated reason be a true one.
+     * Why Type is not editable, without naming which 導出元 the value came from: decision-20 gives
+     * Type two of them and doc-8 §4 puts neither on the screen, so a sentence naming one would be
+     * false for the other half of the values. doc-8 §4 dropped its 掲示要求 for the two grounds with
+     * TASK-192 — they stay in the doc; what the reader needs from the screen is that no route here
+     * reaches them.
      */
-    typeNotEditable:
-      "Type の編集はこの画面では提供しません。kind ラベル由来の値は、表示しているのが接頭辞を" +
-      "外した後の値で、元のラベルの綴りに戻せないためです。frontmatter の type 由来の値は、" +
-      "Atlas がこの値を書き換える操作を持たないためです（通常ラベルは編集できます）",
-    /**
-     * The route the withheld-operation reasons send the user to (doc-5 §3.1・doc-8 §7). Named once,
-     * so every one of them points at the same control rather than at an abstraction.
-     */
-    externalEditorRoute: "この画面下部の「外部エディタで開く」",
+    typeNotEditable: "Type は Atlas では編集できません。",
     /**
      * 非空全置換 の下限 (doc-5 §3.1): the CLI has no way to write an empty set, so the last element
-     * stays. **Names no version** (decision-27) — which version was measured is doc-5 §3.1's to hold,
-     * and these reasons are reached while `CliReadiness` may carry no version at all.
+     * stays. **Says which mechanism lacks the means to no one** (doc-11 §5, TASK-192) — `Atlas からは`
+     * is what tells the reader this is Atlas's boundary rather than a fault, and the ground behind it
+     * changes nothing they can do. **Names no version** either (decision-27).
      */
-    lastElementHeld: (field: string, route: string) =>
-      `${field} は最後の 1 件を削除できません（CLI に空集合化の手段がないため）。` +
-      `空にする場合は${route}から管理ファイルを直接編集します`,
+    lastElementHeld: (field: string) => `${field} は Atlas からは最後の 1 件を削除できません`,
     emptyTitle: "title は空にできません（必須項目で、空にすると解析不能として不整合表示になります）",
     noTaskIdForUpdate: "TASK-ID を読めないため更新操作の対象を指定できません",
     noTaskIdForUpdateUnparsed: "TASK-ID を読めないため更新操作の対象を指定できません（解析不能）",
     noStorageForUpdate: "保存区分を判別できないため更新操作を提供しません",
     noEditSession: "編集セッションを開いていません",
-    /** 保存区分別の可否 (doc-8 §6.5): why the two closed divisions and draft are read-only. */
-    draftReadOnly: (route: string) =>
+    /**
+     * 保存区分別の可否 (doc-8 §6.5): why the two closed divisions and draft are read-only. **Neither
+     * names the 外部エディタ経路** (doc-11 §8, TASK-192): it is one 区画 of this same screen and the
+     * same one for every 不可, so naming it here adds no route the reader could not already take.
+     * draft keeps 昇格, which is a control in this panel rather than a general way out.
+     */
+    draftReadOnly:
       "draft の内容編集は提供しません（CLI に draft の内容を編集する手段がないため）。" +
-      `編集するにはタスクへ昇格するか、${route}から管理ファイルを直接編集します`,
-    closedReadOnly: (route: string) =>
-      "completed・archive のタスクは、CLI が更新を受け付けないため読み取り専用です。" +
-      `内容を変えるには${route}から管理ファイルを直接編集します`,
+      "編集するにはタスクへ昇格します",
+    closedReadOnly: "completed・archive のタスクは、CLI が更新を受け付けないため読み取り専用です",
     /**
      * The task's file left the read result while the panel was open. The 未保存入力 is not the file's
      * to take (doc-8 §6.4 keeps it), which is why the sentence says what to do with it.
@@ -1068,9 +1053,7 @@ export const ja = {
     taskNoteLabel: "作成後に追加できる項目",
     configDefaultStatus: "—（config.yml の既定 status に任せる）",
     unset: "—（未設定）",
-    labelNote:
-      "Type（kind ラベル）はここでは扱いません。ラベルは 1 個のカンマ区切り値として扱われる" +
-      "ため、「,」を含むラベルは発行しません。",
+    labelNote: "カンマを含むラベルは登録できません。",
   },
   /**
    * 印 と 理由行 (decision-22, doc-9 §5): the words a ⚠️ or a 継続検出停止 chip stands for, wherever
@@ -1381,8 +1364,8 @@ export const ja = {
      * invents no second state name.
      */
     watchOffNote:
-      "切ると、外部エディタや別プロセスの保存が自動では画面へ届きません（行の「再読込」で読み直せます）。" +
-      "更新後の再読込と手動の再読込は切っても働きます。",
+      "オフにすると、外部で更新された内容が自動で反映されません。" +
+      "Atlas での更新後、また手動での再読み込みの時のみ反映されます。",
     /** 下部操作行 (TASK-74) の 2 つの押下 and the two reasons 保存する can be held. */
     closeWithoutSaving: "変更せずに閉じる",
     save: "保存する",
