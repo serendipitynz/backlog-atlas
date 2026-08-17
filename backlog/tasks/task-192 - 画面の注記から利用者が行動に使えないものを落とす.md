@@ -1,10 +1,10 @@
 ---
 id: TASK-192
 title: 画面の注記から利用者が行動に使えないものを落とす
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-17 09:20'
-updated_date: '2026-08-17 10:42'
+updated_date: '2026-08-17 11:14'
 labels:
   - 'kind:chore'
 milestone: m-3
@@ -79,5 +79,5 @@ ordinal: 183700
 - [x] #6 field.replacesWholeSet が鍵ごと落ちており、呼び出し元 3 か所も消えている。pullRequestNote・lastElementHeld・criteriaBodyNote・watchOffNote が確定した文言になっている
 - [x] #7 外部エディタ経路の名指しが lastElementHeld・draftReadOnly・closedReadOnly の 3 件から落ちており、孤児になった externalEditorRoute と external-editor.test.ts の主張も処理してある
 - [x] #8 変更が日英の両方に入っている。落とす文言を主張していた試験を、getter 名と文字列の両方で grep して数え直してある
-- [ ] #9 画面目視をオーナーへ依頼し、回答を得ている
+- [x] #9 画面目視をオーナーへ依頼し、回答を得ている
 <!-- AC:END -->
