@@ -30,11 +30,13 @@ import {
   toggleAcRemoval,
   transitionConfirmation,
   transitionOffers,
+  typeNotEditable,
   type EditSession,
   type TransitionOffer,
 } from "./edit";
 import { commaReason } from "./comma";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
+import { CATALOGS } from "./messages";
 import { snapshot, taskView } from "./fixtures";
 import type { AcceptanceCriterion, CliReadiness, TaskEdit, UpdateOperation } from "./wire";
 
@@ -524,6 +526,32 @@ describe("保存区分別の編集可否 (doc-8 §6.5)", () => {
       minimum: CONFIRMED_CLI_VERSION,
     });
     expect(availability.state).toBe("unavailable");
+  });
+});
+
+describe("Type 編集の非提供 (doc-8 §4)", () => {
+  it("keeps both grounds while naming neither the read layer nor the update adapter", () => {
+    // doc-8 §4 asks the screen for both grounds, so this is a rewrite and not a removal — but
+    // 読み取り層・更新アダプター・操作写像 are doc-8's words for its own model, which doc-11 §8 の
+    // 設計文の写し keeps off the screen (TASK-188).
+    for (const text of [typeNotEditable(), CATALOGS.en.taskDetail.typeNotEditable]) {
+      expect(text).toContain("kind");
+      expect(text).toContain("frontmatter");
+    }
+    expect(typeNotEditable()).not.toContain("読み取り層");
+    expect(typeNotEditable()).not.toContain("更新アダプター");
+    expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("read layer");
+    expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("update adapter");
+  });
+
+  it("states a reason that is true of v1.49.3 (doc-10 §1)", () => {
+    // Not "the CLI has no way": `task edit` and `task create` both take `--type` (measured
+    // 2026-08-17). What is absent is an operation on Atlas's side, so neither the flag name nor a
+    // claim about the CLI belongs in the sentence.
+    expect(typeNotEditable()).not.toContain("CLI");
+    expect(typeNotEditable()).not.toContain("--type");
+    expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("CLI");
+    expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("--type");
   });
 });
 

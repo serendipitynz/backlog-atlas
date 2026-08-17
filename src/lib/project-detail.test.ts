@@ -23,6 +23,7 @@ import {
   type OverviewSave,
 } from "./project-detail";
 import { omitsSentence } from "./manage";
+import { CATALOGS } from "./messages";
 import { aliasKeyEffect, editOf, editProblems, toUpdateRequest, type EntryEdit } from "./ledger";
 import { entry } from "./fixtures";
 import type { ProjectEntry } from "./wire";
@@ -383,7 +384,18 @@ describe("ルート移動の断り", () => {
 
   it("explains what changing the slug would cost, instead of offering a disabled field", () => {
     expect(slugImmutableNote()).toContain("登録を解除して登録し直す");
-    expect(slugImmutableNote()).toContain("同一性は切れます");
+    expect(slugImmutableNote()).toContain("同一性が切れます");
+  });
+
+  it("carries §4.1's two points and not its ground for them (doc-11 §8 の設計文の写し)", () => {
+    // §4.1 asks the screen for what a change would take and what it would break. Its own ground —
+    // slug being the left-hand side of every 横断タスクID, referenced by every task — is a sentence
+    // about the design's model, and a reader who cannot change the value cannot act on it
+    // (TASK-188). Both catalogs, because the sentence exists once in each.
+    expect(slugImmutableNote()).not.toContain("横断タスクID");
+    expect(slugImmutableNote()).not.toContain("全タスク");
+    expect(CATALOGS.en.projectDetail.slugImmutable).not.toContain("left-hand side");
+    expect(CATALOGS.en.projectDetail.slugImmutable).not.toContain("every task");
   });
 });
 
