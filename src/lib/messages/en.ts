@@ -54,6 +54,7 @@ export const EN: Catalog = {
   state: {
     none: "None",
     loading: "Loading…",
+    imageNotDrawn: "Image (not shown)",
     titleUnknown: "(title unknown)",
     statusUnknown: "status unknown",
     storageUnknown: "storage state unknown",
@@ -548,6 +549,7 @@ export const EN: Catalog = {
       settingsSaveFailed: (detail: string) => `The settings could not be saved: ${detail}`,
       historyCancelled: "The Git history read was cancelled by the screen",
       bodyLinkFailed: (reason: string) => `The link could not be opened: ${reason}`,
+      bodyImageRefused: (reason: string) => `The image could not be read: ${reason}`,
     },
     divergedTaskFile: "the task file (not found in the reload)",
     noTaskIdForTransition: "The TASK-ID cannot be read, so no transition has a target to name",
@@ -1097,6 +1099,11 @@ export const EN: Catalog = {
     bodyLink: {
       schemeNotAllowed: "Only http:// and https:// links are opened",
       controlCharacter: "The URL contains a control character",
+    },
+    bodyImage: {
+      outsideAssets: "It points outside assets/",
+      absent: "There is no such file",
+      unreadable: "The file could not be read",
     },
     probe: {
       spawnFailed: (program: string) => `${program} could not be started`,

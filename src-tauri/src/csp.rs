@@ -1,13 +1,15 @@
 //! Test-only: the policy `tauri.conf.json` ships as `app.security.csp` (decision-28, TASK-98).
 //!
-//! **No line of this policy announces its own loss.** Deleting a directive only ever *widens* what
-//! the webview may do, and nothing about a widening is observable: drop `object-src 'none'` and it
-//! falls back to `default-src`, drop `default-src` and the fetch directives stop being restricted
-//! at all — the app looks the same either way. `base-uri` and `form-action` do not even fall back;
-//! absent, they are simply unrestricted. Only the two relaxations can be *seen*, and only
-//! indirectly: without `'unsafe-inline'` the diagram loses its colours and the promoted editor its
-//! layout, and a rejected IPC request falls back to `window.ipc.postMessage` and keeps working
-//! while the console alone says so.
+//! **Only one line of this policy announces its own loss, and it is the newest.** Deleting any of the
+//! others only ever *widens* what the webview may do, and nothing about a widening is observable:
+//! drop `object-src 'none'` and it falls back to `default-src`, drop `default-src` and the fetch
+//! directives stop being restricted at all — the app looks the same either way. `base-uri` and
+//! `form-action` do not even fall back; absent, they are simply unrestricted. The relaxations can be
+//! *seen*, and mostly only indirectly: without `'unsafe-inline'` the diagram loses its colours and
+//! the promoted editor its layout, and a rejected IPC request falls back to `window.ipc.postMessage`
+//! and keeps working while the console alone says so. **`img-src blob:` is the exception** — remove it
+//! and every 本文画像 falls to its 状態の印 (doc-8 §9.2), which is a difference a reader sees without
+//! opening a console. It is also the only line whose removal *tightens* the policy.
 //!
 //! So there is no subset of this policy worth testing over the rest — the config's shape *is* the
 //! contract, and this module is what makes changing it deliberate. A failure here is not "the
@@ -26,6 +28,10 @@ enum Moves {
     Transport,
     /// Atlas has no such capability; a feature that adds one widens this line (decision-28 §3).
     Absence,
+    /// Atlas itself makes values of this scheme, and the line goes when that feature does
+    /// (decision-28 §2 機能の source). Neither a measurement nor the transport put it there — the
+    /// feature did — so re-measuring says nothing about whether it may be removed.
+    Feature,
 }
 
 /// Every directive of the shipped policy, its sources, and what its loss would cost.
@@ -47,6 +53,12 @@ const EXPECTED: &[(&str, &[&str], Moves, &str)] = &[
         &["'self'", "'unsafe-inline'"],
         Moves::Measurement,
         "mermaid's SVG <style> and Ace's importCssString; without it the diagram is drawn colourless and .ace_editor falls to position: static",
+    ),
+    (
+        "img-src",
+        &["blob:"],
+        Moves::Feature,
+        "the images a management file's body names (doc-8 §9.2), which arrive as bytes over IPC and are drawn from a Blob URL; without it none of them draws and the reader is left with the mark that stands in for one",
     ),
     (
         "connect-src",
@@ -86,9 +98,13 @@ const EXPECTED: &[(&str, &[&str], Moves, &str)] = &[
     ),
 ];
 
-/// Directives deliberately left out (decision-28 §2 書かない宣言): `'self'` on either would only
-/// restate what `default-src` already says, and a line that changes nothing hides the ones that do.
-const ABSENT: &[&str] = &["img-src", "font-src"];
+/// Directives deliberately left out (decision-28 §2 書かない宣言): `'self'` would only restate what
+/// `default-src` already says, and a line that changes nothing hides the ones that do.
+///
+/// **`img-src` was one of these until 添付画像 landed** (TASK-186). It is in [`EXPECTED`] now, and it
+/// is not `'self' blob:` — Atlas ships no image of its own (0 `<img>`, 0 `url(` outside the vendored
+/// `ace.js`), so the one source it needs is the one it makes.
+const ABSENT: &[&str] = &["font-src"];
 
 fn policy() -> String {
     let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))

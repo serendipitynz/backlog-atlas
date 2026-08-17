@@ -18,6 +18,7 @@
   // is typing — the same IME rule the other screens follow.
   import { tick, untrack, type Snippet } from "svelte";
   import Body from "./Body.svelte";
+  import type { ImageReader } from "../lib/markdown-image";
   import Editor from "./Editor.svelte";
   import Modal from "./Modal.svelte";
   import Icon from "../lib/icons/Icon.svelte";
@@ -153,6 +154,11 @@
      * with a 閲覧 draws from). The shell issues 既定ブラウザ起動 and owns where a failure goes (⑤ 通知).
      */
     onopenlink: (url: string) => void;
+    /**
+     * The bytes of one 添付画像 named by a 管理ファイルの本文 this screen draws (doc-8 §9.2), for this
+     * screen's project. Passed straight to `Body`, like `onopenlink`.
+     */
+    readimage: ImageReader;
     /** True while this screen holds 未保存入力 — what makes leaving it ask first. */
     ondirty: (dirty: boolean) => void;
     /**
@@ -189,6 +195,7 @@
     onremove,
     onissue,
     onopenlink,
+    readimage,
     ondirty,
     onoverlay,
     onback,
@@ -2184,7 +2191,7 @@
                     {#if (document.body ?? "") === ""}
                       <p class="neutral">{t().projectDetail.bodyEmpty}</p>
                     {:else}
-                      <div class="read-body-slot"><Body source={document.body ?? ""} {onopenlink} /></div>
+                      <div class="read-body-slot"><Body source={document.body ?? ""} {onopenlink} {readimage} /></div>
                     {/if}
                   </div>
                 {:else}
@@ -2602,7 +2609,7 @@
                     {#if (milestone.description ?? "") === ""}
                       <p class="neutral">{t().projectDetail.milestoneDescriptionEmpty}</p>
                     {:else}
-                      <div class="read-body-slot"><Body source={milestone.description ?? ""} {onopenlink} /></div>
+                      <div class="read-body-slot"><Body source={milestone.description ?? ""} {onopenlink} {readimage} /></div>
                     {/if}
                   </div>
                 {:else}
@@ -2749,7 +2756,7 @@
                       <p class="neutral">{t().projectDetail.bodyEmpty}</p>
                     {:else}
                       <div class="read-body-slot">
-                        <Body source={decision.body ?? ""} {onopenlink} />
+                        <Body source={decision.body ?? ""} {onopenlink} {readimage} />
                       </div>
                     {/if}
                   </div>

@@ -62,6 +62,7 @@
 //! ([`CommandError::UncheckableTarget`], "we have no way to check whether the version diverged")
 //! from 更新前競合 ([`UpdateResult::Conflict`], "we checked and it did diverge").
 
+use crate::body_image::{self, ImageRefusal};
 use crate::domain::{Config, Decision, Document, Milestone, ProjectModel, Task, UnmappedFile};
 use crate::editor::{
     self, BodyLinkRefusal, EditorCommand, EditorError, EditorLaunch, EditorReadiness, Environment,
@@ -392,6 +393,16 @@ pub enum CommandError {
     /// beside it as a `null` the screen would branch on for the other two.
     BodyLinkFailed {
         reason: BodyLinkRefusal,
+        detail: String,
+    },
+    /// One 添付画像 (doc-8 §9.2) was not read, so the 本文画像 that named it is not drawn.
+    ///
+    /// **Not a failure of the panel**: the screen draws the 状態の印 in its place and keeps everything
+    /// around it, the way a 作図フェンス stays when mermaid will not draw it (doc-11 §14.5). The token
+    /// is what selects the sentence beside that印, so it arrives typed rather than as a message
+    /// (decision-35 §3).
+    BodyImageRefused {
+        reason: ImageRefusal,
         detail: String,
     },
 }
@@ -1811,6 +1822,36 @@ pub fn task_file_open(
 #[tauri::command(async)]
 pub fn body_link_open(url: String) -> Result<(), CommandError> {
     Ok(editor::open_url(&SystemLauncher, &url)?)
+}
+
+// --- commands: 添付画像 (doc-8 §9.2) --------------------------------------------------------------
+
+/// The bytes of one 添付画像, so the screen can draw the 本文画像 that named it (doc-8 §9.2).
+///
+/// **`reference` comes from a 本文, like [`body_link_open`]'s URL** — the second value this boundary
+/// takes that Atlas did not resolve itself — so the rule that turns it into a path runs here
+/// ([`body_image::resolve`]) and not only on the screen. It is Backlog CLI's own rule, copied, so the
+/// same 台帳 means the same thing in both tools (AGENTS).
+///
+/// **The project is named, and the reference alone is not enough to resolve anything**: `/assets/` is
+/// relative to *a* Backlog root, and Atlas holds several at once (AGENTS の Project model). The root
+/// comes from the ledger entry rather than from the caller, so no path the frontend could send
+/// selects a directory.
+///
+/// Returns the bytes raw. There is no media type beside them: the screen holds the 媒体型表 and asks
+/// only for references it has already found in it (see [`body_image`]'s comment).
+#[tauri::command(async)]
+pub fn body_image_read(
+    app: AppHandle,
+    state: State<'_, AtlasState>,
+    slug: String,
+    reference: String,
+) -> Result<tauri::ipc::Response, CommandError> {
+    let files = ConfigFiles::resolve(&app)?;
+    let entry = with_project(&state, &slug, |project| entry_for(&files, project))?;
+    body_image::read(&entry.backlog_root, &reference)
+        .map(tauri::ipc::Response::new)
+        .map_err(|(reason, detail)| CommandError::BodyImageRefused { reason, detail })
 }
 
 // --- commands: update path (decision-2, doc-5, AC #2/#4) ----------------------------------------

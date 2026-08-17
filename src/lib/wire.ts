@@ -537,7 +537,11 @@ export type CommandError =
   // and opened nothing. **The sentence used to be the whole of it**, on the reasoning that both reach
   // ⑤ 通知 (doc-11 §4) and the screen does the same thing with either; decision-35 §3 ends that,
   // because the sentence is this side's to write now.
-  | { kind: "bodyLinkFailed"; reason: BodyLinkRefusal; detail: string };
+  | { kind: "bodyLinkFailed"; reason: BodyLinkRefusal; detail: string }
+  // One 添付画像 (doc-8 §9.2) was not read, so the 本文画像 naming it stays at its 状態の印. Not a
+  // failure of the panel — everything around it is drawn — which is why it reaches the screen as a
+  // rejected read rather than as ⑤ 通知 (doc-11 §4).
+  | { kind: "bodyImageRefused"; reason: ImageRefusal; detail: string };
 
 /**
  * 失敗理由符号 for a launch that reached the OS and did not open its target (decision-35 §3).
@@ -565,6 +569,20 @@ export type BodyLinkRefusal =
   | { reason: "schemeNotAllowed" }
   | { reason: "controlCharacter" }
   | { reason: "launchFailed"; program: string; launch: LaunchRefusal };
+
+/**
+ * 失敗理由符号 for one 添付画像 that was not read (doc-8 §9.2).
+ *
+ * **Three, and "the extension is not one we draw" is not among them**: that is this side's judgement,
+ * made from the 媒体型表 in `markdown-image.ts` before the boundary is asked at all. What is here is
+ * what only the boundary can answer.
+ */
+export type ImageRefusal =
+  /** The reference names nothing under `<backlog root>/assets/`; nothing was opened. */
+  | { reason: "outsideAssets" }
+  | { reason: "absent" }
+  /** The OS refused the read. `detail` beside this one is the OS's own description. */
+  | { reason: "unreadable" };
 
 // --- 外部エディタ経路 (doc-8 §7, TASK-37) ----------------------------------------------------
 

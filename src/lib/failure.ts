@@ -31,6 +31,7 @@
 import { msg } from "./messages";
 import type {
   BodyLinkRefusal,
+  ImageRefusal,
   LaunchRefusal,
   LookupFailure,
   ProbeFailure,
@@ -131,6 +132,26 @@ export function bodyLinkRefusalText(reason: BodyLinkRefusal, detail: string): st
     // the press that reaches this has no control of its own to name (doc-11 §4 ⑤ 通知).
     case "launchFailed":
       return `${reason.program}: ${launchRefusalText(reason.launch, detail)}`;
+  }
+}
+
+/**
+ * Why one 添付画像 was not read (doc-8 §9.2).
+ *
+ * **No screen shows this as a notice.** doc-8 §9.2 leaves the 本文画像 at its 状態の印 instead, so the
+ * only route here is `commandErrorDetail`'s exhaustive switch — worded rather than left out for the
+ * same reason 履歴読取の取消 is, and the wording is what a future route would get.
+ */
+export function imageRefusalText(reason: ImageRefusal, detail: string): string {
+  const text = msg().failure.bodyImage;
+  switch (reason.reason) {
+    case "outsideAssets":
+      return withDetail(text.outsideAssets, detail);
+    case "absent":
+      return withDetail(text.absent, detail);
+    // The one the OS itself described (decision-35 §5), so its own words are shown when it wrote any.
+    case "unreadable":
+      return spokenOr(detail, text.unreadable);
   }
 }
 

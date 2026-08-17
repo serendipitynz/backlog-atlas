@@ -70,6 +70,7 @@ import type {
   LookupFailure,
   LaunchRefusal,
   BodyLinkRefusal,
+  ImageRefusal,
   ProbeFailure,
   RemoteReadFailure,
   ReferenceKind,
@@ -336,6 +337,11 @@ const BODY_LINK_REFUSALS = unionValues<BodyLinkRefusal["reason"]>()(
   "controlCharacter",
   "launchFailed",
 );
+const IMAGE_REFUSALS = unionValues<ImageRefusal["reason"]>()(
+  "outsideAssets",
+  "absent",
+  "unreadable",
+);
 const PROBE_FAILURES = unionValues<ProbeFailure["reason"]>()(
   "spawnFailed",
   "exited",
@@ -407,6 +413,7 @@ const ERROR_KINDS = unionValues<CommandError["kind"]>()(
   "editorLaunchFailed",
   "historyCancelled",
   "bodyLinkFailed",
+  "bodyImageRefused",
 );
 const REFUSAL_REASONS = unionValues<LedgerRefusal["reason"]>()(
   "readOnly",
@@ -1149,6 +1156,7 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     LedgerRefusal: REFUSAL_REASONS,
     LaunchRefusal: LAUNCH_REFUSALS,
     BodyLinkRefusal: BODY_LINK_REFUSALS,
+    ImageRefusal: IMAGE_REFUSALS,
     ProbeFailure: PROBE_FAILURES,
     RemoteReadFailure: REMOTE_READ_FAILURES,
   };
