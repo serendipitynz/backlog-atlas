@@ -1,3 +1,13 @@
+// mermaid, imported for its side effect alone, so that the draw below is not timed against loading
+// it. `drawFigures` reaches the package through a dynamic import (decision-25 の 遅延読込) and nothing
+// caches that work between runs, so its whole cost used to fall inside this test's own timeout:
+// measured on 2026-08-18 at 569ms on an idle machine and 19,946ms with twelve spinning processes on
+// eight cores, against the 5,000ms budget the test had when TASK-150 was raised. **A test file's
+// imports are on no budget at all**, so paying it here removes the dependence rather than widening
+// it — the dynamic import then resolves from the module cache (measured at 0.0ms), and what the test
+// is timed on is the draw and nothing else. Awaiting the load in a `beforeAll` would only move it
+// under `hookTimeout`, which is a budget again and would need a number picked against one machine.
+import "mermaid";
 import { afterEach, describe, expect, it } from "vitest";
 import { BODY_FIGURE_CLASS, bodyView } from "./markdown";
 import { drawFigures } from "./markdown-figure";
