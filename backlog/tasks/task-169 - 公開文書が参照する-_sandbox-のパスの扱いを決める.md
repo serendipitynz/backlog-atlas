@@ -1,10 +1,10 @@
 ---
 id: TASK-169
 title: 公開文書が参照する _sandbox/ のパスの扱いを決める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-14 00:34'
-updated_date: '2026-08-17 21:34'
+updated_date: '2026-08-17 22:03'
 labels:
   - docs
   - 'kind:improvement'
