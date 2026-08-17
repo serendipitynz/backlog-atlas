@@ -623,12 +623,19 @@ export const ja = {
     gitHistoryHeading: "Git 履歴欄",
     /**
      * Why Type is not editable here (decision-20 gave Type two 導出元, and the reason differs per
-     * source). Stated as one fact with its two grounds rather than implying one half can be reached.
+     * source). doc-8 §4 asks the screen for **both** grounds, so neither may be dropped — but each
+     * says it about what the reader has in front of them (TASK-188). 読み取り層・更新アダプター・
+     * 操作写像 and the flag name are doc-8's own words for the same two facts, and doc-11 §8 の
+     * 設計文の写し keeps those off the screen.
+     *
+     * **The second ground is not「CLI に手段が無い」**: v1.49.3's `task edit` and `task create` both
+     * take `--type` (measured 2026-08-17). What is absent is an operation on Atlas's side, and
+     * doc-10 §1 asks that a stated reason be a true one.
      */
     typeNotEditable:
-      "Type の編集はこの画面では提供しません。kind ラベル由来の値は、読み取り層が保持するのが" +
-      "接頭辞を外した値で、元のラベル文字列と一致する保証がないためです。frontmatter の type 由来の値は、" +
-      "更新アダプターが --type の操作写像を持たないためです（通常ラベルは編集できます）",
+      "Type の編集はこの画面では提供しません。kind ラベル由来の値は、表示しているのが接頭辞を" +
+      "外した後の値で、元のラベルの綴りに戻せないためです。frontmatter の type 由来の値は、" +
+      "Atlas がこの値を書き換える操作を持たないためです（通常ラベルは編集できます）",
     /**
      * The route the withheld-operation reasons send the user to (doc-5 §3.1・doc-8 §7). Named once,
      * so every one of them points at the same control rather than at an abstraction.
@@ -696,7 +703,8 @@ export const ja = {
     /** A boundary failure as the panel states it, one entry per `CommandError` kind. */
     commandError: {
       cliUncheckable: "backlog CLI を確認できません",
-      updateRejected: (detail: string) => `更新アダプターが実行前に拒否しました: ${detail}`,
+      /** 更新アダプター is doc-5 §1's name for the part that refused; the reader has only the update. */
+      updateRejected: (detail: string) => `更新を実行前に拒否しました: ${detail}`,
       /**
        * 照合不能 (doc-9 §4.2) worded so it does not read as a conflict — no version divergence was
        * observed, and there is no defined way to look for one (doc-9 §5).
@@ -801,13 +809,23 @@ export const ja = {
     issueBusy: "発行中です",
     /** A value quoted inside a sentence where the field is empty. */
     emptyValue: "（空）",
-    /** Why slug has no field, and what changing it would take instead (doc-10 §4.1, doc-3 §3.1). */
+    /**
+     * What changing the slug would take, and what that would break — doc-10 §4.1's two points and
+     * nothing besides. **Why it has no field is deliberately not here** (TASK-188): §4.1's ground
+     * for it (slug is the left-hand side of every cross-project task ID, so every task references
+     * it) is a sentence about the design's own model, and doc-11 §8 の 設計文の写し keeps that off
+     * the screen. A reader who cannot change it has no use for why the design cannot offer it.
+     */
     slugImmutable:
-      "slug は横断タスクID の左辺として全タスクの参照に使われるため、変更手段を提供しません。" +
-      "別の slug にするには登録を解除して登録し直すことになり、そのとき Git 履歴表示の同一性は切れます。",
-    /** The note under the project-root field once it differs (doc-10 §4.1). */
+      "変更できません。別の slug にするには登録を解除して登録し直すことになり、" +
+      "そのとき Git 履歴表示の同一性が切れます。",
+    /**
+     * The note under the project-root field once it differs (doc-10 §4.1). **「同一プロジェクトの
+     * 移動として扱い」 is not here** (TASK-188): that is doc-3 §3.2's name for how the ledger
+     * classifies the change, and what §4.1 asks the screen for is which values will travel.
+     */
     rootMoveNote: (slug: string, backlogRoot: string) =>
-      `同一プロジェクトの移動として扱い、slug ${slug} を保ったまま project_root と backlog_root の` +
+      `slug ${slug} を保ったまま project_root と backlog_root の` +
       `両方を送ります。backlog_root は既定の <新ルート>/backlog ではなく、いま欄にある ` +
       `${backlogRoot} を送ります。` +
       "移動が成立すると、このプロジェクトについて開いている編集セッションは閉じます。",
@@ -880,19 +898,22 @@ export const ja = {
     /**
      * 削除はファイルを消さない (doc-9 §4.2.1 実測): the file moves to `archive/milestones/`. Stated
      * beside the control because 削除 otherwise reads as an unlink. **The version measured stays in
-     * doc-9 §4.2.1 and off the screen** (decision-27).
+     * doc-9 §4.2.1 and off the screen** (decision-27), **and so does the word 実測 itself**
+     * (TASK-188) — it points at doc-9's act of measuring, not at anything the reader can act on.
      */
-    removeMovesTheFile: "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します（実測）",
+    removeMovesTheFile: "削除はマイルストーンのファイルを消さず `archive/milestones/` へ移します",
     keepLeavesDangling:
       "「そのまま保持」では、参照するタスクが解決先の無い milestone 値を持ったまま残ります",
     /**
      * Why a `##` may not start a line of the 説明 (doc-10 §6). **Not「CLI にできない」** — v1.49.3's
      * `milestone add -d` writes such a description without complaint; what happens is that the read
-     * stops at the next `##`, so the rest would be saved and invisible.
+     * stops at the next `##`, so the rest would be saved and invisible. **The parsing rule itself is
+     * not on screen** (TASK-188): 「読み取りは次の `##` までを説明として扱う」 is doc-10 §6's sentence
+     * about the read layer, and what the reader can act on is what becomes of the text they wrote.
      */
     descriptionHeading:
-      "説明の行頭に `##` は置けません。読み取りは次の `##` までを説明として扱うため、" +
-      "その先に書いた分は保存しても画面に出なくなります",
+      "説明の行頭に `##` は置けません。その `##` から先に書いた分は、" +
+      "保存しても画面に出なくなります",
     descriptionUnchanged: "説明は変更されていません",
     /** 注記モーダル (doc-10 §7): where the fields this form has no input for are added instead. */
     taskCreateNote: "以下の内容は作成後、タスクの編集で追加・編集してください。",
