@@ -39,15 +39,12 @@ export default defineConfig({
           name: "component",
           include: ["src/**/*.component.test.ts"],
           environment: "jsdom",
-          // Vitest's 5s default is smaller than one of these tests legitimately needs, and the
-          // difference is not slowness — decision-25 makes mermaid a *dynamic* import inside
-          // `drawFigures`, so `markdown-figure.component.test.ts` pays the whole cost of loading
-          // it inside the test's own budget. In isolation that is about a second; under the full
-          // suite's contention it has gone past five, which is what m-3 TASK-150 records as an
-          // intermittent failure. Nothing here asserts on elapsed time, so the timeout is a
-          // guard against a hang and nothing else, and a two-core CI runner needs more headroom
-          // than this machine does. Raising it does not close TASK-150.
-          testTimeout: 30_000,
+          // No `testTimeout` here on purpose (TASK-150). The 30s this carried was budget for one
+          // test's dynamic import of mermaid, which now happens among that file's imports instead —
+          // where no budget applies. With that moved, the slowest test in either project is 411ms,
+          // measured on 2026-08-18 under twelve spinning processes on eight cores. CI's own runners
+          // have not been measured; what stands in for that is the order of magnitude the 5s default
+          // leaves over that reading. Raising it again would only hide a return of the same fault.
         },
       },
     ],
