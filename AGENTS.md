@@ -605,6 +605,21 @@ of copying `.env.signing`.
   than as bold. Every Japanese sentence that ends inside the emphasis hits this, which is
   most of them. It applies wherever the Markdown is rendered: the READMEs, and task and
   document bodies, which Atlas draws with `markdown-it` (decision-25).
+  **`src/lib/emphasis-closing.test.ts` holds the part of this that renders wrong** — over
+  `backlog/` and the four prose files — and it holds two things rather than one: no asterisks
+  markdown-it gave up on, and **every bold run bolding the span the author delimited.** The
+  second is not the first said differently — where a closer fails, the next opener can absorb
+  it and the emphasis nests silently, leaving no asterisk for a count to find. TASK-161
+  rewrote 426 delimiters across 44 files and found one of those.
+  **The rule's letter is wider than what that check holds, and the difference is 3,454 sites**
+  (measured 2026-08-19). `**Ubuntu なら 24.04 以降**で` renders correctly because the closer is
+  preceded by `降` rather than by punctuation, and the sentence above still asks for a space
+  after it. **A clean `pnpm test` is therefore not proof the letter is met** — nothing holds
+  that. **TASK-194 settles which of the two readings this bullet means** — until it does, neither
+  is the repository's answer: do not narrow the sentence to the rendering condition, and do
+  not read a green run as having satisfied it. **The letter is harder to follow than it
+  looks** — TASK-194's own body was written with it in mind and still broke it five times,
+  once where the following character was `:` and a space would have hurt the typography.
 - After implementation, run the relevant checks and report anything that cannot be run, with the
   reason. **The frontend has no formatter** — its checks are `pnpm test`, `pnpm run check` and
   `pnpm run lint`. The Rust side does have one: `cargo fmt`, alongside `cargo test` and
