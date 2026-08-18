@@ -2161,16 +2161,68 @@ describe("3 値は再起動をまたいで効く", () => {
    * a slug in either row value may be one the ledger no longer has. It must draw the rows it does have
    * — and the next write must no longer carry the stale slug, or the file would keep it for good.
    */
-  it("台帳に無い slug が保存値に残っていても、画面は残りの行を描く", async () => {
+  it("台帳に無い slug が保存値に残っていても、画面は残りの行を描き、落とした結果を書き戻す", async () => {
     savedGridState({ folded_rows: ["ghost", "atlas"], hidden_rows: ["ghost"] });
     const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
 
     expect(drawnRows(host)).toEqual(["atlas", "kanri"]);
     expect(foldedRows(host)).toEqual(["atlas"]);
+    // Written back at once, without waiting for a press: left in the file, `ghost` outlives the
+    // registration and the row comes up folded if that slug is ever registered again.
+    expect(lastWrite()).toMatchObject({ folded_rows: ["atlas"], hidden_rows: [] });
+  });
 
+  /**
+   * 登録解除 drops that row's 行折畳み・行非表示 (doc-7 §5.1), and the file has to lose them too — else the
+   * same slug registered again, by 登録 or by hand in the ledger (doc-3 §2.2), comes up hidden.
+   */
+  it("登録解除 した行の slug は、保存値からも消える", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
+    click(only(host, ROW_FOLD));
+    await settled();
+
+    // By the row's slug: both rows read as the same project name (`fixtures.ts`), so the name in the
+    // control's own label cannot tell them apart.
+    click(only(laneHead(host, "atlas"), "button.project"));
+    await settled();
+    fill(only<HTMLInputElement>(host, 'input[placeholder="atlas"]'), "atlas");
+    // The ledger the boundary answers with is the one without that entry — the fake returns whatever
+    // `answers.ledger` holds, so removal is expressed by handing it the shorter ledger.
+    answers.ledger = ledgerFor(entry("kanri"));
+    click(byText(host, ".danger button", msg().projectDetail.unregister));
+    await settled();
+
+    expect(lastWrite()).toMatchObject({ folded_rows: [], hidden_rows: [] });
+  });
+
+  /**
+   * The next press is the retry, so a write that goes through has to take the refusal down — and only
+   * its own: a 通知 raised by anything else since is not this press's to clear.
+   */
+  it("保存が通ると、その前の保存失敗の通知だけが降りる", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
+    answers.settingsSaveFails = true;
+    click(only(host, ROW_FOLD));
+    await settled();
+    expect(host.querySelector('.band[data-band="notice"]')).not.toBeNull();
+
+    answers.settingsSaveFails = false;
     click(only(host, COLUMN_FOLD));
     await settled();
-    expect(lastWrite()).toMatchObject({ folded_rows: ["atlas"], hidden_rows: [] });
+    expect(host.querySelector('.band[data-band="notice"]')).toBeNull();
+    expect(foldedRows(host)).toEqual(["atlas"]);
+    expect(foldedColumns(host)).toEqual(["To Do"]);
+  });
+
+  it("別の理由で立った通知は、保存が通っても降りない", async () => {
+    // `startWatch` raised it, and a fold is not the retry of a watch that would not start (doc-9 §3).
+    answers.watchStart = () => Promise.reject(new Error("watch is gone"));
+    const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
+    expect(host.querySelector('.band[data-band="notice"]')).not.toBeNull();
+
+    click(only(host, ROW_FOLD));
+    await settled();
+    expect(host.querySelector('.band[data-band="notice"]')).not.toBeNull();
   });
 
   /**

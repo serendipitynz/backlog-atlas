@@ -312,6 +312,12 @@
   let hidden = $state<string[]>([]);
   let foldedRows = $state<string[]>([]);
   let collapsedColumns = $state<GridColumn[]>([]);
+  /**
+   * The 通知 the last failed write of those three raised, so a later write that goes through can take
+   * *its own* refusal down and nothing else (`storeGridState`). Not `$state`: it is read only inside
+   * that function, never during a draw.
+   */
+  let gridStateFailure: (() => string) | null = null;
   let filter = $state<CardFilter>(DEFAULT_FILTER);
   let ledgerReadOnly = $state(false);
   let loading = $state(true);
@@ -1537,12 +1543,22 @@
     // 復元時の正規化 の行の側 (doc-7 §5.1): the ledger is what says which slugs exist, so every answer
     // it gives is where the two row values are checked against it. This covers both cases the doc names
     // — a slug left in a hand-edited アプリ設定ファイル, and 登録解除 dropping the row's values (doc-3
-    // §4.2), which is why `removeProject` no longer filters them itself. Not written back here: a save
-    // at startup would be Atlas writing the file before the user has touched anything, and the next
-    // toggle sends the pruned lists anyway.
+    // §4.2), which is why `removeProject` no longer filters them itself.
+    //
+    // **A prune that dropped something is written back.** Left in the file, the slug outlives the
+    // registration: registering that slug again — through 登録 or by hand in the ledger (doc-3 §2.2) —
+    // brings the row up folded or hidden, which is the state doc-7 §5.1 says 登録解除 drops. Writing only
+    // when something was dropped is what keeps this off an ordinary start: `settings.toml` is then never
+    // written by a launch that had nothing to correct.
     const slugs = response.ledger.project.map((entry) => entry.slug);
-    foldedRows = restoredRows(foldedRows, slugs);
-    hidden = restoredRows(hidden, slugs);
+    const keptFolded = restoredRows(foldedRows, slugs);
+    const keptHidden = restoredRows(hidden, slugs);
+    const dropped = keptFolded.length !== foldedRows.length || keptHidden.length !== hidden.length;
+    foldedRows = keptFolded;
+    hidden = keptHidden;
+    if (dropped) {
+      void storeGridState();
+    }
   }
 
   /**
@@ -2331,7 +2347,18 @@
     }));
     if (failure !== null) {
       notice = failure;
+      gridStateFailure = failure;
+      return;
     }
+    // A write that went through supersedes the failure the last one reported, so leaving it up would
+    // have the 帯 state a refusal that no longer holds — the next press *is* the retry. Cleared by
+    // identity rather than with `notice = null`, which is what `moveRow` does for the ledger: a press
+    // here is frequent and is not the retry of whatever else may have raised a 通知 since, so an
+    // unrelated report must not be swallowed by it.
+    if (gridStateFailure !== null && notice === gridStateFailure) {
+      notice = null;
+    }
+    gridStateFailure = null;
   }
 
   // --- 共通入口のメニューとショートカット (doc-7 §2.1, TASK-56) ---------------------------------
