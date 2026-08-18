@@ -1,10 +1,10 @@
 ---
 id: TASK-149
 title: 窓の大きさをアプリの再起動後も引き継ぐ
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-11 11:20'
-updated_date: '2026-08-18 04:01'
+updated_date: '2026-08-18 06:34'
 labels:
   - ui
   - 'kind:feature'
