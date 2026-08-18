@@ -1921,8 +1921,9 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
   });
 
   /**
-   * 行非表示 は画面の一時状態 (decision-13), and a reload is not the user asking for it back: the row
-   * that arrives re-read is still the row they put away.
+   * A reload is not the user asking a hidden row back: the row that arrives re-read is still the row
+   * they put away. (行非表示 survives a restart since decision-13 の 再起動をまたぐ保持の改訂, which is a
+   * different thing again — that one is the value being restored, this one is it not being cleared.)
    */
   it("再読込は非表示のままの行を戻さない", async () => {
     const host = await startWith([loaded("atlas", [TASK]), unreadable("kanri")]);
@@ -1944,15 +1945,57 @@ describe("行の表示・非表示はメニュー 1 か所が持つ", () => {
 
 // -------------------------------------------------------------------------------------------------
 
+const ROW_FOLD = '[aria-label="atlas の行折畳みを行う"]';
+const COLUMN_FOLD = '[aria-label="To Do 列の列折畳みを行う"]';
+
+/**
+ * The レーンヘッダ行 of one project. Both rows read as the same project *name* (`fixtures.ts` gives
+ * every root the same `config.yml`), so the slug beside it is what tells them apart — which is also
+ * the key 行折畳み is held under.
+ */
+function laneHead(host: HTMLElement, slug: string): HTMLElement {
+  const head = [...host.querySelectorAll<HTMLElement>(".lane-head")].find(
+    (candidate) => candidate.querySelector(".slug")?.textContent === slug,
+  );
+  if (head === undefined) {
+    throw new Error(`no レーンヘッダ行 for ${slug}`);
+  }
+  return head;
+}
+
+/** Which rows are drawn folded, by the counts a fold leaves in their header (doc-7 §2.3). */
+function foldedRows(host: HTMLElement): string[] {
+  return [...host.querySelectorAll<HTMLElement>(".lane-head")]
+    .filter((head) => head.querySelector(".fold-counts") !== null)
+    .map((head) => head.querySelector(".slug")?.textContent ?? "");
+}
+
+/** Which columns are drawn folded, by the name each keeps in its 縦帯 (doc-7 §2.2). */
+function foldedColumns(host: HTMLElement): string[] {
+  return [...host.querySelectorAll<HTMLElement>(".head.folded .label")].map(
+    (label) => label.textContent ?? "",
+  );
+}
+
+/** Which rows the grid is drawing at all, in order — a 行非表示 row has no レーンヘッダ行 (doc-7 §5.1). */
+function drawnRows(host: HTMLElement): string[] {
+  return [...host.querySelectorAll<HTMLElement>(".lane-head .slug")].map(
+    (slug) => slug.textContent ?? "",
+  );
+}
+
 /**
  * 折畳み 2 種の 実行内保持 (doc-7 §5.1, TASK-147).
  *
- * 一時状態 means 実行内保持: the value is never written to the settings file or the ledger, and it is
- * still there when the user comes back to the screen. The two halves of that sentence pull in opposite
- * directions, and the grid is unmounted on both routes below — so where 列折畳み・行折畳み are held is
- * what decides it, and only the shell can be asked. `Swimlane.svelte` held them until TASK-147, which
- * made both routes reset them; the counts and the head class asserted here are the same ones
- * `swimlane.ts` computes, so what these tests add is the screen change in between.
+ * 実行内保持 is about the value still being there when the user comes back to the screen, and the grid
+ * is unmounted on both routes below — so where 列折畳み・行折畳み are held is what decides it, and only
+ * the shell can be asked. `Swimlane.svelte` held them until TASK-147, which made both routes reset
+ * them; the counts and the head class asserted here are the same ones `swimlane.ts` computes, so what
+ * these tests add is the screen change in between.
+ *
+ * **Separate from 再起動をまたぐ保持** (the describe after next, TASK-148): that one is the file, this one
+ * is where the value lives while the app runs. doc-7 §5.1 keeps both, and the second did not make the
+ * first redundant — a value the grid held would still be lost on every screen change.
  */
 describe("折畳み 2 種は画面を移っても効いたまま", () => {
   /**
@@ -1968,38 +2011,6 @@ describe("折畳み 2 種は画面を移っても効いたまま", () => {
     column: "inProgress",
     ordinal: 1000,
   });
-
-  const ROW_FOLD = '[aria-label="atlas の行折畳みを行う"]';
-  const COLUMN_FOLD = '[aria-label="To Do 列の列折畳みを行う"]';
-
-  /**
-   * The レーンヘッダ行 of one project. Both rows read as the same project *name* (`fixtures.ts` gives
-   * every root the same `config.yml`), so the slug beside it is what tells them apart — which is also
-   * the key 行折畳み is held under.
-   */
-  function laneHead(host: HTMLElement, slug: string): HTMLElement {
-    const head = [...host.querySelectorAll<HTMLElement>(".lane-head")].find(
-      (candidate) => candidate.querySelector(".slug")?.textContent === slug,
-    );
-    if (head === undefined) {
-      throw new Error(`no レーンヘッダ行 for ${slug}`);
-    }
-    return head;
-  }
-
-  /** Which rows are drawn folded, by the counts a fold leaves in their header (doc-7 §2.3). */
-  function foldedRows(host: HTMLElement): string[] {
-    return [...host.querySelectorAll<HTMLElement>(".lane-head")]
-      .filter((head) => head.querySelector(".fold-counts") !== null)
-      .map((head) => head.querySelector(".slug")?.textContent ?? "");
-  }
-
-  /** Which columns are drawn folded, by the name each keeps in its 縦帯 (doc-7 §2.2). */
-  function foldedColumns(host: HTMLElement): string[] {
-    return [...host.querySelectorAll<HTMLElement>(".head.folded .label")].map(
-      (label) => label.textContent ?? "",
-    );
-  }
 
   /** Fold the atlas row and the To Do column, and check that both took. */
   async function withBothFolds(): Promise<HTMLElement> {
@@ -2051,6 +2062,142 @@ describe("折畳み 2 種は画面を移っても効いたまま", () => {
 
     expect(foldedRows(host)).toEqual(["atlas"]);
     expect(foldedColumns(host)).toEqual(["To Do"]);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+/**
+ * 3 値の 再起動をまたぐ保持 (doc-7 §5.1, decision-13 の 再起動をまたぐ保持の改訂, TASK-148).
+ *
+ * The pure rules are `swimlane.test.ts`'s (`restoredColumns` / `restoredRows`) and `settings.test.ts`'s
+ * (the three fields surviving `mergeDraft` and counting in `isDirty`). What is only here is the wiring:
+ * a press has to reach the file, a start has to take what the file holds, and the row half of
+ * 復元時の正規化 has to happen after the ledger is read — the settings are read *first* during startup
+ * (the describe at the top of this file fixes that order), so a normalization done where they arrive
+ * would drop every saved slug and pass every pure test.
+ */
+describe("3 値は再起動をまたいで効く", () => {
+  const OTHER = taskView({
+    id: "TASK-9",
+    project: "kanri",
+    title: "別ルートの題",
+    status: "In Progress",
+    column: "inProgress",
+    ordinal: 1000,
+  });
+
+  /** The アプリ設定 a start reads, with the three values set to `values`. */
+  function savedGridState(values: {
+    collapsed_columns?: string[];
+    folded_rows?: string[];
+    hidden_rows?: string[];
+  }): void {
+    answers.settings = {
+      ...answers.settings,
+      settings: { ...answers.settings.settings, ...values } as typeof answers.settings.settings,
+    };
+  }
+
+  /** What the last settings write sent, or `undefined` if nothing was written. */
+  function lastWrite(): Record<string, unknown> | undefined {
+    return madeTo("settings_save").at(-1)?.args[0] as Record<string, unknown> | undefined;
+  }
+
+  it("畳む・隠すの押下ごとに、3 値がアプリ設定へ書かれる", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
+    expect(madeTo("settings_save")).toHaveLength(0);
+
+    click(only(host, ROW_FOLD));
+    await settled();
+    expect(lastWrite()).toMatchObject({ folded_rows: ["atlas"], collapsed_columns: [] });
+
+    click(only(host, COLUMN_FOLD));
+    await settled();
+    expect(lastWrite()).toMatchObject({ folded_rows: ["atlas"], collapsed_columns: ["toDo"] });
+
+    // 行非表示 goes through the menu, which is the only control for it (doc-7 §2.1, TASK-131). Taken by
+    // position rather than by name: both rows read as the same project name, and the 表示切替行 are in
+    // ledger order (doc-7 §2.1), so the first one is atlas.
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    const lines = [
+      ...only(host, '[role="dialog"][aria-label="メニュー"]').querySelectorAll<HTMLButtonElement>(
+        "button[aria-pressed]",
+      ),
+    ];
+    click(lines[0]);
+    await settled();
+    // All three on every write: the file is written whole, so a press that sent only its own value
+    // would delete the other two.
+    expect(lastWrite()).toMatchObject({
+      collapsed_columns: ["toDo"],
+      folded_rows: ["atlas"],
+      hidden_rows: ["atlas"],
+    });
+
+    // すべてのプロジェクトを表示 (doc-7 §2.1) is the fourth writer of the three values, and it empties one
+    // of them — a press that changed the screen without reaching the file would come back on the next
+    // start with the rows hidden again.
+    click(byText(host, '[role="dialog"][aria-label="メニュー"] button', showAllProjectsLabel()));
+    await settled();
+    expect(lastWrite()).toMatchObject({ hidden_rows: [], folded_rows: ["atlas"] });
+  });
+
+  it("保存された 3 値で起動すると、その行と列が畳まれ、非表示の行は出ない", async () => {
+    savedGridState({
+      collapsed_columns: ["toDo"],
+      folded_rows: ["atlas"],
+      hidden_rows: ["kanri"],
+    });
+    const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
+
+    expect(drawnRows(host)).toEqual(["atlas"]);
+    expect(foldedRows(host)).toEqual(["atlas"]);
+    expect(foldedColumns(host)).toEqual(["To Do"]);
+  });
+
+  /**
+   * AC #5. The アプリ設定ファイル is hand-editable (doc-3 §2.2) and the ledger changes by its own route, so
+   * a slug in either row value may be one the ledger no longer has. It must draw the rows it does have
+   * — and the next write must no longer carry the stale slug, or the file would keep it for good.
+   */
+  it("台帳に無い slug が保存値に残っていても、画面は残りの行を描く", async () => {
+    savedGridState({ folded_rows: ["ghost", "atlas"], hidden_rows: ["ghost"] });
+    const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
+
+    expect(drawnRows(host)).toEqual(["atlas", "kanri"]);
+    expect(foldedRows(host)).toEqual(["atlas"]);
+
+    click(only(host, COLUMN_FOLD));
+    await settled();
+    expect(lastWrite()).toMatchObject({ folded_rows: ["atlas"], hidden_rows: [] });
+  });
+
+  /**
+   * doc-7 §2.2 forbids collapsing every 正準ステータス列 and the control enforces it, so a saved set of
+   * all four came from somewhere else. Restoring it would leave a grid of four bands.
+   */
+  it("4 列すべてを畳んだ保存値は、どの列も開いた状態で読む", async () => {
+    savedGridState({ collapsed_columns: ["toDo", "inProgress", "inReview", "done"] });
+    const host = await startWith([loaded("atlas", [TASK])]);
+
+    expect(foldedColumns(host)).toEqual([]);
+  });
+
+  /**
+   * decision-13 never overwrites a settings file newer than this build, so the write can be refused
+   * while the fold itself is perfectly legal. What that costs is the next start, not the fold — and the
+   * refusal is said in the ⑤ 通知, because none of the three controls has room for a sentence.
+   */
+  it("保存が断られても畳んだままで、理由は ⑤ 通知 が述べる", async () => {
+    const host = await startWith([loaded("atlas", [TASK]), loaded("kanri", [OTHER])]);
+    answers.settingsSaveFails = true;
+
+    click(only(host, ROW_FOLD));
+    await settled();
+
+    expect(foldedRows(host)).toEqual(["atlas"]);
+    expect(only(host, '.band[data-band="notice"]').textContent).toContain("read-only");
   });
 });
 

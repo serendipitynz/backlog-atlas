@@ -89,6 +89,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   default_detail_placement: "sidebar",
   default_card_order: "priority_desc",
   watch_external_changes: true,
+  collapsed_columns: [],
+  folded_rows: [],
+  hidden_rows: [],
 };
 
 function emptyLedger(): LedgerResponse {

@@ -20,6 +20,8 @@ import {
   laneNeighbourLabel,
   laneNeighbours,
   laneScrollDelta,
+  restoredColumns,
+  restoredRows,
   rowFoldable,
   swimlaneTotals,
   totalsLabel,
@@ -834,6 +836,47 @@ describe("折畳みの対象にしないもの、および TASK-69 が対象に�
     // …and it does not stand in for the one left open: 'done' is still refused with 未分類 open, since
     // the 未分類区画 disappears once no row has such a task (doc-7 §2.2).
     expect(columnFoldable(["toDo", "inProgress", "inReview"], "done")).toBe(false);
+  });
+});
+
+// TASK-148.
+describe("復元時の正規化 (doc-7 §5.1)", () => {
+  it("keeps a saved 列折畳み as it is while one 正準ステータス列 is still open", () => {
+    expect(restoredColumns([])).toEqual([]);
+    expect(restoredColumns(["toDo", "unmapped"])).toEqual(["toDo", "unmapped"]);
+    // Three folded is the most the screen's own control allows (doc-7 §2.2), so it comes back whole.
+    expect(restoredColumns(["toDo", "inProgress", "inReview"])).toEqual([
+      "toDo",
+      "inProgress",
+      "inReview",
+    ]);
+  });
+
+  it("reads a saved set of all four 正準ステータス列 as none of them", () => {
+    // The state the control refuses (`columnFoldable`), so a value in this shape did not come from the
+    // screen: a hand-edited アプリ設定ファイル (doc-3 §2.2). Restored, it would be four bands with no card
+    // readable anywhere. 未分類 is not one of the four and is kept — it takes no status column away.
+    expect(restoredColumns(["toDo", "inProgress", "inReview", "done"])).toEqual([]);
+    expect(restoredColumns(["toDo", "inProgress", "inReview", "done", "unmapped"])).toEqual([
+      "unmapped",
+    ]);
+    // Asserted through the rule the restored value has to satisfy, not only by the literal above: what
+    // matters is that every column is foldable again, which is what "どの列も読める" means here.
+    for (const column of CANONICAL_COLUMNS) {
+      expect(columnFoldable(restoredColumns(["toDo", "inProgress", "inReview", "done"]), column))
+        .toBe(true);
+    }
+  });
+
+  it("drops a saved slug the ledger no longer has, keeping the rest in order", () => {
+    expect(restoredRows(["atlas", "ghost", "kanri"], ["atlas", "kanri"])).toEqual([
+      "atlas",
+      "kanri",
+    ]);
+    expect(restoredRows(["ghost"], ["atlas"])).toEqual([]);
+    expect(restoredRows([], ["atlas"])).toEqual([]);
+    // An empty ledger drops everything rather than keeping the value for a row that cannot be drawn.
+    expect(restoredRows(["atlas"], [])).toEqual([]);
   });
 });
 
