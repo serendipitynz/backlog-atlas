@@ -22,6 +22,9 @@
 //! | doc-5 §4 実行ファイル解決の順序 1 段目 | [`AppSettings::backlog_cli`] | the Backlog CLI executable to run, outranking every automatic resolution |
 //! | decision-29 外部コマンド指定 (`git`) | [`AppSettings::git_cli`] | the `git` executable doc-6 §3/§5 and doc-3 §3.2 launch |
 //! | decision-29 外部コマンド指定 (`gh`) | [`AppSettings::gh_cli`] | the `gh` executable doc-6 §6 の GitHub 参照手段 launches |
+//! | doc-7 §2.2 列折畳み | [`AppSettings::collapsed_columns`] + [`GridColumn`] | which columns are narrowed to bands, the 未分類列 among them |
+//! | doc-7 §5.1 行折畳み | [`AppSettings::folded_rows`] | which project rows are folded, by slug |
+//! | doc-7 §5.1 行非表示 | [`AppSettings::hidden_rows`] | which project rows are off the grid, by slug |
 //! | decision-13 既定値で動いている旨 | [`SettingsStatus`] | why the values in hand are the defaults, and whether saving is allowed |
 //!
 //! ## Reading this file never stops the screen (AC #6)
@@ -32,17 +35,19 @@
 //! happened. The caller states it; the ledger, by contrast, *does* fail its load (doc-3 §2.2), because
 //! an inconsistent ledger would make Atlas read the wrong roots.
 //!
-//! ## What this file must never hold (AC #4/#6)
+//! ## What this file must never hold
 //!
-//! - 列折畳み・行折畳み・行非表示 (doc-7 §2.2/§5.1) are 画面の一時状態 by decision-13: restoring them
-//!   would leave a project the user "hid to get it out of the way" invisible after a restart, which
-//!   reads as a lost registration.
-//! - 起動時に全ルートを読むか (doc-9 §3.2) is not a setting either: with no persisted domain-model
-//!   cache there is nothing for a "do not read" state to refer to — the screen would have no cards
-//!   and no baseline for 更新前競合検出.
+//! 起動時に全ルートを読むか (doc-9 §3.2) is not a setting: with no persisted domain-model cache there is
+//! nothing for a "do not read" state to refer to — the screen would have no cards and no baseline for
+//! 更新前競合検出. Enforced by [`AppSettings`]'s field list and asserted in `the_documented_keys_and_no_others`,
+//! so adding such a field has to break a test rather than merely disagree with a comment.
 //!
-//! Both are enforced by [`AppSettings`]'s field list and asserted in `no_forbidden_keys`, so adding
-//! such a field has to break a test rather than merely disagree with a comment.
+//! **列折畳み・行折畳み・行非表示 used to be listed here** and are now three of the fields above
+//! (decision-13 の 再起動をまたぐ保持の改訂, 2026-08-18, TASK-148). The 1 sentence that had excluded them
+//! named 行非表示's 「件数も読めない」 property, which the other two do not have, and for 行非表示 itself the
+//! screen it assumed changed when TASK-131 gave the menu every registered project (doc-7 §2.1). The
+//! same test now asserts that all three *are* in the key set, so removing one silently is equally
+//! impossible.
 
 use crate::editor::EditorCommand;
 use serde::{Deserialize, Serialize};
@@ -54,14 +59,15 @@ use std::path::{Path, PathBuf};
 /// ledger follows (doc-3 §2.2), which decision-13 asks the two files to keep in step.
 ///
 /// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16), to 3 when `default_card_order`
-/// was (TASK-132), to 4 when `git_cli` and `gh_cli` joined them (TASK-156, decision-29), and to 5
-/// when `language` did (TASK-103, decision-35).
+/// was (TASK-132), to 4 when `git_cli` and `gh_cli` joined them (TASK-156, decision-29), to 5
+/// when `language` did (TASK-103, decision-35), and to 6 when `collapsed_columns`, `folded_rows` and
+/// `hidden_rows` did (TASK-148, decision-13 の 再起動をまたぐ保持の改訂).
 /// decision-13 puts 項目の追加 under this version's management, and the read-only
 /// degrade is what the raise buys: left where it was, a build predating the field would read the newer
 /// file as its own version, let serde drop the key it does not know, and delete the value on its next
 /// save. Older files are unaffected — a *lower* version loads with the missing keys defaulted, and the
 /// next save writes this version.
-pub const KNOWN_SCHEMA_VERSION: u32 = 5;
+pub const KNOWN_SCHEMA_VERSION: u32 = 6;
 
 /// カード情報量 (doc-7 §3): which column of the card assignment table is in force.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -137,6 +143,25 @@ pub enum StorageSelection {
     Indeterminate,
 }
 
+/// A column 列折畳み can name (doc-7 §2.2): the four 正準ステータス列 and the 未分類列.
+///
+/// Its own enum rather than [`StatusColumn`], which is what the four canonical ones are everywhere
+/// else, for two reasons: 未分類列 is not a status (doc-7 §2.2 keeps it out of the canonical set), and
+/// this value has to *deserialize* — `StatusColumn` only serializes, because nothing else reads a
+/// column back in. The name matches `swimlane.ts`'s `GridColumn`, which is the union this list
+/// mirrors, and `the_four_columns_spell_their_status_column_tokens` holds the four tokens against
+/// `StatusColumn`'s so a rename there cannot leave a settings file naming columns by a spelling the
+/// screen no longer uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GridColumn {
+    ToDo,
+    InProgress,
+    InReview,
+    Done,
+    Unmapped,
+}
+
 /// アプリ設定 (decision-13): the items its table lists, plus the schema version that governs them.
 /// The count is not written here — decision-13's table is the register, and a number in this sentence
 /// would go stale on the next item without anything failing.
@@ -184,6 +209,31 @@ pub struct AppSettings {
     /// and doc-9 §3.1 frames turning it off as a deliberate choice with a stated consequence.
     #[serde(default = "watch_external_changes_default")]
     pub watch_external_changes: bool,
+    /// 列折畳み (doc-7 §2.2): the columns narrowed to bands in every row at once.
+    ///
+    /// The three fields here are the values decision-13 kept *out* of this file until 2026-08-18 (its
+    /// 再起動をまたぐ保持の改訂). They carry no `default_` prefix because what is stored is the state
+    /// that was in force, not a default given to something new — the 既定の… items above are the other
+    /// kind. Defaulted to empty rather than required, so a file written by a build predating them
+    /// loads as "nothing folded" instead of degrading to [`SettingsStatus::Unreadable`].
+    ///
+    /// **A set naming all four 正準ステータス列 is not rejected here.** doc-7 §2.2 forbids collapsing
+    /// every column, but the rule is the screen's, and the frontend's 復元時の正規化 is what applies it
+    /// (doc-7 §5.1) — refusing the file instead would take every other setting down with it over a
+    /// hand-edit this build can recover from.
+    #[serde(default)]
+    pub collapsed_columns: Vec<GridColumn>,
+    /// 行折畳み (doc-7 §5.1): the project rows whose レーンセル群 are folded away, by slug.
+    ///
+    /// Slugs rather than an entry-side flag, so this file still defines nothing about *what to read*
+    /// (decision-13 §3 の改訂). A slug the ledger no longer has is dropped by 復元時の正規化, not here:
+    /// this module never reads the ledger, and a value it cannot judge is not one it should discard.
+    #[serde(default)]
+    pub folded_rows: Vec<String>,
+    /// 行非表示 (doc-7 §5.1): the project rows taken off the grid, by slug. Same shape and same
+    /// normalization as `folded_rows`.
+    #[serde(default)]
+    pub hidden_rows: Vec<String>,
     /// 実行ファイル解決の順序 の 1 段目 (doc-5 §4, decision-16): the Backlog CLI executable to run,
     /// as an absolute path. Set, it is used as written — the resolution does not check that it exists
     /// and does not fall back, so a mistyped path surfaces as its own 起動失敗 naming the path rather
@@ -235,6 +285,9 @@ impl Default for AppSettings {
             default_detail_placement: DetailPlacement::default(),
             default_card_order: CardOrder::default(),
             watch_external_changes: watch_external_changes_default(),
+            collapsed_columns: Vec::new(),
+            folded_rows: Vec::new(),
+            hidden_rows: Vec::new(),
             backlog_cli: None,
             git_cli: None,
             gh_cli: None,
@@ -465,6 +518,12 @@ mod tests {
             default_detail_placement: DetailPlacement::Full,
             default_card_order: CardOrder::MilestoneAsc,
             watch_external_changes: false,
+            // 未分類列 among them, because it is the one member of `GridColumn` that is not a
+            // 正準ステータス列 and the only one whose token this struct cannot borrow from
+            // `StatusColumn` (doc-7 §2.2).
+            collapsed_columns: vec![GridColumn::InReview, GridColumn::Unmapped],
+            folded_rows: vec!["atlas".into(), "kanri".into()],
+            hidden_rows: vec!["retired".into()],
             // A path with a space, because that is what an npm global prefix under a Windows user
             // profile or an Application Support directory looks like (doc-5 §4 順序 1).
             backlog_cli: Some(PathBuf::from("/opt/my tools/backlog")),
@@ -510,6 +569,9 @@ mod tests {
             default_detail_placement: DetailPlacement::Full,
             default_card_order: CardOrder::MilestoneAsc,
             watch_external_changes: false,
+            collapsed_columns: vec![GridColumn::ToDo, GridColumn::Unmapped],
+            folded_rows: vec!["atlas".into()],
+            hidden_rows: vec!["kanri".into()],
             backlog_cli: Some(PathBuf::from("/opt/my tools/backlog")),
             git_cli: Some(PathBuf::from("/opt/my tools/git")),
             gh_cli: Some(PathBuf::from("/opt/my tools/gh")),
@@ -691,13 +753,16 @@ mod tests {
         ));
     }
 
-    // --- what the file must not hold (AC #4/#6) ---------------------------------------------
+    // --- which keys the file holds, and which it must not -----------------------------------
 
-    /// decision-13 keeps 列折畳み・行折畳み・行非表示 out of this file (画面の一時状態), and doc-9 §3.2
-    /// keeps 起動時の全ルート読み取り from being a setting at all. Asserted against the serialized key
-    /// set, so adding such a field fails here instead of quietly persisting a hidden row.
+    /// The serialized key set is decision-13's item table and nothing else. Asserted in both
+    /// directions by one equality: a field added without a place in that table fails here, and so does
+    /// one silently dropped — which is what makes the three 再起動をまたぐ保持 keys (the improvement's
+    /// AC #2) a contract rather than a comment. doc-9 §3.2's 起動時の全ルート読み取り is checked by name
+    /// as well, because it is the one non-setting a future session might reach for and it has no field
+    /// to be missing from.
     #[test]
-    fn no_forbidden_keys() {
+    fn the_documented_keys_and_no_others() {
         let text = toml::to_string_pretty(&AppSettings::default()).expect("serialized");
         let keys: Vec<&str> = text
             .lines()
@@ -714,22 +779,81 @@ mod tests {
                 "default_detail_placement",
                 "default_card_order",
                 "watch_external_changes",
+                "collapsed_columns",
+                "folded_rows",
+                "hidden_rows",
             ],
             "settings.toml holds decision-13's items and nothing else"
         );
-        for forbidden in [
-            "collapsed",
-            "collapse",
-            "hidden",
-            "hidden_rows",
-            "startup_read",
-            "read_all_roots_on_start",
-        ] {
+        for forbidden in ["startup_read", "read_all_roots_on_start"] {
             assert!(
                 !text.contains(forbidden),
-                "{forbidden} is 画面の一時状態 or a non-setting (decision-13, doc-9 §3.2)"
+                "{forbidden} is not a setting (doc-9 §3.2)"
             );
         }
+    }
+
+    /// [`GridColumn`]'s four canonical members serialize as [`StatusColumn`]'s do. The two enums are
+    /// separate (see `GridColumn`'s note) and neither compiler nor serde would notice them drifting:
+    /// a rename on the interpretation side would leave saved 列折畳み naming columns by a spelling the
+    /// screen no longer sends, and the columns would silently come back expanded.
+    #[test]
+    fn the_four_columns_spell_their_status_column_tokens() {
+        use crate::interpret::status::StatusColumn;
+        let pairs = [
+            (GridColumn::ToDo, StatusColumn::ToDo),
+            (GridColumn::InProgress, StatusColumn::InProgress),
+            (GridColumn::InReview, StatusColumn::InReview),
+            (GridColumn::Done, StatusColumn::Done),
+        ];
+        for (column, status) in pairs {
+            assert_eq!(
+                serde_json::to_value(column).expect("serialized"),
+                serde_json::to_value(status).expect("serialized"),
+                "{column:?} and {status:?} have to reach the screen as the same token"
+            );
+        }
+        // The exhaustive match is what makes the list above complete: a fifth canonical column stops
+        // this compiling rather than being left unchecked.
+        for column in [
+            GridColumn::ToDo,
+            GridColumn::InProgress,
+            GridColumn::InReview,
+            GridColumn::Done,
+            GridColumn::Unmapped,
+        ] {
+            match column {
+                GridColumn::ToDo
+                | GridColumn::InProgress
+                | GridColumn::InReview
+                | GridColumn::Done => {
+                    assert!(pairs.iter().any(|(listed, _)| *listed == column));
+                }
+                // 未分類列 has no `StatusColumn` to be compared with — that is why this enum exists.
+                GridColumn::Unmapped => {}
+            }
+        }
+    }
+
+    /// A file written before the three keys existed loads with them empty rather than degrading. This
+    /// is the case a *lower* `schema_version` describes: decision-13 has an older file load with the
+    /// missing keys defaulted, and for these three "defaulted" has to mean nothing folded and nothing
+    /// hidden — a first start after an upgrade must not decide that some row is off the grid.
+    #[test]
+    fn a_file_predating_the_three_keys_loads_with_nothing_folded() {
+        let tmp = TempDir::new();
+        let path = tmp.path.join("settings.toml");
+        std::fs::write(
+            &path,
+            "schema_version = 5\ncard_density = \"l\"\nwatch_external_changes = false\n",
+        )
+        .expect("written");
+        let loaded = LoadedSettings::load(&path);
+        assert_eq!(loaded.status, SettingsStatus::Stored);
+        assert_eq!(loaded.settings.card_density, CardDensity::L);
+        assert!(loaded.settings.collapsed_columns.is_empty());
+        assert!(loaded.settings.folded_rows.is_empty());
+        assert!(loaded.settings.hidden_rows.is_empty());
     }
 
     /// The file is one the user is expected to be able to read and edit (decision-13 形式: TOML,
@@ -752,6 +876,11 @@ mod tests {
         assert!(text.contains(&format!("schema_version = {KNOWN_SCHEMA_VERSION}")));
         assert!(text.contains("card_density = \"m\""));
         assert!(text.contains("watch_external_changes = true"));
+        // The three 再起動をまたぐ保持 keys are written even when empty, so the file states which rows
+        // and columns are folded — an omitted key would read as "this build does not have them".
+        assert!(text.contains("collapsed_columns = []"));
+        assert!(text.contains("folded_rows = []"));
+        assert!(text.contains("hidden_rows = []"));
         assert!(text.contains("[external_editor]"));
         assert!(text.contains("program = \"code\""));
     }
