@@ -615,11 +615,13 @@ of copying `.env.signing`.
   (measured 2026-08-19). `**Ubuntu なら 24.04 以降**で` renders correctly because the closer is
   preceded by `降` rather than by punctuation, and the sentence above still asks for a space
   after it. **A clean `pnpm test` is therefore not proof the letter is met** — nothing holds
-  that. **TASK-194 settles which of the two readings this bullet means** — until it does, neither
-  is the repository's answer: do not narrow the sentence to the rendering condition, and do
-  not read a green run as having satisfied it. **The letter is harder to follow than it
-  looks** — TASK-194's own body was written with it in mind and still broke it five times,
-  once where the following character was `:` and a space would have hurt the typography.
+  that, so **write new prose to the letter** — the sentence this bullet opens with binds what you
+  write, whether or not the check can see it. **What TASK-194 settles is only whether the 3,454
+  sites already in the tree count as defects** — leave those alone until it does, and do not read
+  a green run as licence to add another. **The letter is harder to follow than it looks** —
+  TASK-194's own body was written with it in mind and still broke it five times, once where the
+  following character was `:`; there the fix was to rewrite the sentence rather than wedge a space
+  in, because a space before `:` or `（` costs more than it buys.
 - After implementation, run the relevant checks and report anything that cannot be run, with the
   reason. **The frontend has no formatter** — its checks are `pnpm test`, `pnpm run check` and
   `pnpm run lint`. The Rust side does have one: `cargo fmt`, alongside `cargo test` and
