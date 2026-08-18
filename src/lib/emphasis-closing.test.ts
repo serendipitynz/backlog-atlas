@@ -203,11 +203,21 @@ function maskCode(body: string): string {
  * report the damage, which is the whole point: the two answers are compared below, and a disagreement is
  * the defect.
  *
- * A run of any length contributes the `**` pairs it holds, so `***強調***` (legal CommonMark: bold inside
- * italic) and a longer run are read rather than refused. Pairing runs over the whole body rather than per
- * block: a table cell's inline token carries no source map, so a per-block scheme would silently skip
- * every cell, and alternation across a block boundary is harmless while each block holds an even count.
- * The even-count and span assertions are what make that assumption fail loudly if one ever does not.
+ * A run contributes the `**` pairs it holds, which is what makes `***強調***` — legal CommonMark, bold
+ * inside italic — read rather than refused. **Two, three, and four-as-a-collision are the lengths that
+ * agree with the render.** A longer run is read here and still reported by the span and flanking
+ * assertions: when both delimiters of a pair come out of the same run, the content between them is
+ * empty, so `*****強調*****` yields two empty spans against markdown-it's one bold. `****強調****`
+ * written as a doubled bold rather than as the collision the tree carried fails the same way. Both are
+ * legal and render correctly, so **this is a false positive rather than a defect found** — modelling it
+ * would mean representing strong nested in strong, which this flat positional pairing cannot. Nothing in
+ * the tree writes a run above four and no body here uses bold-italic at all; the boundary is pinned by
+ * `reports a run of five, which this pairing does not model` so that fixing it fails this note.
+ *
+ * Pairing runs over the whole body rather than per block: a table cell's inline token carries no source
+ * map, so a per-block scheme would silently skip every cell, and alternation across a block boundary is
+ * harmless while each block holds an even count. The even-count and span assertions are what make that
+ * assumption fail loudly if one ever does not.
  */
 function delimiters(body: string): Delimiter[] {
   const masked = maskCode(body);
@@ -490,6 +500,21 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
     // while the span assertion would still have reported the file. Both now agree on 強調.
     expect(intendedSpans(legal)).toEqual(["強調"]);
     expect(renderedSpans(md.render(legal))).toEqual(intendedSpans(legal));
+  });
+
+  /**
+   * The boundary of what this pairing models, pinned so the docblock cannot drift away from it. A run of
+   * five puts both of a pair's delimiters in the same run, so the content between them is empty and the
+   * span assertion reports two empty spans against one rendered bold — a false positive on legal
+   * CommonMark. Nothing in the tree writes one, and modelling it would mean representing strong nested in
+   * strong. **If this test ever fails, the pairing has been extended and the docblock's note about longer
+   * runs is what needs rewriting.**
+   */
+  it("reports a run of five, which this pairing does not model", () => {
+    const legal = "*****強調*****";
+    expect(delimiters(legal)).toHaveLength(4);
+    expect(intendedSpans(legal)).toEqual(["", ""]);
+    expect(renderedSpans(md.render(legal))).toEqual(["強調"]);
   });
 
   /**
