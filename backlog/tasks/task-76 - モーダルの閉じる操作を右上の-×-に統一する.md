@@ -4,7 +4,7 @@ title: モーダルの閉じる操作を右上の × に統一する
 status: Done
 assignee: []
 created_date: '2026-07-31 23:31'
-updated_date: '2026-08-06 10:33'
+updated_date: '2026-08-18 21:12'
 labels:
   - ui
   - design-system
@@ -84,7 +84,7 @@ doc-7 §2.1 が持っていた）、新しい doc の節を足すのも契約の
 ## 画面横断契約
 
 `Modal.component.test.ts` の「この層が持つ出口は Escape だけで、他に出口を足さない」を
-**「× と Escape の 2 つで、他に出口を足さない」**へ書き換えた。1 件足した — 「閉じられない理由を
+**「× と Escape の 2 つで、他に出口を足さない」** へ書き換えた。1 件足した — 「閉じられない理由を
 渡されている間、× は要求を出さず理由へ結ぶ」。`App.component.test.ts` は 2 経路 → 3 経路
 （Escape・×・変更せずに閉じる）で、保存の発行中はその 3 つのどれも閉じないことも同じ形で固定した。
 
@@ -129,4 +129,3 @@ decision-12 の収録条件がそれより厳しい比を全テーマで通し�
 `cargo test` 347 passed / 4 ignored（Rust は触っていない）。フロントエンドに設定された
 フォーマッタは無い（prettier は依存にも設定にも無い）ので、静的解析は `pnpm run check` が担う。
 <!-- SECTION:NOTES:END -->
-

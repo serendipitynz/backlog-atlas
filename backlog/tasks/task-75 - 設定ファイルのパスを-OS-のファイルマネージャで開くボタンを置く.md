@@ -4,7 +4,7 @@ title: 設定ファイルのパスを OS のファイルマネージャで開く
 status: Done
 assignee: []
 created_date: '2026-07-31 23:31'
-updated_date: '2026-08-13 00:55'
+updated_date: '2026-08-18 21:12'
 labels:
   - ui
   - settings
@@ -107,7 +107,7 @@ TASK-96 など 実 印を持つタスクの実機確認と併せて行えばよ�
 設定画面の 場所を開く で、エクスプローラが設定ファイルのフォルダを実際に開いた。
 上の「残る未測定は Windows と Linux の実機」のうち、**Windows 分は解けた。**
 
-**Linux の `xdg-open` は依然として未測定。**TASK-156 の回で WSL Ubuntu 24 を試したが、
+**Linux の `xdg-open` は依然として未測定。** TASK-156 の回で WSL Ubuntu 24 を試したが、
 `pnpm tauri dev` が GTK の初期化で panic して起動しない（表示先が無い＝WSLg の問題であり、
 Atlas の欠陥ではない）。**そもそも WSL はこの確認の代理にならない** — WSL では `xdg-open` が
 `wslview` 経由で Windows のエクスプローラを開く構成が多く、「Linux のファイルマネージャが開くか」の

@@ -4,7 +4,7 @@ title: decision-18 の CLI 終了期限の実測基準を測り直し、Windows 
 status: To Do
 assignee: []
 created_date: '2026-08-15 03:56'
-updated_date: '2026-08-15 04:22'
+updated_date: '2026-08-18 21:10'
 labels:
   - 'kind:chore'
 milestone: m-4
@@ -29,7 +29,7 @@ decision-18 は CLI 終了期限 30 秒を「実測した所要時間は期限�
 | native `git.exe` (Git for Windows 2.34.1) | **0.72s** |
 | wslgit | **36.0s**（**49.6 倍**） |
 
-**wslgit は `git` 呼び出しごとに `wsl.exe` を起動して WSL 境界を越える。**同じ config で `check_active_branches: false` にすると 36.0s → 3.47s、さらに `filesystem_only: true` で 0.252s まで落ちるので、**36 秒のほぼ全部が git の起動回数 × wslgit の 1 回あたりのコストである。**
+**wslgit は `git` 呼び出しごとに `wsl.exe` を起動して WSL 境界を越える。** 同じ config で `check_active_branches: false` にすると 36.0s → 3.47s、さらに `filesystem_only: true` で 0.252s まで落ちるので、**36 秒のほぼ全部が git の起動回数 × wslgit の 1 回あたりのコストである。**
 
 **オーナーの `pnpm tauri dev` で更新操作が CLI 終了期限 30 秒に達していた原因はこれである。**
 
@@ -45,7 +45,7 @@ decision-18 は CLI 終了期限 30 秒を「実測した所要時間は期限�
 
 ## 条件を揃えた対（2026-08-15）
 
-**変数を OS だけに絞った対。**両側とも **タスク 2 件・doc/decision 0 件・コミット 0・ブランチ 0**、config は `check_active_branches: true`・`filesystem_only: false`・`remote_operations: true`・statuses 5 値で同一。macOS 側はこの条件に合わせて作った使い捨てプロジェクト、Windows 側はオーナーのサンプルプロジェクト。計測は `backlog task edit -s` で、**status が実際に変わる呼び出し**である。
+**変数を OS だけに絞った対。** 両側とも **タスク 2 件・doc/decision 0 件・コミット 0・ブランチ 0**、config は `check_active_branches: true`・`filesystem_only: false`・`remote_operations: true`・statuses 5 値で同一。macOS 側はこの条件に合わせて作った使い捨てプロジェクト、Windows 側はオーナーのサンプルプロジェクト。計測は `backlog task edit -s` で、**status が実際に変わる呼び出し**である。
 
 | | macOS | Windows ＋ native git | Windows ＋ wslgit |
 |---|---|---|---|
@@ -59,7 +59,7 @@ decision-18 は CLI 終了期限 30 秒を「実測した所要時間は期限�
 
 **この規模では台帳の件数が効かない** — `personal-planning`（8 件）も同じ 0.28s で、2 件との差が測れない。コストはプロセス起動の下限に支配されている。**したがって件数のずれた先行の対（0.72s 対 0.285s、2.5 倍）も結論は同じだった。**
 
-**この対に残る留保は無い。**着手する回が測り直すのは台帳規模を変えたときの伸び方のほうで、この 2 件どうしの比ではない。
+**この対に残る留保は無い。** 着手する回が測り直すのは台帳規模を変えたときの伸び方のほうで、この 2 件どうしの比ではない。
 
 ## 台帳規模の効き方## 台帳規模の効き方（macOS 同士、2026-08-15）
 
@@ -76,7 +76,7 @@ decision-18 は CLI 終了期限 30 秒を「実測した所要時間は期限�
 
 - 記録された macOS の値が同じリポジトリで約 10 倍になっている。
 - **Windows の実測を 1 つも持っていない**（上表は Windows 同士の比較であって、Windows と macOS の比較ではない）。
-- **測り直す条件が書かれていない。**台帳規模で伸びる値なので、いつ偽になるかを言えないまま置かれている。
+- **測り直す条件が書かれていない。** 台帳規模で伸びる値なので、いつ偽になるかを言えないまま置かれている。
 
 ## 判定の経緯
 

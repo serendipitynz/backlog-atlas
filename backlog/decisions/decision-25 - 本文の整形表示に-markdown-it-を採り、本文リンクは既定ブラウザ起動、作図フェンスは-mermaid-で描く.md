@@ -137,7 +137,7 @@ doc-10 §5・§6 がそれを「整形しない」と定め、タスク詳細の
   chunk なので、**起動時費用は 0** である。
 - **`securityLevel: 'strict'`**（mermaid 自身の既定）。Atlas は作図の `click` 指令を使わないので、
   ここを緩める理由が無い。`'sandbox'` は各図を iframe に入れるのでテーマ追随ができなくなる。
-- **CSP との関係は本 PR で実測し、doc-11 §14.5 が記録した。****`style-src` に `'unsafe-inline'` が
+- **CSP との関係は本 PR で実測し、doc-11 §14.5 が記録した。** **`style-src` に `'unsafe-inline'` が
   要る。** mermaid は描いた SVG の中へ `<style>` を入れるので、出荷物の形（外部 CSS 1 本）を CSP ヘッダ
   付きで配って測ると、`style-src 'self'` では**図は描かれるが色を失い**（`fill` が
   `rgb(236, 236, 255)` → `rgb(0, 0, 0)`）、違反が WebKit 111 件・Chromium 192 件出る。`'unsafe-inline'`

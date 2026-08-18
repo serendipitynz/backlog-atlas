@@ -4,7 +4,7 @@ title: 期限到達のときに、利用者が次に何をすればよいかを�
 status: To Do
 assignee: []
 created_date: '2026-08-15 03:56'
-updated_date: '2026-08-15 04:09'
+updated_date: '2026-08-18 21:11'
 labels:
   - 'kind:enhancement'
 milestone: m-4
@@ -20,7 +20,7 @@ TASK-179 の実測から出た別件である。**期限到達の画面文は現
 
 **実測（2026-08-15、TASK-179 に全表）では、この 36 秒のうち 99.3% が git のコストで、`config.yml` の 2 つのキーだけで 143 倍変わる** — `check_active_branches: false` で 36.0s → 3.47s、さらに `filesystem_only: true` で 0.252s。**つまり利用者が対処できる事象なのに、画面はそれを示していない。** オーナーは実機でこれを踏み、原因の特定に調査を要した。
 
-**ここには容易でない点が 1 つある。****Atlas の `Config`（`domain.rs`）が読むのは `project_name`・`task_prefix`・`statuses`・`default_status`・`date_format` の 5 つで、`check_active_branches` も `filesystem_only` も読んでいない**（2026-08-15 実測）。したがって「その設定が原因らしい」と名指しするには**読み取り層を広げる必要があり、それは doc-4 の範囲を変える。** 費用に見合うかどうかを含めて判断する。
+**ここには容易でない点が 1 つある。** **Atlas の `Config`（`domain.rs`）が読むのは `project_name`・`task_prefix`・`statuses`・`default_status`・`date_format` の 5 つで、`check_active_branches` も `filesystem_only` も読んでいない**（2026-08-15 実測）。したがって「その設定が原因らしい」と名指しするには**読み取り層を広げる必要があり、それは doc-4 の範囲を変える。** 費用に見合うかどうかを含めて判断する。
 
 **安い側の案**: 設定を読まずに、期限到達の理由文へ「この操作は Backlog CLI が git を走査する設定だと極端に遅くなることがある」旨と確認先を書くだけでも、調査の入口にはなる。**高い側の案**: `Config` を広げ、当該設定が有効なプロジェクトでだけ具体的に名指しする。
 
