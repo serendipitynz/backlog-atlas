@@ -3770,7 +3770,13 @@
   // その理由を変えない — doc-11 §3 がその判断を持つ。**同じ 一覧列 に並ぶ 文書の `type` と
   // マイルストーンの件数は素のテキストのまま**なので、`.card-head .meta` そのものではなくこの class に
   // 付ける。一覧のカードと閲覧ヘッダで同じ姿になるよう、規則はこの 1 か所だけに置く。
-  .status {
+  //
+  // **カード側を `.card .card-head` で限るのは、`color` を順序に頼らず勝たせるためである** — カードの
+  // span は `.meta` も持ち、`.card .meta` が `--muted` を宣言している (0,2,0)。裸の `.status` (0,1,0) では
+  // その宣言が勝ち、doc-11 §3 が姿の一部として挙げている `--muted` だけがこの規則の外に出る。いまはどちらも
+  // 同じ値なので画面は変わらないが、`.card .meta` を動かした回にカードと閲覧ヘッダが離れる (PR #140 の [P3])。
+  .card .card-head .status,
+  .meta-line .status {
     padding: 0 0.3rem;
     border: 1px solid var(--line-strong);
     border-radius: 3px;
