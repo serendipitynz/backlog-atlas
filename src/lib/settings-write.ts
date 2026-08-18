@@ -2,7 +2,9 @@
  * Sequencing for アプリ設定 writes (decision-13, doc-8 §2.2). `settings.toml` is one document and every
  * write sends the whole of it, while the screen has more than one writer: the 設定画面's 保存, and the
  * controls that store a choice as its 既定 the moment it is made — the 詳細配置 switch (doc-8 §2.2) and
- * the 帯's 並び順 (doc-7 §5.4) — each of them pressable while that form sits open over the same screen.
+ * the 帯's 並び順 (doc-7 §5.4) — plus the grid's own 折畳み and the menu's 表示切替行, which store the value
+ * itself rather than a 既定 (doc-7 §5.1). Every one of them is pressable while that form sits open over
+ * the same screen.
  * The count is deliberately not written down: the shape below holds for any number of them, and a
  * number here would go stale the next time one is added without anything failing.
  *

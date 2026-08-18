@@ -29,14 +29,18 @@
  *
  * Row *order* is not computed here: it is the ledger's entry order (doc-3 §2.2), which the
  * caller passes in, and a reorder is written back to the ledger rather than kept on screen
- * (doc-7 §5 permits reflecting it there). Row *visibility* is the opposite — 一時的 by
- * definition — so `hidden` stays a screen-local set and never reaches the ledger.
+ * (doc-7 §5 permits reflecting it there). Row *visibility* is not computed here either — `hidden`
+ * is a set the shell holds and passes in, and **it never reaches the ledger**: since 2026-08-18 it
+ * survives a restart, but through アプリ設定 (decision-13 の 再起動をまたぐ保持の改訂), which defines
+ * nothing about what to read. What comes back out of that file passes [`restoredRows`] and
+ * [`restoredColumns`] first (doc-7 §5.1 の 復元時の正規化).
  */
 
 import type {
   CardOrder,
   ColumnCreateStatuses,
   CommandError,
+  GridColumn,
   ProjectLoad,
   StatusColumn,
   TaskView,
@@ -474,8 +478,12 @@ export function laneCounts(row: SwimlaneRow, withUnmapped: boolean): LaneCount[]
  * One column of the grid: a 正準ステータス列, or the 未分類区画 while it is showing. 列折畳み reaches
  * both (doc-7 §2.2), so both need one name — the 未分類区画 is `"unmapped"` rather than a fifth member
  * of [`CANONICAL_COLUMNS`], because it is not a status and only exists while some row has a task in it.
+ *
+ * Declared in `wire.ts` and re-exported here, the way `filter.ts` carries `StorageSelection`: アプリ設定
+ * persists a list of these (`collapsed_columns`), so the union is a wire value as well as this screen's
+ * vocabulary, and one of the two files has to be where it is written.
  */
-export type GridColumn = StatusColumn | "unmapped";
+export type { GridColumn };
 
 /**
  * Whether 列折畳み may be applied to this column, given the ones already folded (doc-7 §2.2).
@@ -500,6 +508,40 @@ export function columnFoldable(collapsed: readonly GridColumn[], column: GridCol
     return true;
   }
   return CANONICAL_COLUMNS.some((other) => other !== column && !collapsed.includes(other));
+}
+
+/**
+ * 復元時の正規化 for 列折畳み (doc-7 §5.1): the saved set as this screen may hold it.
+ *
+ * **A set naming all four 正準ステータス列 comes back empty**, keeping the 未分類列 if it was in there.
+ * doc-7 §2.2 forbids collapsing every column and [`columnFoldable`] enforces it, so such a set was not
+ * produced by the screen — it is a hand-edited アプリ設定ファイル (doc-3 §2.2) or a build without the
+ * rule. There is no rule for approximating which three of the four the user meant, so the value falls
+ * to the one state where every column is readable. Reducing it to three instead would restore a
+ * choice nobody made.
+ *
+ * Duplicates and order are the caller's: the set is compared and drawn by membership, and
+ * `toggleColumn` builds it from presses.
+ */
+export function restoredColumns(saved: readonly GridColumn[]): GridColumn[] {
+  const allCanonicalCollapsed = CANONICAL_COLUMNS.every((column) => saved.includes(column));
+  if (!allCanonicalCollapsed) {
+    return [...saved];
+  }
+  return saved.filter((column) => column === "unmapped");
+}
+
+/**
+ * 復元時の正規化 for 行折畳み and 行非表示 (doc-7 §5.1): the saved slugs the ledger still has, in the
+ * saved order.
+ *
+ * **A slug the ledger no longer names is dropped.** doc-7 §5.1 has 登録解除 drop that row's two values
+ * as the user asked, and this keeps the same outcome when the two files disagree for any other reason —
+ * the アプリ設定ファイル is hand-editable and the ledger changes by its own route. Held here rather than
+ * at the boundary because it is the ledger that decides, and `settings.rs` never reads it.
+ */
+export function restoredRows(saved: readonly string[], slugs: readonly string[]): string[] {
+  return saved.filter((slug) => slugs.includes(slug));
 }
 
 // --- 総件数 (doc-7 §2.1) -----------------------------------------------------------------------
