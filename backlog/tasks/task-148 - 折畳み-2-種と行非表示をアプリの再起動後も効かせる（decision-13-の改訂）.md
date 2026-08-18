@@ -1,10 +1,10 @@
 ---
 id: TASK-148
 title: 折畳み 2 種と行非表示をアプリの再起動後も効かせる（decision-13 の改訂）
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-11 11:19'
-updated_date: '2026-08-18 10:16'
+updated_date: '2026-08-18 10:53'
 labels:
   - ui
   - 'kind:feature'
