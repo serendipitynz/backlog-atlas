@@ -16,7 +16,7 @@ lockfile mentions and no inventory built from one would find. The generated
 inventory does not replace it; both travel in one file so neither can ship
 without the other.
 
-Sections 2 and 3 list the 120 npm packages and 352 cargo crates resolved for a
+Sections 2 and 3 list the 120 npm packages and 353 cargo crates resolved for a
 release build. The npm side is the production dependency set — the build-only
 half of the tree (the bundler, the compiler, the test runner) reaches no bundle.
 The cargo side is the union over the five target triples the release workflow
@@ -33,7 +33,7 @@ Generated from these inputs (a digest that no longer matches means this file
 is stale — regenerate it with the command at the top of the generator):
   scripts/generate-third-party-licenses.mjs       sha256 079876625b911dce93dd84e8c7fcf66adb7347ea3f4b8a8f258948c24383ab06
   pnpm-lock.yaml                                  sha256 948d2592104f09ac83c5f659ff938e20ef820c8928e6546129fec5846a9a4e0c
-  src-tauri/Cargo.lock                            sha256 410895b389045d5ba54f6701328e04224b33bce0a3f32340d19177b238968243
+  src-tauri/Cargo.lock                            sha256 081ba63d0012f44175be8fd071cdc9946002e57bb4cb5fd1ef1f917c57327e05
   THIRD-PARTY-NOTICES.md                          sha256 622dc24de844b684d63eee93e654819af4114709340a9ac0c201d3fe776f3f9b
   scripts/spdx/Apache-2.0.txt                     sha256 074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff
   scripts/spdx/BSD-3-Clause.txt                   sha256 5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d
@@ -312,7 +312,7 @@ SECTION 2 — NPM PACKAGES (120)
   uuid 14.0.1                      MIT
 
 ==============================================================================
-SECTION 3 — CARGO CRATES (352)
+SECTION 3 — CARGO CRATES (353)
 ==============================================================================
 
   adler2 2.0.1                        0BSD OR MIT OR Apache-2.0
@@ -575,6 +575,7 @@ SECTION 3 — CARGO CRATES (352)
   tauri-plugin 2.6.3                  Apache-2.0 OR MIT
   tauri-plugin-dialog 2.7.2           Apache-2.0 OR MIT
   tauri-plugin-fs 2.5.1               Apache-2.0 OR MIT
+  tauri-plugin-window-state 2.4.1     Apache-2.0 OR MIT
   tauri-runtime 2.11.3                Apache-2.0 OR MIT
   tauri-runtime-wry 2.11.4            Apache-2.0 OR MIT
   tauri-utils 2.9.3                   Apache-2.0 OR MIT
@@ -6514,7 +6515,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-TEXT 61 of 245 — carried by 18 package(s):
+TEXT 61 of 245 — carried by 19 package(s):
   cargo fdeflate 0.3.7 (LICENSE-APACHE)
   cargo miniz_oxide 0.8.9 (LICENSE-APACHE.md)
   cargo num-conv 0.2.2 (LICENSE-Apache)
@@ -6526,6 +6527,7 @@ TEXT 61 of 245 — carried by 18 package(s):
   cargo tauri-macros 2.6.3 (LICENSE_APACHE-2.0)
   cargo tauri-plugin-dialog 2.7.2 (LICENSE_APACHE-2.0)
   cargo tauri-plugin-fs 2.5.1 (LICENSE_APACHE-2.0)
+  cargo tauri-plugin-window-state 2.4.1 (LICENSE_APACHE-2.0)
   cargo tauri-runtime 2.11.3 (LICENSE_APACHE-2.0)
   cargo tauri-runtime-wry 2.11.4 (LICENSE_APACHE-2.0)
   cargo tauri-utils 2.9.3 (LICENSE_APACHE-2.0)
@@ -12026,13 +12028,14 @@ the License, but only in their entirety and only with respect to the Combined
 Software.
 
 ------------------------------------------------------------------------------
-TEXT 154 of 245 — carried by 10 package(s):
+TEXT 154 of 245 — carried by 11 package(s):
   cargo tauri 2.11.5 (LICENSE_MIT)
   cargo tauri-build 2.6.3 (LICENSE_MIT)
   cargo tauri-codegen 2.6.3 (LICENSE_MIT)
   cargo tauri-macros 2.6.3 (LICENSE_MIT)
   cargo tauri-plugin-dialog 2.7.2 (LICENSE_MIT)
   cargo tauri-plugin-fs 2.5.1 (LICENSE_MIT)
+  cargo tauri-plugin-window-state 2.4.1 (LICENSE_MIT)
   cargo tauri-runtime 2.11.3 (LICENSE_MIT)
   cargo tauri-runtime-wry 2.11.4 (LICENSE_MIT)
   cargo tauri-utils 2.9.3 (LICENSE_MIT)
@@ -12062,9 +12065,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-TEXT 155 of 245 — carried by 3 package(s):
+TEXT 155 of 245 — carried by 4 package(s):
   cargo tauri-plugin-dialog 2.7.2 (LICENSE.spdx)
   cargo tauri-plugin-fs 2.5.1 (LICENSE.spdx)
+  cargo tauri-plugin-window-state 2.4.1 (LICENSE.spdx)
   npm @tauri-apps/plugin-dialog 2.7.2 (LICENSE.spdx)
 ------------------------------------------------------------------------------
 

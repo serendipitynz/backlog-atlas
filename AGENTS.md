@@ -185,6 +185,25 @@ Move the state through Backlog CLI calls, like every other task update.
   finding no caller must not conclude it is unused; the app's window is what reads it. **Do not
   answer a future route by re-registering the drag-drop handler** — that would take 列間ドロップ back
   out on Windows to close something the gate already closes on all three.
+- **窓の引継ぎ状態 lives in a third file, not in the アプリ設定ファイル** (decision-38,
+  `src-tauri/src/window_state.rs`). `tauri-plugin-window-state` carries the window's size and whether
+  it was maximized in `app_config_dir()/.window-state.json`, beside `projects.toml` and
+  `settings.toml`. **Do not move it into the アプリ設定ファイル**: that file degrades to read-only on an
+  unknown higher `schema_version` and then refuses every save, so the window size would stop
+  persisting for exactly the reason decision-13 refused to put settings in the ledger file. The other
+  four flags the plugin offers are deliberately unused — widening the set is a decision-38 §3 revision.
+- **Three things about it will look like defects and are not.** `.window-state.json` does not appear in
+  the 設定モーダル's ファイルの場所 区画, because that 区画 names what a user hand-edits (doc-3 §2.1). It
+  does not go through 一時ファイル置換 either — the plugin writes it with `std::fs::write`, and a torn
+  write costs one remembered size rather than the readability of anything (decision-38 §5). And its
+  `schema_version` is absent because the plugin's format is the plugin's.
+- **最小寸法の下限適用 watches `WindowEvent::Resized`, and a one-shot read in its place does nothing.**
+  Neither the plugin nor macOS compares a restored size with `minWidth`/`minHeight` — measured on
+  2026-08-18, a record of 400×300 brought the window up at 400×300 — so Atlas raises it. **The read has
+  to be taken on the resize**: when Atlas's hook runs after the plugin's, `inner_size()` still reports
+  the pre-restore size, because `set_size` is not reflected until the OS has resized and emitted the
+  event. **The one-shot read beside the listener is not redundant** — Windows sends `WM_SIZE`
+  synchronously, so there the event can arrive before this listener exists.
 
 ## Coding style
 
