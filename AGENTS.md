@@ -185,6 +185,19 @@ Move the state through Backlog CLI calls, like every other task update.
   finding no caller must not conclude it is unused; the app's window is what reads it. **Do not
   answer a future route by re-registering the drag-drop handler** — that would take 列間ドロップ back
   out on Windows to close something the gate already closes on all three.
+- **アプリ設定ファイル holds 列折畳み・行折畳み・行非表示, and decision-13's 「アプリ設定を持たない値」 no
+  longer says otherwise** (decision-13 の 再起動をまたぐ保持の改訂, 2026-08-18). The 1 sentence that had
+  excluded the three named 行非表示's 「件数も読めない」 property, which the folds do not have, and for
+  行非表示 itself the screen that sentence assumed changed in 2026-08-09 (doc-7 §2.1). **On Linux, a
+  restored 行非表示 is stated on screen by nothing until the menu is opened** — 総件数 does not reach that
+  platform (decision-31 の Linux の改訂) — and that was accepted rather than overlooked. **Do not answer it
+  by putting the 行非表示 band back**: doc-11 §4's ⑥ was removed for a reason that still holds.
+- **Adding an アプリ設定 item means three edits, and two of them are silent when missed.** Raise
+  `KNOWN_SCHEMA_VERSION` (`src-tauri/src/settings.rs`), and pass the field through **both**
+  `mergeDraft` and `normalize` in `src/lib/settings.ts`: the 設定画面's save writes the file whole, so a
+  field missing from `mergeDraft` is deleted from disk, and `isDirty` reads `normalize`, so a field
+  missing there makes a change to it look like nothing to save. **Neither shows up in `pnpm run check`** —
+  the types are satisfied by the shorter list either way.
 - **窓の引継ぎ状態 lives in a third file, not in the アプリ設定ファイル** (decision-38,
   `src-tauri/src/window_state.rs`). `tauri-plugin-window-state` carries the window's size and whether
   it was maximized in `app_config_dir()/.window-state.json`, beside `projects.toml` and
