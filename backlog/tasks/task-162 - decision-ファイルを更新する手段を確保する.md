@@ -1,10 +1,10 @@
 ---
 id: TASK-162
 title: AGENTS の更新規則が decisions を覆っているかを確定する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 05:18'
-updated_date: '2026-08-18 20:20'
+updated_date: '2026-08-18 20:38'
 labels:
   - docs
   - release
