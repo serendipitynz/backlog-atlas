@@ -1,10 +1,10 @@
 ---
 id: TASK-166
 title: 決定事項の status の見せ方を決める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 08:34'
-updated_date: '2026-08-18 12:19'
+updated_date: '2026-08-18 20:04'
 labels:
   - ui
   - project-detail
