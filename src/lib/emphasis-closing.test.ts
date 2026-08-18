@@ -104,6 +104,10 @@ const PUNCTUATION = /[\p{P}\p{S}]/u;
 /** Same-length stand-in for masked code. Not a character any managed body contains. */
 const MASK = String.fromCharCode(1);
 
+function blank(text: string): string {
+  return text.replace(/[^\n]/g, MASK);
+}
+
 function isWhitespace(character: string | undefined): boolean {
   return character === undefined || WHITESPACE.test(character);
 }
@@ -148,11 +152,15 @@ function canClose(body: string, delimiter: Delimiter): boolean {
  * indented (four-space) block count: `backlog/tasks/` already holds two, and a glob inside one would
  * otherwise add a delimiter markdown-it never saw. Because pairing is positional, one extra delimiter
  * flips the open/close role of every later one in that file, so the cost of missing a block is a long
- * list of hits pointing at delimiters that are not wrong.
+ * list of hits pointing at delimiters that are not wrong. **A thematic break goes the same way**: a line
+ * of `***` is an `hr`, not emphasis, and reading it as a delimiter would make that body's count odd.
  *
- * Inline spans still need a regex — an inline token carries no source offset — and a match spanning a
- * blank line is left alone: a code span cannot cross a block boundary, so two stray backticks in
- * separate paragraphs are not one span, and masking between them would swallow real delimiters.
+ * Inline spans still need a regex — an inline token carries no source offset — and a candidate spanning
+ * a blank line is not one span, because a code span cannot cross a block boundary. **Rejecting it has to
+ * resume inside it rather than step over it**: returning the match unchanged from a `replace` callback
+ * still consumes it, so a stray backtick would pair with a later real span's opening backtick, and that
+ * span's own asterisks would then go unmasked — the very cost the paragraph above describes. Scanning
+ * resumes just past the rejected candidate's opening run, so the backticks after it can still pair.
  */
 function maskCode(body: string): string {
   const lines = body.split("\n");
@@ -160,19 +168,33 @@ function maskCode(body: string): string {
   for (const line of lines) {
     starts.push(starts[starts.length - 1] + line.length + 1);
   }
-  const blank = (text: string) => text.replace(/[^\n]/g, MASK);
   let masked = body;
   for (const token of md.parse(body, {})) {
-    if ((token.type !== "fence" && token.type !== "code_block") || !token.map) {
+    if (!token.map || (token.type !== "fence" && token.type !== "code_block" && token.type !== "hr")) {
       continue;
     }
     const from = Math.min(starts[token.map[0]], body.length);
     const to = Math.min(starts[token.map[1]], body.length);
     masked = masked.slice(0, from) + blank(masked.slice(from, to)) + masked.slice(to);
   }
-  return masked.replace(/(`+)(?:[^`]|(?!\1)`)*?\1/g, (span) =>
-    /\n[ \t]*\n/.test(span) ? span : blank(span),
-  );
+  const span = /(`+)(?:[^`]|(?!\1)`)*?\1/g;
+  let from = 0;
+  while (true) {
+    span.lastIndex = from;
+    const found = span.exec(masked);
+    if (!found) {
+      return masked;
+    }
+    if (/\n[ \t]*\n/.test(found[0])) {
+      from = found.index + found[1].length;
+      continue;
+    }
+    masked =
+      masked.slice(0, found.index) +
+      blank(found[0]) +
+      masked.slice(found.index + found[0].length);
+    from = found.index + found[0].length;
+  }
 }
 
 /**
@@ -238,14 +260,26 @@ function strip(html: string): string {
     .replace(/\s+/g, "");
 }
 
-/** The bold spans the author wrote, read off the source pairing rather than off the render. */
+/**
+ * The bold spans the author wrote, read off the source pairing rather than off the render.
+ *
+ * **The span begins and ends outside the runs, not two characters into them.** In `***強調***` the outer
+ * asterisk is the italic and the inner pair the bold, so the content starts after the whole opening run
+ * and stops at the whole closing one; slicing from `at + 2` instead kept the third asterisk and derived
+ * `*強調` where markdown-it bolds `強調`. For a run of two the two readings are the same, which is why
+ * that bug survived until a run of three was read at all.
+ */
 function intendedSpans(body: string): string[] {
   const positions = delimiters(body);
   const spans: string[] = [];
   for (let i = 0; i + 1 < positions.length; i += 2) {
+    const opener = positions[i];
+    const closer = positions[i + 1];
     // A span inside a blockquote carries the continuation line's `>` in the raw slice; that belongs to
     // the quote, not to the span's text, so it comes off before the slice is rendered for comparison.
-    const raw = body.slice(positions[i].at + 2, positions[i + 1].at).replace(/\n[ \t]*>[ \t]?/g, "\n");
+    const raw = body
+      .slice(opener.runStart + opener.runLength, closer.runStart)
+      .replace(/\n[ \t]*>[ \t]?/g, "\n");
     spans.push(strip(md.renderInline(raw)));
   }
   return spans;
@@ -367,16 +401,24 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
    * What ties this file's bare renderer to the one the screen uses. `markdown.ts` configures markdown-it
    * and adds four rules; none of them touches the delimiter stack, so the two agree — and this is where
    * that stops being an assumption.
+   *
+   * **Image syntax comes out of the source first, on both sides.** `bodyImages` (doc-8 §9.5) emits the
+   * alt as text inside a span and never an `<img>`, so `strip` keeps the alt there and drops the whole
+   * `<img>` here — an image with a non-empty alt inside a bold run would be reported as a disagreement
+   * while both renderers were right. Removing it from the source rather than from the two outputs keeps
+   * the comparison symmetric, and it cannot hide an emphasis difference: whatever the removal does to
+   * pairing, it does to both renders identically. The assertions above still read the body unmodified.
    */
   it("agrees with the app's renderer about every bold run", () => {
     const disagreed: string[] = [];
     for (const [path, body] of everyBody()) {
-      const view = bodyView(body);
+      const withoutImages = body.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
+      const view = bodyView(withoutImages);
       if (view.kind !== "formatted") {
         disagreed.push(`${path}: the app renderer fell back to verbatim`);
         continue;
       }
-      const mine = renderedSpans(md.render(body));
+      const mine = renderedSpans(md.render(withoutImages));
       const theirs = renderedSpans(view.html);
       if (mine.join(" ") !== theirs.join(" ")) {
         disagreed.push(`${path}: ${mine.length} bold runs here against ${theirs.length} in the app`);
@@ -444,6 +486,19 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
     expect(delimiters(legal)).toHaveLength(2);
     expect(offendingDelimiters(legal)).toEqual([]);
     expect(leftoverAsterisks(legal)).toEqual([]);
+    // The assertions the first version of this planted case stopped short of, which is how it passed
+    // while the span assertion would still have reported the file. Both now agree on 強調.
+    expect(intendedSpans(legal)).toEqual(["強調"]);
+    expect(renderedSpans(md.render(legal))).toEqual(intendedSpans(legal));
+  });
+
+  /**
+   * A line of `***` is a thematic break, not emphasis. Read as a delimiter it would be a lone one, which
+   * makes that body's delimiter count odd and fires the even-count assertion on legal markup.
+   */
+  it("reads no delimiter in a thematic break", () => {
+    const legal = ["前の段落。", "", "***", "", "次の段落。"].join("\n");
+    expect(delimiters(legal)).toEqual([]);
   });
 
   it("reads no delimiter inside a code span", () => {
@@ -476,5 +531,17 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
     );
     expect(offendingDelimiters(planted)).toHaveLength(1);
     expect(leftoverAsterisks(planted)).toHaveLength(1);
+  });
+
+  /**
+   * The other half of that: rejecting the blank-line-spanning candidate must not consume it. An unpaired
+   * backtick pairs with the opening backtick of a later real code span, and stepping over the whole
+   * candidate left that span's own asterisks unmasked — one delimiter markdown-it never saw, which flips
+   * the open/close role of every later one in the file.
+   */
+  it("still masks a real code span that follows an unpaired backtick", () => {
+    const planted = ["値は ` で囲む。", "", "本文の途中。", "", "走査は `src/**/*.md` を見る。"].join("\n");
+    expect(delimiters(planted)).toEqual([]);
+    expect(offendingDelimiters(planted)).toEqual([]);
   });
 });
