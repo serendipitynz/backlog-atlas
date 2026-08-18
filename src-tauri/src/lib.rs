@@ -36,6 +36,10 @@ pub mod history;
 // placement is defined by them.
 pub mod interpret;
 mod ledger;
+// Public: 窓の航行ゲート (decision-37). Not a layer — one predicate and the origin it compares
+// against, held apart from `run` because a rule about which navigations may proceed is worth testing
+// without a Tauri app around it, and because the reasoning it carries is longer than the call site.
+pub mod navigation;
 // Public alongside the domain model: the read layer is the other half of the read-side API the
 // command layer will call, and its scan-source boundary (decision-3) is meant to be
 // implementable from outside this module.
@@ -73,6 +77,16 @@ mod wire_fixtures;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 窓の航行ゲート (decision-37). A plugin rather than `WebviewWindowBuilder::on_navigation`
+        // because the window is declared in `tauri.conf.json`: tauri's own navigation gate calls every
+        // plugin's hook whichever way the window was created, so closing the route here costs nothing
+        // that moving window creation into Rust would have cost.
+        .plugin({
+            let origin = navigation::WindowOrigin::default();
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("navigation-gate")
+                .on_navigation(move |_webview, url| origin.admit(url))
+                .build()
+        })
         // The OS folder picker for 台帳への登録 (doc-3 §4.1). Only the dialog is the plugin's: the
         // chosen path comes back as a string and is registered through the ledger commands, so the
         // ledger stays the only thing Atlas writes (doc-3 §2.1).
