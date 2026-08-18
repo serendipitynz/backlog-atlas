@@ -1,10 +1,10 @@
 ---
 id: TASK-161
 title: 既存の backlog 本文で閉じていない太字強調を直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 05:03'
-updated_date: '2026-08-18 21:41'
+updated_date: '2026-08-18 23:23'
 labels:
   - docs
   - 'kind:chore'
