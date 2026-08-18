@@ -74,7 +74,8 @@ The value itself is decision-7's; these five rules are about its expression.
   sentence doing the work. A literal there would need editing on every bump while buying
   the reader nothing: the install command they are given fetches the latest. **decision-27 §7
   is the source and this bullet is a copy.** It binds the Backlog CLI's version alone — the
-  Atlas release the 更新 section names is a different value, and §7 does not reach it.
+  Atlas release named in the READMEs' own Updating (更新) section is a different value, and §7
+  does not reach it.
 
 ## Where a claim's origin is written
 
