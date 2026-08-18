@@ -2677,7 +2677,7 @@
                         >
                           <span class="card-head">
                             <span class="id">{decision.id}</span>
-                            <span class="meta">{decision.status ?? t().projectDetail.statusUnset}</span>
+                            <span class="meta status">{decision.status ?? t().projectDetail.statusUnset}</span>
                             {#if reasons.length > 0}
                               <!-- 不整合印 (decision-22, decision-24): one ⚠️, no family name. The
                                    lines themselves are read in the 閲覧ヘッダ, the place doc-11 §2.4
@@ -2733,7 +2733,7 @@
                     </div>
                     <p class="meta-line">
                       <span class="id">{decision.id}</span>
-                      <span>{decision.status ?? t().projectDetail.statusUnset}</span>
+                      <span class="status">{decision.status ?? t().projectDetail.statusUnset}</span>
                       <span>{decision.date ?? t().projectDetail.dateUnset}</span>
                     </p>
                     <!-- 表示パス (doc-10 §5): which file this is, project-relative. -->
@@ -3763,6 +3763,24 @@
     }
   }
 
+
+  // 決定事項の status は 中立の情報 の 3 つ目で、輪郭のみ・`--muted`・角丸 3px を取る (doc-11 §3。
+  // `TaskCard.svelte` の 保存区分印 と 未分類区画の原文 status が同じ姿である)。族の色も優先度色も
+  // 与えないのは、この値に台帳の側が宣言する集合が無いためで、上流 browser が 4 語を色で描くことは
+  // その理由を変えない — doc-11 §3 がその判断を持つ。**同じ 一覧列 に並ぶ 文書の `type` と
+  // マイルストーンの件数は素のテキストのまま**なので、`.card-head .meta` そのものではなくこの class に
+  // 付ける。一覧のカードと閲覧ヘッダで同じ姿になるよう、規則はこの 1 か所だけに置く。
+  .status {
+    padding: 0 0.3rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    // 語を割ってよい。frontmatter の status は任意の文字列で、`decision create -s` は長さを見ない —
+    // 42 字の 1 語を差し替えて測ると、札は一覧列の右端を 2.25px 越えて枠が切れた (素のテキストだった
+    // ときは 10.28px 内側に収まっていた。差は札の左右余白と枠の 12.53px である)。`.card-title` が
+    // 同じ列で同じ理由から取っている手当てと同じものを取る。
+    overflow-wrap: anywhere;
+    color: var(--muted);
+  }
 
   // 整形表示 (doc-8 §9) is drawn by a shared component, so what this screen keeps is only the gap to the
   // 閲覧ヘッダ above it — the 0.5rem the old `.read-body` carried in its own margin (doc-11 §2.2 の余白段階).
