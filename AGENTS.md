@@ -177,6 +177,14 @@ Move the state through Backlog CLI calls, like every other task update.
   on Windows while still working on the machine that changed it. **Atlas consumes no OS drag-drop
   event anywhere**, so nothing else reads this — that is why turning it off cost nothing, and it
   is also why a reader finding no consumer must not conclude the line is unused.
+- **What clearing that flag opened, the 窓の航行ゲート closes** (decision-37, `src-tauri/src/navigation.rs`).
+  With no drag-drop handler registered, each engine's own default drop handling runs, and all three
+  treat a dropped URL or file as something to load — measured on macOS on 2026-08-18, where three of
+  six operations navigated the window away from Atlas. The gate is a plugin whose `on_navigation`
+  admits only Atlas's own origin. **It has no commands and shows nothing on screen**, so a reader
+  finding no caller must not conclude it is unused; the app's window is what reads it. **Do not
+  answer a future route by re-registering the drag-drop handler** — that would take 列間ドロップ back
+  out on Windows to close something the gate already closes on all three.
 
 ## Coding style
 
