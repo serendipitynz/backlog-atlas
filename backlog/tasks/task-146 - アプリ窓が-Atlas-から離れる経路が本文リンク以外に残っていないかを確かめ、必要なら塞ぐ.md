@@ -1,10 +1,10 @@
 ---
 id: TASK-146
 title: アプリ窓が Atlas から離れる経路が本文リンク以外に残っていないかを確かめ、必要なら塞ぐ
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-11 10:40'
-updated_date: '2026-08-18 01:27'
+updated_date: '2026-08-18 02:45'
 labels:
   - ui
   - 'kind:research'
