@@ -68,6 +68,11 @@ pub mod sync;
 // working directory, and degrades to read-only when no supported CLI is present. Called by the
 // command layer through `sync`, which wraps every launch in the doc-9 §4 pre-update check.
 pub mod update;
+// Public: 窓の引継ぎ状態 (decision-38). Not a layer — the 導入範囲 the dependency gate fixed, plus the
+// one correction Atlas makes to a restored size, held apart from `run` because 最小寸法の下限適用 is a
+// rule worth testing without a Tauri app around it and because the reasoning behind it is longer than
+// the call site.
+pub mod window_state;
 // Test-only: the recorded wire payloads `src/lib/wire.ts` mirrors. Not a layer — it holds no logic,
 // only the samples whose serialized form is committed under `wire-fixtures/` for the frontend test to
 // read back (TASK-91).
@@ -91,6 +96,19 @@ pub fn run() {
         // chosen path comes back as a string and is registered through the ledger commands, so the
         // ledger stays the only thing Atlas writes (doc-3 §2.1).
         .plugin(tauri_plugin_dialog::init())
+        // 窓の引継ぎ状態 (decision-38): the window's size and whether it was maximized, kept outside
+        // the アプリ設定ファイル so that file's read-only degrade cannot also freeze them. What the two
+        // flags are and why the other four are left out is `window_state::CARRIED`.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(window_state::CARRIED)
+                .build(),
+        )
+        // 最小寸法の下限適用 (decision-38 §4): neither the plugin above nor macOS compares a restored
+        // size with the window's minimum, so a 窓状態ファイル holding less than 640x480 would otherwise
+        // be honoured. Order-independent of the line above — it watches the resize rather than reading
+        // the size once, which is the half of `window_state::plugin` worth reading before moving it.
+        .plugin(window_state::plugin())
         // The command boundary's own state: the open roots and their running file watches. Managed
         // here because a Tauri command reaches it through `State`, and it must outlive any one call.
         .manage(commands::AtlasState::default())

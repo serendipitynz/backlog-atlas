@@ -57,6 +57,25 @@ notify = "8"
 # ledger commands, which keeps 台帳ファイルの読み書きは Atlas が行う (doc-3 §2.1) intact.
 # Approved as a new production dependency per the AGENTS.md introduction gate before adding.
 tauri-plugin-dialog = "2"
+# tauri-plugin-window-state carries 窓の引継ぎ状態 across a restart (decision-38): the window's size
+# and whether it was maximized. Official Tauri plugin, so it adds no new vendor, and it adds exactly
+# one crate to the build — measured before adding, with `cargo metadata --filter-platform` over the
+# five release triples: the union goes from 352 crates to 353, and its own six dependencies (serde,
+# serde_json, tauri, log, thiserror, bitflags, plus tauri-plugin for the build script) were all in
+# Cargo.lock already. Its licence is `Apache-2.0 OR MIT` and it publishes both texts, so
+# scripts/spdx/ gains nothing either.
+#
+# Chosen over holding the two values in the アプリ設定ファイル (decision-13), which was the other
+# candidate the dependency gate weighed: that file degrades to read-only on an unknown higher
+# `schema_version` and then refuses every save, so the window size would stop persisting for exactly
+# the reason decision-13 refused to put settings in the ledger file. The rest of the comparison, and
+# what a torn write of the plugin's own file costs, is decision-38.
+#
+# Scope is the two `StateFlags` that `window_state::CARRIED` names, and the restore they drive. The
+# plugin's three JS commands stay unused and no capability grants them, so nothing in the frontend
+# reaches it. Approved as a new production dependency per the AGENTS.md introduction gate before
+# adding.
+tauri-plugin-window-state = "2"
 
 # windows-sys binds `ShellExecuteW` for OS 関連付け起動 on Windows (doc-8 §7, TASK-44). The method has
 # to reach the shell *API* without a command interpreter: `cmd /c start` re-parses its command tail, so
