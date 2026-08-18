@@ -72,9 +72,9 @@ The value itself is decision-7's; these five rules are about its expression.
   release is fine and no upper bound is fixed, and that Atlas checks at startup and names
   the version it needs when the reader's is short of it — which is §2's one allowed screen
   sentence doing the work. A literal there would need editing on every bump while buying
-  the reader nothing: the install command they are given fetches the latest. **This layer
-  is not in decision-27**, which stops at code, screen text, docs and 実測註 — TASK-162
-  writes it in there, and until it does, this bullet is where the rule lives.
+  the reader nothing: the install command they are given fetches the latest. **decision-27 §7
+  is the source and this bullet is a copy.** It binds the Backlog CLI's version alone — the
+  Atlas release the 更新 section names is a different value, and §7 does not reach it.
 
 ## Where a claim's origin is written
 
