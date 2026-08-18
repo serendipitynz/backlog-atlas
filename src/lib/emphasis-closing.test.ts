@@ -13,7 +13,7 @@
  * **A fourth shape leaves no literal asterisk behind and so is invisible to the count above.** Where a
  * closer fails, the following opener can absorb it and the emphasis nests instead: `。**最も効いたのは**
  * 実測日付**の指摘` renders one bold run containing another, with no `**` in the output for a scan to
- * find. The tree carried exactly one (TASK-152's notes), and the second assertion below is what sees it —
+ * find. The tree carried exactly one (TASK-152's notes), and the span assertion below is what sees it —
  * which is why this file checks the spans and not only the asterisks.
  *
  * **What this holds is the rendering condition, and the rule's letter is wider.** «閉じる `**` の後に文が
@@ -22,7 +22,9 @@
  * such sites (measured 2026-08-19 over the three directories: 1,574 in tasks, 1,325 in docs, 555 in
  * decisions, plus 64 in the four prose files). Rewriting them is a different piece of work from this one,
  * so **a clean run here is not proof the rule's letter is met** — TASK-161's AC named the rendering count
- * and that is the boundary this file draws. Do not read the pass as covering the wider claim.
+ * and that is the boundary this file draws. Do not read the pass as covering the wider claim; TASK-194
+ * decides whether those 3,454 count as defects, and until it does the letter still binds newly written
+ * prose.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason
  * `third-party-licenses.test.ts` gives: `node:fs` would pull in `@types/node`, and the dependency budget
@@ -34,7 +36,15 @@
 
 import MarkdownIt from "markdown-it";
 import { describe, expect, it } from "vitest";
+import { bodyView } from "./markdown";
 
+/**
+ * A bare instance, where `markdown.ts` builds one with `html: false`, `linkify: true` and four custom
+ * rules. Emphasis pairing is the same under both — none of those rules touches the delimiter stack — but
+ * that is asserted rather than promised: "agrees with the app's renderer about every bold run" below
+ * renders each body through `bodyView` too and compares. So a change to `markdown.ts` that did move
+ * emphasis fails here instead of quietly leaving this file describing a renderer the app stopped using.
+ */
 const md = new MarkdownIt();
 
 const TASKS: Record<string, string> = import.meta.glob("../../backlog/tasks/*.md", {
@@ -67,11 +77,7 @@ const MILESTONES: Record<string, string> = import.meta.glob("../../backlog/miles
  * filed rather than by being edited.
  */
 const FILED: Record<string, string> = import.meta.glob(
-  [
-    "../../backlog/drafts/*.md",
-    "../../backlog/completed/*.md",
-    "../../backlog/archive/**/*.md",
-  ],
+  ["../../backlog/drafts/*.md", "../../backlog/completed/*.md", "../../backlog/archive/**/*.md"],
   { eager: true, query: "?raw", import: "default" },
 );
 
@@ -89,10 +95,14 @@ const SOURCES = [TASKS, DOCS, DECISIONS, MILESTONES, FILED, PROSE];
 /**
  * CommonMark's own two classes. Punctuation is `P` plus `S` rather than ASCII punctuation, because the
  * characters that break these bodies — `。`「」（）— are none of them ASCII, and an ASCII-only class would
- * pass every site this repository actually writes.
+ * pass every site this repository actually writes. Whitespace is `Zs` plus the five ASCII controls the
+ * spec names, and deliberately not `Zl`/`Zp`: the spec's list does not include them.
  */
-const WHITESPACE = /[\t\n\r\f\v\p{Zs}\u2028\u2029]/u;
+const WHITESPACE = /[ \t\n\v\f\r\p{Zs}]/u;
 const PUNCTUATION = /[\p{P}\p{S}]/u;
+
+/** Same-length stand-in for masked code. Not a character any managed body contains. */
+const MASK = String.fromCharCode(1);
 
 function isWhitespace(character: string | undefined): boolean {
   return character === undefined || WHITESPACE.test(character);
@@ -102,20 +112,28 @@ function isPunctuation(character: string | undefined): boolean {
   return character !== undefined && PUNCTUATION.test(character);
 }
 
-/** CommonMark left-flanking, over a delimiter occupying [at, at + 2). */
-function canOpen(body: string, at: number): boolean {
-  const before = body[at - 1];
-  const after = body[at + 2];
+/**
+ * One `**` inside a run of asterisks. `at` is where those two characters sit — the boundary a bold span
+ * starts or ends at — while `runStart`/`runLength` describe the whole run, which is what flanking is
+ * judged on: markdown-it takes a maximal sequence of asterisks as one delimiter run, so the characters
+ * that decide whether it can open or close are the ones outside the run, never the asterisks beside it.
+ */
+type Delimiter = { at: number; runStart: number; runLength: number };
+
+/** CommonMark left-flanking, judged on the run the delimiter belongs to. */
+function canOpen(body: string, delimiter: Delimiter): boolean {
+  const before = body[delimiter.runStart - 1];
+  const after = body[delimiter.runStart + delimiter.runLength];
   if (isWhitespace(after)) {
     return false;
   }
   return !isPunctuation(after) || isWhitespace(before) || isPunctuation(before);
 }
 
-/** CommonMark right-flanking, over a delimiter occupying [at, at + 2). */
-function canClose(body: string, at: number): boolean {
-  const before = body[at - 1];
-  const after = body[at + 2];
+/** CommonMark right-flanking, judged on the run the delimiter belongs to. */
+function canClose(body: string, delimiter: Delimiter): boolean {
+  const before = body[delimiter.runStart - 1];
+  const after = body[delimiter.runStart + delimiter.runLength];
   if (isWhitespace(before)) {
     return false;
   }
@@ -123,56 +141,71 @@ function canClose(body: string, at: number): boolean {
 }
 
 /**
- * Code replaced by same-length placeholders, so its asterisks stop counting while every offset outside it
- * stays where it was. `src/**` in a path is the form that makes this necessary.
+ * Code replaced by same-length stand-ins, so its asterisks stop counting while every offset outside it
+ * stays where it was. A `src` glob written into prose is the form that makes this necessary.
+ *
+ * **Blocks are masked from markdown-it's own tokens rather than by a regex**, which is what makes an
+ * indented (four-space) block count: `backlog/tasks/` already holds two, and a glob inside one would
+ * otherwise add a delimiter markdown-it never saw. Because pairing is positional, one extra delimiter
+ * flips the open/close role of every later one in that file, so the cost of missing a block is a long
+ * list of hits pointing at delimiters that are not wrong.
+ *
+ * Inline spans still need a regex — an inline token carries no source offset — and a match spanning a
+ * blank line is left alone: a code span cannot cross a block boundary, so two stray backticks in
+ * separate paragraphs are not one span, and masking between them would swallow real delimiters.
  */
 function maskCode(body: string): string {
-  const blank = (matched: string) => "\u0001".repeat(matched.length);
-  return body
-    .replace(/^ {0,3}(```+|~~~+)[\s\S]*?^ {0,3}\1[^\n]*$/gm, blank)
-    .replace(/(`+)(?:[^`]|(?!\1)`)*?\1/g, blank);
-}
-
-function bodyOf(source: string): string {
-  if (!source.startsWith("---\n")) {
-    return source;
+  const lines = body.split("\n");
+  const starts = [0];
+  for (const line of lines) {
+    starts.push(starts[starts.length - 1] + line.length + 1);
   }
-  const end = source.indexOf("\n---\n", 3);
-  if (end === -1) {
-    return source;
+  const blank = (text: string) => text.replace(/[^\n]/g, MASK);
+  let masked = body;
+  for (const token of md.parse(body, {})) {
+    if ((token.type !== "fence" && token.type !== "code_block") || !token.map) {
+      continue;
+    }
+    const from = Math.min(starts[token.map[0]], body.length);
+    const to = Math.min(starts[token.map[1]], body.length);
+    masked = masked.slice(0, from) + blank(masked.slice(from, to)) + masked.slice(to);
   }
-  return source.slice(end + 5);
+  return masked.replace(/(`+)(?:[^`]|(?!\1)`)*?\1/g, (span) =>
+    /\n[ \t]*\n/.test(span) ? span : blank(span),
+  );
 }
 
 /**
- * Every delimiter in a body, in source order, with a run of four read as a closer and an opener that have
- * collided. Pairing is positional — the first opens, the second closes — because that is what the author
- * wrote. Asking markdown-it which run pairs with which would only report the damage, which is the whole
- * point: the two answers are compared below, and a disagreement is the defect.
+ * Every delimiter in a body, in source order. Pairing is positional — the first opens, the second closes
+ * — because that is what the author wrote. Asking markdown-it which run pairs with which would only
+ * report the damage, which is the whole point: the two answers are compared below, and a disagreement is
+ * the defect.
+ *
+ * A run of any length contributes the `**` pairs it holds, so `***強調***` (legal CommonMark: bold inside
+ * italic) and a longer run are read rather than refused. Pairing runs over the whole body rather than per
+ * block: a table cell's inline token carries no source map, so a per-block scheme would silently skip
+ * every cell, and alternation across a block boundary is harmless while each block holds an even count.
+ * The even-count and span assertions are what make that assumption fail loudly if one ever does not.
  */
-function delimiters(body: string): number[] {
+function delimiters(body: string): Delimiter[] {
   const masked = maskCode(body);
-  const found: number[] = [];
+  const found: Delimiter[] = [];
   for (const run of masked.matchAll(/\*{2,}/g)) {
-    const at = run.index;
-    if (run[0].length === 2) {
-      found.push(at);
-    } else if (run[0].length === 4) {
-      found.push(at, at + 2);
-    } else {
-      throw new Error(`a run of ${run[0].length} asterisks at ${at} is neither one delimiter nor two`);
+    const runStart = run.index;
+    const runLength = run[0].length;
+    for (let offset = 0; offset + 2 <= runLength; offset += 2) {
+      found.push({ at: runStart + offset, runStart, runLength });
     }
   }
   return found;
 }
 
 function offendingDelimiters(body: string): string[] {
-  const positions = delimiters(body);
   const hits: string[] = [];
-  positions.forEach((at, index) => {
+  delimiters(body).forEach((delimiter, index) => {
     const opens = index % 2 === 0;
-    if (opens ? !canOpen(body, at) : !canClose(body, at)) {
-      hits.push(body.slice(Math.max(0, at - 24), at + 12).replace(/\n/g, "⏎"));
+    if (opens ? !canOpen(body, delimiter) : !canClose(body, delimiter)) {
+      hits.push(body.slice(Math.max(0, delimiter.at - 24), delimiter.at + 12).replace(/\n/g, "⏎"));
     }
   });
   return hits;
@@ -211,19 +244,19 @@ function intendedSpans(body: string): string[] {
   const spans: string[] = [];
   for (let i = 0; i + 1 < positions.length; i += 2) {
     // A span inside a blockquote carries the continuation line's `>` in the raw slice; that belongs to
-    // the quote, not to the span, so it comes off before the slice is rendered for comparison.
-    const raw = body.slice(positions[i] + 2, positions[i + 1]).replace(/\n[ \t]*>[ \t]?/g, "\n");
+    // the quote, not to the span's text, so it comes off before the slice is rendered for comparison.
+    const raw = body.slice(positions[i].at + 2, positions[i + 1].at).replace(/\n[ \t]*>[ \t]?/g, "\n");
     spans.push(strip(md.renderInline(raw)));
   }
   return spans;
 }
 
-/** The bold spans markdown-it produced. A nested run contributes its outermost span and no more. */
-function renderedSpans(body: string): string[] {
+/** The bold spans a render produced. A nested run contributes its outermost span and no more. */
+function renderedSpans(html: string): string[] {
   const spans: string[] = [];
   let depth = 0;
   let buffer = "";
-  for (const piece of md.render(body).matchAll(/<strong>|<\/strong>|[^<]+|<[^>]*>/g)) {
+  for (const piece of html.matchAll(/<strong>|<\/strong>|[^<]+|<[^>]*>/g)) {
     const text = piece[0];
     if (text === "<strong>") {
       if (depth === 0) {
@@ -240,6 +273,17 @@ function renderedSpans(body: string): string[] {
     }
   }
   return spans;
+}
+
+function bodyOf(source: string): string {
+  if (!source.startsWith("---\n")) {
+    return source;
+  }
+  const end = source.indexOf("\n---\n", 3);
+  if (end === -1) {
+    return source;
+  }
+  return source.slice(end + 5);
 }
 
 function everyBody(): [string, string][] {
@@ -271,6 +315,17 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
     expect(Object.keys(DECISIONS).some((path) => path.includes("decision-30"))).toBe(true);
   });
 
+  /**
+   * Positional pairing needs an even count to mean anything: an odd one silently drops the last
+   * delimiter, and the span assertion would then compare a short list against a short list.
+   */
+  it("finds an even number of delimiters in every body", () => {
+    const odd = everyBody()
+      .filter(([, body]) => delimiters(body).length % 2 === 1)
+      .map(([path]) => path);
+    expect(odd).toEqual([]);
+  });
+
   it("leaves no delimiter that cannot open or close where it stands", () => {
     const found = everyBody().flatMap(([path, body]) =>
       offendingDelimiters(body).map((hit) => `${path}: ${hit}`),
@@ -294,7 +349,7 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
     const moved: string[] = [];
     for (const [path, body] of everyBody()) {
       const want = intendedSpans(body);
-      const got = renderedSpans(body);
+      const got = renderedSpans(md.render(body));
       if (want.length !== got.length) {
         moved.push(`${path}: ${want.length} delimited spans against ${got.length} rendered`);
         continue;
@@ -306,6 +361,28 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
       });
     }
     expect(moved).toEqual([]);
+  });
+
+  /**
+   * What ties this file's bare renderer to the one the screen uses. `markdown.ts` configures markdown-it
+   * and adds four rules; none of them touches the delimiter stack, so the two agree — and this is where
+   * that stops being an assumption.
+   */
+  it("agrees with the app's renderer about every bold run", () => {
+    const disagreed: string[] = [];
+    for (const [path, body] of everyBody()) {
+      const view = bodyView(body);
+      if (view.kind !== "formatted") {
+        disagreed.push(`${path}: the app renderer fell back to verbatim`);
+        continue;
+      }
+      const mine = renderedSpans(md.render(body));
+      const theirs = renderedSpans(view.html);
+      if (mine.join(" ") !== theirs.join(" ")) {
+        disagreed.push(`${path}: ${mine.length} bold runs here against ${theirs.length} in the app`);
+      }
+    }
+    expect(disagreed).toEqual([]);
   });
 
   /**
@@ -341,7 +418,7 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
     expect(leftoverAsterisks(planted)).toEqual([]);
     expect(offendingDelimiters(planted)).toHaveLength(1);
     expect(intendedSpans(planted)).toHaveLength(2);
-    expect(renderedSpans(planted)).toHaveLength(1);
+    expect(renderedSpans(md.render(planted))).toHaveLength(1);
   });
 
   /**
@@ -353,7 +430,20 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
     const legal = "**Ubuntu なら 24.04 以降**でビルドできる。";
     expect(offendingDelimiters(legal)).toEqual([]);
     expect(leftoverAsterisks(legal)).toEqual([]);
-    expect(renderedSpans(legal)).toEqual(intendedSpans(legal));
+    expect(renderedSpans(md.render(legal))).toEqual(intendedSpans(legal));
+  });
+
+  /**
+   * A run of three is bold inside italic, legal CommonMark, and breaks none of the rules above. It is
+   * planted because reading runs by the `**` pairs they hold replaced a version that threw on any run
+   * other than two or four — and a throw escaping the scan would have reported a character offset with
+   * no path, where every assertion here reports the file.
+   */
+  it("reads a run of three as the bold pair it holds", () => {
+    const legal = "この規則は ***強調*** で書く。";
+    expect(delimiters(legal)).toHaveLength(2);
+    expect(offendingDelimiters(legal)).toEqual([]);
+    expect(leftoverAsterisks(legal)).toEqual([]);
   });
 
   it("reads no delimiter inside a code span", () => {
@@ -365,5 +455,26 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
   it("reads no delimiter inside a fence", () => {
     const legal = ["```", "grep -o '\\*\\*' **/*.md", "```"].join("\n");
     expect(delimiters(legal)).toEqual([]);
+  });
+
+  /**
+   * An indented block, which a fence-only mask would have let through. `backlog/tasks/` already holds
+   * two, so this is the form the tree can actually grow, not an exotic one.
+   */
+  it("reads no delimiter inside an indented code block", () => {
+    const legal = ["走査の対象:", "", "    grep -o '**' src/**/*.md", "", "以上。"].join("\n");
+    expect(delimiters(legal)).toEqual([]);
+  });
+
+  /**
+   * Two stray backticks in separate paragraphs are not one code span, so the text between them keeps its
+   * delimiters. Masking across the blank line would swallow the broken closer this planted body carries.
+   */
+  it("does not mask across a blank line between two stray backticks", () => {
+    const planted = ["値は ` で囲む。", "", "**これは閉じない。**次の文", "", "終端は ` である。"].join(
+      "\n",
+    );
+    expect(offendingDelimiters(planted)).toHaveLength(1);
+    expect(leftoverAsterisks(planted)).toHaveLength(1);
   });
 });
