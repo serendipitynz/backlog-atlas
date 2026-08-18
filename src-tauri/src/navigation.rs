@@ -8,7 +8,7 @@
 //! a 本文 carrying no links.
 //!
 //! **The route was measured before it was closed.** With a probe at this same gate that refused
-//! nothing, five gestures on macOS produced three 航行の試み: a URL dragged in from a browser, a
+//! nothing, six operations on macOS produced three 航行の試み: a URL dragged in from a browser, a
 //! `.png` dragged in from Finder, and a `.md` dragged in from Finder. The two gestures that stay
 //! inside the webview — dragging a 添付画像, dragging a task card onto something that is not a
 //! 受け先 — and dragging selected text produced **no line at all**, which is a stronger statement than
