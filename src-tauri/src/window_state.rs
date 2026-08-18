@@ -23,10 +23,13 @@
 //! so on the field). A window left at the default 1200×800 on a 1x display records 1200×800 physical,
 //! and reopening it on a 2x display makes that 600×400 logical — under 最小寸法. **That arithmetic is
 //! read out of the two crates, not measured on two displays.**
+//!
+//! **The correction therefore compares physical pixels rather than logical ones**, which is what makes
+//! it settle on a scale factor that is not a dyadic rational. [`raised_to_minimum`] carries that.
 
 use tauri::{
     plugin::{Builder as PluginBuilder, TauriPlugin},
-    LogicalSize, PhysicalSize, Runtime, Window, WindowEvent,
+    PhysicalSize, Runtime, Window, WindowEvent,
 };
 use tauri_plugin_window_state::StateFlags;
 
@@ -52,18 +55,47 @@ pub const MIN_WIDTH: f64 = 640.0;
 /// See [`MIN_WIDTH`].
 pub const MIN_HEIGHT: f64 = 480.0;
 
-/// 最小寸法の下限適用: the size to use in place of `restored`, or `None` when it already meets 最小寸法.
+/// 最小寸法の下限適用: the physical size to resize to in place of `restored`, or `None` when it
+/// already meets 最小寸法.
 ///
-/// `None` rather than always returning a size, so the caller can skip the resize entirely: a
-/// `set_size` that changes nothing is still a resize the OS reports, and the plugin's own
-/// `WindowEvent::Resized` handler would take it as the user's new size.
-pub fn raised_to_minimum(restored: LogicalSize<f64>) -> Option<LogicalSize<f64>> {
-    let width = restored.width.max(MIN_WIDTH);
-    let height = restored.height.max(MIN_HEIGHT);
+/// **The comparison is in physical pixels, and that is what makes the correction settle.** A resize is
+/// granted in whole physical pixels, so on a scale factor that is not a dyadic rational the logical
+/// 最小寸法 has no physical size that reads back as itself: at Windows' 130% (`LogPixels` 125, scale
+/// `125/96`), `LogicalSize { 640.0, .. }` becomes `round(833.33) = 833` physical — `dpi` 0.1.2 rounds to
+/// nearest — and 833 physical reads back as 639.744 logical, still under 最小寸法. Comparing there, the
+/// correction would ask for the same 833 on every notification and never reach a size it accepts.
+/// Comparing whole physical pixels against [`minimum_at`] instead, the size the correction asks for
+/// *is* the one it will next be handed, so it settles in one step on every scale factor.
+///
+/// `None` rather than a size equal to `restored`, so the caller can skip the resize rather than
+/// depend on what the OS does with one that changes nothing.
+pub fn raised_to_minimum(restored: PhysicalSize<u32>, scale: f64) -> Option<PhysicalSize<u32>> {
+    let minimum = minimum_at(scale)?;
+    let width = restored.width.max(minimum.width);
+    let height = restored.height.max(minimum.height);
     if width == restored.width && height == restored.height {
         return None;
     }
-    Some(LogicalSize { width, height })
+    Some(PhysicalSize { width, height })
+}
+
+/// 最小寸法 in the physical pixels of a display at `scale`, **rounded up**.
+///
+/// Up rather than to nearest because the value is a lower bound: `round` would place 130%'s minimum at
+/// 833 physical = 639.744 logical, which is under the bound AC #3 states, where `ceil` places it at 834
+/// = 640.512 and over it. The cost is at most one physical pixel of width the user did not ask for.
+///
+/// `None` on a scale factor `dpi` would reject — it asserts a normal positive `f64` on every conversion,
+/// so a zero, infinite or NaN scale is a panic there rather than a bad number here. A window whose scale
+/// cannot be read is left as it is, like one whose size cannot be.
+fn minimum_at(scale: f64) -> Option<PhysicalSize<u32>> {
+    if !scale.is_normal() || scale <= 0.0 {
+        return None;
+    }
+    Some(PhysicalSize {
+        width: (MIN_WIDTH * scale).ceil() as u32,
+        height: (MIN_HEIGHT * scale).ceil() as u32,
+    })
 }
 
 /// 最小寸法の下限適用 as a plugin of Atlas's own, so it reaches the window the other plugin restored.
@@ -82,8 +114,8 @@ pub fn raised_to_minimum(restored: LogicalSize<f64>) -> Option<LogicalSize<f64>>
 /// this one has a listener registered. The read covers that case and the listener covers macOS's; each
 /// is the only one that fires on one of the two.
 ///
-/// The correction resizes to 最小寸法 exactly, which is not below it, so the `Resized` it causes in turn
-/// asks for nothing further.
+/// The correction resizes to [`minimum_at`]'s physical size, which the next notification then compares
+/// against itself, so the `Resized` it causes in turn asks for nothing further.
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     PluginBuilder::new("window-minimum")
         .on_window_ready(|window| {
@@ -110,7 +142,7 @@ fn raise_to_minimum<R: Runtime>(window: &Window<R>, size: PhysicalSize<u32>) {
     let Ok(scale) = window.scale_factor() else {
         return;
     };
-    if let Some(raised) = raised_to_minimum(size.to_logical(scale)) {
+    if let Some(raised) = raised_to_minimum(size, scale) {
         let _ = window.set_size(raised);
     }
 }
@@ -119,54 +151,95 @@ fn raise_to_minimum<R: Runtime>(window: &Window<R>, size: PhysicalSize<u32>) {
 mod tests {
     use super::*;
 
-    fn size(width: f64, height: f64) -> LogicalSize<f64> {
-        LogicalSize { width, height }
+    /// Windows' 130% custom scaling: `LogPixels` 125, so the scale factor is `125/96`. Named because it
+    /// is the scale that a logical-pixel comparison could not settle on.
+    const NON_DYADIC: f64 = 125.0 / 96.0;
+
+    fn physical(width: u32, height: u32) -> PhysicalSize<u32> {
+        PhysicalSize { width, height }
     }
 
     #[test]
     fn a_size_at_or_above_the_minimum_is_left_alone() {
-        assert_eq!(raised_to_minimum(size(1200.0, 800.0)), None);
-        assert_eq!(raised_to_minimum(size(MIN_WIDTH, MIN_HEIGHT)), None);
+        assert_eq!(raised_to_minimum(physical(1200, 800), 1.0), None);
+        assert_eq!(raised_to_minimum(physical(640, 480), 1.0), None);
     }
 
     #[test]
     fn each_axis_is_raised_on_its_own() {
         assert_eq!(
-            raised_to_minimum(size(320.0, 800.0)),
-            Some(size(MIN_WIDTH, 800.0)),
+            raised_to_minimum(physical(320, 800), 1.0),
+            Some(physical(640, 800)),
             "a too-narrow window keeps the height it was restored to"
         );
         assert_eq!(
-            raised_to_minimum(size(1200.0, 240.0)),
-            Some(size(1200.0, MIN_HEIGHT)),
+            raised_to_minimum(physical(1200, 240), 1.0),
+            Some(physical(1200, 480)),
             "a too-short window keeps the width it was restored to"
         );
         assert_eq!(
-            raised_to_minimum(size(320.0, 240.0)),
-            Some(size(MIN_WIDTH, MIN_HEIGHT))
+            raised_to_minimum(physical(320, 240), 1.0),
+            Some(physical(640, 480))
         );
     }
 
-    /// The route the module comment describes: 1200×800 recorded on a 1x display, read on a 2x one.
+    /// The route the module comment describes: 1200×800 recorded on a 1x display, read on a 2x one,
+    /// where the same physical size is 600×400 logical.
     #[test]
     fn a_record_halved_by_a_scale_factor_is_raised() {
-        let recorded = PhysicalSize {
-            width: 1200_u32,
-            height: 800_u32,
-        };
         assert_eq!(
-            raised_to_minimum(recorded.to_logical(2.0)),
-            Some(size(MIN_WIDTH, MIN_HEIGHT)),
-            "1200x800 physical is 600x400 logical at 2x, which is below 最小寸法 on both axes"
+            raised_to_minimum(physical(1200, 800), 2.0),
+            Some(physical(1280, 960)),
+            "at 2x the minimum is 1280x960 physical, and 1200x800 is under it"
         );
     }
 
-    /// The correction settles in one step, which is what keeps the `Resized` it causes from asking for
-    /// another. Held as a test because the loop it rules out would only show up at runtime.
+    /// The correction settles in one step, on a scale factor where a logical-pixel comparison would not:
+    /// at `125/96` the logical 最小寸法 has no physical size that reads back as itself, so a correction
+    /// deciding in logical pixels would ask for 833 forever. Regression for PR #138's [P2].
     #[test]
     fn the_corrected_size_needs_no_further_correction() {
-        let corrected = raised_to_minimum(size(320.0, 240.0)).expect("below the minimum");
-        assert_eq!(raised_to_minimum(corrected), None);
+        for scale in [1.0, 1.25, 2.0, NON_DYADIC, 1.1, 1.5, 3.0] {
+            let corrected = raised_to_minimum(physical(320, 240), scale)
+                .unwrap_or_else(|| panic!("320x240 is below the minimum at {scale}"));
+            assert_eq!(
+                raised_to_minimum(corrected, scale),
+                None,
+                "the correction at {scale} asked for {corrected:?} and would ask again"
+            );
+        }
+    }
+
+    /// The width the non-dyadic scale turns on: 833 physical is 639.744 logical, so it is under 最小寸法
+    /// and has to be raised, and it is what a logical-pixel correction would have asked for.
+    #[test]
+    fn the_minimum_is_rounded_up_so_the_logical_size_is_never_under_it() {
+        let minimum = minimum_at(NON_DYADIC).expect("a normal positive scale");
+        assert_eq!(minimum, physical(834, 625));
+        assert_eq!(
+            raised_to_minimum(physical(833, 625), NON_DYADIC),
+            Some(physical(834, 625)),
+            "833 physical is 639.744 logical — under the bound AC #3 states"
+        );
+        assert!(
+            f64::from(minimum.width) / NON_DYADIC >= MIN_WIDTH,
+            "rounding up is what puts the logical width at or above 最小寸法"
+        );
+        assert!(f64::from(minimum.height) / NON_DYADIC >= MIN_HEIGHT);
+    }
+
+    /// `dpi` asserts a normal positive `f64` on every conversion, so these have to be refused here
+    /// rather than carried into one.
+    #[test]
+    fn a_scale_factor_dpi_would_reject_corrects_nothing() {
+        for scale in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::MIN_POSITIVE / 2.0] {
+            assert_eq!(
+                minimum_at(scale),
+                None,
+                "{scale} is not a scale factor dpi would accept"
+            );
+            assert_eq!(raised_to_minimum(physical(320, 240), scale), None);
+        }
     }
 
     #[test]
