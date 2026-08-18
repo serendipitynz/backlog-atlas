@@ -5,11 +5,11 @@
   //
   // Row order is deliberately *not* screen state: it is the ledger's entry order (doc-3 §2.2),
   // and a reorder is written back through `ledger_update` (doc-7 §5 allows reflecting it
-  // there), so the order the user arranges survives a restart. 行非表示 と 折畳み 2 種 are the
-  // opposite — doc-7 §5.1 calls them 一時状態 — and this component is the only one that writes the
-  // three. It holds them rather than the grid because it is the one that stays: 実行内保持
-  // (doc-7 §5.1). The 2 folds reach the grid as props for it to draw from; `hidden` never leaves,
-  // since it decides which rows the grid is handed at all.
+  // there), so the order the user arranges survives a restart. 行非表示 と 折畳み 2 種 survive one too,
+  // through アプリ設定 rather than the ledger (doc-7 §5.1, decision-13 の 再起動をまたぐ保持の改訂), and this
+  // component is the only one that writes the three. It holds them rather than the grid because it is
+  // the one that stays: 実行内保持 (doc-7 §5.1). The 2 folds reach the grid as props for it to draw
+  // from; `hidden` never leaves, since it decides which rows the grid is handed at all.
   import { onDestroy, onMount, untrack } from "svelte";
   import FilterBar from "./components/FilterBar.svelte";
   import HeaderMenu from "./components/HeaderMenu.svelte";
@@ -132,6 +132,8 @@
     buildSwimlane,
     columnFoldable,
     laneNeighbours,
+    restoredColumns,
+    restoredRows,
     swimlaneTotals,
     unreadableDetail,
     type GridColumn,
@@ -294,15 +296,28 @@
   /**
    * 行非表示・行折畳み・列折畳み (doc-7 §5.1) の 3 値.
    *
-   * All three are held here rather than in `Swimlane.svelte`, because 一時状態 in doc-7 §5.1 means
-   * 実行内保持: the grid is unmounted whenever プロジェクト詳細画面 is entered, and again when a task is
-   * opened while 既定の詳細配置 is 全面シングルビュー — a value the grid held would be back at its
-   * initial state on the return, which is not what the user asked the fold for. Nothing outside this
-   * component writes them, and the 2 folds are read only by the grid.
+   * All three are held here rather than in `Swimlane.svelte`, because 実行内保持 (doc-7 §5.1): the grid is
+   * unmounted whenever プロジェクト詳細画面 is entered, and again when a task is opened while 既定の詳細配置
+   * is 全面シングルビュー — a value the grid held would be back at its initial state on the return, which
+   * is not what the user asked the fold for. Nothing outside this component writes them, and the 2 folds
+   * are read only by the grid.
+   *
+   * **Since 2026-08-18 they also survive a restart**, through アプリ設定 (decision-13 の 再起動をまたぐ
+   * 保持の改訂). This component is still the only writer: each toggle stores the new value the way the
+   * 並び順 control does (`applyCardOrder`), and what comes back from the file passes 復元時の正規化
+   * (`restoredColumns` / `restoredRows`) — the row values against the ledger, which is why they are
+   * pruned in `applyLedger` and not where the settings arrive (the settings are read first, before any
+   * slug is known).
    */
   let hidden = $state<string[]>([]);
   let foldedRows = $state<string[]>([]);
   let collapsedColumns = $state<GridColumn[]>([]);
+  /**
+   * The 通知 the last failed write of those three raised, so a later write that goes through can take
+   * *its own* refusal down and nothing else (`storeGridState`). Not `$state`: it is read only inside
+   * that function, never during a draw.
+   */
+  let gridStateFailure: (() => string) | null = null;
   let filter = $state<CardFilter>(DEFAULT_FILTER);
   let ledgerReadOnly = $state(false);
   let loading = $state(true);
@@ -1050,6 +1065,15 @@
     settings = next;
     if (first) {
       placement = next.settings.default_detail_placement;
+      // 3 値 as the file left them (doc-7 §5.1 の 再起動をまたぐ保持). Adopted on the *first* read only,
+      // like 既定の詳細配置: every later read is the answer to a write this screen or the 設定画面 just
+      // made, and re-seeding from it would undo a fold made while the save was in flight.
+      // **The columns are normalized here and the rows are not** — `restoredColumns` needs nothing but
+      // the value, while the rows are checked against the ledger, which has not been read yet at this
+      // point in startup. `applyLedger` does that half.
+      collapsedColumns = restoredColumns(next.settings.collapsed_columns);
+      foldedRows = [...next.settings.folded_rows];
+      hidden = [...next.settings.hidden_rows];
     }
     if (untouched) {
       filter = withStorage(filter, next.settings.default_storage_filter);
@@ -1516,6 +1540,25 @@
   function applyLedger(response: LedgerResponse): void {
     entries = response.ledger.project;
     ledgerReadOnly = response.readOnly;
+    // 復元時の正規化 の行の側 (doc-7 §5.1): the ledger is what says which slugs exist, so every answer
+    // it gives is where the two row values are checked against it. This covers both cases the doc names
+    // — a slug left in a hand-edited アプリ設定ファイル, and 登録解除 dropping the row's values (doc-3
+    // §4.2), which is why `removeProject` no longer filters them itself.
+    //
+    // **A prune that dropped something is written back.** Left in the file, the slug outlives the
+    // registration: registering that slug again — through 登録 or by hand in the ledger (doc-3 §2.2) —
+    // brings the row up folded or hidden, which is the state doc-7 §5.1 says 登録解除 drops. Writing only
+    // when something was dropped is what keeps this off an ordinary start: `settings.toml` is then never
+    // written by a launch that had nothing to correct.
+    const slugs = response.ledger.project.map((entry) => entry.slug);
+    const keptFolded = restoredRows(foldedRows, slugs);
+    const keptHidden = restoredRows(hidden, slugs);
+    const dropped = keptFolded.length !== foldedRows.length || keptHidden.length !== hidden.length;
+    foldedRows = keptFolded;
+    hidden = keptHidden;
+    if (dropped) {
+      void storeGridState();
+    }
   }
 
   /**
@@ -1558,8 +1601,8 @@
       applyLedger(await ledgerRemove(slug));
       const { [slug]: _dropped, ...remaining } = loadBySlug;
       loadBySlug = remaining;
-      hidden = hidden.filter((candidate) => candidate !== slug);
-      foldedRows = foldedRows.filter((candidate) => candidate !== slug);
+      // 行非表示・行折畳み for this slug went with the `applyLedger` above — it prunes both against the
+      // ledger it was handed (doc-7 §5.1 の 復元時の正規化), and this row is no longer in it.
       unwatched = unwatched.filter((candidate) => candidate !== slug);
       conflicts = Object.fromEntries(
         // The key is `JSON.stringify([slug, path])` (`mark.ts`), so the slug is its first element.
@@ -2252,6 +2295,7 @@
     hidden = hidden.includes(slug)
       ? hidden.filter((candidate) => candidate !== slug)
       : [...hidden, slug];
+    void storeGridState();
   }
 
   /** 行折畳み (doc-7 §2.3・§5.1) を、レーンヘッダ行の控えが押された行について入れ替える。 */
@@ -2259,6 +2303,7 @@
     foldedRows = foldedRows.includes(slug)
       ? foldedRows.filter((candidate) => candidate !== slug)
       : [...foldedRows, slug];
+    void storeGridState();
   }
 
   /**
@@ -2276,6 +2321,44 @@
     collapsedColumns = collapsedColumns.includes(column)
       ? collapsedColumns.filter((candidate) => candidate !== column)
       : [...collapsedColumns, column];
+    void storeGridState();
+  }
+
+  /**
+   * Store the 3 値 as they now stand (doc-7 §5.1 の 押下ごとの保存, decision-13 の 再起動をまたぐ保持の改訂).
+   *
+   * Same shape as `applyCardOrder`: the screen has already changed, and a refused write costs the
+   * persistence rather than the fold — decision-13 refuses to overwrite a settings file newer than this
+   * build, and taking the fold back would undo something the user can see. **The refusal is said in the
+   * ⑤ 通知** rather than beside the control: the three controls are icon-only buttons in a 列ヘッダ, a
+   * レーンヘッダ行 and a menu line (doc-11 §2.4), none of which has room for a sentence, and 並べ替え's
+   * refused ledger write is already reported this way.
+   *
+   * All three values are sent on every press, not just the one that moved: `settings.toml` is written
+   * whole (`settings-write.ts`), and this is the change against whatever is current — reading the state
+   * at issue time is what keeps two quick presses from writing the first one's value twice.
+   */
+  async function storeGridState(): Promise<void> {
+    const failure = await writeSettings((current) => ({
+      ...current,
+      collapsed_columns: [...collapsedColumns],
+      folded_rows: [...foldedRows],
+      hidden_rows: [...hidden],
+    }));
+    if (failure !== null) {
+      notice = failure;
+      gridStateFailure = failure;
+      return;
+    }
+    // A write that went through supersedes the failure the last one reported, so leaving it up would
+    // have the 帯 state a refusal that no longer holds — the next press *is* the retry. Cleared by
+    // identity rather than with `notice = null`, which is what `moveRow` does for the ledger: a press
+    // here is frequent and is not the retry of whatever else may have raised a 通知 since, so an
+    // unrelated report must not be swallowed by it.
+    if (gridStateFailure !== null && notice === gridStateFailure) {
+      notice = null;
+    }
+    gridStateFailure = null;
   }
 
   // --- 共通入口のメニューとショートカット (doc-7 §2.1, TASK-56) ---------------------------------
@@ -2429,6 +2512,7 @@
    */
   function showAllProjects(): void {
     hidden = [];
+    void storeGridState();
   }
 
   /** 直前の絞り込みを 1 件戻す (doc-7 §5.2) — the operation the フィルタ帯's button issues, by key. */

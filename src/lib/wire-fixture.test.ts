@@ -80,6 +80,7 @@ import type {
   RequiredField,
   UnmappedFile,
   SettingsStatus,
+  GridColumn,
   StatusColumn,
   StatusDeclaration,
   StatusMapping,
@@ -282,6 +283,13 @@ const STORAGE_SELECTIONS = unionValues<StorageSelection>()(
   "indeterminate",
 );
 const STATUS_COLUMNS = unionValues<StatusColumn>()("toDo", "inProgress", "inReview", "done");
+const GRID_COLUMNS = unionValues<GridColumn>()(
+  "toDo",
+  "inProgress",
+  "inReview",
+  "done",
+  "unmapped",
+);
 const STATUS_DECLARATIONS = unionValues<StatusDeclaration>()(
   "declared",
   "draft",
@@ -567,6 +575,9 @@ const SETTINGS_EXEMPLAR: LoadedSettings = {
     default_detail_placement: "modal",
     default_card_order: "updated_desc",
     watch_external_changes: false,
+    collapsed_columns: ["inReview", "unmapped"],
+    folded_rows: ["atlas", "kanri"],
+    hidden_rows: ["retired"],
     backlog_cli: "/opt/backlog/backlog",
     external_editor: { program: "code", args: ["-w"] },
   },
@@ -810,6 +821,9 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
         "default_detail_placement",
         "default_card_order",
         "watch_external_changes",
+        "collapsed_columns",
+        "folded_rows",
+        "hidden_rows",
         "backlog_cli",
         "git_cli",
         "gh_cli",
@@ -1140,6 +1154,7 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     CardDensity: CARD_DENSITIES,
     DetailPlacement: DETAIL_PLACEMENTS,
     CardOrder: CARD_ORDERS,
+    GridColumn: GRID_COLUMNS,
     FileHealth: HEALTH_STATES,
     DegradeEvent: DEGRADE_EVENTS,
     ProjectLoad: LOAD_STATES,
@@ -1234,6 +1249,9 @@ describe("記録した enum・variant tag の値が wire.ts の union に収ま�
       "settings.default_detail_placement",
     );
     admits(CARD_ORDERS, loaded.settings.default_card_order, "settings.default_card_order");
+    for (const [at, column] of loaded.settings.collapsed_columns.entries()) {
+      admits(GRID_COLUMNS, column, `settings.collapsed_columns[${at}]`);
+    }
     for (const [at, selection] of loaded.settings.default_storage_filter.entries()) {
       admits(STORAGE_SELECTIONS, selection, `settings.default_storage_filter[${at}]`);
     }

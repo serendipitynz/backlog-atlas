@@ -180,6 +180,14 @@ export interface UnmappedFile {
 /** 正準ステータス列 (decision-4). The four fixed columns, in left-to-right order. */
 export type StatusColumn = "toDo" | "inProgress" | "inReview" | "done";
 
+/**
+ * One column 列折畳み can name (doc-7 §2.2): a 正準ステータス列 or the 未分類列. Declared here rather
+ * than only in `swimlane.ts` for `StorageSelection`'s reason — アプリ設定 persists a list of these
+ * (`collapsed_columns`), so it is a wire value; `swimlane.ts` re-exports it and states why the
+ * 未分類列 is a member rather than a fifth canonical column.
+ */
+export type GridColumn = StatusColumn | "unmapped";
+
 export type StatusDeclaration = "declared" | "draft" | "undeclared" | "noDeclaredSet";
 
 export interface StatusMapping {
@@ -831,8 +839,9 @@ export type CardOrder =
  * ledger's types — these names are the `settings.toml` keys too, and doc-3 §2.2's hand-editing rule
  * applies to both app-config files.
  *
- * Deliberately absent: 列折畳み・行折畳み・行非表示 (画面の一時状態, decision-13) and 起動時の全ルート
- * 読み取り (doc-9 §3.2 makes it mandatory rather than a setting).
+ * Deliberately absent: 起動時の全ルート読み取り (doc-9 §3.2 makes it mandatory rather than a setting).
+ * **列折畳み・行折畳み・行非表示 used to be absent for decision-13's own reason and are now three of the
+ * fields below** (decision-13 の 再起動をまたぐ保持の改訂).
  */
 export interface AppSettings {
   schema_version: number;
@@ -853,6 +862,17 @@ export interface AppSettings {
   default_card_order: CardOrder;
   /** 継続検出の可否 (doc-9 §3.1). False stops every root's watch. */
   watch_external_changes: boolean;
+  /**
+   * 列折畳み (doc-7 §2.2), 行折畳み and 行非表示 (doc-7 §5.1) as the file holds them — the three values
+   * decision-13 kept out of it until its 再起動をまたぐ保持の改訂. Required rather than optional: the
+   * crate defaults each to an empty list, so every read carries all three.
+   *
+   * **The rows are slugs, and a slug the ledger no longer has may be in either list** (a hand-edited
+   * file, doc-3 §2.2). What drops it is `restoredRows` (`swimlane.ts`), not this declaration.
+   */
+  collapsed_columns: GridColumn[];
+  folded_rows: string[];
+  hidden_rows: string[];
   /**
    * 実行ファイル解決の順序 の 1 段目 (doc-5 §4, decision-16): the Backlog CLI executable to run, as an
    * absolute path. Absent — not `null` — when unset, like `external_editor`, and unset is the normal

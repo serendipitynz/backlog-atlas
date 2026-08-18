@@ -1,6 +1,6 @@
 {
   "settings": {
-    "schema_version": 5,
+    "schema_version": 6,
     "theme": "nord",
     "language": "en",
     "card_density": "l",
@@ -11,6 +11,17 @@
     "default_detail_placement": "modal",
     "default_card_order": "updated_desc",
     "watch_external_changes": false,
+    "collapsed_columns": [
+      "inReview",
+      "unmapped"
+    ],
+    "folded_rows": [
+      "atlas",
+      "kanri"
+    ],
+    "hidden_rows": [
+      "retired"
+    ],
     "backlog_cli": "/opt/backlog/backlog",
     "git_cli": "/opt/git/bin/git",
     "gh_cli": "/opt/gh/bin/gh",
@@ -23,6 +34,6 @@
   },
   "status": {
     "state": "readOnly",
-    "version": 6
+    "version": 7
   }
 }

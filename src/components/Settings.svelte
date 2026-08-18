@@ -15,7 +15,10 @@
   //
   // 「ここに無い項目」— the section that stated why 列折畳み・行折畳み・行非表示 are not held (decision-13)
   // — is gone with it (AC #3). It answered a question the screen does not raise: nothing here offers
-  // those switches, and the file's rules are decision-13's to state.
+  // those switches, and the file's rules are decision-13's to state. **The three are now held after
+  // all** (decision-13 の 再起動をまたぐ保持の改訂, TASK-148), which does not bring the section back: they
+  // still have no control here — the grid's own controls write them, and this form only has to carry
+  // them through a save (`mergeDraft`).
   import { untrack } from "svelte";
   import Icon from "../lib/icons/Icon.svelte";
   import {

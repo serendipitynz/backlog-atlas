@@ -381,8 +381,9 @@ export function openLocationFailure(error: CommandError): string {
  * "seed from the new values" case.
  *
  * Needed because アプリ設定 has writers outside this form: choosing a 詳細配置 (doc-8 §2.2) or a 並び順
- * (doc-7 §5.4) stores it as the 既定 while the 設定画面 may be open over the same screen with unsaved
- * input, and either of them can be the one that lands. Re-seeding the whole form on
+ * (doc-7 §5.4) stores it as the 既定, and folding a column or row, or hiding one, stores that too
+ * (doc-7 §5.1 since decision-13 の 再起動をまたぐ保持の改訂) — all of them while the 設定画面 may be open
+ * over the same screen with unsaved input, and any of them can be the one that lands. Re-seeding the whole form on
  * that write would take the input away — which doc-8 §6.4 forbids of the detail panel's 編集セッション,
  * and the same reasoning applies to this form: an edit the user is in the middle of is not the writer's
  * to discard. Adopting the incoming value for *untouched* fields is what keeps 保存 from silently
@@ -423,6 +424,16 @@ export function mergeDraft(
       baseline.watch_external_changes,
       next.watch_external_changes,
     ),
+    // The three 再起動をまたぐ保持 values have no control in this form at all, which is exactly why they
+    // have to be here: the save writes this return value as the whole file, so a value left out is
+    // deleted from disk — and the swimlane behind the open モーダル is what writes these.
+    collapsed_columns: pick(
+      draft.collapsed_columns,
+      baseline.collapsed_columns,
+      next.collapsed_columns,
+    ),
+    folded_rows: pick(draft.folded_rows, baseline.folded_rows, next.folded_rows),
+    hidden_rows: pick(draft.hidden_rows, baseline.hidden_rows, next.hidden_rows),
   };
   // Every optional field is carried the same way, and each has to be: the form save serializes this
   // return value as the *whole* file, so a field left out here is deleted from disk. The three
@@ -475,6 +486,9 @@ function normalize(settings: AppSettings): unknown {
     settings.default_detail_placement,
     settings.default_card_order,
     settings.watch_external_changes,
+    settings.collapsed_columns,
+    settings.folded_rows,
+    settings.hidden_rows,
     settings.backlog_cli ?? null,
     settings.git_cli ?? null,
     settings.gh_cli ?? null,

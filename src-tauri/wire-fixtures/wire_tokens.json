@@ -88,6 +88,13 @@
     "noRepository",
     "unreadable"
   ],
+  "GridColumn": [
+    "toDo",
+    "inProgress",
+    "inReview",
+    "done",
+    "unmapped"
+  ],
   "ImageRefusal": [
     "outsideAssets",
     "absent",

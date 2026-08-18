@@ -32,8 +32,9 @@
     /**
      * 行折畳み・列折畳み (doc-7 §5.1) の状態. Held by the shell for the same reason as
      * 列内新規タスク入力 below: this grid is unmounted when プロジェクト詳細画面 is entered and when a task
-     * is opened in 全面シングルビュー, and 一時状態 means 実行内保持 — the fold has to be there on the
-     * return (doc-7 §5.1). Reading them as props keeps that single copy the one the grid draws from.
+     * is opened in 全面シングルビュー, and 実行内保持 (doc-7 §5.1) means the fold has to be there on the
+     * return. Reading them as props keeps that single copy the one the grid draws from — and the one
+     * the shell stores in アプリ設定 on every press (decision-13 の 再起動をまたぐ保持の改訂).
      */
     foldedRows: readonly string[];
     collapsedColumns: readonly GridColumn[];

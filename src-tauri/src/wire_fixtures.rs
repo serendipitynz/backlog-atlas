@@ -43,8 +43,8 @@ use crate::interpret::status::{StatusColumn, StatusDeclaration, StatusMapping};
 use crate::interpret::type_value::derive_types;
 use crate::ledger::{Ledger, ProjectEntry};
 use crate::settings::{
-    AppSettings, CardDensity, CardOrder, DetailPlacement, LoadedSettings, SettingsStatus,
-    StorageSelection, KNOWN_SCHEMA_VERSION,
+    AppSettings, CardDensity, CardOrder, DetailPlacement, GridColumn, LoadedSettings,
+    SettingsStatus, StorageSelection, KNOWN_SCHEMA_VERSION,
 };
 use crate::update::{FailureKind, UpdateFailure, UpdateOutcome};
 
@@ -614,6 +614,11 @@ fn loaded_settings_is_recorded() {
                 default_detail_placement: DetailPlacement::Modal,
                 default_card_order: CardOrder::UpdatedDesc,
                 watch_external_changes: false,
+                // 未分類列 among the collapsed ones, and two slugs apiece, so the recording exercises
+                // the 5th `GridColumn` member and a multi-element list on both row values.
+                collapsed_columns: vec![GridColumn::InReview, GridColumn::Unmapped],
+                folded_rows: vec!["atlas".to_string(), "kanri".to_string()],
+                hidden_rows: vec!["retired".to_string()],
                 backlog_cli: Some(PathBuf::from("/opt/backlog/backlog")),
                 git_cli: Some(PathBuf::from("/opt/git/bin/git")),
                 gh_cli: Some(PathBuf::from("/opt/gh/bin/gh")),
@@ -1086,6 +1091,26 @@ fn every_card_order() -> Vec<CardOrder> {
     all
 }
 
+fn every_grid_column() -> Vec<GridColumn> {
+    let all = vec![
+        GridColumn::ToDo,
+        GridColumn::InProgress,
+        GridColumn::InReview,
+        GridColumn::Done,
+        GridColumn::Unmapped,
+    ];
+    for value in &all {
+        match value {
+            GridColumn::ToDo
+            | GridColumn::InProgress
+            | GridColumn::InReview
+            | GridColumn::Done
+            | GridColumn::Unmapped => {}
+        }
+    }
+    all
+}
+
 fn every_file_health() -> Vec<FileHealth> {
     let all = vec![FileHealth::Ok, FileHealth::Degraded { events: Vec::new() }];
     for value in &all {
@@ -1459,6 +1484,7 @@ fn every_union_token_is_recorded() {
     tokens.insert("CardDensity", unit_tokens(&every_card_density()));
     tokens.insert("DetailPlacement", unit_tokens(&every_detail_placement()));
     tokens.insert("CardOrder", unit_tokens(&every_card_order()));
+    tokens.insert("GridColumn", unit_tokens(&every_grid_column()));
 
     tokens.insert("FileHealth", tag_tokens(&every_file_health(), "state"));
     tokens.insert("DegradeEvent", tag_tokens(&every_degrade_event(), "event"));

@@ -31,6 +31,9 @@ const DEFAULTS: AppSettings = {
   default_detail_placement: "sidebar",
   default_card_order: "priority_desc",
   watch_external_changes: true,
+  collapsed_columns: [],
+  folded_rows: [],
+  hidden_rows: [],
 };
 
 describe("statusNotice", () => {
@@ -185,6 +188,21 @@ describe("isDirty", () => {
     );
   });
 
+  it("sees a 折畳み・行非表示 change (decision-13 の 再起動をまたぐ保持の改訂)", () => {
+    // The three values have no control in this form, and `isDirty` is what decides whether a write
+    // happens at all (`settings-write.ts` treats an unchanged value as a no-op success). Left out of
+    // `normalize`, a fold would be written **once** — the first press that also moved something else —
+    // and every later fold would be dropped with the write reported as having gone through.
+    expect(isDirty(DEFAULTS, { ...DEFAULTS, collapsed_columns: ["toDo"] })).toBe(true);
+    expect(isDirty(DEFAULTS, { ...DEFAULTS, folded_rows: ["atlas"] })).toBe(true);
+    expect(isDirty(DEFAULTS, { ...DEFAULTS, hidden_rows: ["atlas"] })).toBe(true);
+    // …and unfolding back to nothing is a change too, in the other direction.
+    expect(isDirty({ ...DEFAULTS, hidden_rows: ["atlas"] }, DEFAULTS)).toBe(true);
+    expect(
+      isDirty({ ...DEFAULTS, folded_rows: ["atlas"] }, { ...DEFAULTS, folded_rows: ["atlas"] }),
+    ).toBe(false);
+  });
+
   it("sees a 表示言語 change (decision-35)", () => {
     // `normalize`'s field list is what this reads, and a new item left out of it is invisible to
     // `pnpm run check` — the type is satisfied by a shorter list. Without this, choosing a language
@@ -277,6 +295,23 @@ describe("フォームの外からの書き手（既定の詳細配置・既定�
     expect(merged.external_editor).toEqual({ program: "/usr/local/bin/mi", args: [] });
     // Absent rather than present-and-undefined: the key is skipped in the file when there is none.
     expect("external_editor" in mergeDraft(DEFAULTS, { ...DEFAULTS }, DEFAULTS)).toBe(false);
+  });
+
+  it("carries the three 再起動をまたぐ保持 values through, though no control here writes them", () => {
+    // The swimlane behind the open モーダル is what writes them (doc-7 §5.1 の 押下ごとの保存), and this
+    // form's 保存 serializes the whole file — so a value missing from `mergeDraft` is deleted from disk
+    // by the next 保存, and the folds a user set would vanish on the following start.
+    const next: AppSettings = {
+      ...DEFAULTS,
+      collapsed_columns: ["toDo", "unmapped"],
+      folded_rows: ["atlas"],
+      hidden_rows: ["kanri"],
+    };
+    const merged = mergeDraft(DEFAULTS, { ...DEFAULTS, card_density: "l" }, next);
+    expect(merged.collapsed_columns).toEqual(["toDo", "unmapped"]);
+    expect(merged.folded_rows).toEqual(["atlas"]);
+    expect(merged.hidden_rows).toEqual(["kanri"]);
+    expect(merged.card_density).toBe("l");
   });
 
   it("takes schema_version from the file, never from the draft", () => {
