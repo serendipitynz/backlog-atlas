@@ -384,10 +384,16 @@ what to re-read before tagging, how the workflow produces the draft, the third-p
 the bundle metadata, macOS signing and notarization — and this file restates none of it. A
 summary here would be read in place of the doc, and the doc is where the measured values are.
 
-Two lines stay below. Each stops a reader from breaking something they would otherwise take for
-a defect, and nobody opens doc-13 until they know there is something in it to open. Neither
-tells you what doc-13 says.
+Four lines stay below, and each passes the same test: the rule fires on something other than a
+release, so a session that never opens doc-13 would break it, and there is nowhere at the site
+to state it — a JSON config takes no comment, and a section a README does not have says
+nothing. Removing one removes the path to doc-13 along with it. None of them tells you what
+doc-13 says, and doc-13's opening paragraph names the same four.
 
+- **The README carries no implementation-status section, and none is to be added back**
+  (TASK-90). doc-13 §2.
+- **`bundle.copyright` and LICENSE carry the same wording, and the two files are unrelated to
+  each other** — change them together. doc-13 §5.
 - **The generic icon in the About panel of an unbundled `pnpm tauri dev` run is not a defect.**
   doc-13 §5.
 - **The macOS signing identity does not name the copyright holder, and that is deliberate.**
