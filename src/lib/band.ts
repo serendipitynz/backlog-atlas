@@ -22,7 +22,7 @@
  *
  * doc-11 §4 keeps every band to one line and forbids wrapping: フィルタ帯 1 行 ＋ 本表の帯 で頭打ち
  * という性質が、折り返しを許すと崩れる. So each band carries a 縮約 and the full reason stays at the
- * operation it is about — `readinessReason` beside every withheld operation for ②,
+ * operation it is about — `readinessAvailability` beside every withheld operation for ②,
  * `overviewReadOnlyNote()` in the 概要区画 for ③, and `unwatchedMark().detail` on the row's mark
  * for ④. §4 asks for this duplication rather than a band that can only be read by hovering.
  */
@@ -104,10 +104,10 @@ export function ledgerReadOnlyBand(): string {
 }
 
 /**
- * The CLI state in as few words as the band has room for. Deliberately not `readinessReason`'s
+ * The CLI state in as few words as the band has room for. Deliberately not `readinessAvailability`'s
  * sentence: that one is the 無効化理由 shown beside a withheld operation, where it has a line of its
  * own, and appending this band's scope to it would put two clauses on a line that must not wrap.
- * The three states stay apart for the reason `readinessReason` keeps them apart — 確認中 and
+ * The three states stay apart for the reason `readinessAvailability` keeps them apart — 確認中 and
  * 検出できない lead the user to different acts.
  */
 function cliDegradedSummary(readiness: CliReadiness | null): string | null {

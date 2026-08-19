@@ -38,6 +38,8 @@ import type {
   SettingsStatus,
   StorageSelection,
 } from "./wire";
+import type { Availability } from "./availability";
+import { AVAILABLE, withheld } from "./availability";
 import { commandErrorDetail } from "./edit";
 import { launchRefusalText, probeFailureText } from "./failure";
 import { msg } from "./messages";
@@ -109,10 +111,10 @@ export function statusNotice(status: SettingsStatus): string | null {
 }
 
 /** Whether 保存 may be pressed, and why not (decision-13: an unknown newer file is never clobbered). */
-export function saveAvailability(status: SettingsStatus): { enabled: boolean; reason: string | null } {
+export function saveAvailability(status: SettingsStatus): Availability {
   return status.state === "readOnly"
-    ? { enabled: false, reason: msg().settings.saveRefusedNewer(status.version) }
-    : { enabled: true, reason: null };
+    ? withheld(msg().settings.saveRefusedNewer(status.version))
+    : AVAILABLE;
 }
 
 /**
@@ -342,17 +344,17 @@ export function locationUnconfirmedReason(): string {
 export function openLocationAvailability(
   present: boolean | null,
   opening: boolean,
-): { enabled: boolean; reason: string | null } {
+): Availability {
   if (opening) {
-    return { enabled: false, reason: openingLocationReason() };
+    return withheld(openingLocationReason());
   }
   if (present === null) {
-    return { enabled: false, reason: locationUnconfirmedReason() };
+    return withheld(locationUnconfirmedReason());
   }
   if (!present) {
-    return { enabled: false, reason: locationAbsentReason() };
+    return withheld(locationAbsentReason());
   }
-  return { enabled: true, reason: null };
+  return AVAILABLE;
 }
 
 /**

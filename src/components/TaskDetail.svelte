@@ -20,6 +20,8 @@
   // capability this build does not have.
   import { onDestroy, type Snippet } from "svelte";
   import Body from "./Body.svelte";
+  import type { Availability } from "../lib/availability";
+  import { AVAILABLE } from "../lib/availability";
   import type { ImageReader } from "../lib/markdown-image";
   import DetailSection from "./DetailSection.svelte";
   import Editor from "./Editor.svelte";
@@ -56,7 +58,7 @@
     editAvailability,
     externallyChanged,
     isDirty,
-    lastRemovalReason,
+    lastRemovalAvailability,
     milestoneOptions,
     optionsFor,
     rebaseOnto,
@@ -510,8 +512,23 @@
    * back on a 進む answer. That is also what closes the hole the 二度押し had: the layer is the shell's,
    * so it goes with the question when the panel is pointed at another task (doc-11 §12 の失効).
    */
+  /**
+   * What the 状態遷移 row says beside its control: the 保留理由 while it is withheld, and what the
+   * transition would do while it is not. One place, because the same string is the `title` and the
+   * line under the button — and reading it off `availability` keeps the sentence and the withholding
+   * from being able to disagree (doc-11 §5).
+   */
+  function transitionNote(offer: TransitionOffer): string {
+    return offer.availability.state === "withheld" ? offer.availability.reason : offer.effect;
+  }
+
+  /** The same, for 外部エディタ経路: the 保留理由, or the caveat that stands while the route is open. */
+  function editorNote(offer: EditorOffer): string | null {
+    return offer.availability.state === "withheld" ? offer.availability.reason : offer.caveat;
+  }
+
   function runTransition(offer: TransitionOffer, control: HTMLButtonElement): void {
-    if (!offer.enabled || busy) {
+    if (offer.availability.state === "withheld" || busy) {
       return;
     }
     focusForReturn(control);
@@ -612,7 +629,7 @@
    * two are reconciled where they already are — the 継続検出 notice above, and the save's 更新前競合検出.
    */
   function openExternally(offer: EditorOffer, control: HTMLButtonElement): void {
-    if (!offer.enabled) {
+    if (offer.availability.state === "withheld") {
       return;
     }
     // The path is captured before anything can be awaited: the launch is for the task that was on
@@ -749,18 +766,20 @@
   draft: string,
   setDraft: (value: string) => void,
   placeholder: string,
-  withheldReason: string | null,
+  lastRemoval: Availability,
 )}
   <ul class="list-edit">
     {#each values as value, index (index)}
-      {@const removable = withheldReason === null || canRemoveLast(values)}
+      {@const removable = lastRemoval.state === "ready" || canRemoveLast(values)}
       <li>
         <span class="url">{value}</span>
         <button
           type="button"
           class="mini"
           disabled={!removable}
-          title={removable ? t().action.remove : (withheldReason ?? "")}
+          title={lastRemoval.state === "withheld" && !canRemoveLast(values)
+            ? lastRemoval.reason
+            : t().action.remove}
           onclick={() => apply(values.filter((_, at) => at !== index))}
         >
           {t().action.remove}
@@ -768,8 +787,8 @@
       </li>
     {/each}
   </ul>
-  {#if withheldReason !== null && values.length === 1}
-    <p class="hint">{withheldReason}</p>
+  {#if lastRemoval.state === "withheld" && values.length === 1}
+    <p class="hint">{lastRemoval.reason}</p>
   {/if}
   <div class="add-row">
     <input
@@ -1319,7 +1338,7 @@
         newAssignee,
         (value) => (newAssignee = value),
         t().taskDetail.addAssignee,
-        lastRemovalReason(session.baseline.task.assignee, emptyAssigneeReason()),
+        lastRemovalAvailability(session.baseline.task.assignee, emptyAssigneeReason()),
       )}
     {/if}
   </DetailSection>
@@ -1348,7 +1367,7 @@
         newLabel,
         (value) => (newLabel = value),
         t().field.addLabel,
-        null,
+        AVAILABLE,
       )}
     {/if}
   </DetailSection>
@@ -1689,7 +1708,7 @@
         newDependency,
         (value) => (newDependency = value),
         "TASK-ID",
-        lastRemovalReason(session.baseline.task.dependencies, emptyDependenciesReason()),
+        lastRemovalAvailability(session.baseline.task.dependencies, emptyDependenciesReason()),
       )}
     {/if}
   </DetailSection>
@@ -1759,7 +1778,7 @@
         newReference,
         (value) => (newReference = value),
         "URL",
-        lastRemovalReason(session.baseline.task.references, emptyReferencesReason()),
+        lastRemovalAvailability(session.baseline.task.references, emptyReferencesReason()),
       )}
     {/if}
   </DetailSection>
@@ -1785,14 +1804,14 @@
             <button
               type="button"
               class="transition"
-              disabled={!offer.enabled || busy}
-              title={busy ? transitionBusyReason() : (offer.reason ?? offer.effect)}
+              disabled={offer.availability.state === "withheld" || busy}
+              title={busy ? transitionBusyReason() : transitionNote(offer)}
               onclick={(event) => runTransition(offer, event.currentTarget)}
             >
               <!-- 語尾の … (doc-11 §12): every 状態遷移 asks first, so the mark is unconditional here. -->
               {confirmMarkedLabel(offer.label)}
             </button>
-            <span class="effect">{offer.reason ?? offer.effect}</span>
+            <span class="effect">{transitionNote(offer)}</span>
           </li>
         {/each}
       </ul>
@@ -1829,17 +1848,17 @@
         <li>
           <button
             type="button"
-            disabled={!offer.enabled}
-            title={offer.reason ?? offer.command}
+            disabled={offer.availability.state === "withheld"}
+            title={editorNote(offer) ?? offer.command}
             onclick={(event) => openExternally(offer, event.currentTarget)}
           >
             <!-- 語尾の … only while the launch asks (doc-11 §12): the question is raised by 未保存入力,
                  and a mark left on when nothing will be asked predicts nothing. -->
             {needsConfirmation(dirty) ? confirmMarkedLabel(offer.label) : offer.label}
           </button>
-          <span class="effect">{offer.enabled ? offer.command : ""}</span>
-          {#if offer.reason !== null}
-            <span class="effect">{offer.reason}</span>
+          <span class="effect">{offer.availability.state === "ready" ? offer.command : ""}</span>
+          {#if editorNote(offer) !== null}
+            <span class="effect">{editorNote(offer)}</span>
           {/if}
         </li>
       {/each}

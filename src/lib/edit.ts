@@ -27,7 +27,7 @@
  * | doc-9 §5 (i) 最新を読み直してやり直す | [`startSession`] on the reloaded view | the draft is discarded for the current file |
  * | doc-9 §5 (ii) 入力を保持して再適用 | [`rebaseOnto`] | touched values kept, baseline moved to the latest read |
  * | doc-8 §6.4 編集中の継続検出 | [`externallyChanged`] | the file moved under an open session; input is not taken away |
- * | doc-5 §5 縮退 | [`EditAvailability`] via [`readinessReason`] | no supported CLI, so no edit is offered at all |
+ * | doc-5 §5 縮退 | [`EditAvailability`] via [`readinessAvailability`] | no supported CLI, so no edit is offered at all |
  *
  * Three rules the whole module follows:
  *
@@ -53,6 +53,8 @@ import type {
   UpdateFailure,
   UpdateOperation,
 } from "./wire";
+import type { Availability } from "./availability";
+import { AVAILABLE, withheld } from "./availability";
 import { commaReason, firstWithComma } from "./comma";
 import { bodyLinkRefusalText, imageRefusalText, launchRefusalText } from "./failure";
 import { msg } from "./messages";
@@ -403,7 +405,7 @@ export type SavePlan =
  * measured is doc-5 §3.1's to hold; on screen it would answer something the user did not ask, and
  * Atlas cannot name it truthfully anyway — these reasons are reached while `CliReadiness` may still be
  * `null` or `unavailable`, neither of which carries a version. The one sentence that does name one is
- * [`readinessReason`]'s unsupported branch, whose subject *is* the difference between two versions.
+ * [`readinessAvailability`]'s unsupported branch, whose subject *is* the difference between two versions.
  */
 export function emptyReferencesReason(): string {
   return msg().taskDetail.lastElementHeld("References");
@@ -476,7 +478,7 @@ export function canRemoveLast(values: readonly string[]): boolean {
 }
 
 /**
- * Why the last entry of a 非空全置換 field may not be removed — or `null` when it may.
+ * Whether the last entry of a 非空全置換 field may be removed, and why not when it may not.
  *
  * The withholding only holds where emptying would be *issued*. A list the baseline already had
  * empty is not one of those: entries added in this session can be taken back down to nothing, the
@@ -490,8 +492,11 @@ export function canRemoveLast(values: readonly string[]): boolean {
  * the length of an 外部変更 window a gate fed the newer read would offer a removal whose save is
  * then refused with this very sentence.
  */
-export function lastRemovalReason(baseline: readonly string[], reason: string): string | null {
-  return baseline.length === 0 ? null : reason;
+export function lastRemovalAvailability(
+  baseline: readonly string[],
+  reason: string,
+): Availability {
+  return baseline.length === 0 ? AVAILABLE : withheld(reason);
 }
 
 /**
@@ -838,8 +843,10 @@ function reloadNote(failure: UpdateFailure): string {
 export function commandErrorDetail(error: CommandError): string {
   const text = msg().taskDetail.commandError;
   switch (error.kind) {
-    case "updatesUnavailable":
-      return readinessReason(error.readiness) ?? text.cliUncheckable;
+    case "updatesUnavailable": {
+      const readiness = readinessAvailability(error.readiness);
+      return readiness.state === "withheld" ? readiness.reason : text.cliUncheckable;
+    }
     case "updateRejected":
       return text.updateRejected(error.detail);
     case "uncheckableTarget":
@@ -963,21 +970,26 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
 
 export type EditAvailability = { state: "editable" } | { state: "unavailable"; reason: string };
 
-/** 縮退 (doc-5 §5): why updates are not offered when the CLI is missing or out of range. */
-export function readinessReason(readiness: CliReadiness | null): string | null {
+/**
+ * 縮退 (doc-5 §5): whether the CLI can carry an update at all, and why not when it cannot. Every
+ * control that turns on this fact reads the tag rather than the sentence's nullness (doc-11 §5,
+ * `availability.ts`) — three of them do, on two screens, and a 目視 pass that emptied one branch's
+ * text would otherwise offer updates against a CLI that is missing.
+ */
+export function readinessAvailability(readiness: CliReadiness | null): Availability {
   const text = msg().taskDetail.readiness;
   if (readiness === null) {
-    return text.checking;
+    return withheld(text.checking);
   }
   switch (readiness.state) {
     case "ready":
-      return null;
+      return AVAILABLE;
     // See `cliDegradedSummary`: naming PATH alone stopped being true at decision-16. `detail` names
     // the executable the resolution settled on, which is what the user has to act on.
     case "unavailable":
-      return text.unavailable(readiness.detail);
+      return withheld(text.unavailable(readiness.detail));
     case "unsupported":
-      return text.unsupported(readiness.version, readiness.minimum);
+      return withheld(text.unsupported(readiness.version, readiness.minimum));
   }
 }
 
@@ -1022,8 +1034,10 @@ export function editAvailability(
     case "active":
       break;
   }
-  const degraded = readinessReason(readiness);
-  return degraded === null ? { state: "editable" } : { state: "unavailable", reason: degraded };
+  const degraded = readinessAvailability(readiness);
+  return degraded.state === "ready"
+    ? { state: "editable" }
+    : { state: "unavailable", reason: degraded.reason };
 }
 
 // --- 状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5) -------------------------------------------
@@ -1041,9 +1055,8 @@ export interface TransitionOffer {
   /** What the transition does to 保存区分 / id / status — the parts doc-5 §3.3 measured. */
   effect: string;
   operation: UpdateOperation;
-  enabled: boolean;
-  /** Why it is not active. `null` when it is. */
-  reason: string | null;
+  /** Whether this transition may be issued, and why not when it may not (doc-11 §5). */
+  availability: Availability;
 }
 
 /**
@@ -1085,10 +1098,18 @@ export function transitionOffers(
 
   // Ordered by how fundamental the obstacle is: a file that is gone cannot be transitioned at all,
   // no CLI means no operation, and unsaved input is the one the user can clear themselves.
-  const blocked =
-    (context.fileMissing === true ? fileMissingReason() : null) ??
-    readinessReason(context.readiness) ??
-    (context.hasUnsavedInput ? msg().taskDetail.unsavedBeforeTransition : null);
+  const outside = ((): Availability => {
+    if (context.fileMissing === true) {
+      return withheld(fileMissingReason());
+    }
+    const readiness = readinessAvailability(context.readiness);
+    if (readiness.state === "withheld") {
+      return readiness;
+    }
+    return context.hasUnsavedInput
+      ? withheld(msg().taskDetail.unsavedBeforeTransition)
+      : AVAILABLE;
+  })();
 
   const offers: TransitionOffer[] =
     storage === "draft"
@@ -1103,20 +1124,24 @@ export function transitionOffers(
             "taskComplete",
             { op: "taskComplete", taskId: id },
             view.task.status === COMPLETABLE_STATUS
-              ? null
-              : msg().taskDetail.completableOnly(
-                  COMPLETABLE_STATUS,
-                  view.task.status ?? msg().taskDetail.statusUnreadableShort,
+              ? AVAILABLE
+              : withheld(
+                  msg().taskDetail.completableOnly(
+                    COMPLETABLE_STATUS,
+                    view.task.status ?? msg().taskDetail.statusUnreadableShort,
+                  ),
                 ),
           ),
         ];
 
+  // The 区画-wide obstacle outranks a transition's own, and never revives one already withheld:
+  // an offer held back by its 状態 is held back whatever the CLI is doing.
   return {
     state: "offered",
     offers: offers.map((entry) =>
-      blocked === null || !entry.enabled
+      outside.state === "ready" || entry.availability.state === "withheld"
         ? entry
-        : { ...entry, enabled: false, reason: blocked },
+        : { ...entry, availability: outside },
     ),
   };
 }
@@ -1124,7 +1149,7 @@ export function transitionOffers(
 function offer(
   kind: TransitionKind,
   operation: UpdateOperation,
-  reason: string | null = null,
+  availability: Availability = AVAILABLE,
 ): TransitionOffer {
   const text = msg().taskDetail.transition[kind];
   return {
@@ -1132,8 +1157,7 @@ function offer(
     label: text.label,
     effect: text.effect,
     operation,
-    enabled: reason === null,
-    reason,
+    availability,
   };
 }
 

@@ -24,8 +24,8 @@
  * | doc-7 §2.1 表示中の印 | `MenuItem.shown` on a `toggleProject` item | whether that project's row is on screen — the figure `HeaderMenu.svelte` draws from it |
  * | doc-7 §2.1 すべてのプロジェクトを表示 | [`showAllProjectsLabel`] + the `showAllProjects` item | 一覧の先頭に置く、全行を表示へ戻す行 |
  * | doc-7 §2.1 群（項目の並びの単位） | [`MenuGroup`] + each item's `group` | which of the two 群 a line is in: `layer` raises a 被せ層, `rows` changes which rows the grid draws |
- * | doc-7 §2.1 区切り線 | [`startsGroup`] | メニューの群と群の境目に置く水平の線を指す。Where one is drawn — read from 群 alone, never from `held` |
- * | doc-11 §5 無効化提示 | [`showAllProjectsHeld`] | 保留理由: why すべてのプロジェクトを表示 cannot be pressed, or `null` when it can — [`showAllProjectsHeldReason`] when every row is shown, [`noProjectsReason`] when the ledger is empty |
+ * | doc-7 §2.1 区切り線 | [`startsGroup`] | メニューの群と群の境目に置く水平の線を指す。Where one is drawn — read from 群 alone, never from `availability` |
+ * | doc-11 §5 無効化提示 | [`showAllProjectsAvailability`] | 保留判定 と 保留理由 as one value: whether すべてのプロジェクトを表示 may be pressed, and — when it may not — [`showAllProjectsHeldReason`] if every row is shown, [`noProjectsReason`] if the ledger is empty |
  * | doc-11 §8 可視の文を省いてよい理由 | [`omitsSentence`] | which 保留理由 is drawn without a visible sentence, because the 区画 states it (licence ①) |
  *
  * ## Why the whole project list is here
@@ -41,6 +41,8 @@
  * decides what a press does.
  */
 
+import type { Availability } from "./availability";
+import { AVAILABLE, withheld } from "./availability";
 import { msg } from "./messages";
 import type { ShortcutAction } from "./shortcuts";
 
@@ -131,17 +133,19 @@ export function noProjectsReason(): string {
 }
 
 /**
- * 保留理由 for すべてのプロジェクトを表示, or `null` while at least one row is hidden. A sentence rather
- * than a boolean for the reason doc-11 §5 gives: 理由の無い無効化を置かない — an unpressable control with
- * no reason cannot be told from a broken one.
+ * Whether すべてのプロジェクトを表示 may be pressed, and why not while every row is already on screen.
+ * 保留判定 and 保留理由 travel as one value for the reason doc-11 §5 gives twice over: 理由の無い無効化
+ * を置かない — an unpressable control with no reason cannot be told from a broken one — and the reason
+ * is not the judgement, so dropping the sentence cannot quietly make the line pressable.
  */
-export function showAllProjectsHeld(projectCount: number, hiddenCount: number): string | null {
+export function showAllProjectsAvailability(
+  projectCount: number,
+  hiddenCount: number,
+): Availability {
   if (projectCount === 0) {
-    return noProjectsReason();
+    return withheld(noProjectsReason());
   }
-  return hiddenCount > 0
-    ? null
-    : showAllProjectsHeldReason();
+  return hiddenCount > 0 ? AVAILABLE : withheld(showAllProjectsHeldReason());
 }
 
 /**
@@ -167,7 +171,8 @@ export function omitsSentence(reason: string): boolean {
 export type MenuGroup = "layer" | "rows";
 
 /**
- * One line of the menu. `held` is the 保留理由 (doc-11 §5), or `null` when the line is pressable.
+ * One line of the menu. `availability` carries both halves of doc-11 §5's 無効化提示 — whether the line
+ * is withheld and, when it is, what the menu says about it.
  *
  * `key` identifies the line for the markup that draws it. It is decided here rather than derived at the
  * `{#each}`, because deriving it from `kind` is wrong in a way nothing catches until the menu is opened:
@@ -176,9 +181,15 @@ export type MenuGroup = "layer" | "rows";
  * menu did. Keeping the key in the data makes uniqueness a property this module can be tested for.
  */
 export type MenuItem =
-  | { kind: "entry"; key: string; group: MenuGroup; entry: HeaderEntryView; held: null }
-  | { kind: "shortcutHelp"; key: string; group: MenuGroup; label: string; held: null }
-  | { kind: "showAllProjects"; key: string; group: MenuGroup; label: string; held: string | null }
+  | { kind: "entry"; key: string; group: MenuGroup; entry: HeaderEntryView; availability: Availability }
+  | { kind: "shortcutHelp"; key: string; group: MenuGroup; label: string; availability: Availability }
+  | {
+      kind: "showAllProjects";
+      key: string;
+      group: MenuGroup;
+      label: string;
+      availability: Availability;
+    }
   | {
       kind: "toggleProject";
       key: string;
@@ -187,7 +198,7 @@ export type MenuItem =
       label: string;
       /** 表示中の印 — true while that project's row is one the grid draws. */
       shown: boolean;
-      held: null;
+      availability: Availability;
     };
 
 /**
@@ -222,7 +233,7 @@ export function projectMenuLabel(project: MenuProject): string {
 /**
  * 区切り線とは、メニューの群と群の境目に置く水平の線を指す。True for the line a 区切り線 is drawn above.
  *
- * It reads 群 and nothing else — in particular not `held`. Until TASK-130 the menu drew no 区切り線 at
+ * It reads 群 and nothing else — in particular not `availability`. Until TASK-130 the menu drew no 区切り線 at
  * all, and what a user saw at this very boundary was the 無効化提示 破線枠 of the すべて line (doc-11 §5):
  * a line that appeared when there was nothing to restore and vanished when there was, which reads as the
  * menu's grouping coming and going. The 破線枠 is right and stays; what was missing is a mark of the
@@ -255,7 +266,7 @@ export function headerMenu(projects: readonly MenuProject[]): MenuItem[] {
         key: `entry:${entry.id}`,
         group: "layer",
         entry: headerEntryView(entry),
-        held: null,
+        availability: AVAILABLE,
       }),
     ),
     {
@@ -263,14 +274,14 @@ export function headerMenu(projects: readonly MenuProject[]): MenuItem[] {
       key: "shortcutHelp",
       group: "layer",
       label: shortcutHelpLabel(),
-      held: null,
+      availability: AVAILABLE,
     },
     {
       kind: "showAllProjects",
       key: "showAllProjects",
       group: "rows",
       label: showAllProjectsLabel(),
-      held: showAllProjectsHeld(projects.length, hiddenCount),
+      availability: showAllProjectsAvailability(projects.length, hiddenCount),
     },
     ...projects.map((project): MenuItem => ({
       kind: "toggleProject",
@@ -281,7 +292,7 @@ export function headerMenu(projects: readonly MenuProject[]): MenuItem[] {
       slug: project.slug,
       label: projectMenuLabel(project),
       shown: project.shown,
-      held: null,
+      availability: AVAILABLE,
     })),
   ];
 }

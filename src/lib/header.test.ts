@@ -9,7 +9,7 @@ import {
   headerMenu,
   omitsSentence,
   projectMenuLabel,
-  showAllProjectsHeld,
+  showAllProjectsAvailability,
   startsGroup,
   type MenuItem,
   type MenuProject,
@@ -104,12 +104,12 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
     const held = allShown.find((item) => item.kind === "showAllProjects");
     const free = some.find((item) => item.kind === "showAllProjects");
     expect(held?.label).toBe(showAllProjectsLabel());
-    // Which reason, not merely that there is one: `showAllProjectsHeld` takes two counts of the same
+    // Which reason, not merely that there is one: `showAllProjectsAvailability` takes two counts of the same
     // type, so a call site that passed them the wrong way round would withhold a full ledger with
     // 登録済みプロジェクトがありません — a sentence that is off the licence and would therefore be both
     // printed and spoken. `not.toBeNull()` cannot see that; naming the reason can.
-    expect(held?.held).toBe(showAllProjectsHeldReason());
-    expect(free?.held).toBeNull();
+    expect(held?.availability).toEqual({ state: "withheld", reason: showAllProjectsHeldReason() });
+    expect(free?.availability).toEqual({ state: "ready" });
   });
 
   /**
@@ -141,8 +141,11 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
 
 describe("保留理由 (doc-11 §5)", () => {
   it("holds すべてのプロジェクトを表示 at 0 hidden rows only", () => {
-    expect(showAllProjectsHeld(3, 0)).toBe(showAllProjectsHeldReason());
-    expect(showAllProjectsHeld(3, 1)).toBeNull();
+    expect(showAllProjectsAvailability(3, 0)).toEqual({
+      state: "withheld",
+      reason: showAllProjectsHeldReason(),
+    });
+    expect(showAllProjectsAvailability(3, 1)).toEqual({ state: "ready" });
   });
 
   /**
@@ -152,12 +155,16 @@ describe("保留理由 (doc-11 §5)", () => {
    * them is on the licence — otherwise a fresh install draws a held line with no reason at all.
    */
   it("gives an empty ledger its own reason, and prints that one", () => {
-    expect(showAllProjectsHeld(0, 0)).toBe(noProjectsReason());
+    expect(showAllProjectsAvailability(0, 0)).toEqual({
+      state: "withheld",
+      reason: noProjectsReason(),
+    });
     expect(omitsSentence(noProjectsReason())).toBe(false);
     expect(omitsSentence(showAllProjectsHeldReason())).toBe(true);
-    expect(headerMenu([]).find((item) => item.kind === "showAllProjects")?.held).toBe(
-      noProjectsReason(),
-    );
+    expect(headerMenu([]).find((item) => item.kind === "showAllProjects")?.availability).toEqual({
+      state: "withheld",
+      reason: noProjectsReason(),
+    });
   });
 
   /**
@@ -197,8 +204,12 @@ describe("区切り線 (doc-7 §2.1)", () => {
   it("draws one 区切り線, at the same place whether or not the すべて line is held", () => {
     const shown = [project("atlas")];
     const hidden = [project("atlas", false)];
-    expect(headerMenu(shown).find((item) => item.kind === "showAllProjects")?.held).not.toBeNull();
-    expect(headerMenu(hidden).find((item) => item.kind === "showAllProjects")?.held).toBeNull();
+    expect(
+      headerMenu(shown).find((item) => item.kind === "showAllProjects")?.availability.state,
+    ).toBe("withheld");
+    expect(
+      headerMenu(hidden).find((item) => item.kind === "showAllProjects")?.availability.state,
+    ).toBe("ready");
 
     expect(rules([])).toEqual([3]);
     expect(rules(shown)).toEqual([3]);

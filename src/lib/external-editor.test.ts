@@ -50,7 +50,7 @@ describe("editorOffers", () => {
   it("offers both methods and names what each would run", () => {
     const offers = editorOffers(WITH_EDITOR, { fileMissing: false });
     expect(offers.map((entry) => entry.method)).toEqual(["configured", "association"]);
-    expect(offers.every((entry) => entry.enabled)).toBe(true);
+    expect(offers.every((entry) => entry.availability.state === "ready")).toBe(true);
     // The source in effect is named, so "which editor" is never guessed from the program alone.
     expect(offer(WITH_EDITOR, "configured").label).toContain("$VISUAL");
     expect(offer(WITH_EDITOR, "configured").command).toBe("code -w <このタスクのファイル>");
@@ -72,12 +72,14 @@ describe("editorOffers", () => {
 
   it("keeps the association method when no editor variable is set", () => {
     // doc-8 §7 names both; the machine without an $EDITOR is exactly why they are separate controls.
-    expect(offer(WITHOUT_EDITOR, "association").enabled).toBe(true);
+    expect(offer(WITHOUT_EDITOR, "association").availability).toEqual({ state: "ready" });
     const configured = offer(WITHOUT_EDITOR, "configured");
-    expect(configured.enabled).toBe(false);
-    expect(configured.reason).toBe(noConfiguredEditorReason());
+    expect(configured.availability).toEqual({
+      state: "withheld",
+      reason: noConfiguredEditorReason(),
+    });
     // The reason has to name both ways out, since アプリ設定 is now the first of them (doc-8 §7).
-    expect(configured.reason).toContain("設定画面");
+    expect(noConfiguredEditorReason()).toContain("設定画面");
   });
 
   it("offers the association method on Windows and names ShellExecuteW as what it invokes", () => {
@@ -86,31 +88,33 @@ describe("editorOffers", () => {
     // `ShellExecuteW` call, and the panel names it — reading *that* off the screen is how a user can
     // tell "opened through a shell" from "opened through the shell API".
     const association = offer(ON_WINDOWS, "association");
-    expect(association.enabled).toBe(true);
-    expect(association.reason).toBe(null);
+    expect(association.availability).toEqual({ state: "ready" });
+    expect(association.caveat).toBe(null);
     expect(association.command).toBe("ShellExecuteW … <このタスクのファイル>");
-    expect(offer(ON_WINDOWS, "configured").enabled).toBe(true);
+    expect(offer(ON_WINDOWS, "configured").availability).toEqual({ state: "ready" });
   });
 
   it("states the terminal-editor caveat on an offered $EDITOR", () => {
     // Enabled *and* carrying a caveat: a terminal editor spawned from a GUI process draws nothing,
     // and that has to be readable before the launch rather than diagnosed after it.
     const configured = offer(WITH_EDITOR, "configured");
-    expect(configured.enabled).toBe(true);
-    expect(configured.reason).toBe(configuredTerminalCaveat());
+    expect(configured.availability).toEqual({ state: "ready" });
+    expect(configured.caveat).toBe(configuredTerminalCaveat());
   });
 
   it("withholds both methods while the probe is unfinished", () => {
     const offers = editorOffers(null, { fileMissing: false });
-    expect(offers.every((entry) => !entry.enabled)).toBe(true);
-    expect(offers.every((entry) => entry.reason === editorProbePendingReason())).toBe(true);
+    expect(offers.map((entry) => entry.availability)).toEqual(
+      offers.map(() => ({ state: "withheld", reason: editorProbePendingReason() })),
+    );
   });
 
   it("withholds both methods when the file left the read result", () => {
     // Nothing can be named as the target, and a launch on a stale path is what the boundary refuses.
     const offers = editorOffers(WITH_EDITOR, { fileMissing: true });
-    expect(offers.every((entry) => !entry.enabled)).toBe(true);
-    expect(offers.every((entry) => entry.reason === fileMissingEditorReason())).toBe(true);
+    expect(offers.map((entry) => entry.availability)).toEqual(
+      offers.map(() => ({ state: "withheld", reason: fileMissingEditorReason() })),
+    );
   });
 });
 
@@ -191,9 +195,11 @@ describe("CLI で不能な操作の理由 (AC #5, doc-11 §8)", () => {
   it("stays offered for the 保存区分 the CLI cannot edit", () => {
     // doc-8 §6.5 sends draft・completed・archive here, so the controls must not depend on 保存区分 or
     // on the CLI probe — `editorOffers` takes neither.
-    expect(editorOffers(WITH_EDITOR, { fileMissing: false }).every((entry) => entry.enabled)).toBe(
-      true,
-    );
+    expect(
+      editorOffers(WITH_EDITOR, { fileMissing: false }).every(
+        (entry) => entry.availability.state === "ready",
+      ),
+    ).toBe(true);
   });
 });
 

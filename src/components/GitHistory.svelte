@@ -18,6 +18,8 @@
     relationLine,
     type HistoryState,
   } from "../lib/detail";
+  import type { Availability } from "../lib/availability";
+  import { AVAILABLE, withheld } from "../lib/availability";
   import { RECENT_COMMIT_LIMIT, type HistoryDetail } from "../lib/placement";
   import type { ProjectEntry } from "../lib/wire";
   import { messages } from "../lib/messages-context";
@@ -63,10 +65,14 @@
   );
   let remaining = $derived(commits.state === "commits" ? commits.commits.length - shown.length : 0);
   /**
-   * なぜ再取得が押せないか、押せないときだけ (doc-11 §5). One value for both the withheld state and the
-   * sentence beside the button: derived apart, a control can end up blocked with nothing said about it.
+   * Whether 再取得 may be pressed, and why not when it may not (doc-11 §5). One value for both halves,
+   * with the 保留判定 as the tag rather than the sentence's nullness: derived apart, a control can end
+   * up blocked with nothing said about it; folded into the sentence, dropping the sentence takes the
+   * withholding with it (`availability.ts`).
    */
-  let reloadBlocked = $derived(history.state === "loading" ? t().gitHistory.loadingReason : null);
+  let reload = $derived<Availability>(
+    history.state === "loading" ? withheld(t().gitHistory.loadingReason) : AVAILABLE,
+  );
 
   /** Author date is strict ISO 8601 (doc-6 §3); show it without inventing a timezone for it. */
   function day(date: string): string {
@@ -81,15 +87,15 @@
     <button
       type="button"
       onclick={onreload}
-      disabled={reloadBlocked !== null}
-      title={reloadBlocked ?? t().gitHistory.reloadHint}
+      disabled={reload.state === "withheld"}
+      title={reload.state === "withheld" ? reload.reason : t().gitHistory.reloadHint}
     >
       {t().gitHistory.reload}
     </button>
     <!-- 無効化の理由を常時表示で添える (doc-11 §5): a disabled button takes no focus, so a `title` would
          leave the reason out of reach from the keyboard and from a screen reader. -->
-    {#if reloadBlocked !== null}
-      <span class="reason">{t().gitHistory.reloadWithheld(reloadBlocked)}</span>
+    {#if reload.state === "withheld"}
+      <span class="reason">{t().gitHistory.reloadWithheld(reload.reason)}</span>
     {/if}
   </div>
 

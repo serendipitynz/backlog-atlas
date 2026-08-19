@@ -14,14 +14,15 @@ import {
   gitRemoteDisagreement,
   gitRemoteLine,
   movesRoot,
-  overviewBlocked,
+  overviewAvailability,
   overviewSave,
   redetectControl,
   rootMoveNote,
   submittedAttributes,
-  unregisterBlocked,
+  unregisterAvailability,
   type OverviewSave,
 } from "./project-detail";
+import type { Availability } from "./availability";
 import { omitsSentence } from "./manage";
 import { CATALOGS } from "./messages";
 import { aliasKeyEffect, editOf, editProblems, toUpdateRequest, type EntryEdit } from "./ledger";
@@ -111,11 +112,16 @@ describe("区画ナビの件数", () => {
 // independence are `band.test.ts`'s (doc-11 §4). What stays here is the per-操作 reason this screen
 // shows beside its controls, which is where the full text lives once the band is 縮約 to one line.
 
+/** The 保留理由 of an [`Availability`], or `null` when it carries none — the tests read text. */
+function reasonOf(availability: Availability): string | null {
+  return availability.state === "withheld" ? availability.reason : null;
+}
+
 describe("台帳読取専用の及ぶ範囲", () => {
   it("stops the ledger edits on a read-only ledger and nothing else (doc-10 §8)", () => {
-    expect(overviewBlocked({ readOnly: true, busy: false })).toContain("読み取り専用");
-    expect(overviewBlocked({ readOnly: false, busy: true })).toContain("実行中");
-    expect(overviewBlocked({ readOnly: false, busy: false })).toBeNull();
+    expect(reasonOf(overviewAvailability({ readOnly: true, busy: false }))).toContain("読み取り専用");
+    expect(reasonOf(overviewAvailability({ readOnly: false, busy: true }))).toContain("実行中");
+    expect(overviewAvailability({ readOnly: false, busy: false })).toEqual({ state: "ready" });
   });
 
   it("says the read-only state reaches the inputs, not only the save (review [P2])", () => {
@@ -264,7 +270,7 @@ describe("再検出の控え", () => {
   it("is held while another ledger write is in flight, and free otherwise", () => {
     const busy = control({ busy: true });
     expect(busy.state === "withheld" && busy.reason).toBe(
-      overviewBlocked({ readOnly: false, busy: true }),
+      reasonOf(overviewAvailability({ readOnly: false, busy: true })),
     );
     expect(control().state).toBe("ready");
   });
@@ -332,7 +338,7 @@ describe("保存の保留判定", () => {
       const shown = control(changed, context);
       expect(shown.state).toBe("withheld");
       expect(shown.state === "withheld" && shown.reason).toBe(
-        overviewBlocked({ readOnly: false, busy: false, ...context }),
+        reasonOf(overviewAvailability({ readOnly: false, busy: false, ...context })),
       );
     }
   });
@@ -359,8 +365,12 @@ describe("保存の保留判定", () => {
     expect(omitsSentence(overviewNoChangesReason())).toBe(true);
     expect(omitsSentence(overviewInputProblemsReason())).toBe(true);
     // The obstacles from outside the form are on neither licence and keep their printed line.
-    expect(omitsSentence(overviewBlocked({ readOnly: true, busy: false }) ?? "")).toBe(false);
-    expect(omitsSentence(overviewBlocked({ readOnly: false, busy: true }) ?? "")).toBe(false);
+    expect(omitsSentence(reasonOf(overviewAvailability({ readOnly: true, busy: false })) ?? "")).toBe(
+      false,
+    );
+    expect(omitsSentence(reasonOf(overviewAvailability({ readOnly: false, busy: true })) ?? "")).toBe(
+      false,
+    );
   });
 });
 
@@ -496,25 +506,27 @@ describe("登録解除", () => {
   const open = { readOnly: false, busy: false };
 
   it("holds the action until the typed text is the slug", () => {
-    expect(unregisterBlocked("", "atlas", open)).toContain("atlas");
-    expect(unregisterBlocked("atla", "atlas", open)).not.toBeNull();
-    expect(unregisterBlocked("atlas", "atlas", open)).toBeNull();
+    expect(reasonOf(unregisterAvailability("", "atlas", open))).toContain("atlas");
+    expect(unregisterAvailability("atla", "atlas", open).state).toBe("withheld");
+    expect(unregisterAvailability("atlas", "atlas", open)).toEqual({ state: "ready" });
   });
 
   it("forgives surrounding space but not a different spelling", () => {
     // Refusing over whitespace that came along with a paste confirms nothing. A slug is lowercase
     // letters, digits and hyphens only (doc-3 §3.1), so a case difference is a typo.
-    expect(unregisterBlocked("  atlas ", "atlas", open)).toBeNull();
-    expect(unregisterBlocked("Atlas", "atlas", open)).not.toBeNull();
+    expect(unregisterAvailability("  atlas ", "atlas", open)).toEqual({ state: "ready" });
+    expect(unregisterAvailability("Atlas", "atlas", open).state).toBe("withheld");
   });
 
   it("puts the ledger's own state ahead of the confirmation", () => {
     // A matching slug still cannot act on a ledger that cannot be written, so that reason is read
     // first.
-    expect(unregisterBlocked("atlas", "atlas", { readOnly: true, busy: false })).toContain(
-      "読み取り専用",
-    );
-    expect(unregisterBlocked("atlas", "atlas", { readOnly: false, busy: true })).toContain("実行中");
+    expect(
+      reasonOf(unregisterAvailability("atlas", "atlas", { readOnly: true, busy: false })),
+    ).toContain("読み取り専用");
+    expect(
+      reasonOf(unregisterAvailability("atlas", "atlas", { readOnly: false, busy: true })),
+    ).toContain("実行中");
   });
 
   it("states what is not deleted, which is what makes the button safe to press", () => {

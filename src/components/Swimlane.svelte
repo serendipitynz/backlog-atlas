@@ -3,6 +3,8 @@
   // cells hold task cards. The four columns are laid out once for the whole grid — not per row
   // — so a column can be read top-to-bottom across projects, which is the point of the screen
   // (doc-7 §2 プロジェクト横断の縦読み).
+  import type { Availability } from "../lib/availability";
+  import { AVAILABLE } from "../lib/availability";
   import LaneCell from "./LaneCell.svelte";
   import LaneCreate from "./LaneCreate.svelte";
   import Icon from "../lib/icons/Icon.svelte";
@@ -72,10 +74,10 @@
     createTitle: string;
     /** The candidate that will be passed, already resolved against the open cell's 候補. */
     createStatus: string;
-    /** Why 発行 is withheld for the open entry, or `null` (doc-5 §5). */
-    createBlocked: string | null;
-    /** Why *no* cell may take input — CLI 縮退 or an action in flight (doc-7 §4.1), or `null`. */
-    createHeld: string | null;
+    /** Whether 発行 may go out for the open entry, and why not (doc-5 §5). */
+    createAvailability: Availability;
+    /** Whether *any* cell may take input — CLI 縮退 or an action in flight holds them all (doc-7 §4.1). */
+    entryAvailability: Availability;
     oncreateOpen: (slug: string, column: StatusColumn) => void;
     oncreateClose: () => void;
     oncreateTitle: (value: string) => void;
@@ -94,8 +96,8 @@
      * a drop into a grid that is no longer the one it started on. `null` はドラッグしていない.
      */
     dragSource: DragSource | null;
-    /** Why *no* card may be picked up — CLI 縮退 or an action in flight (doc-7 §4.2), or `null`. */
-    dragHeld: string | null;
+    /** Whether *any* card may be picked up — CLI 縮退 or an action in flight holds them all (doc-7 §4.2). */
+    dragHeld: Availability;
     /** 発行中のカード (doc-7 §4.2): the task file whose `task edit -s` has not returned. */
     issuingPath: string | null;
     ondragstart: (view: TaskView) => void;
@@ -124,8 +126,8 @@
     createOpen,
     createTitle,
     createStatus,
-    createBlocked,
-    createHeld,
+    createAvailability,
+    entryAvailability,
     oncreateOpen,
     oncreateClose,
     oncreateTitle,
@@ -604,8 +606,8 @@
                 open={entryOpen}
                 title={entryOpen ? createTitle : ""}
                 status={entryOpen ? createStatus : ""}
-                blocked={entryOpen ? createBlocked : null}
-                held={createHeld}
+                create={entryOpen ? createAvailability : AVAILABLE}
+                entryAvailable={entryAvailability}
                 onopen={() => oncreateOpen(row.slug, cell.column)}
                 onclose={oncreateClose}
                 ontitle={oncreateTitle}

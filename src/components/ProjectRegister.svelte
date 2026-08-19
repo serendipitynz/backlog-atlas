@@ -24,6 +24,8 @@
     type RefusalReport,
     type RegisterInput,
   } from "../lib/ledger";
+  import type { Availability } from "../lib/availability";
+  import { AVAILABLE, withheld } from "../lib/availability";
   import { omitsSentence } from "../lib/manage";
   import { overviewInputProblemsReason } from "../lib/project-detail";
   import { createSlugPreviewLoader, type SlugPreview } from "../lib/slug-preview";
@@ -90,14 +92,15 @@
   let taken = $derived(entries.map((entry) => entry.slug));
   let issues = $derived(registerProblems(input, taken));
   let previewBacklogRoot = $derived(resolvedBacklogRoot(input));
-  let canRegister = $derived(!readOnly && !busy && !submitting && issues.length === 0);
-
   const BLOCKED_ID = "register-blocked";
   const READ_ONLY_ID = "register-read-only";
 
   /**
-   * Why registration is held, and only when it is (doc-11 §5). One string drives both the withheld
-   * state and the sentence under the button, so the two cannot disagree.
+   * Whether 登録 may be pressed, and why not when it may not (doc-11 §5). **Until TASK-128 this was
+   * two values**: a `canRegister` boolean over four predicates, and this string over the same four —
+   * separately derived, so nothing tied the sentence under the button to the state of the button.
+   * That is the direction §5 refuses second (a 保留判定 computed apart from its reason is how a
+   * 理由の無い無効化 gets in), and the comment here claimed the opposite of what the markup did.
    *
    * **The input-problem reason is the shared constant**, not a second literal saying the same thing:
    * `omitsSentence` (doc-11 §8) is keyed on the string, and two copies would put this screen's copy
@@ -105,15 +108,15 @@
    * needed it first; the fact is the same one — every problem is printed under the field it is about,
    * which is §8's licence ① and why the sentence is no longer drawn here (目視 2026-08-10).
    */
-  let blocked = $derived(
-    readOnly
-      ? t().projectRegister.readOnlyBlocked
-      : busy || submitting
-        ? t().projectRegister.busyBlocked
-        : issues.length > 0
-          ? overviewInputProblemsReason()
-          : null,
-  );
+  let registration = $derived.by((): Availability => {
+    if (readOnly) {
+      return withheld(t().projectRegister.readOnlyBlocked);
+    }
+    if (busy || submitting) {
+      return withheld(t().projectRegister.busyBlocked);
+    }
+    return issues.length > 0 ? withheld(overviewInputProblemsReason()) : AVAILABLE;
+  });
 
   // `ondefaultSlug` is called through a closure rather than passed as the port itself: the prop is
   // read at call time, so the loader cannot outlive a change of it.
@@ -156,7 +159,7 @@
   }
 
   async function submit(): Promise<void> {
-    if (!canRegister) {
+    if (registration.state === "withheld") {
       return;
     }
     report = null;
@@ -307,17 +310,19 @@
     <p
       class="blocked-note"
       id={BLOCKED_ID}
-      class:unseen={blocked === null || omitsSentence(blocked)}
+      class:unseen={registration.state === "ready" || omitsSentence(registration.reason)}
     >
-      {blocked ?? ""}
+      {registration.state === "withheld" ? registration.reason : ""}
     </p>
     <div class="row">
       <button
         type="button"
         class="primary"
-        aria-disabled={!canRegister}
-        aria-describedby={canRegister ? undefined : BLOCKED_ID}
-        title={blocked ?? t().projectRegister.submitHint}
+        aria-disabled={registration.state === "withheld"}
+        aria-describedby={registration.state === "ready" ? undefined : BLOCKED_ID}
+        title={registration.state === "withheld"
+          ? registration.reason
+          : t().projectRegister.submitHint}
         onclick={submit}
       >
         {submitting ? t().projectRegister.submitting : t().projectRegister.submit}

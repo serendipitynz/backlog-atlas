@@ -17,6 +17,8 @@
   // form state and callbacks. Text inputs bind to local state and are never rewritten while the user
   // is typing — the same IME rule the other screens follow.
   import { tick, untrack, type Snippet } from "svelte";
+  import type { Availability } from "../lib/availability";
+  import { AVAILABLE, withheld } from "../lib/availability";
   import Body from "./Body.svelte";
   import type { ImageReader } from "../lib/markdown-image";
   import Editor from "./Editor.svelte";
@@ -106,7 +108,7 @@
     redetectControl,
     rootMoveNote,
     submittedAttributes,
-    unregisterBlocked,
+    unregisterAvailability,
     type DetailSection,
   } from "../lib/project-detail";
   // 行長上限 (doc-8 §2.1, TASK-113). Borrowed rather than restated: the number is one measurement,
@@ -216,7 +218,7 @@
   // The 台帳読取専用帯 and CLI 縮退帯 (doc-10 §3) are ③ and ② of the screen-common 上部帯 stack
   // (doc-11 §4), so the shell raises them for this screen too. Drawn from here they would sit *below*
   // the shell's 確認帯 ① and 通知帯 ⑤, which is the 出現順 doc-11 §4 forbids. What stays here is the
-  // per-操作 reason (`overviewBlocked`・`withheld`・`overviewReadOnlyNote()`), which is where the
+  // per-操作 reason (`overviewAvailability`・`withheld`・`overviewReadOnlyNote()`), which is where the
   // full text lives once the band is 縮約 to one line.
 
   // --- 発行の可否 (doc-5 §5, doc-9 §5) ----------------------------------------------------------
@@ -235,11 +237,23 @@
    * 区画 — not just the one that started it — since the boundary detaches the old session and
    * reopens the slug against the new root while it runs.
    */
-  let issuing = $derived(busy || ledgerSaving);
-  /** Why issuance is held, for the controls that build no plan of their own (文書一覧の 編集). */
-  let issuingReason = $derived(
-    ledgerSaving ? ledgerWriteInFlightReason() : busy ? issueBusyReason() : null,
+  /**
+   * Whether issuance is held, and why, for the controls that build no plan of their own (文書一覧の
+   * 編集). One value rather than a flag beside a sentence: doc-11 §5 refuses both directions the two
+   * can come apart in, and `issuing` below is read *off* this so neither can move without the other.
+   */
+  let issuance = $derived<Availability>(
+    ledgerSaving
+      ? withheld(ledgerWriteInFlightReason())
+      : busy
+        ? withheld(issueBusyReason())
+        : AVAILABLE,
   );
+  let issuing = $derived(issuance.state === "withheld");
+  /** The `title` a control held by 発行中 carries: the 保留理由 while it stands, its own hint otherwise. */
+  function issuanceTitle(hint: string): string {
+    return issuance.state === "withheld" ? issuance.reason : hint;
+  }
 
   /**
    * Whether one form's 発行 control may be pressed, and why not (doc-5 §5). Wrapped rather than
@@ -250,7 +264,7 @@
     return issueAvailability(plan, {
       readiness,
       busy,
-      hold: ledgerSaving ? ledgerWriteInFlightReason() : null,
+      hold: ledgerSaving ? withheld(ledgerWriteInFlightReason()) : AVAILABLE,
     });
   }
   /**
@@ -308,8 +322,8 @@
       hasChanges: updateRequest !== null,
     }),
   );
-  let unregisterReason = $derived(
-    unregisterBlocked(unregisterInput, entry.slug, {
+  let unregisterAvailable = $derived(
+    unregisterAvailability(unregisterInput, entry.slug, {
       readOnly: ledgerReadOnly,
       busy: ledgerBusy || issuing,
     }),
@@ -478,7 +492,7 @@
   }
 
   async function unregister(): Promise<void> {
-    if (unregisterReason !== null) {
+    if (unregisterAvailable.state === "withheld") {
       return;
     }
     entryReport = null;
@@ -1851,18 +1865,20 @@
             <div class="actions">
               <button
                 type="button"
-                aria-disabled={unregisterReason !== null}
-                aria-describedby={unregisterReason === null
+                aria-disabled={unregisterAvailable.state === "withheld"}
+                aria-describedby={unregisterAvailable.state === "ready"
                   ? undefined
                   : ledgerReadOnly
                     ? OVERVIEW_BLOCKED_ID
                     : UNREGISTER_BLOCKED_ID}
-                title={unregisterReason ?? t().projectDetail.unregisterHint}
+                title={unregisterAvailable.state === "withheld"
+                  ? unregisterAvailable.reason
+                  : t().projectDetail.unregisterHint}
                 onclick={unregister}>{t().projectDetail.unregister}</button
               >
             </div>
-            {#if unregisterReason !== null && !ledgerReadOnly}
-              <p class="blocked-note" id={UNREGISTER_BLOCKED_ID}>{unregisterReason}</p>
+            {#if unregisterAvailable.state === "withheld" && !ledgerReadOnly}
+              <p class="blocked-note" id={UNREGISTER_BLOCKED_ID}>{unregisterAvailable.reason}</p>
             {/if}
           </div>
         </section>
@@ -1911,13 +1927,13 @@
                 {#if project.documents.length === 0}
                   <p class="neutral">{t().projectDetail.documentsEmpty}</p>
                 {:else}
-                  {#if issuingReason !== null}
+                  {#if issuance.state === "withheld"}
                     <!-- Every card is held by the same one thing (doc-11 §5): the reason is written
                          once above the list and each card is bound to it. They stay `aria-disabled`
                          so they keep taking focus, which is what makes the binding reachable
                          without a pointer. -->
                     <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
-                      {t().projectDetail.documentIssuingBlocksOthers(issuingReason)}
+                      {t().projectDetail.documentIssuingBlocksOthers(issuance.reason)}
                     </p>
                   {/if}
                   <ul class="cards">
@@ -1939,7 +1955,9 @@
                           aria-current={current ? "true" : undefined}
                           aria-disabled={issuing}
                           aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
-                          title={issuingReason ?? t().projectDetail.documentOpenHint}
+                          title={issuance.state === "withheld"
+                            ? issuance.reason
+                            : t().projectDetail.documentOpenHint}
                           onclick={() => !issuing && selectDocument(document)}
                         >
                           <span class="card-head">
@@ -2142,7 +2160,7 @@
                         type="button"
                         aria-disabled={issuing}
                         aria-describedby={issuing ? DOC_EDIT_HELD_ID : undefined}
-                        title={issuingReason ?? t().projectDetail.documentEditOpenHint}
+                        title={issuanceTitle(t().projectDetail.documentEditOpenHint)}
                         onclick={() => !issuing && startDocEdit()}
                       >
                         {t().action.edit}
@@ -2154,9 +2172,9 @@
                            選んでいない」) was judged insufficient at 目視. Nothing is lost by not
                            returning: 閲覧 shows every value the card carries and holds no input. -->
                     </div>
-                    {#if issuingReason !== null}
+                    {#if issuance.state === "withheld"}
                       <p class="reason" id={DOC_EDIT_HELD_ID}>
-                        {t().projectDetail.documentIssuingBlocksEdit(issuingReason)}
+                        {t().projectDetail.documentIssuingBlocksEdit(issuance.reason)}
                       </p>
                     {/if}
                     <p class="meta-line">
@@ -2252,12 +2270,12 @@
                 {#if project.milestones.length === 0}
                   <p class="neutral">{t().projectDetail.milestonesEmpty}</p>
                 {:else}
-                  {#if issuingReason !== null}
+                  {#if issuance.state === "withheld"}
                     <!-- Every card is held by the same one thing (doc-11 §5): written once above the
                          list and each card bound to it. They stay `aria-disabled` so they keep
                          taking focus, which is what makes the binding reachable without a pointer. -->
                     <p class="reason" id={MILESTONE_SELECT_BLOCKED_ID}>
-                      {t().projectDetail.milestoneIssuingBlocksOthers(issuingReason)}
+                      {t().projectDetail.milestoneIssuingBlocksOthers(issuance.reason)}
                     </p>
                   {/if}
                   <ul class="cards">
@@ -2281,7 +2299,7 @@
                           aria-current={current ? "true" : undefined}
                           aria-disabled={issuing}
                           aria-describedby={issuing ? MILESTONE_SELECT_BLOCKED_ID : undefined}
-                          title={issuingReason ?? t().projectDetail.milestoneOpenHint}
+                          title={issuanceTitle(t().projectDetail.milestoneOpenHint)}
                           onclick={() => !issuing && selectMilestone(milestone)}
                         >
                           <span class="card-head">
@@ -2408,7 +2426,7 @@
                         type="button"
                         aria-expanded={open === "rename"}
                         disabled={issuing}
-                        title={issuingReason ?? ""}
+                        title={issuanceTitle("")}
                         onclick={() => openMilestoneOp("rename")}
                       >
                         {t().projectDetail.rename}
@@ -2417,7 +2435,7 @@
                         type="button"
                         aria-expanded={open === "remove"}
                         disabled={issuing}
-                        title={issuingReason ?? ""}
+                        title={issuanceTitle("")}
                         onclick={() => openMilestoneOp("remove")}
                       >
                         {t().projectDetail.remove}
@@ -2426,7 +2444,7 @@
                         type="button"
                         aria-expanded={open === "archive"}
                         disabled={issuing}
-                        title={issuingReason ?? ""}
+                        title={issuanceTitle("")}
                         onclick={() => openMilestoneOp("archive")}
                       >
                         {t().projectDetail.archive}
@@ -2575,15 +2593,15 @@
                         type="button"
                         aria-disabled={issuing}
                         aria-describedby={issuing ? MILESTONE_EDIT_HELD_ID : undefined}
-                        title={issuingReason ?? t().projectDetail.milestoneEditOpenHint}
+                        title={issuanceTitle(t().projectDetail.milestoneEditOpenHint)}
                         onclick={() => !issuing && startMilestoneEdit()}
                       >
                         {t().action.edit}
                       </button>
                     </div>
-                    {#if issuingReason !== null}
+                    {#if issuance.state === "withheld"}
                       <p class="reason" id={MILESTONE_EDIT_HELD_ID}>
-                        {t().projectDetail.milestoneIssuingBlocksEdit(issuingReason)}
+                        {t().projectDetail.milestoneIssuingBlocksEdit(issuance.reason)}
                       </p>
                     {/if}
                     <p class="meta-line">
@@ -2930,8 +2948,8 @@
   `layerOpen` already makes that structural. It carries the same three obligations here as anywhere —
   focus held inside, Escape, focus back to the 入口 the layer captured as it mounted.
 
-  `closeBlocked` and `confirmDiscard` are about a 下書き, so both are `null` for the 注記モーダル,
-  which has none. On a 作成モーダル `closeBlocked` is `issuingReason`, which stands exactly while
+  `closeAvailability` and `confirmDiscard` are about a 下書き, so neither withholds for the 注記モーダル,
+  which has none. On a 作成モーダル `closeAvailability` is `issuance`, which stands exactly while
   `issuing` does: doc-11 §7 wants the circumstance held by the thing that wires *both* exits, and here
   that is this file. What the reason guards is a 作成 already sent to a management file — offering
   破棄して閉じる over that would ask the user about input that is at this moment being written.
@@ -2939,7 +2957,7 @@
 {#if layerOpen !== null}
   <Modal
     label={layerLabel}
-    closeBlocked={createOpen === null ? null : issuingReason}
+    closeAvailability={createOpen === null ? AVAILABLE : issuance}
     confirmDiscard={createConfirm}
     onclose={requestLayerClose}
   >

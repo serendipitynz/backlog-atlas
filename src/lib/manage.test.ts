@@ -47,7 +47,8 @@ import {
   type MilestoneAddInput,
   type TaskCreateInput,
 } from "./manage";
-import { readinessReason } from "./edit";
+import { readinessAvailability } from "./edit";
+import { AVAILABLE, withheld } from "./availability";
 import { CATALOGS } from "./messages";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import { taskView } from "./fixtures";
@@ -574,22 +575,28 @@ describe("発行の可否", () => {
     // write is a move, the ids the screen holds start naming files in another root — a different
     // fact from `issueBusyReason()` (another 発行 is running). Passing a reason is what lets the two
     // be said apart.
-    const held = issueAvailability(plan, { readiness: ready, busy: false, hold: "移動中です" });
+    const moving = withheld("移動中です");
+    const held = issueAvailability(plan, { readiness: ready, busy: false, hold: moving });
     expect(held).toEqual({ state: "blocked", reason: "移動中です" });
     // The hold outranks an unfilled form: the reason is the target, not the input.
     const blockedPlan: IssuePlan = { state: "blocked", reason: "title は必須です" };
-    expect(issueAvailability(blockedPlan, { readiness: ready, busy: false, hold: "移動中です" })).toEqual(
-      { state: "blocked", reason: "移動中です" },
-    );
+    expect(issueAvailability(blockedPlan, { readiness: ready, busy: false, hold: moving })).toEqual({
+      state: "blocked",
+      reason: "移動中です",
+    });
   });
 
   it("keeps the CLI degrade ahead of the hold, and no hold as no change", () => {
     const degraded: CliReadiness = { state: "unavailable", detail: "not on PATH" };
+    const readiness = readinessAvailability(degraded);
     expect(
-      issueAvailability(plan, { readiness: degraded, busy: false, hold: "移動中です" }),
-    ).toEqual({ state: "blocked", reason: readinessReason(degraded) });
+      issueAvailability(plan, { readiness: degraded, busy: false, hold: withheld("移動中です") }),
+    ).toEqual({
+      state: "blocked",
+      reason: readiness.state === "withheld" ? readiness.reason : null,
+    });
     expect(issueAvailability(plan, { readiness: ready, busy: false })).toEqual({ state: "ready" });
-    expect(issueAvailability(plan, { readiness: ready, busy: false, hold: null })).toEqual({
+    expect(issueAvailability(plan, { readiness: ready, busy: false, hold: AVAILABLE })).toEqual({
       state: "ready",
     });
   });

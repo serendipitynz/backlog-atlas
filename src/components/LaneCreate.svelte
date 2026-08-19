@@ -7,6 +7,7 @@
   // apart on purpose (doc-11 §5): a column with no candidate gets *no control* and a sentence,
   // while a CLI 縮退 gets the control, disabled, with its reason — the first is 提供しない, the
   // second「今は条件が揃っていない」.
+  import type { Availability } from "../lib/availability";
   import type { LaneCreate } from "../lib/lane-create";
   import { omitsSentence } from "../lib/manage";
   import { ariaKeyShortcuts, matchShortcut, shortcutHint } from "../lib/shortcuts";
@@ -30,14 +31,14 @@
      * chosen here, so what this shows and what is issued are the same string (doc-7 §4.1).
      */
     status: string;
-    /** Why 発行 is withheld, or `null` — CLI 縮退, an action in flight, or an empty title (doc-5 §5). */
-    blocked: string | null;
+    /** Whether 発行 may go out, and why not — CLI 縮退, an action in flight, or an empty title (doc-5 §5). */
+    create: Availability;
     /**
-     * Why the entry itself may not be opened, or `null` (`laneCreateHold`). doc-7 §4.1 disables the
+     * Whether the entry itself may be opened (`laneCreateAvailability`). doc-7 §4.1 disables the
      * *entry* under CLI 縮退, so this is what the closed control states — leaving it pressable and
      * blocking only the 作成 would invite a title that can never be issued.
      */
-    held: string | null;
+    entryAvailable: Availability;
     onopen: () => void;
     onclose: () => void;
     ontitle: (value: string) => void;
@@ -51,8 +52,8 @@
     open,
     title,
     status,
-    blocked,
-    held,
+    create,
+    entryAvailable,
     onopen,
     onclose,
     ontitle,
@@ -96,7 +97,7 @@
     }
     // Withheld for the same reason the button is (doc-11 §5): the chord is not a way past a 縮退 or a
     // 発行中. The reason is already on screen below the button, so pressing it says nothing new.
-    if (blocked === null) {
+    if (create.state === "ready") {
       onsubmit();
     }
   }
@@ -116,12 +117,12 @@
   <button
     type="button"
     class="open"
-    aria-disabled={held !== null}
-    aria-label={held === null
-      ? t().laneCreate.openLabel(label)
-      : t().laneCreate.openBlocked(label, held)}
-    title={held ?? t().laneCreate.openHint(label)}
-    onclick={() => held === null && onopen()}
+    aria-disabled={entryAvailable.state === "withheld"}
+    aria-label={entryAvailable.state === "withheld"
+      ? t().laneCreate.openBlocked(label, entryAvailable.reason)
+      : t().laneCreate.openLabel(label)}
+    title={entryAvailable.state === "withheld" ? entryAvailable.reason : t().laneCreate.openHint(label)}
+    onclick={() => entryAvailable.state === "ready" && onopen()}
   >
     <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4). The same `plus` the 文書・マイルストーン の
          作成の入口 draws (doc-10 §1) — the mark for「ここから 1 件作る」is one figure, not one per
@@ -177,9 +178,9 @@
            itself the 常時表示 reason §5 asks for (doc-11 §8). -->
       <button
         type="button"
-        disabled={blocked !== null}
+        disabled={create.state === "withheld"}
         aria-keyshortcuts={ariaKeyShortcuts("submitLaneCreate", MAC_KEYBOARD)}
-        title={blocked ?? t().laneCreate.createHint}
+        title={create.state === "withheld" ? create.reason : t().laneCreate.createHint}
         onclick={onsubmit}
       >
         {t().laneCreate.create}
@@ -187,8 +188,8 @@
         <span class="hint" aria-hidden="true">{shortcutHint("submitLaneCreate", MAC_KEYBOARD)}</span>
       </button>
     </div>
-    {#if blocked !== null && !omitsSentence(blocked)}
-      <p class="reason">{blocked}</p>
+    {#if create.state === "withheld" && !omitsSentence(create.reason)}
+      <p class="reason">{create.reason}</p>
     {/if}
   </div>
 {/if}
