@@ -13,7 +13,7 @@
  * | 受け先 | [`laneDropTarget`] | whether one cell takes the card being dragged |
  * | 渡る status | `LaneDrop.status` / `LaneDrop.candidates` | the one raw status `-s` carries |
  * | 候補選択の問い | `{ state: "ask" }` | the layer a 2-candidate 受け先 raises |
- * | つまめないカード | [`laneDragHold`] | why no card may be picked up at all |
+ * | つまめないカード | [`laneDragAvailability`] | why no card may be picked up at all |
  * | 行またぎのドロップ | `{ state: "ignored" }` via the slug comparison | the drop that is not an operation |
  * | 発行中のカード | [`DragSource`] held by the shell while the CLI runs | the card whose issue has not returned |
  *
@@ -27,6 +27,8 @@
  *   returns no reason string for any refusal.
  */
 
+import type { Availability } from "./availability";
+import { AVAILABLE, withheld } from "./availability";
 import { columnCandidates } from "./lane-create";
 import { issueAvailability } from "./manage";
 import type { CliReadiness, ColumnCreateStatuses, StatusColumn, UpdateOperation } from "./wire";
@@ -145,20 +147,21 @@ export function buildLaneStatusEdit(taskId: string, status: string): UpdateOpera
 }
 
 /**
- * Why no card may be picked up, or `null` — doc-7 §4.2's つまめないカード.
+ * Whether any card may be picked up, and why not when none may — doc-7 §4.2's つまめないカード.
  *
  * Decided without any card, because it is about the CLI rather than about one task. Run through
  * [`issueAvailability`] with an empty action so doc-5 §5's obstacle order — no CLI first, then an
  * action in flight — is stated in one place and cannot drift from what the 入口 says.
  *
- * **The caller does not draw this string beside a card** (doc-7 §4.2): the reason is 画面全体に効く
- * and doc-11 §5 already puts it on the 上部帯. It is returned rather than a bare boolean so a caller
- * that does need to say why — a keyboard route, a future 発行中 notice — reads the same words.
+ * **The caller does not draw this reason beside a card** (doc-7 §4.2): it is 画面全体に効く and
+ * doc-11 §5 already puts it on the 上部帯. The reason is carried anyway so a caller that does need to
+ * say why — the 候補選択の問い, a keyboard route — reads the same words; it rides beside the tag rather
+ * than being it, so dropping the sentence cannot quietly make every card draggable again.
  */
-export function laneDragHold(context: {
+export function laneDragAvailability(context: {
   readiness: CliReadiness | null;
   busy: boolean;
-}): string | null {
+}): Availability {
   const availability = issueAvailability({ state: "ready", action: [] }, context);
-  return availability.state === "blocked" ? availability.reason : null;
+  return availability.state === "blocked" ? withheld(availability.reason) : AVAILABLE;
 }

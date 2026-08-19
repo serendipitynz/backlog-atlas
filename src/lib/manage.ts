@@ -21,7 +21,7 @@
  * | doc-5 §1/§3 マイルストーン説明の更新（直接書き込み操作） | [`buildMilestoneDescribe`] | the 説明 edit and the one operation on this screen that is not a CLI call (decision-21) |
  * | doc-10 §6 行頭 `##` を拒む入力検査 | [`milestoneDescriptionHeadingReason()`] | why a heading in the 説明 is refused: it would fall outside the range read back |
  * | doc-10 §7 注記モーダル | [`taskCreateNote()`] + [`taskCreateLaterFields()`] | 代替経路の案内 (doc-11 §8): where the fields this form has no input for are added instead |
- * | doc-5 §5 縮退 | [`issueAvailability`] via `readinessReason` | no supported CLI, so no operation is offered at all |
+ * | doc-5 §5 縮退 | [`issueAvailability`] via `readinessAvailability` | no supported CLI, so no operation is offered at all |
  * | doc-9 §5 提示の区別 | [`IssueOutcome`] + [`outcomeMessage`] | 更新前競合 / 照合不能 / CLI 失敗 stated apart |
  *
  * Three rules the whole module follows, the same three `edit.ts` follows:
@@ -41,7 +41,8 @@
 
 import { commaReason, firstWithComma } from "./comma";
 import { msg } from "./messages";
-import { nothingToSaveReason, readinessReason } from "./edit";
+import type { Availability } from "./availability";
+import { nothingToSaveReason, readinessAvailability } from "./edit";
 import { conflictSetDetail } from "./mark";
 import { overviewInputProblemsReason, overviewNoChangesReason } from "./project-detail";
 import type {
@@ -87,23 +88,23 @@ export function issueAvailability(
     readiness: CliReadiness | null;
     busy: boolean;
     /**
-     * A screen-specific reason to hold issuance, or `null`. Taken as a reason rather than a flag so
-     * the caller's own cause is what the control states: プロジェクト詳細画面 holds every 区画 while
-     * a ledger write is in flight, because that write may move the roots — a different thing from
+     * A screen-specific hold on issuance. Carries its own reason rather than being a flag, so the
+     * caller's own cause is what the control states: プロジェクト詳細画面 holds every 区画 while a
+     * ledger write is in flight, because that write may move the roots — a different thing from
      * `busy`, and one `issueBusyReason()` would misdescribe.
      */
-    hold?: string | null;
+    hold?: Availability;
   },
 ): IssueAvailability {
   // Ordered as the obstacles are: without a supported CLI nothing can be issued whatever the form
   // holds; a hold outranks the form for the same reason (it is about the target, not the input);
   // and a form still filling in is the user's own next step.
-  const degraded = readinessReason(context.readiness);
-  if (degraded !== null) {
-    return { state: "blocked", reason: degraded };
+  const degraded = readinessAvailability(context.readiness);
+  if (degraded.state === "withheld") {
+    return { state: "blocked", reason: degraded.reason };
   }
-  if (context.hold != null) {
-    return { state: "blocked", reason: context.hold };
+  if (context.hold?.state === "withheld") {
+    return { state: "blocked", reason: context.hold.reason };
   }
   if (context.busy) {
     return { state: "blocked", reason: issueBusyReason() };

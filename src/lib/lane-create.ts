@@ -28,6 +28,8 @@
  *   the control, disabled, with its reason (`issueAvailability`, doc-5 §5).
  */
 
+import type { Availability } from "./availability";
+import { AVAILABLE, withheld } from "./availability";
 import { EMPTY_TASK_CREATE, buildTaskCreate, issueAvailability, type IssuePlan } from "./manage";
 import { msg } from "./messages";
 import { CANONICAL_COLUMN_LABEL } from "./swimlane";
@@ -120,7 +122,8 @@ export function buildLaneTaskCreate(title: string, status: string): IssuePlan {
 }
 
 /**
- * Why no cell may take input at all, or `null` — doc-7 §4.1's「CLI 縮退時は、入口を理由付きで無効化する」.
+ * Whether any cell may take input at all, and why not when none may — doc-7 §4.1's
+ *「CLI 縮退時は、入口を理由付きで無効化する」.
  *
  * Decided without any cell's input, because it is about the CLI rather than about a form: the *entry*
  * is what doc-7 §4.1 disables, so the closed ＋新規 has to carry the reason too. Blocking only the
@@ -128,11 +131,12 @@ export function buildLaneTaskCreate(title: string, status: string): IssuePlan {
  *
  * Run through [`issueAvailability`] with an empty action so doc-5 §5's obstacle order — no CLI first,
  * then an action in flight — is stated in one place and cannot drift from what the 新規タスク区画 says.
+ * The tag is carried across rather than unwrapped to the reason alone (doc-11 §5, `availability.ts`).
  */
-export function laneCreateHold(context: {
+export function laneCreateAvailability(context: {
   readiness: CliReadiness | null;
   busy: boolean;
-}): string | null {
+}): Availability {
   const availability = issueAvailability({ state: "ready", action: [] }, context);
-  return availability.state === "blocked" ? availability.reason : null;
+  return availability.state === "blocked" ? withheld(availability.reason) : AVAILABLE;
 }

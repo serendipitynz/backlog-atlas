@@ -26,8 +26,8 @@
  * | §4.1 移動が成立すると編集セッションは閉じる | [`movesRoot`] | whether this update is a move — the trigger for closing |
  * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`overviewReadOnlyNote()`] | the sentence, near the controls, saying the inputs are stopped too |
  * | §4.2 別名が効くかの態 | [`ALIAS_EFFECT_NOTES`] | how one 別名表 row takes effect — four states, see below |
- * | §4.3 確認は slug の入力一致とする | [`unregisterBlocked`] | slug 入力一致: holds the action until the typed text matches, and says what is holding it |
- * | §8 台帳読取専用と CLI 縮退は独立 | [`overviewBlocked`] and `manage.ts`'s `issueAvailability` applying separately | one standing leaves the other's 区画 working |
+ * | §4.3 確認は slug の入力一致とする | [`unregisterAvailability`] | slug 入力一致: holds the action until the typed text matches, and says what is holding it |
+ * | §8 台帳読取専用と CLI 縮退は独立 | [`overviewAvailability`] and `manage.ts`'s `issueAvailability` applying separately | one standing leaves the other's 区画 working |
  *
  * ## Why the 別名表 shows four states and not three
  *
@@ -42,6 +42,8 @@
  * sentences the screen shows (doc-3 §2.1).
  */
 
+import type { Availability } from "./availability";
+import { AVAILABLE, withheld } from "./availability";
 import type { EntryEdit } from "./ledger";
 import type { ProjectEntry, UpdateRequest } from "./wire";
 import { remoteReadFailureText } from "./failure";
@@ -345,10 +347,13 @@ export function redetectControl(context: {
   if (context.running) {
     return { state: "running", label: text.redetecting };
   }
-  const reason = context.readOnly ? text.redetectReadOnly : overviewBlocked(context);
-  return reason === null
+  if (context.readOnly) {
+    return { state: "withheld", label: text.redetect, reason: text.redetectReadOnly };
+  }
+  const outside = overviewAvailability(context);
+  return outside.state === "ready"
     ? { state: "ready", label: text.redetect }
-    : { state: "withheld", label: text.redetect, reason };
+    : { state: "withheld", label: text.redetect, reason: outside.reason };
 }
 
 // --- 概要区画: status 別名表の効き方 (doc-10 §4.2) ---------------------------------------------
@@ -418,15 +423,15 @@ export function unregisterScopeNote(): string {
 }
 
 /**
- * Why the 概要区画's update is held, if it is (doc-11 §5). Only 台帳読取専用 counts, never CLI 縮退:
- * a ledger operation runs no Backlog CLI (doc-10 §3/§8).
+ * Whether the 概要区画's update may go out, and why not when it may not (doc-11 §5). Only 台帳読取専用
+ * counts, never CLI 縮退: a ledger operation runs no Backlog CLI (doc-10 §3/§8).
  */
-export function overviewBlocked(context: { readOnly: boolean; busy: boolean }): string | null {
+export function overviewAvailability(context: { readOnly: boolean; busy: boolean }): Availability {
   const text = msg().projectDetail;
   if (context.readOnly) {
-    return text.overviewReadOnlyBlocked;
+    return withheld(text.overviewReadOnlyBlocked);
   }
-  return context.busy ? text.overviewBusy : null;
+  return context.busy ? withheld(text.overviewBusy) : AVAILABLE;
 }
 
 /**
@@ -436,17 +441,17 @@ export function overviewBlocked(context: { readOnly: boolean; busy: boolean }): 
  * with a paste is not a confirmation of anything — but keeps case: a slug is lowercase letters,
  * digits and hyphens only (doc-3 §3.1), so a case difference is a typo.
  */
-export function unregisterBlocked(
+export function unregisterAvailability(
   typed: string,
   slug: string,
   context: { readOnly: boolean; busy: boolean },
-): string | null {
+): Availability {
   const text = msg().projectDetail;
-  const blocked = overviewBlocked(context);
-  if (blocked !== null) {
-    return context.readOnly ? text.unregisterReadOnly : blocked;
+  const outside = overviewAvailability(context);
+  if (outside.state === "withheld") {
+    return withheld(context.readOnly ? text.unregisterReadOnly : outside.reason);
   }
-  return typed.trim() === slug ? null : text.unregisterConfirmSlug(slug);
+  return typed.trim() === slug ? AVAILABLE : withheld(text.unregisterConfirmSlug(slug));
 }
 
 // --- 概要区画: 保存の保留判定 (doc-10 §4.1, doc-11 §5) -----------------------------------------
@@ -490,9 +495,9 @@ export function overviewSave(context: {
   hasProblems: boolean;
   hasChanges: boolean;
 }): OverviewSave {
-  const outside = overviewBlocked(context);
-  if (outside !== null) {
-    return { state: "withheld", reason: outside };
+  const outside = overviewAvailability(context);
+  if (outside.state === "withheld") {
+    return { state: "withheld", reason: outside.reason };
   }
   if (context.hasProblems) {
     return { state: "withheld", reason: overviewInputProblemsReason() };

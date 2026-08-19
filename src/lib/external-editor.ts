@@ -34,6 +34,8 @@ import type {
   EditorSource,
   LaunchMethod,
 } from "./wire";
+import type { Availability } from "./availability";
+import { AVAILABLE, withheld } from "./availability";
 import { commandErrorDetail, type IssueConfirmation } from "./edit";
 import { launchRefusalText } from "./failure";
 import { msg } from "./messages";
@@ -60,9 +62,10 @@ export interface EditorOffer {
    * command line: Windows' association launcher is `ShellExecuteW`, which takes the path as a
    * parameter — and being able to read *that* off the panel is the point (TASK-44). */
   command: string;
-  enabled: boolean;
-  /** Why it is not active, or the extra caveat when it is. `null` when there is neither. */
-  reason: string | null;
+  /** Whether this route may be taken, and why not when it may not (doc-11 §5). */
+  availability: Availability;
+  /** The extra caveat to state while the route *is* open, or `null` when there is none. */
+  caveat: string | null;
 }
 
 /**
@@ -159,11 +162,11 @@ export function editorOffers(
 ): EditorOffer[] {
   // Ordered as the obstacles are, matching `saveAvailability`: a file that is gone cannot be opened
   // whatever the environment has, and an unfinished probe is not the same as a missing editor.
-  const blocked = context.fileMissing
-    ? fileMissingEditorReason()
+  const outside: Availability = context.fileMissing
+    ? withheld(fileMissingEditorReason())
     : readiness === null
-      ? editorProbePendingReason()
-      : null;
+      ? withheld(editorProbePendingReason())
+      : AVAILABLE;
   const configured = readiness?.configured ?? null;
   const configuredCommand =
     configured === null
@@ -180,19 +183,22 @@ export function editorOffers(
               configured.program,
             ),
       command: configuredCommand,
-      enabled: blocked === null && configured !== null,
-      reason:
-        blocked ??
-        (configured === null ? noConfiguredEditorReason() : configuredTerminalCaveat()),
+      availability:
+        outside.state === "withheld"
+          ? outside
+          : configured === null
+            ? withheld(noConfiguredEditorReason())
+            : AVAILABLE,
+      caveat: configured === null ? null : configuredTerminalCaveat(),
     },
     {
       method: "association",
       label: msg().taskDetail.editor.openWithAssociation,
-      // No `null` branch for the launcher itself: every platform has one (TASK-44), so the only reason
-      // this control is ever disabled is `blocked` — a missing file or an unfinished probe.
+      // No withheld branch for the launcher itself: every platform has one (TASK-44), so the only
+      // reason this control is ever disabled is `outside` — a missing file or an unfinished probe.
       command: readiness === null ? "—" : `${readiness.association} … ${filePlaceholder()}`,
-      enabled: blocked === null,
-      reason: blocked,
+      availability: outside,
+      caveat: null,
     },
   ];
 }
