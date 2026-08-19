@@ -21,8 +21,8 @@
  *
  * ## 被せ層 (overlay) — why Escape is one row and not three
  *
- * 被せ層とは、現在の画面の上に開き、開いている間だけ操作を受け取る層 (登録・設定のモーダル、固定
- * ヘッダのメニュー、絞り込みの値一覧ポップオーバー) を指す。All three close on Escape and all three
+ * 被せ層とは、現在の画面の上に開き、開いている間だけ操作を受け取る層 (登録・設定のモーダル、共通
+ * 入口のメニュー、絞り込みの値一覧ポップオーバー) を指す。All three close on Escape and all three
  * consume the press where they are (`stopPropagation`), so they share one row; what only the modal does
  * is keep focus inside, which is why the Tab row is `"modal"` and not `"overlay"`.
  *

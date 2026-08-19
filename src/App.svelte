@@ -2367,7 +2367,7 @@
    * What every モーダル the menu opens does first. Two things, and both are the shell's business
    * rather than the modal's:
    *
-   * - 被せ層 は 1 枚だけ (`shortcuts.ts`): モーダル・メニュー・値一覧 all answer Escape where they are, so
+   * - 被せ層 は 1 枚だけ (doc-7 §2.1): モーダル・メニュー・値一覧 all answer Escape where they are, so
    *   two open at once leaves it undecided which one a press belongs to — and a modal's trap would put
    *   the other out of reach in any case.
    * - The ☰ takes focus *before* the modal mounts, so that whichever route was taken — a menu line or a
