@@ -16,7 +16,7 @@ not run more than one Atlas.
 ## Platforms
 
 macOS, Windows, and Linux (on Linux, a distribution carrying webkit2gtk-4.1 and libsoup-3.0 —
-Ubuntu 24.04 or newer). The interface is in Japanese only.
+Ubuntu 24.04 or newer).
 
 ## What it does
 
@@ -29,7 +29,7 @@ Ubuntu 24.04 or newer). The interface is in Japanese only.
 - Derive Type from `kind:*` labels and the frontmatter, shown apart from ordinary labels.
 - List and edit documents and milestones.
 - List and read decisions (`backlog/decisions/`).
-- Keep the display theme, card density, filters, and sort order in settings.
+- Keep your display and filtering preferences in settings, carried over to the next start.
 
 ## What Atlas does not change
 
