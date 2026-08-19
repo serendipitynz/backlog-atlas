@@ -1422,7 +1422,7 @@ describe("記録した payload を画面の関数がそのまま読める", () =
       throw new Error("the recording is the readOnly case");
     }
     expect(statusNotice(loaded.status)).toContain(String(loaded.status.version));
-    expect(saveAvailability(loaded.status).enabled).toBe(false);
+    expect(saveAvailability(loaded.status).state).toBe("withheld");
     expect(editorArgsText(loaded.settings.external_editor)).toBe("-w");
   });
 

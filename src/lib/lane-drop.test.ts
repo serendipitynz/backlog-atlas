@@ -8,7 +8,7 @@ import { CREATE_STATUS_CANDIDATES } from "./fixtures";
 import { laneCreate } from "./lane-create";
 import {
   buildLaneStatusEdit,
-  laneDragHold,
+  laneDragAvailability,
   laneDrop,
   laneDropOptions,
   laneDropStatus,
@@ -174,16 +174,17 @@ describe("つまめないカード", () => {
   const READY = { state: "ready", version: CONFIRMED_CLI_VERSION } as const;
 
   it("lets a card be picked up when the CLI is ready and nothing is in flight (AC #4)", () => {
-    expect(laneDragHold({ readiness: READY, busy: false })).toBeNull();
+    expect(laneDragAvailability({ readiness: READY, busy: false })).toEqual({ state: "ready" });
   });
 
   it("holds every card while the CLI is 縮退 (AC #4)", () => {
-    expect(laneDragHold({ readiness: null, busy: false })).not.toBeNull();
+    expect(laneDragAvailability({ readiness: null, busy: false }).state).toBe("withheld");
   });
 
   it("holds every card while an action is in flight, in the 入口's own words (AC #4)", () => {
-    expect(laneDragHold({ readiness: READY, busy: true })).toBe(
-      issueBusyReason(),
-    );
+    expect(laneDragAvailability({ readiness: READY, busy: true })).toEqual({
+      state: "withheld",
+      reason: issueBusyReason(),
+    });
   });
 });

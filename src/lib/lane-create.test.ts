@@ -10,7 +10,7 @@ import {
   noStatusToPassReason,
   buildLaneTaskCreate,
   laneCreate,
-  laneCreateHold,
+  laneCreateAvailability,
   laneCreateStatus,
   noCandidateAbsentReason,
 } from "./lane-create";
@@ -206,26 +206,34 @@ describe("CLI 縮退 (doc-5 §5)", () => {
   // same reason — decided without any one cell's input, and in the same words (AC #4).
   it("closes every cell's 入口 under 縮退, with the wording 発行 uses", () => {
     const readiness = { state: "unavailable", detail: "backlog が見つかりません" } as const;
-    const held = laneCreateHold({ readiness, busy: false });
-    expect(held).not.toBeNull();
+    const held = laneCreateAvailability({ readiness, busy: false });
+    expect(held.state).toBe("withheld");
     const blocked = issueAvailability(buildLaneTaskCreate("題名", "To Do"), {
       readiness,
       busy: false,
     });
-    expect(blocked.state === "blocked" && blocked.reason).toBe(held);
+    expect(blocked.state === "blocked" && blocked.reason).toBe(
+      held.state === "withheld" ? held.reason : null,
+    );
   });
 
   it("closes every cell's 入口 while a create is in flight", () => {
-    expect(laneCreateHold({ readiness: { state: "ready", version: CONFIRMED_CLI_VERSION }, busy: true })).toBe(
-      issueBusyReason(),
-    );
+    expect(
+      laneCreateAvailability({
+        readiness: { state: "ready", version: CONFIRMED_CLI_VERSION },
+        busy: true,
+      }),
+    ).toEqual({ state: "withheld", reason: issueBusyReason() });
   });
 
   // An empty title is not a reason to withhold the 入口 — it is the value the 入口 exists to take.
   it("opens the 入口 whenever the CLI is present and nothing is in flight", () => {
     expect(
-      laneCreateHold({ readiness: { state: "ready", version: CONFIRMED_CLI_VERSION }, busy: false }),
-    ).toBeNull();
+      laneCreateAvailability({
+        readiness: { state: "ready", version: CONFIRMED_CLI_VERSION },
+        busy: false,
+      }),
+    ).toEqual({ state: "ready" });
   });
 
   it("leaves 発行 to the input alone once the CLI is present", () => {

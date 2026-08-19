@@ -64,15 +64,15 @@ describe("saveAvailability", () => {
       { state: "absent" },
       { state: "unreadable", detail: "…" },
     ] satisfies SettingsStatus[]) {
-      expect(saveAvailability(status)).toEqual({ enabled: true, reason: null });
+      expect(saveAvailability(status)).toEqual({ state: "ready" });
     }
   });
 
   it("withholds saving over an unknown newer file, with the reason (AC #1)", () => {
     const availability = saveAvailability({ state: "readOnly", version: 9 });
-    expect(availability.enabled).toBe(false);
+    expect(availability.state).toBe("withheld");
     // doc-5 §5 / doc-11 §5: a withheld control says why, rather than being absent.
-    expect(availability.reason).toContain("9");
+    expect(availability.state === "withheld" && availability.reason).toContain("9");
   });
 });
 
@@ -80,25 +80,23 @@ describe("場所を開く (TASK-75)", () => {
   it("opens the folder once it is there, whatever is or is not in it (TASK-144 AC #1)", () => {
     // 到達しやすい状態が「プロジェクトを 1 件登録し、設定を一度も保存していない」である。フォルダは
     // 最初の保存で作られるので現にあり、そこにアプリ設定ファイルがあるかどうかは控えの条件ではない。
-    expect(openLocationAvailability(true, false)).toEqual({ enabled: true, reason: null });
+    expect(openLocationAvailability(true, false)).toEqual({ state: "ready" });
   });
 
   it("withholds the control while there is no folder, saying so (TASK-144 AC #2・#3)", () => {
     const availability = openLocationAvailability(false, false);
-    expect(availability.enabled).toBe(false);
-    expect(availability.reason).toBe(locationAbsentReason());
+    expect(availability).toEqual({ state: "withheld", reason: locationAbsentReason() });
     // AC #3: 理由の指示対象はフォルダであり、設定ファイルの有無を述べない。
-    expect(availability.reason).toContain("フォルダ");
-    expect(availability.reason).not.toContain("設定ファイル");
+    expect(locationAbsentReason()).toContain("フォルダ");
+    expect(locationAbsentReason()).not.toContain("設定ファイル");
   });
 
   it("says it has not looked, rather than that there is no folder (TASK-144)", () => {
     // 問い合わせが返っていない・失敗した状態で「フォルダはありません」と述べると、測っていないことを
     // 測ったかのように書くことになる。押せないのは同じでも、述べられる事実が違う。
     const availability = openLocationAvailability(null, false);
-    expect(availability.enabled).toBe(false);
-    expect(availability.reason).toBe(locationUnconfirmedReason());
-    expect(availability.reason).not.toBe(locationAbsentReason());
+    expect(availability).toEqual({ state: "withheld", reason: locationUnconfirmedReason() });
+    expect(locationUnconfirmedReason()).not.toBe(locationAbsentReason());
   });
 
   it("gives the launch in flight a reason of its own, whatever the folder's state", () => {
@@ -107,7 +105,7 @@ describe("場所を開く (TASK-75)", () => {
     // フォルダがある状態でも同じである。
     for (const present of [true, false, null]) {
       expect(openLocationAvailability(present, true)).toEqual({
-        enabled: false,
+        state: "withheld",
         reason: openingLocationReason(),
       });
     }

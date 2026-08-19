@@ -17,7 +17,7 @@ import {
   externallyChanged,
   failureDetail,
   isDirty,
-  lastRemovalReason,
+  lastRemovalAvailability,
   milestoneOptions,
   optionsFor,
   rebaseOnto,
@@ -162,16 +162,20 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
 
 describe("最後の 1 件の削除を差し控える条件 (doc-8 §6)", () => {
   it("読み取り時点で空だった一覧では差し控えない", () => {
-    expect(lastRemovalReason([], emptyAssigneeReason())).toBeNull();
-    expect(lastRemovalReason([], emptyReferencesReason())).toBeNull();
-    expect(lastRemovalReason([], emptyDependenciesReason())).toBeNull();
+    expect(lastRemovalAvailability([], emptyAssigneeReason())).toEqual({ state: "ready" });
+    expect(lastRemovalAvailability([], emptyReferencesReason())).toEqual({ state: "ready" });
+    expect(lastRemovalAvailability([], emptyDependenciesReason())).toEqual({ state: "ready" });
   });
 
   it("読み取り時点で 1 件以上あった一覧では、その理由を述べて差し控える", () => {
-    expect(lastRemovalReason(["@takkyun"], emptyAssigneeReason())).toBe(emptyAssigneeReason());
-    expect(lastRemovalReason(["TASK-2"], emptyDependenciesReason())).toBe(
-      emptyDependenciesReason(),
-    );
+    expect(lastRemovalAvailability(["@takkyun"], emptyAssigneeReason())).toEqual({
+      state: "withheld",
+      reason: emptyAssigneeReason(),
+    });
+    expect(lastRemovalAvailability(["TASK-2"], emptyDependenciesReason())).toEqual({
+      state: "withheld",
+      reason: emptyDependenciesReason(),
+    });
   });
 });
 
@@ -376,7 +380,13 @@ describe("ファイルが読み取り結果から消えたとき (doc-8 §6.4)",
     if (offers.state !== "offered") {
       throw new Error("expected offers");
     }
-    expect(offers.offers.every((offer) => offer.reason === fileMissingReason())).toBe(true);
+    expect(
+      offers.offers.every(
+        (offer) =>
+          offer.availability.state === "withheld" &&
+          offer.availability.reason === fileMissingReason(),
+      ),
+    ).toBe(true);
   });
 
   it("保存できる入力があっても保存を止め、理由を出す", () => {
@@ -578,14 +588,18 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
       throw new Error("expected offers");
     }
     const disabled = notDone.offers.find((offer) => offer.kind === "taskComplete");
-    expect(disabled?.enabled).toBe(false);
-    expect(disabled?.reason).toContain("Done");
+    expect(disabled?.availability.state).toBe("withheld");
+    expect(
+      disabled?.availability.state === "withheld" && disabled.availability.reason,
+    ).toContain("Done");
 
     const done = transitionOffers(taskView({ status: "Done", column: "done" }), context);
     if (done.state !== "offered") {
       throw new Error("expected offers");
     }
-    expect(done.offers.find((offer) => offer.kind === "taskComplete")?.enabled).toBe(true);
+    expect(done.offers.find((offer) => offer.kind === "taskComplete")?.availability.state).toBe(
+      "ready",
+    );
   });
 
   it("draft には promote・archive だけを出す", () => {
@@ -614,7 +628,7 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
     if (offers.state !== "offered") {
       throw new Error("expected offers");
     }
-    expect(offers.offers.every((offer) => !offer.enabled)).toBe(true);
+    expect(offers.offers.every((offer) => offer.availability.state === "withheld")).toBe(true);
   });
 
   it("対応 CLI が無ければ遷移も能動化しない", () => {
@@ -625,7 +639,7 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
     if (offers.state !== "offered") {
       throw new Error("expected offers");
     }
-    expect(offers.offers.every((offer) => !offer.enabled)).toBe(true);
+    expect(offers.offers.every((offer) => offer.availability.state === "withheld")).toBe(true);
   });
 });
 

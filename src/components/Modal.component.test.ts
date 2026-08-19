@@ -87,7 +87,7 @@ describe("モーダルの閉じる出口", () => {
     let closed = 0;
     const { host } = render(Modal, {
       label: "設定",
-      closeBlocked: "保存中です",
+      closeAvailability: { state: "withheld", reason: "保存中です" },
       onclose: () => (closed += 1),
       children: snippet("<p>本文</p>"),
     });
@@ -167,7 +167,7 @@ describe("モーダルの閉じる出口", () => {
   });
 
   it("確認は「いま閉じられない」ではないので、その間も × は押せる", () => {
-    // The two states doc-11 §7 keeps apart (TASK-86). `closeBlocked` means the request is not issued
+    // The two states doc-11 §7 keeps apart (TASK-86). `closeAvailability` means the request is not issued
     // and the × goes to 無効化提示 (doc-11 §5); a standing question means it *was* issued and is
     // waiting — so withholding the × here would give it 「答えていないから押せません」 as its reason,
     // with the answer sitting in the same box.
