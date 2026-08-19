@@ -99,18 +99,18 @@
          Svelte makes duplicate keys a runtime error — which took the whole menu down. -->
     {#each items as item, index (item.key)}
       <!-- 区切り線 is decided by `startsGroup` (`header.ts`) and not by anything in this file: it reads
-           the item's 群 and never its `held`. That is what kept the mark from coming and going with the
+           the item's 群 and never its `availability`. That is what kept the mark from coming and going with the
            破線枠 that used to stand at this boundary, and doc-7 §2.1 keeps the rule now that the frame
            is gone — what the two describe stays different. -->
       <li class:group-start={startsGroup(items, index)}>
         <button
           type="button"
-          aria-disabled={item.held !== null}
-          aria-describedby={item.held === null ? undefined : reasonId(index)}
+          aria-disabled={item.availability.state === "withheld"}
+          aria-describedby={item.availability.state === "ready" ? undefined : reasonId(index)}
           aria-keyshortcuts={item.kind === "entry" ? ariaKeyShortcuts(item.entry.action, MAC_KEYBOARD) : undefined}
           aria-pressed={item.kind === "toggleProject" ? item.shown : undefined}
           title={item.kind === "entry" ? item.entry.note : undefined}
-          onclick={() => item.held === null && onchoose(item)}
+          onclick={() => item.availability.state === "ready" && onchoose(item)}
         >
           {#if item.kind === "toggleProject"}
             <!-- 表示中の印 (doc-7 §2.1). doc-11 §2.4's 可視の文言を持つ控えの中のアイコン: the row's
@@ -130,14 +130,20 @@
             <span class="hint" aria-hidden="true">{shortcutHint(item.entry.action, MAC_KEYBOARD)}</span>
           {/if}
         </button>
-        {#if item.held !== null}
+        {#if item.availability.state === "withheld"}
           <!-- Drawn or not by which 保留理由 this is (doc-7 §2.1 の 2 項). All rows shown is omitted:
                the 一覧 below states it — every line the grid draws carries a tick — which is doc-11 §8's
                licence for a sentence the 区画 already makes visible. An empty ledger is *not* on that
                licence, because an empty list states nothing, so its reason keeps a visible line.
                視覚的にのみ隠す (doc-11 §5 の 2 つ目の形) rather than dropped, so the reason stays in the
                accessibility tree and `aria-describedby` names something either way. -->
-          <p class="held" class:unseen={omitsSentence(item.held)} id={reasonId(index)}>{item.held}</p>
+          <p
+            class="held"
+            class:unseen={omitsSentence(item.availability.reason)}
+            id={reasonId(index)}
+          >
+            {item.availability.reason}
+          </p>
         {/if}
       </li>
     {/each}

@@ -2,6 +2,7 @@
   // タスクカード (doc-7 §3): the display unit inside a lane cell. It carries only what a
   // cross-project list needs to identify a task and judge its priority — dependencies, AC
   // progress and the rest stay in the task detail screen (doc-8), so the grid keeps its density.
+  import type { Availability } from "../lib/availability";
   import { cardFields, cardIdentity, priorityStep } from "../lib/card";
   import Icon from "../lib/icons/Icon.svelte";
   import { inconsistencyLabel, inconsistencyReasons, type VersionConflict } from "../lib/mark";
@@ -34,10 +35,10 @@
     /**
      * つまめないカード (doc-7 §4.2): why no card may start a 列間ドロップ, or `null`. **Not drawn here** —
      * the reason is 画面全体に効く and doc-11 §5 puts it on the 上部帯, so this only decides whether the
-     * card is a drag source. Taken as the reason rather than a flag so the two cannot disagree about
-     * why, and so a caller that does state it reads the same words.
+     * card is a drag source. The reason travels with the judgement rather than being it, so the two
+     * cannot disagree about why and a caller that does state it reads the same words.
      */
-    dragHeld: string | null;
+    dragHeld: Availability;
     /** 発行中のカード (doc-7 §4.2): this card's `task edit -s` has not returned. It stays in its own
      * column while it waits — position is a function of the read result, not of the pending issue. */
     issuing: boolean;
@@ -129,7 +130,7 @@
   class:selected
   class:issuing
   data-priority-edge={step}
-  draggable={dragHeld === null && view.task.id !== null}
+  draggable={dragHeld.state === "ready" && view.task.id !== null}
   ondragstart={beginDrag}
   {ondragend}
   onclick={() => onselect(view)}

@@ -20,6 +20,8 @@
   // still have no control here — the grid's own controls write them, and this form only has to carry
   // them through a save (`mergeDraft`).
   import { untrack } from "svelte";
+  import type { Availability } from "../lib/availability";
+  import { AVAILABLE, withheld } from "../lib/availability";
   import Icon from "../lib/icons/Icon.svelte";
   import {
     CARD_DENSITIES,
@@ -218,10 +220,8 @@
   });
 
   let notice = $derived(loaded === null ? null : statusNotice(loaded.status));
-  let availability = $derived(
-    loaded === null
-      ? { enabled: false, reason: t().settings.loadingReason }
-      : saveAvailability(loaded.status),
+  let availability = $derived<Availability>(
+    loaded === null ? withheld(t().settings.loadingReason) : saveAvailability(loaded.status),
   );
   /**
    * The draft as it would be saved: the form's own fields, plus the 外部エディタ指定 read out of its two
@@ -319,29 +319,42 @@
   }
 
   /**
-   * なぜ押せないか、押せないときだけ (doc-11 §5). Derived as a string rather than left as a boolean so
-   * that the same value drives the withheld state and the reason bound to it: a disabled state computed
-   * separately from its reason is how a 理由の無い無効化 gets in.
+   * Whether 保存する may be pressed, and why not when it may not (doc-11 §5). The 保留判定 is the tag and
+   * the 保留理由 rides beside it: held as a bare `string | null` the two are one value, and the day a
+   * 理由文 is replaced with `null` the control silently becomes pressable — which is how the 概要区画's
+   * own 保存 broke before TASK-127 (`availability.ts`).
    *
    * Ordered as the obstacles are: a settings file that cannot be written blocks 保存 whatever the form
    * holds, and 変更はありません is only worth saying once writing is possible at all.
    */
-  let saveBlocked = $derived(
-    availability.reason ?? (saving ? savingReason() : dirty ? null : noChangesReason()),
-  );
+  let saveAvailable = $derived.by((): Availability => {
+    if (availability.state === "withheld") {
+      return availability;
+    }
+    if (saving) {
+      return withheld(savingReason());
+    }
+    return dirty ? AVAILABLE : withheld(noChangesReason());
+  });
   /**
    * 変更せずに閉じる is withheld while a save is unresolved. Leaving then would take away the panel that
    * is to report the write's outcome, and it would do it under a label that says nothing was written —
    * while the write already issued goes on to store the draft. The shell holds the same flag and turns
    * away Escape with it, so both ways out are closed by one fact.
    */
-  let closeBlocked = $derived(saving ? savingReason() : null);
+  let closeAvailable = $derived(saving ? withheld(savingReason()) : AVAILABLE);
   /**
    * The one line the 下部操作行 gives for a control it is withholding, and the one element both point at.
    * One rather than two, because while a save is in flight *both* are withheld by the same one
    * circumstance, and saying it twice in the same row would name one situation two ways.
    */
-  let footerReason = $derived(closeBlocked ?? saveBlocked);
+  let footerReason = $derived(
+    closeAvailable.state === "withheld"
+      ? closeAvailable.reason
+      : saveAvailable.state === "withheld"
+        ? saveAvailable.reason
+        : null,
+  );
   /**
    * Whether that line is printed. 変更はありません is not (TASK-74 AC #3): the 下部操作行 shows both
    * exits at once, so spelling out "you have changed nothing" adds a line that says what the disabled
@@ -384,7 +397,7 @@
    * taken, not by a value that has to have caught up with the write by the time this line runs.
    */
   async function saveAndClose(): Promise<void> {
-    if (saveBlocked !== null) {
+    if (saveAvailable.state === "withheld") {
       return;
     }
     await save();
@@ -394,7 +407,7 @@
   }
 
   async function save(): Promise<void> {
-    if (pending === null || !availability.enabled || saving) {
+    if (pending === null || availability.state === "withheld" || saving) {
       return;
     }
     // `pending`, not `draft`: the editor fields are part of the value being saved, and they are only
@@ -413,7 +426,7 @@
 
   /** 場所を開く (TASK-75 AC #1). Nothing is read or written; the OS opens the directory or says why not. */
   async function openLocation(): Promise<void> {
-    if (!locationAvailability.enabled) {
+    if (locationAvailability.state === "withheld") {
       return;
     }
     opening = true;
@@ -657,15 +670,17 @@
                pointer (doc-11 §5). -->
           <button
             type="button"
-            aria-disabled={!locationAvailability.enabled}
-            aria-describedby={locationAvailability.reason === null ? undefined : LOCATION_BLOCKED_ID}
-            title={locationAvailability.reason ?? openLocationTitle()}
+            aria-disabled={locationAvailability.state === "withheld"}
+            aria-describedby={locationAvailability.state === "ready" ? undefined : LOCATION_BLOCKED_ID}
+            title={locationAvailability.state === "withheld"
+              ? locationAvailability.reason
+              : openLocationTitle()}
             onclick={openLocation}
           >
             {openLocationLabel()}
           </button>
         </div>
-        {#if locationAvailability.reason !== null}
+        {#if locationAvailability.state === "withheld"}
           <p class="hint" id={LOCATION_BLOCKED_ID}>{locationAvailability.reason}</p>
         {/if}
         {#if locationFailure !== null}
@@ -698,10 +713,12 @@
            from their own font size, doc-11 §2.4 の 1em と同じ理由). -->
       <button
         type="button"
-        aria-disabled={closeBlocked !== null}
-        aria-describedby={closeBlocked === null ? undefined : FOOTER_REASON_ID}
-        title={closeBlocked ?? t().settings.discardHint}
-        onclick={() => closeBlocked === null && ondiscard()}
+        aria-disabled={closeAvailable.state === "withheld"}
+        aria-describedby={closeAvailable.state === "ready" ? undefined : FOOTER_REASON_ID}
+        title={closeAvailable.state === "withheld"
+          ? closeAvailable.reason
+          : t().settings.discardHint}
+        onclick={() => closeAvailable.state === "ready" && ondiscard()}
       >
         {closeWithoutSavingLabel()}
       </button>
@@ -709,9 +726,9 @@
            reason is not printed beside it, which is the 変更はありません case. -->
       <button
         type="button"
-        aria-disabled={saveBlocked !== null}
-        aria-describedby={saveBlocked === null ? undefined : FOOTER_REASON_ID}
-        title={saveBlocked ?? t().settings.saveHint}
+        aria-disabled={saveAvailable.state === "withheld"}
+        aria-describedby={saveAvailable.state === "ready" ? undefined : FOOTER_REASON_ID}
+        title={saveAvailable.state === "withheld" ? saveAvailable.reason : t().settings.saveHint}
         onclick={saveAndClose}
       >
         {saving ? t().action.saving : saveLabel()}

@@ -11,6 +11,8 @@
   // the one that stays: 実行内保持 (doc-7 §5.1). The 2 folds reach the grid as props for it to draw
   // from; `hidden` never leaves, since it decides which rows the grid is handed at all.
   import { onDestroy, onMount, untrack } from "svelte";
+  import type { Availability } from "./lib/availability";
+  import { AVAILABLE, withheld } from "./lib/availability";
   import FilterBar from "./components/FilterBar.svelte";
   import HeaderMenu from "./components/HeaderMenu.svelte";
   import Modal from "./components/Modal.svelte";
@@ -84,12 +86,12 @@
   import {
     buildLaneTaskCreate,
     laneCreate,
-    laneCreateHold,
+    laneCreateAvailability,
     laneCreateStatus,
   } from "./lib/lane-create";
   import {
     buildLaneStatusEdit,
-    laneDragHold,
+    laneDragAvailability,
     laneDrop,
     laneDropOptions,
     laneDropStatus,
@@ -778,19 +780,20 @@
   let gridBusy = $derived(laneCreateBusy || dropIssuingPath !== null);
 
   /**
-   * Why the lane's 作成 is withheld, or `null` (doc-5 §5). Through the same `issueAvailability` the
-   * 新規タスク区画 uses, so CLI 縮退 (AC #4) and 発行中 read identically on both screens.
+   * Whether the lane's 作成 may go out, and why not when it may not (doc-5 §5). Through the same
+   * `issueAvailability` the 新規タスク区画 uses, so CLI 縮退 (AC #4) and 発行中 read identically on both
+   * screens.
    */
-  let laneCreateBlocked = $derived.by(() => {
+  let laneCreateIssue = $derived.by((): Availability => {
     const availability = issueAvailability(laneCreatePlan, { readiness, busy: gridBusy });
-    return availability.state === "blocked" ? availability.reason : null;
+    return availability.state === "blocked" ? withheld(availability.reason) : AVAILABLE;
   });
   /**
-   * Why every cell's entry is withheld, or `null` — CLI 縮退 (AC #4) or an issue in flight. Separate
-   * from `laneCreateBlocked` because it is what the *closed* ＋新規 of every cell states: doc-7 §4.1
-   * disables the entry under 縮退, not merely its 発行.
+   * Whether every cell's entry may be opened — CLI 縮退 (AC #4) or an issue in flight holds them all.
+   * Separate from `laneCreateIssue` because it is what the *closed* ＋新規 of every cell states:
+   * doc-7 §4.1 disables the entry under 縮退, not merely its 発行.
    */
-  let laneCreateHeld = $derived(laneCreateHold({ readiness, busy: gridBusy }));
+  let laneEntryAvailable = $derived(laneCreateAvailability({ readiness, busy: gridBusy }));
 
   // --- 列間ドロップ (doc-7 §4.2, decision-34) ------------------------------------------------
 
@@ -801,8 +804,8 @@
    * dropped deliberately, so the answer to that gesture is a sentence, not a layer that vanishes. */
 
 
-  /** Why no card may be picked up, or `null` — つまめないカード (doc-7 §4.2). */
-  let dragHeld = $derived(laneDragHold({ readiness, busy: gridBusy }));
+  /** Whether any card may be picked up — つまめないカード (doc-7 §4.2). */
+  let dragHeld = $derived(laneDragAvailability({ readiness, busy: gridBusy }));
   /**
    * What the 問い's drop resolves to *now*. A column that lost a candidate while the layer stood
    * narrows the select — down to a single remaining one, which `dropAskCandidates` still shows — and
@@ -823,10 +826,10 @@
   let dropStatusToPass = $derived(
     dropAskDrop === null ? "" : laneDropStatus(dropAskDrop, dropHeldStatus),
   );
-  /** Why the 問い cannot be answered, or `null` — the column stopped taking the card, or 縮退. */
-  let dropAskBlocked = $derived.by(() => {
+  /** Whether the 問い can be answered — the column may have stopped taking the card, or 縮退 stands. */
+  let dropAskAvailable = $derived.by((): Availability => {
     if (dropAskDrop !== null && dropAskDrop.state === "ignored") {
-      return t().shell.dropAskWithdrawn;
+      return withheld(t().shell.dropAskWithdrawn);
     }
     return dragHeld;
   });
@@ -1294,7 +1297,7 @@
    * All three are refused while a save is unresolved, but only Escape is refused *here*. The panel is
    * what reports the write's outcome, and leaving takes it away while the write already issued goes on
    * to store the draft — under a control whose name says nothing was written. The two pressable exits
-   * are held one step earlier by the reason this same flag produces (`closeBlocked` for the ×,
+   * are held one step earlier by the reason this same flag produces (`closeAvailability` for the ×,
    * `saving` for the form), so each of them can say why it will not answer (doc-11 §5). Escape has no
    * control to hang a reason on, which is why this end of it only declines.
    *
@@ -2021,7 +2024,7 @@
   async function submitLaneCreate(): Promise<void> {
     const at = laneCreateAt;
     const plan = laneCreatePlan;
-    if (at === null || plan.state !== "ready" || laneCreateBlocked !== null) {
+    if (at === null || plan.state !== "ready" || laneCreateIssue.state === "withheld") {
       return;
     }
     const column = CANONICAL_COLUMN_LABEL[at.column];
@@ -2071,7 +2074,7 @@
    */
   function startCardDrag(view: TaskView): void {
     const taskId = view.task.id;
-    if (dragHeld !== null || taskId === null) {
+    if (dragHeld.state === "withheld" || taskId === null) {
       return;
     }
     dragSource = {
@@ -2120,11 +2123,11 @@
     const ask = dropAsk;
     const drop = dropAskDrop;
     const status = dropStatusToPass;
-    const blocked = dropAskBlocked;
+    const answerable = dropAskAvailable;
     if (ask === null || drop === null || drop.state === "ignored" || status === "") {
       return;
     }
-    if (blocked !== null) {
+    if (answerable.state === "withheld") {
       return;
     }
     dropAsk = null;
@@ -2677,7 +2680,7 @@
          same flag while the registration is unresolved and both ask first when there is input. -->
     <Modal
       label={t().projectRegister.heading}
-      closeBlocked={registerSubmitting ? registeringReason() : null}
+      closeAvailability={registerSubmitting ? withheld(registeringReason()) : AVAILABLE}
       confirmDiscard={modalConfirm}
       onclose={closeRegister}
     >
@@ -2704,7 +2707,7 @@
          becomes of the 下書き in its own words, so the question would ask what the label answered. -->
     <Modal
       label={t().settings.heading}
-      closeBlocked={settingsSaving ? savingReason() : null}
+      closeAvailability={settingsSaving ? withheld(savingReason()) : AVAILABLE}
       confirmDiscard={modalConfirm}
       onclose={() => closeSettings(false)}
     >
@@ -2775,15 +2778,15 @@
         </label>
         <!-- 進む → 戻る, the order every other layer on this screen answers in (doc-11 §12). -->
         <div class="answers">
-          <button type="button" disabled={dropAskBlocked !== null} onclick={confirmDropAsk}>
+          <button type="button" disabled={dropAskAvailable.state === "withheld"} onclick={confirmDropAsk}>
             {t().shell.dropAskConfirm}
           </button>
           <button type="button" onclick={cancelDropAsk}>{issueConfirmCancel()}</button>
         </div>
         <!-- 無効化提示 (doc-11 §5): the reason is 常時表示 beside the control rather than a `title`,
              which a disabled button cannot be reached through. -->
-        {#if dropAskBlocked !== null}
-          <p class="reason">{dropAskBlocked}</p>
+        {#if dropAskAvailable.state === "withheld"}
+          <p class="reason">{dropAskAvailable.reason}</p>
         {/if}
       </section>
     </Modal>
@@ -2942,8 +2945,8 @@
           createOpen={laneCreateAt}
           createTitle={laneCreateTitle}
           createStatus={laneCreateStatusToPass}
-          createBlocked={laneCreateBlocked}
-          createHeld={laneCreateHeld}
+          createAvailability={laneCreateIssue}
+          entryAvailability={laneEntryAvailable}
           oncreateOpen={openLaneCreate}
           oncreateClose={closeLaneCreate}
           oncreateTitle={(value) => (laneCreateTitle = value)}

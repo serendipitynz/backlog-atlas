@@ -5,6 +5,7 @@
   // name reaches the screen (`laneGroupLabel`, doc-8 §2.2).
   // An empty cell is drawn empty and says so — "該当タスクが無い" is a different fact from
   // "ルートが読めない", which is a row-level state (doc-7 §6).
+  import type { Availability } from "../lib/availability";
   import TaskCard from "./TaskCard.svelte";
   import { collapsedCellLabel, priorityTally } from "../lib/card";
   import { messages } from "../lib/messages-context";
@@ -50,7 +51,7 @@
     ondropcard?: () => void;
     /** 発行中のカード (doc-7 §4.2), by task file — the shell's record, looked up rather than copied. */
     issuingPath?: string | null;
-    dragHeld: string | null;
+    dragHeld: Availability;
     ondragstart: (view: TaskView) => void;
     ondragend: () => void;
   }

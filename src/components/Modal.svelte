@@ -37,6 +37,8 @@
   // there is nothing for a wording to tell apart, and what the × does with it is said by the
   // 破棄前確認 instead.
   import type { Snippet } from "svelte";
+  import type { Availability } from "../lib/availability";
+  import { AVAILABLE } from "../lib/availability";
   import Icon from "../lib/icons/Icon.svelte";
   import {
     discardConfirmClose,
@@ -52,7 +54,7 @@
     /** The dialog's accessible name — what the header entry that opened it is called. */
     label: string;
     /**
-     * Why the shell will turn a close request away right now, or `null` while it will take one.
+     * Whether the shell will take a close request right now, and why not while it will not.
      *
      * The layer asks rather than decides — `onclose` stays a request (see below) — but a control that
      * silently does nothing is the 理由の無い無効化 doc-11 §5 refuses, and the × is the one exit that
@@ -60,12 +62,12 @@
      * both exits: `App.svelte`'s `settingsSaving` turns away Escape too, so one circumstance closes
      * both rather than each exit reading its own.
      */
-    closeBlocked?: string | null;
+    closeAvailability?: Availability;
     /**
      * The answers to a 破棄前確認 this layer's own close request raised, or `null` while none is
      * standing (doc-8 §6.3, doc-11 §7).
      *
-     * Not the same state as `closeBlocked` above, and the two must not be folded into one: that one
+     * Not the same state as `closeAvailability` above, and the two must not be folded into one: that one
      * means the request is *not issued* (the × goes to 無効化提示, doc-11 §5), this one means the
      * request is issued and waiting for an answer — so the × stays pressable, and pressing it again
      * only asks the same question again.
@@ -80,7 +82,7 @@
 
   let {
     label,
-    closeBlocked = null,
+    closeAvailability = AVAILABLE,
     confirmDiscard = null,
     onclose,
     children,
@@ -228,10 +230,10 @@
       type="button"
       class="close"
       aria-label={t().action.close}
-      aria-disabled={closeBlocked !== null}
-      aria-describedby={closeBlocked === null ? undefined : CLOSE_BLOCKED_ID}
-      title={closeBlocked ?? t().action.close}
-      onclick={() => closeBlocked === null && onclose()}
+      aria-disabled={closeAvailability.state === "withheld"}
+      aria-describedby={closeAvailability.state === "ready" ? undefined : CLOSE_BLOCKED_ID}
+      title={closeAvailability.state === "withheld" ? closeAvailability.reason : t().action.close}
+      onclick={() => closeAvailability.state === "ready" && onclose()}
     >
       <Icon name="x" />
     </button>
@@ -240,7 +242,7 @@
          would name one circumstance twice in one box. Kept in the DOM at all times because a target
          inserted at the moment it is pointed at is not reliably announced. -->
     <span class="unseen" id={CLOSE_BLOCKED_ID}>
-      {closeBlocked === null ? "" : t().modal.cannotPressNow(closeBlocked)}
+      {closeAvailability.state === "withheld" ? t().modal.cannotPressNow(closeAvailability.reason) : ""}
     </span>
     <!--
       破棄前確認 (doc-8 §6.3), drawn here because this layer covers the 上部帯 ① where every other
