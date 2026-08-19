@@ -16,7 +16,7 @@ not run more than one Atlas.
 ## Platforms
 
 macOS, Windows, and Linux (on Linux, a distribution carrying webkit2gtk-4.1 and libsoup-3.0 —
-Ubuntu 24.04 or newer). The interface is in Japanese only.
+Ubuntu 24.04 or newer).
 
 ## What it does
 
@@ -29,7 +29,7 @@ Ubuntu 24.04 or newer). The interface is in Japanese only.
 - Derive Type from `kind:*` labels and the frontmatter, shown apart from ordinary labels.
 - List and edit documents and milestones.
 - List and read decisions (`backlog/decisions/`).
-- Keep the display theme, card density, filters, and sort order in settings.
+- Keep your display and filtering preferences in settings, carried over to the next start.
 
 ## What Atlas does not change
 
@@ -78,9 +78,9 @@ operations that would write are held back, with the reason stated where the cont
 checks the version at startup and names the one it needs when yours is short of it.
 
 **An app started from Finder or the Dock does not always inherit your shell's `PATH`.** If
-Atlas cannot find a tool you know is installed, give its absolute path in **設定 → 外部コマンド**
-(Settings → External commands). For `backlog` on an npm install, `which backlog` prints a shim —
-pass the binary inside the package instead.
+Atlas cannot find a tool you know is installed, give its absolute path in **Settings → External
+commands** (設定 → 外部コマンド on a Japanese screen). For `backlog` on an npm install, `which
+backlog` prints a shim — pass the binary inside the package instead.
 
 ```sh
 # macOS / Linux
