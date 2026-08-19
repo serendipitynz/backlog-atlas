@@ -1,10 +1,10 @@
 ---
 id: TASK-120
 title: 被せ層は同時に 1 枚だけという規則を doc-7 §2.1 へ書く
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-06 09:37'
-updated_date: '2026-08-19 03:34'
+updated_date: '2026-08-19 04:28'
 labels:
   - doc
   - decision
