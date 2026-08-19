@@ -25,7 +25,7 @@
  * | doc-7 §2.1 すべてのプロジェクトを表示 | [`showAllProjectsLabel`] + the `showAllProjects` item | 一覧の先頭に置く、全行を表示へ戻す行 |
  * | doc-7 §2.1 群（項目の並びの単位） | [`MenuGroup`] + each item's `group` | which of the two 群 a line is in: `layer` raises a 被せ層, `rows` changes which rows the grid draws |
  * | doc-7 §2.1 区切り線 | [`startsGroup`] | メニューの群と群の境目に置く水平の線を指す。Where one is drawn — read from 群 alone, never from `availability` |
- * | doc-11 §5 無効化提示 | [`showAllProjectsAvailability`] | 保留理由: why すべてのプロジェクトを表示 cannot be pressed, or `null` when it can — [`showAllProjectsHeldReason`] when every row is shown, [`noProjectsReason`] when the ledger is empty |
+ * | doc-11 §5 無効化提示 | [`showAllProjectsAvailability`] | 保留判定 と 保留理由 as one value: whether すべてのプロジェクトを表示 may be pressed, and — when it may not — [`showAllProjectsHeldReason`] if every row is shown, [`noProjectsReason`] if the ledger is empty |
  * | doc-11 §8 可視の文を省いてよい理由 | [`omitsSentence`] | which 保留理由 is drawn without a visible sentence, because the 区画 states it (licence ①) |
  *
  * ## Why the whole project list is here

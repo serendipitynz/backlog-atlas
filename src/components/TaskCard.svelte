@@ -33,7 +33,7 @@
     /** In the 未分類区画 the card shows its original status string (doc-7 §2). */
     showRawStatus: boolean;
     /**
-     * つまめないカード (doc-7 §4.2): why no card may start a 列間ドロップ, or `null`. **Not drawn here** —
+     * つまめないカード (doc-7 §4.2): whether any card may start a 列間ドロップ. **Not drawn here** —
      * the reason is 画面全体に効く and doc-11 §5 puts it on the 上部帯, so this only decides whether the
      * card is a drag source. The reason travels with the judgement rather than being it, so the two
      * cannot disagree about why and a caller that does state it reads the same words.

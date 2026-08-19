@@ -7,10 +7,13 @@
  * with `null` also stops the control being withheld, and nothing on screen says the control changed.
  * `ProjectDetail.svelte` の概要区画 broke exactly that way before TASK-127.
  *
- * Written down once rather than per module because the shape was reproduced at 17 sites and kept
+ * Written down once rather than per module because the shape was reproduced at 18 sites and kept
  * coming back at new ones: TASK-127's enumeration named 8 on 2026-08-08, one of which TASK-144 closed,
- * and TASK-128 counted 17 on 2026-08-19 — the 10 it added include three written *after* the rule was
- * (`laneDragHold`, `dropAskBlocked`, and the pair in `App.svelte`). Modules that
+ * and TASK-128 reached 18 on 2026-08-19 — three of the additions were written *after* the rule was
+ * (`laneDragHold`, `dropAskBlocked`, and the pair in `App.svelte`), and the eighteenth
+ * (`ProjectRegister.svelte`) came from the PR reviewer, because it held its 保留判定 and its 保留理由
+ * as two `$derived` over the same predicates and so compared nothing against `null` for a scan to
+ * find. Modules that
  * carry more than these two facts keep their own type — `IssuePlan` and `IssueAvailability`
  * (`manage.ts`), `RedetectControl` and `OverviewSave` (`project-detail.ts`), `EditAvailability`
  * (`edit.ts`) — because a label or a third state is theirs, not this type's.
