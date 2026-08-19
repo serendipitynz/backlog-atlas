@@ -1,10 +1,10 @@
 ---
 id: TASK-193
 title: AGENTS の Release 節を配布・リリース層の doc へ移し、AGENTS はポインタだけ持つ
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-18 20:39'
-updated_date: '2026-08-19 00:33'
+updated_date: '2026-08-19 01:01'
 labels:
   - docs
   - release
