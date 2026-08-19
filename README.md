@@ -78,9 +78,9 @@ operations that would write are held back, with the reason stated where the cont
 checks the version at startup and names the one it needs when yours is short of it.
 
 **An app started from Finder or the Dock does not always inherit your shell's `PATH`.** If
-Atlas cannot find a tool you know is installed, give its absolute path in **設定 → 外部コマンド**
-(Settings → External commands). For `backlog` on an npm install, `which backlog` prints a shim —
-pass the binary inside the package instead.
+Atlas cannot find a tool you know is installed, give its absolute path in **Settings → External
+commands** (設定 → 外部コマンド on a Japanese screen). For `backlog` on an npm install, `which
+backlog` prints a shim — pass the binary inside the package instead.
 
 ```sh
 # macOS / Linux
