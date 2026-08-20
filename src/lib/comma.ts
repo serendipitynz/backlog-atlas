@@ -5,13 +5,23 @@
  * report it.
  *
  * Held here rather than in the screen module that needed it first: the rule belongs to the 操作写像,
- * and two screens now state it (`manage.ts` for ラベル・タグ, `edit.ts` for assignee). One home keeps
- * the sentence identical wherever it is shown.
+ * and two screens now state it (`manage.ts` for 作成のラベル・文書のタグ, `edit.ts` for assignee・
+ * ラベル・依存). One home keeps the sentence identical wherever it is shown.
  *
- * **One home is not every site.** Applied at `task create -l`, `doc update --tags` and
- * `task edit -a`; *not* applied at `task edit --add-label` / `--remove-label` or
- * `task edit --depends-on`, which `update.rs` comma-joins the same way and v1.49.3 reads the same
- * way. The label gap is filed as TASK-155; dependencies carry TASK-IDs, whose grammar has no comma.
+ * **Every option `update.rs` comma-joins is a site** — `task create -l`, `task edit -a`,
+ * `task edit --add-label` / `--remove-label`, `task edit --depends-on` and `doc update --tags`.
+ * TASK-155 closed the last three, and the pairing of an option with its gate is held by
+ * `comma.test.ts` rather than by this sentence: the count is taken off `update.rs`, so a seventh
+ * option cannot arrive unguarded and leave a paragraph here still true.
+ *
+ * **The two reasons are not one sentence said twice** (TASK-155, measured on v1.49.3). Where the set
+ * travels whole — `-a`, `--depends-on`, `--tags`, `-l` — a comma in a member is a value the reader is
+ * typing, and [`commaReason`] says it cannot be expressed. `--add-label` / `--remove-label` carry a
+ * *delta*, so a comma-bearing label already on the task is the argument of its own removal:
+ * `--remove-label "x,y"` exits 0 saying `Updated`, having split the value into two names the task
+ * does not have and removed neither. That one is [`commaRemovalReason`] — nothing the reader retypes
+ * changes it, and the value reached the file by hand (the CLI cannot write one), after which the CLI
+ * itself preserves it.
  */
 
 import { msg } from "./messages";
@@ -32,16 +42,33 @@ const QUOTED_VALUE_LIMIT = 20;
  * without hovering, and a clamped line moves half of it into a tooltip.
  */
 export function commaReason(what: string, value: string): string {
-  // Cut by code point, not by `slice`: a label may hold an astral character (an emoji is one), and
-  // cutting between its two UTF-16 units leaves a lone surrogate that draws as `�` — a character the
-  // reader never typed, in the sentence whose whole job is to name the value they did type. The cut
-  // still lands inside a grapheme cluster (a ZWJ emoji sequence splits into its parts), which is
-  // acceptable where a replacement character is not: the quote is there to identify the value, and a
-  // partial sequence identifies while `�` misreports.
+  return msg().field.commaNotAllowed(what, cut(value));
+}
+
+/**
+ * The quoted head both reasons carry.
+ *
+ * Cut by code point, not by `slice`: a label may hold an astral character (an emoji is one), and
+ * cutting between its two UTF-16 units leaves a lone surrogate that draws as `�` — a character the
+ * reader never typed, in the sentence whose whole job is to name the value they did type. The cut
+ * still lands inside a grapheme cluster (a ZWJ emoji sequence splits into its parts), which is
+ * acceptable where a replacement character is not: the quote is there to identify the value, and a
+ * partial sequence identifies while `�` misreports.
+ */
+function cut(value: string): string {
   const points = [...value];
-  const quoted =
-    points.length > QUOTED_VALUE_LIMIT ? `${points.slice(0, QUOTED_VALUE_LIMIT).join("")}…` : value;
-  return msg().field.commaNotAllowed(what, quoted);
+  return points.length > QUOTED_VALUE_LIMIT
+    ? `${points.slice(0, QUOTED_VALUE_LIMIT).join("")}…`
+    : value;
+}
+
+/**
+ * Why a value that already holds a comma cannot be taken off a 増減 field (doc-5 §3.1 沈黙無変更).
+ * Reached only from the labels facet, and only for a label the read layer found on the task — see the
+ * head note for why the 全置換 fields have no such case.
+ */
+export function commaRemovalReason(what: string, value: string): string {
+  return msg().field.commaValueNotRemovable(what, cut(value));
 }
 
 export function firstWithComma(values: readonly string[]): string | undefined {

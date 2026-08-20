@@ -55,7 +55,7 @@ import type {
 } from "./wire";
 import type { Availability } from "./availability";
 import { AVAILABLE, withheld } from "./availability";
-import { commaReason, firstWithComma } from "./comma";
+import { commaReason, commaRemovalReason, firstWithComma } from "./comma";
 import { bodyLinkRefusalText, imageRefusalText, launchRefusalText } from "./failure";
 import { msg } from "./messages";
 import { refusalReport } from "./ledger";
@@ -571,17 +571,47 @@ export function buildSave(session: EditSession): SavePlan {
         break;
       case "labels": {
         const before = session.baseline.task.labels;
-        edit.addLabels = draft.labels.filter((label) => !before.includes(label));
-        edit.removeLabels = before.filter((label) => !draft.labels.includes(label));
+        const addLabels = draft.labels.filter((label) => !before.includes(label));
+        const removeLabels = before.filter((label) => !draft.labels.includes(label));
+        // Both deltas travel as one comma-separated value (doc-5 §3 ラベル増減), so the gate is on
+        // the values actually sent rather than on the draft: a comma-bearing label the task already
+        // has and keeps appears in neither delta, and refusing that save would refuse one the CLI
+        // performs correctly.
+        const badAdd = firstWithComma(addLabels);
+        if (badAdd !== undefined) {
+          return { state: "refused", reason: commaReason(msg().field.labelWord, badAdd) };
+        }
+        // The removal is refused for the opposite reason (doc-5 §3.1): `--remove-label "x,y"` exits 0
+        // reporting success, having split the value into two names the task does not have. Issuing it
+        // would report a removal that did not happen — and labels are not in [`divergence`]'s set, so
+        // nothing afterwards would catch it either.
+        const badRemove = firstWithComma(removeLabels);
+        if (badRemove !== undefined) {
+          return {
+            state: "refused",
+            reason: commaRemovalReason(msg().field.labelWord, badRemove),
+          };
+        }
+        edit.addLabels = addLabels;
+        edit.removeLabels = removeLabels;
         break;
       }
-      case "dependencies":
+      case "dependencies": {
         if (draft.dependencies.length === 0) {
           return { state: "refused", reason: emptyDependenciesReason() };
+        }
+        // `--depends-on` reads its value as the whole set, as `-a` does, so one entry cannot hold a
+        // comma. Gated even though a TASK-ID has no comma in its grammar: the field takes free text,
+        // and「TASK-2,TASK-3」typed as one entry is drawn as one 未解決 entry while the file would get
+        // two — the screen and the file disagreeing is the defect, not the ID's spelling.
+        const withComma = firstWithComma(draft.dependencies);
+        if (withComma !== undefined) {
+          return { state: "refused", reason: commaReason("dependencies", withComma) };
         }
         edit.dependencies = [...draft.dependencies];
         submitted.dependencies = [...draft.dependencies];
         break;
+      }
       case "references":
         if (draft.references.length === 0) {
           return { state: "refused", reason: emptyReferencesReason() };

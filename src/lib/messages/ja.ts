@@ -59,6 +59,14 @@ export const ja = {
     commaNotAllowed: (what: string, quoted: string) =>
       `${what}に「,」を含められません（1 個のカンマ区切り値として扱われるため、` +
       `「${quoted}」は 2 件に分かれます）`,
+    /**
+     * Why a value that already holds a comma cannot be *taken off* a 増減 field (`comma.ts`). Not the
+     * sentence above said the other way round: there the value is one the reader is typing now, and
+     * dropping the comma is a move they can make; here the value is already on the task, and the
+     * option that would remove it splits it into names the task does not have.
+     */
+    commaValueNotRemovable: (what: string, quoted: string) =>
+      `カンマを含む${what}「${quoted}」は Atlas からは削除できません`,
     /** 入力欄の名として使う語, for the fields whose name is only ever a word in a sentence. */
     labelWord: "ラベル",
     tagWord: "タグ",

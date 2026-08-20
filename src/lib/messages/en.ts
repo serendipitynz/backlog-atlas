@@ -47,6 +47,10 @@ export const EN: Catalog = {
     commaNotAllowed: (what: string, quoted: string) =>
       `${what} values cannot contain a comma: the whole set travels as one comma-separated value, ` +
       `so "${quoted}" would arrive as two entries`,
+    // Says what cannot happen rather than what the value contains: unlike the sentence above, the
+    // reader is not typing this value and has nothing to retype — the comma is already on the task.
+    commaValueNotRemovable: (what: string, quoted: string) =>
+      `Atlas cannot remove the ${what} "${quoted}", which contains a comma`,
     labelWord: "label",
     tagWord: "tag",
   },
