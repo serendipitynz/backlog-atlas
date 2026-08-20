@@ -1,27 +1,34 @@
 /**
  * The one rule for values Atlas passes to a CLI option that reads its value as comma-separated
- * (doc-5 §3). Each such option takes the whole set as a single argument, so a comma *inside* one
- * member is not expressible — it would silently become two members, and nothing downstream would
- * report it.
+ * (doc-5 §3). Such an option splits the argument it is handed, so a comma *inside* one member is not
+ * expressible — it would silently become two members, and nothing downstream would report it. That
+ * holds however the values are grouped: whether the option carries the whole set, a delta, or a
+ * single entry, what splits is the one value it is given.
  *
  * Held here rather than in the screen module that needed it first: the rule belongs to the 操作写像,
  * and two screens now state it (`manage.ts` for 作成のラベル・文書のタグ, `edit.ts` for assignee・
- * ラベル・依存). One home keeps the sentence identical wherever it is shown.
+ * ラベル・依存・References). One home keeps the sentence identical wherever it is shown.
  *
- * **Every option `update.rs` comma-joins is a site** — `task create -l`, `task edit -a`,
- * `task edit --add-label` / `--remove-label`, `task edit --depends-on` and `doc update --tags`.
- * TASK-155 closed the last three, and the pairing of an option with its gate is held by
- * `comma.test.ts` rather than by this sentence: the count is taken off `update.rs`, so a seventh
- * option cannot arrive unguarded and leave a paragraph here still true.
+ * **The site is an option the CLI splits, not an option Atlas joins** (TASK-155, measured on
+ * v1.49.3 over every option `allowed_options` permits). Seven split: `task create -l`,
+ * `task edit -a` / `--add-label` / `--remove-label` / `--depends-on` / `--ref`, and
+ * `doc update --tags`. **`--ref` is the one that makes the distinction load-bearing** — Atlas passes
+ * it once per reference and joins nothing, and v1.49.3 splits each value anyway, so an enumeration
+ * drawn off `join(",")` misses it. **Repeatable does not mean unsplit either way**: `--ac` is
+ * repeatable and keeps its comma, `--ref` is repeatable and splits.
  *
- * **The two reasons are not one sentence said twice** (TASK-155, measured on v1.49.3). Where the set
- * travels whole — `-a`, `--depends-on`, `--tags`, `-l` — a comma in a member is a value the reader is
- * typing, and [`commaReason`] says it cannot be expressed. `--add-label` / `--remove-label` carry a
- * *delta*, so a comma-bearing label already on the task is the argument of its own removal:
- * `--remove-label "x,y"` exits 0 saying `Updated`, having split the value into two names the task
- * does not have and removed neither. That one is [`commaRemovalReason`] — nothing the reader retypes
- * changes it, and the value reached the file by hand (the CLI cannot write one), after which the CLI
- * itself preserves it.
+ * The pairing of an option with its gate is held by `comma.test.ts` rather than by this paragraph:
+ * the option set is taken off the crate, so an eighth option cannot arrive unclassified and leave a
+ * sentence here still true.
+ *
+ * **The two reasons are not one sentence said twice.** [`commaReason`] is for a value the reader is
+ * typing — every gate but one, `--add-label` included: the value cannot be expressed, so retyping it
+ * without the comma is the way out. `--remove-label` has no such way out, because a comma-bearing
+ * label already on the task is the argument of its own removal: `--remove-label "x,y"` exits 0 saying
+ * `Updated`, having split the value into two names the task does not have and removed neither. That
+ * one is [`commaRemovalReason`], and it is the only delta end that has it — the 全置換 options remove
+ * such a member by leaving it out of the set they send, where no comma then appears. The value
+ * reached the file by hand (no CLI path writes one), after which the CLI itself preserves it.
  */
 
 import { msg } from "./messages";
@@ -64,8 +71,8 @@ function cut(value: string): string {
 
 /**
  * Why a value that already holds a comma cannot be taken off a 増減 field (doc-5 §3.1 沈黙無変更).
- * Reached only from the labels facet, and only for a label the read layer found on the task — see the
- * head note for why the 全置換 fields have no such case.
+ * Reached only from `--remove-label`, and only for a label the read layer found on the task — see the
+ * head note for why no other gate has this case.
  */
 export function commaRemovalReason(what: string, value: string): string {
   return msg().field.commaValueNotRemovable(what, cut(value));

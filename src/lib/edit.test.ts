@@ -225,6 +225,21 @@ describe("References・dependencies の非空全置換 (doc-5 §3.1)", () => {
     expect(canRemoveLast(["a", "b"])).toBe(true);
   });
 
+  it("1 件の参照にカンマを含む保存を拒む", () => {
+    // `--ref` は参照ごとに繰り返して渡すので連結は起きないが、**CLI は各値をカンマで分ける**
+    // （v1.49.3 実測）。座標を持つ地図の URL がそのまま当たるので、繰り返し渡していることは
+    // 掛けない理由にならない。
+    const session = setField(
+      startSession(taskView({ references: ["https://a.test/1"] })),
+      "references",
+      ["https://m.test/@1,2"],
+    );
+    expect(buildSave(session)).toEqual({
+      state: "refused",
+      reason: commaReason("References", "https://m.test/@1,2"),
+    });
+  });
+
   it("1 件の依存にカンマを含む保存を拒む", () => {
     // `--depends-on` は `-a` と同じく値を集合として読むので、1 件に カンマ は入れられない。TASK-ID の
     // 文法にカンマが無いことは理由にならない — 欄は自由入力で、「TASK-3,TASK-4」は画面では 1 件の

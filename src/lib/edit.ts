@@ -612,15 +612,24 @@ export function buildSave(session: EditSession): SavePlan {
         submitted.dependencies = [...draft.dependencies];
         break;
       }
-      case "references":
+      case "references": {
         if (draft.references.length === 0) {
           return { state: "refused", reason: emptyReferencesReason() };
+        }
+        // Gated even though Atlas repeats `--ref` per reference instead of joining: v1.49.3 splits
+        // each value it is handed anyway (measured), so a URL holding a comma — a map link carrying
+        // a coordinate pair is the everyday one — arrives as two references. This is the gate an
+        // enumeration drawn off `join(",")` does not reach.
+        const badReference = firstWithComma(draft.references);
+        if (badReference !== undefined) {
+          return { state: "refused", reason: commaReason("References", badReference) };
         }
         // 既存を含む非空全集合 (doc-5 §3): the list starts as everything the task has, so adding a
         // Pull Request URL here is the References 全置換 doc-8 §6 reduces PR 登録 to.
         edit.references = [...draft.references];
         submitted.references = [...draft.references];
         break;
+      }
       case "ac":
         if (draft.ac.mode === "delta") {
           edit.ac = { mode: "delta", ...acDeltaForCli(draft.ac.delta, session.baseline) };
