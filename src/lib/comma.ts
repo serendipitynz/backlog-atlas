@@ -21,14 +21,17 @@
  * the option set is taken off the crate, so an eighth option cannot arrive unclassified and leave a
  * sentence here still true.
  *
- * **The two reasons are not one sentence said twice.** [`commaReason`] is for a value the reader is
- * typing — every gate but one, `--add-label` included: the value cannot be expressed, so retyping it
- * without the comma is the way out. `--remove-label` has no such way out, because a comma-bearing
- * label already on the task is the argument of its own removal: `--remove-label "x,y"` exits 0 saying
- * `Updated`, having split the value into two names the task does not have and removed neither. That
- * one is [`commaRemovalReason`], and it is the only delta end that has it — the 全置換 options remove
- * such a member by leaving it out of the set they send, where no comma then appears. The value
- * reached the file by hand (no CLI path writes one), after which the CLI itself preserves it.
+ * **The two reasons are not one sentence said twice.** What separates them is whose value it is, not
+ * whether dropping the comma helps: [`commaReason`] states that a value *supplied for this save*
+ * cannot be expressed — every gate but one, `--add-label` included — and what the reader does about it
+ * is theirs to choose. It deliberately promises no remedy, because there is not one remedy: a label
+ * can be renamed, while a URL's comma belongs to the identifier and dropping it names something else.
+ * [`commaRemovalReason`] is for the case where the value is *already on the task and is the argument
+ * of its own removal*: `--remove-label "x,y"` exits 0 saying `Updated`, having split the value into
+ * two names the task does not have and removed neither. `--remove-label` is the only option in that
+ * position — the 全置換 options remove such a member by leaving it out of the value they send, where
+ * no comma then appears. The label reached the file by hand (no CLI path writes one), after which the
+ * CLI itself preserves it.
  */
 
 import { msg } from "./messages";

@@ -67,7 +67,11 @@ function crateSource(): string {
 function emittableOptions(source: string): string[] {
   const start = source.indexOf("fn allowed_options");
   const body = source.slice(start, source.indexOf("\n}", start));
-  return [...new Set([...body.matchAll(/"(--[a-z][a-z-]*)"/g)].map((match) => match[1]))].sort();
+  // Any quoted literal opening with a dash, not `--[a-z-]+`: a name with a digit (`--ac-2`) or a
+  // short form (`-a`) would otherwise never enter this set, and the first test — emittable minus
+  // classified — would pass by finding nothing. Nothing else quoted in these arms starts with a
+  // dash, so the wide class costs no false entries.
+  return [...new Set([...body.matchAll(/"(-[^"\s]+)"/g)].map((match) => match[1]))].sort();
 }
 
 /** The option name a joined value is passed under, or `null` when the site names none. */
@@ -90,7 +94,7 @@ function commaJoins(source: string): CommaJoin[] {
     // Rust puts one invocation option per statement, so the last option name in that span is the one
     // this value is passed under.
     const statement = before.slice(Math.max(before.lastIndexOf(";"), before.lastIndexOf("{")) + 1);
-    const names = [...statement.matchAll(/"(--?[a-z][a-z-]*)"/g)].map((name) => name[1]);
+    const names = [...statement.matchAll(/"(-[^"\s]+)"/g)].map((name) => name[1]);
     joins.push({
       option: names.at(-1) ?? null,
       at: statement.trim().replace(/\s+/g, " ").slice(-80),
@@ -106,13 +110,21 @@ function joinedOptions(sources: Record<string, string>): string[] {
 }
 
 /**
- * One row per option the adapter can emit, measured on v1.49.3.
+ * One row per option the adapter can emit.
  *
  * `splits` carries the path a reader reaches it through, run with a comma in the value, and the value
  * the refusal has to name. `keeps` and `noUserText` carry the reason no gate is needed: a value that
  * survives its comma, or a value Atlas computes rather than the reader typing it — an index, an enum
  * the screen picks from, a flag with no value at all. A rejected value counts as `noUserText` too when
  * the CLI validates it against a fixed list, since the comma never reaches a parse that could split.
+ *
+ * **Where each row comes from, since the three are not the same kind of claim** (TASK-155): every
+ * `splits` row and every `keeps` row was measured on v1.49.3 by passing a comma through that option
+ * and reading the file back. `--status`, `--priority`, `--type` and `--reassign-to` were measured too
+ * — the first three exit 1 on a value outside their list, and the last resolved a comma-bearing
+ * milestone name whole, which matters because Atlas can create such a milestone itself. The AC
+ * indices, `--task-handling` and `--no-update-tasks` are classified by construction rather than by
+ * measurement: Atlas builds those values, so no comma can reach them whatever the CLI would do.
  */
 type Classification =
   | { kind: "splits"; value: string; refuse: () => string | null }
