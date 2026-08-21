@@ -34,9 +34,9 @@ import {
   type EditSession,
   type TransitionOffer,
 } from "./edit";
-import { commaReason } from "./comma";
+import { commaRemovalReason, commaReason } from "./comma";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
-import { CATALOGS } from "./messages";
+import { CATALOGS, msg } from "./messages";
 import { snapshot, taskView } from "./fixtures";
 import type { AcceptanceCriterion, CliReadiness, TaskEdit, UpdateOperation } from "./wire";
 
@@ -103,6 +103,34 @@ describe("ラベルの増減", () => {
     const view = taskView({ labels: ["a", "b"] });
     const session = setField(startSession(view), "labels", ["b", "c"]);
     expect(editOf(ready(session).action)).toEqual({ addLabels: ["c"], removeLabels: ["a"] });
+  });
+
+  it("カンマを含むラベルの追加を拒み、2 件に分かれることを理由に述べる", () => {
+    // `--add-label "b,c"` writes `b` と `c` の 2 件 (v1.49.3 実測)。作成モーダルとタグには同じ規則が
+    // 先に掛かっており (doc-10 §7)、同じ入力が作成では拒まれ編集では通る非対称がここで閉じる。
+    const session = setField(startSession(taskView({ labels: ["a"] })), "labels", ["a", "b,c"]);
+    expect(buildSave(session)).toEqual({
+      state: "refused",
+      reason: commaReason(msg().field.labelWord, "b,c"),
+    });
+  });
+
+  it("カンマを含む既存ラベルの削除を拒み、削除できないことを理由に述べる", () => {
+    // 追加側と結末が違うので理由文も別である: `--remove-label "x,y"` は値を 2 件へ分けたうえで、その
+    // どちらもタスクに無いので 1 件も消さずに終了コード 0 と `Updated` を出す (v1.49.3 実測)。発行すれば
+    // 起きなかった削除を成功として報告することになり、ラベルは divergence の突き合わせにも入っていない。
+    const session = setField(startSession(taskView({ labels: ["x,y"] })), "labels", []);
+    expect(buildSave(session)).toEqual({
+      state: "refused",
+      reason: commaRemovalReason(msg().field.labelWord, "x,y"),
+    });
+  });
+
+  it("カンマを含む既存ラベルを持つタスクでも、それを残す保存は通る", () => {
+    // 関門は draft ではなく増減の値に掛かる。残るラベルはどちらの引数にも現れないので、CLI が現に
+    // 正しく行える保存 — 別のラベルを 1 件足すだけ — を拒まない。
+    const session = setField(startSession(taskView({ labels: ["x,y"] })), "labels", ["x,y", "new"]);
+    expect(editOf(ready(session).action)).toEqual({ addLabels: ["new"], removeLabels: [] });
   });
 });
 
@@ -195,6 +223,36 @@ describe("References・dependencies の非空全置換 (doc-5 §3.1)", () => {
   it("最後の 1 件は削除できない", () => {
     expect(canRemoveLast(["only"])).toBe(false);
     expect(canRemoveLast(["a", "b"])).toBe(true);
+  });
+
+  it("1 件の参照にカンマを含む保存を拒む", () => {
+    // `--ref` は参照ごとに繰り返して渡すので連結は起きないが、**CLI は各値をカンマで分ける**
+    // （v1.49.3 実測）。座標を持つ地図の URL がそのまま当たるので、繰り返し渡していることは
+    // 掛けない理由にならない。
+    const session = setField(
+      startSession(taskView({ references: ["https://a.test/1"] })),
+      "references",
+      ["https://m.test/@1,2"],
+    );
+    expect(buildSave(session)).toEqual({
+      state: "refused",
+      reason: commaReason("References", "https://m.test/@1,2"),
+    });
+  });
+
+  it("1 件の依存にカンマを含む保存を拒む", () => {
+    // `--depends-on` は `-a` と同じく値を集合として読むので、1 件に カンマ は入れられない。TASK-ID の
+    // 文法にカンマが無いことは理由にならない — 欄は自由入力で、「TASK-3,TASK-4」は画面では 1 件の
+    // 未解決な依存として描かれる一方、ファイルには 2 件書かれる。
+    const session = setField(
+      startSession(taskView({ dependencies: ["TASK-2"] })),
+      "dependencies",
+      ["TASK-3,TASK-4"],
+    );
+    expect(buildSave(session)).toEqual({
+      state: "refused",
+      reason: commaReason("dependencies", "TASK-3,TASK-4"),
+    });
   });
 
   it("空集合にする保存はアダプターへ出す前に拒む", () => {

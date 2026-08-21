@@ -44,9 +44,15 @@ export const EN: Catalog = {
     addCriterion: "New criterion",
     // Opens with `what`, which may be a translated word or a bare field name (`assignee`), so the
     // sentence takes no article — one that fitted the words here would not fit the identifiers.
+    // Says the *value* is passed comma-separated rather than the whole set: `--add-label` carries a
+    // delta and `--ref` one entry per flag, and both still split the value they are given.
     commaNotAllowed: (what: string, quoted: string) =>
-      `${what} values cannot contain a comma: the whole set travels as one comma-separated value, ` +
+      `${what} values cannot contain a comma: the value is passed as one comma-separated value, ` +
       `so "${quoted}" would arrive as two entries`,
+    // Says what cannot happen rather than what the value contains: unlike the sentence above, the
+    // reader is not typing this value and has nothing to retype — the comma is already on the task.
+    commaValueNotRemovable: (what: string, quoted: string) =>
+      `Atlas cannot remove the ${what} "${quoted}", which contains a comma`,
     labelWord: "label",
     tagWord: "tag",
   },

@@ -1,17 +1,37 @@
 /**
  * The one rule for values Atlas passes to a CLI option that reads its value as comma-separated
- * (doc-5 §3). Each such option takes the whole set as a single argument, so a comma *inside* one
- * member is not expressible — it would silently become two members, and nothing downstream would
- * report it.
+ * (doc-5 §3). Such an option splits the argument it is handed, so a comma *inside* one member is not
+ * expressible — it would silently become two members, and nothing downstream would report it. That
+ * holds however the values are grouped: whether the option carries the whole set, a delta, or a
+ * single entry, what splits is the one value it is given.
  *
  * Held here rather than in the screen module that needed it first: the rule belongs to the 操作写像,
- * and two screens now state it (`manage.ts` for ラベル・タグ, `edit.ts` for assignee). One home keeps
- * the sentence identical wherever it is shown.
+ * and two screens now state it (`manage.ts` for 作成のラベル・文書のタグ, `edit.ts` for assignee・
+ * ラベル・依存・References). One home keeps the sentence identical wherever it is shown.
  *
- * **One home is not every site.** Applied at `task create -l`, `doc update --tags` and
- * `task edit -a`; *not* applied at `task edit --add-label` / `--remove-label` or
- * `task edit --depends-on`, which `update.rs` comma-joins the same way and v1.49.3 reads the same
- * way. The label gap is filed as TASK-155; dependencies carry TASK-IDs, whose grammar has no comma.
+ * **The site is an option the CLI splits, not an option Atlas joins** (TASK-155, measured on
+ * v1.49.3 over every option `allowed_options` permits). Seven split: `task create -l`,
+ * `task edit -a` / `--add-label` / `--remove-label` / `--depends-on` / `--ref`, and
+ * `doc update --tags`. **`--ref` is the one that makes the distinction load-bearing** — Atlas passes
+ * it once per reference and joins nothing, and v1.49.3 splits each value anyway, so an enumeration
+ * drawn off `join(",")` misses it. **Repeatable does not mean unsplit either way**: `--ac` is
+ * repeatable and keeps its comma, `--ref` is repeatable and splits.
+ *
+ * The pairing of an option with its gate is held by `comma.test.ts` rather than by this paragraph:
+ * the option set is taken off the crate, so an eighth option cannot arrive unclassified and leave a
+ * sentence here still true.
+ *
+ * **The two reasons are not one sentence said twice.** What separates them is whose value it is, not
+ * whether dropping the comma helps: [`commaReason`] states that a value *supplied for this save*
+ * cannot be expressed — every gate but one, `--add-label` included — and what the reader does about it
+ * is theirs to choose. It deliberately promises no remedy, because there is not one remedy: a label
+ * can be renamed, while a URL's comma belongs to the identifier and dropping it names something else.
+ * [`commaRemovalReason`] is for the case where the value is *already on the task and is the argument
+ * of its own removal*: `--remove-label "x,y"` exits 0 saying `Updated`, having split the value into
+ * two names the task does not have and removed neither. `--remove-label` is the only option in that
+ * position — the 全置換 options remove such a member by leaving it out of the value they send, where
+ * no comma then appears. The label reached the file by hand (no CLI path writes one), after which the
+ * CLI itself preserves it.
  */
 
 import { msg } from "./messages";
@@ -32,16 +52,33 @@ const QUOTED_VALUE_LIMIT = 20;
  * without hovering, and a clamped line moves half of it into a tooltip.
  */
 export function commaReason(what: string, value: string): string {
-  // Cut by code point, not by `slice`: a label may hold an astral character (an emoji is one), and
-  // cutting between its two UTF-16 units leaves a lone surrogate that draws as `�` — a character the
-  // reader never typed, in the sentence whose whole job is to name the value they did type. The cut
-  // still lands inside a grapheme cluster (a ZWJ emoji sequence splits into its parts), which is
-  // acceptable where a replacement character is not: the quote is there to identify the value, and a
-  // partial sequence identifies while `�` misreports.
+  return msg().field.commaNotAllowed(what, cut(value));
+}
+
+/**
+ * The quoted head both reasons carry.
+ *
+ * Cut by code point, not by `slice`: a label may hold an astral character (an emoji is one), and
+ * cutting between its two UTF-16 units leaves a lone surrogate that draws as `�` — a character the
+ * reader never typed, in the sentence whose whole job is to name the value they did type. The cut
+ * still lands inside a grapheme cluster (a ZWJ emoji sequence splits into its parts), which is
+ * acceptable where a replacement character is not: the quote is there to identify the value, and a
+ * partial sequence identifies while `�` misreports.
+ */
+function cut(value: string): string {
   const points = [...value];
-  const quoted =
-    points.length > QUOTED_VALUE_LIMIT ? `${points.slice(0, QUOTED_VALUE_LIMIT).join("")}…` : value;
-  return msg().field.commaNotAllowed(what, quoted);
+  return points.length > QUOTED_VALUE_LIMIT
+    ? `${points.slice(0, QUOTED_VALUE_LIMIT).join("")}…`
+    : value;
+}
+
+/**
+ * Why a value that already holds a comma cannot be taken off a 増減 field (doc-5 §3.1 沈黙無変更).
+ * Reached only from `--remove-label`, and only for a label the read layer found on the task — see the
+ * head note for why no other gate has this case.
+ */
+export function commaRemovalReason(what: string, value: string): string {
+  return msg().field.commaValueNotRemovable(what, cut(value));
 }
 
 export function firstWithComma(values: readonly string[]): string | undefined {
