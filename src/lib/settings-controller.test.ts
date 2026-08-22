@@ -425,8 +425,8 @@ describe("場所を開く", () => {
 /**
  * A controller over resolved-at-once ports with exactly one of them swapped, and the state it writes.
  *
- * The main [`harness`] holds every probe open so ordering can be tested; these three tests are about a
- * single probe's *answer*, so they take a version where nothing has to be landed by hand.
+ * The main [`harness`] holds every probe open so ordering can be tested. Used by the tests about a
+ * single probe's *answer* rather than its ordering, which need nothing landed by hand.
  */
 function withPort(
   h: ReturnType<typeof harness>,
