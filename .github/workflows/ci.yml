@@ -93,7 +93,72 @@ jobs:
       # here to produce a directory nothing reads would roughly double this job.
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
-# Why macOS and Windows, and deliberately not Linux.
+  # 代表的な利用者操作をアプリ全体で通す GUI E2E (TASK-105, decision-40). Not a merge requirement —
+  # the ruleset names three checks and this is deliberately not one of them (decision-40 §5), so a
+  # WebView2 or Edge Driver update reddening it does not block a pull request that did not cause it.
+  #
+  # Windows and not Linux, and that is the whole reason this job exists here at all: `tauri-driver`
+  # supports Linux and Windows only, and a Linux runner would have to `apt-get install` the WebView
+  # development packages before it could link the crate — the third copy of the list that the comment
+  # below refuses. windows-latest needs nothing installed for the WebView: WebView2 is part of the
+  # image and so is the Edge Driver that automates it.
+  e2e:
+    name: e2e (windows-latest)
+    runs-on: windows-latest
+    # The bound is a backstop, not a budget: this job builds the release binary and then drives a
+    # real window, and a driver that never answers would otherwise sit until the workflow's own
+    # six-hour limit.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # No version, for the same reason README's install line carries none (decision-27 §7): the
+      # command a reader is given fetches the latest, and this job is meant to be what their machine
+      # looks like. `npm` rather than `pnpm` for the same reason — README says `npm install -g`.
+      # AGENTS.md Toolchain bans npm *in this repository* because it would write a second lockfile;
+      # a global install writes nothing here.
+      - run: npm install -g backlog.md
+      - run: backlog --version
+
+      # `tauri-driver` is a standalone binary with no Rust API, so it is installed rather than
+      # depended on; nothing in Cargo.toml could express it.
+      - run: cargo install tauri-driver --locked
+
+      # `tauri-driver` looks for `msedgedriver.exe` on PATH. The image ships it in the directory
+      # `EDGEWEBDRIVER` names and leaves that directory off PATH, so the path is handed over
+      # explicitly — and the job fails here, naming the file, rather than inside the driver.
+      - name: Point the E2E at the runner's Edge Driver
+        shell: pwsh
+        run: |
+          $driver = Join-Path $env:EDGEWEBDRIVER 'msedgedriver.exe'
+          if (-not (Test-Path $driver)) {
+            throw "msedgedriver.exe was not at $driver"
+          }
+          "ATLAS_E2E_NATIVE_DRIVER=$driver" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # A release build, not a bundle: it embeds the frontend and carries tauri.conf.json's CSP,
+      # which is the form decision-28 says is the only one where the CSP is in force at all.
+      - run: pnpm run build
+      - run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+      - run: pnpm run e2e
+
+# Why the `rust` job is macOS and Windows, and deliberately not Linux.
 #
 # **Coverage.** The crate has exactly one Linux-exclusive line: the
 # `not(any(target_os = "macos", target_os = "windows"))` arm of `Platform::current` in
