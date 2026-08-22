@@ -56,9 +56,16 @@ import type { ProjectLoad, UpdateResult } from "./lib/wire";
  *
  * A fixed number of microtask turns rather than `vi.waitFor`: the thing under test *is* the call
  * sequence, and a condition-based wait would let a missing call read as a slow one.
+ *
+ * **The number is a measured floor plus slack, and TASK-92 used up the slack the old one had.** Each
+ * startup step that goes through a controller awaits once inside the controller and once at the call,
+ * so the five splits added 3 turns: the floor was 17 before them (16 turns failed 1 test) and is 20
+ * after (19 fails 1). At 20 the budget had none left, which would redden this file for the next step
+ * added to `onMount` rather than for anything that step broke. Raised to 28 for that reason — the
+ * margin is turns, not seconds, so a slow machine does not spend it.
  */
 async function settled(): Promise<void> {
-  for (let round = 0; round < 20; round += 1) {
+  for (let round = 0; round < 28; round += 1) {
     await Promise.resolve();
     flushSync();
   }
