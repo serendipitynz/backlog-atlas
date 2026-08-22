@@ -80,6 +80,11 @@ export function createHistoryController(
   const loader = createHistoryLoader({
     read: ports.read,
     cancel: ports.cancel,
+    // **No `untrack` here, where the shell had one.** In `App.svelte` this read sat in a component, so
+    // the guard was what kept a `$state` read from becoming a dependency of whatever was drawing. What
+    // makes it unnecessary now is not the move but the call site: `history-read.ts` calls `peek` past an
+    // `await`, so no reactive context is on the stack. Restore the guard if that ever stops being true —
+    // this file cannot see it from here, which is why it is written down.
     peek: () => state.read,
     store: (read) => {
       state.read = read;

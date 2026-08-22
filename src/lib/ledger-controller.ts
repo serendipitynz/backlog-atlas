@@ -120,7 +120,15 @@ export interface LedgerController {
   slugs: () => string[];
 }
 
-/** The answer to a ledger action asked for while another was still in flight. */
+/**
+ * The answer to a ledger action asked for while another was still in flight.
+ *
+ * **Worded per call rather than once.** The shell held this as a component-level constant, evaluated at
+ * init — before the first アプリ設定 read — so the sentence kept the OS-resolved 表示言語 for the whole run
+ * even after the user chose another (decision-35). The reorder path in this file already avoided that by
+ * passing a thunk; this is the same fix for the other four callers, and it is the one place where TASK-92
+ * changed behaviour rather than only moving it.
+ */
 function busyResult(): LedgerActionResult {
   return { state: "refused", report: { message: msg().shell.ledgerBusy, field: null } };
 }

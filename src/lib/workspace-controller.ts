@@ -238,9 +238,8 @@ export function createWorkspaceController(
     },
     startWatch,
     async reconcileWatches(): Promise<void> {
-      const enabled = ports.watchEnabled();
       for (const slug of ports.registeredSlugs()) {
-        if (enabled) {
+        if (ports.watchEnabled()) {
           await startWatch(slug);
         } else {
           await ports.watchStop(slug).catch(() => {});
@@ -248,7 +247,7 @@ export function createWorkspaceController(
       }
       // Nothing is watched while the setting is off, so per-root failures recorded earlier no longer
       // describe anything: the 帯 already covers every row from the setting alone.
-      if (!enabled) {
+      if (!ports.watchEnabled()) {
         state.unwatched = [];
       }
     },

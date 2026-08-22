@@ -12,12 +12,21 @@
  * keeps it: this controller is asked *whether* a route may proceed and never where it goes. The two
  * 未保存 flags below are named for what holds the input rather than for a screen, for the same reason.
  *
- * **Unlike the other controllers, four fields of [`OverlayState`] are written from outside**, and that is
- * the point rather than a leak: only the component holding a 下書き knows whether it has one, and only the
- * shell knows that it has just unmounted the panel that held it (a component's own `ondirty` cannot
- * retract a flag after it is gone). What this file owns is every *rule* those flags feed — where the
- * question is drawn, which exits it stands in front of, when it lapses — and no caller decides any of
- * that by writing a flag.
+ * **Unlike the other controllers, six fields of [`OverlayState`] are written from outside**, for two
+ * different reasons, and both are the point rather than a leak.
+ *
+ * The four 未保存 / 下書き flags, because only the component holding a 下書き knows whether it has one, and
+ * only the shell knows that it has just unmounted the panel that held it — a component's own `ondirty`
+ * cannot retract a flag after it is gone.
+ *
+ * `registerSubmitting` and `settingsSaving`, because **another controller owns the fact**: the ledger's
+ * `registering` port and the settings' `busy` port are what raise them, since each knows when its own
+ * write is unresolved and this file does not. It only reads them, in the two 出口 below — which is the
+ * whole reason they are held at this level rather than in the forms (doc-11 §7: neither モーダル's Escape
+ * reaches the form).
+ *
+ * What this file owns is every *rule* those six feed — where the question is drawn, which exits it stands
+ * in front of, when it lapses — and no caller decides any of that by writing a flag.
  */
 
 import type { DiscardAnswers, IssueConfirmation } from "./edit";

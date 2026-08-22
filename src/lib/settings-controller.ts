@@ -274,6 +274,9 @@ export function createSettingsController(
   let gridStateFailure: (() => string) | null = null;
 
   const write = createSettingsWriter({
+    // **No `untrack` here, where the shell had one** (`history-controller.ts` says the same of its own).
+    // The guard mattered while this read sat in a component; what makes it unnecessary is the call site —
+    // `settings-write.ts` reads it inside `queue.then`, so no reactive context is on the stack.
     peek: () => state.loaded?.settings ?? null,
     save: ports.save,
     adopt: (loaded) => adopt(loaded),
