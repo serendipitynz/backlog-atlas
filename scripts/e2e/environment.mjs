@@ -139,12 +139,20 @@ export function setConfigAside() {
   };
 }
 
-/** The binary the driver launches. Built by `cargo build --release`, not by the bundler. */
+/**
+ * The binary the driver launches.
+ *
+ * **It has to come from `pnpm tauri build --no-bundle`, not from `cargo build --release`.** Tauri's
+ * build script sets `dev = !has_feature("custom-protocol")`, and only the Tauri CLI passes that
+ * feature — so a plain cargo release build is a *dev* binary that loads `devUrl` and comes up on a
+ * connection error with no server there. Nothing about the file says which one it is, which is why
+ * this says so here.
+ */
 export function atlasBinary() {
   const path = join(repositoryRoot, "src-tauri", "target", "release", "backlog-atlas");
   if (!existsSync(path)) {
     throw new Error(
-      `${path} does not exist. Build it first: pnpm run build && cargo build --release --manifest-path src-tauri/Cargo.toml`,
+      `${path} does not exist. Build it first: pnpm tauri build --no-bundle`,
     );
   }
   return path;

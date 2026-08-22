@@ -348,9 +348,15 @@ decision-40 の 実測 節が持つ。**CI は ubuntu-24.04 で `xvfb-run` 越�
 
 **走らせるには 4 つが揃っている必要がある** — Linux の機械（オーナーの WSL Ubuntu 24 で足りる）、
 PATH 上の `tauri-driver`（`cargo install tauri-driver --locked`）、PATH 上の Backlog CLI、そして
-release ビルドの実行ファイル
-（`pnpm run build && cargo build --release --manifest-path src-tauri/Cargo.toml`）。バンドルではなく
-release ビルドなのは、`tauri.conf.json` の CSP が効くのがその形だからである（decision-28）。
+**`pnpm tauri build --no-bundle`** が作る実行ファイル。
+
+**このコマンドであって `cargo build --release` ではない。** Tauri のビルドスクリプトは
+`dev = !has_feature("custom-protocol")` と決めており、**その feature を渡すのは Tauri CLI だけである**
+（実測: `cargo build --bins --features tauri/custom-protocol --release` を実行する）。したがって素の
+cargo release ビルドは **dev バイナリ**であり、`devUrl` を読みに行って
+`Could not connect to localhost` で立ち上がる — **ファイルを見てもどちらなのか分からない。**
+`--no-bundle` は実行ファイルで止まり、`beforeBuildCommand` がフロントエンドを作るので、1 段で両方を
+兼ねる。CSP が効くのもこの形である（decision-28）。
 **macOS でもドライバ起動の手前までは走る** — fixture・退避・復元がそれで、作業機からそこを確かめる
 ための意図的な形である。
 

@@ -370,9 +370,15 @@ four.** Putting the E2E in that list would write a rule this machine cannot keep
 
 **Running it needs four things standing**: a Linux machine (the owner's WSL Ubuntu 24 qualifies),
 `tauri-driver` on PATH (`cargo install tauri-driver --locked`), a Backlog CLI on PATH, and the
-release binary (`pnpm run build && cargo build --release --manifest-path src-tauri/Cargo.toml`).
-A release build and not a bundle, because that is the form `tauri.conf.json`'s CSP is in force in
-(decision-28). **On macOS everything up to starting the driver still runs** — the fixture, the aside
+binary from **`pnpm tauri build --no-bundle`**.
+
+**That command, and not `cargo build --release`.** Tauri's build script sets
+`dev = !has_feature("custom-protocol")`, and only the Tauri CLI passes that feature — measured, it
+runs `cargo build --bins --features tauri/custom-protocol --release`. So a plain cargo release build
+is a *dev* binary: it loads `devUrl` and comes up on `Could not connect to localhost` with no server
+there, and nothing about the file says which of the two it is. `--no-bundle` stops after the binary
+and `beforeBuildCommand` builds the frontend, so it replaces both steps. It is also what makes the
+CSP apply, which is the form decision-28 says is the only one where the CSP is in force at all. **On macOS everything up to starting the driver still runs** — the fixture, the aside
 and the restore — which is deliberate, and it is how those are exercised from a development machine.
 
 **It moves `projects.toml`, `settings.toml` and `.window-state.json` aside for the run and puts

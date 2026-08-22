@@ -62,6 +62,19 @@ GitHub Actions の windows-latest (Windows 2025) と ubuntu-24.04 の runner ima
   同じ `p.problem` に出る (実測: 成功直後に notice 1 件と problem 1 件が同時に立つ)。**成功は
   notice の出現だけが述べる。**
 
+**出荷形の作り方についての実測。**
+
+- **素の `cargo build --release` は dev バイナリを作る。** `tauri` の `build.rs` は
+  `dev = !has_feature("custom-protocol")` と決めており、**その feature を渡すのは Tauri CLI だけ**
+  である (実測: `pnpm tauri build --no-bundle -v` は
+  `cargo build --bins --features tauri/custom-protocol --release` を実行する)。
+- **その差は画面に出る。** Linux ジョブの 2 回目は、窓は開いたのに
+  `Could not connect to localhost: Connection refused` を表示していた — `devUrl`
+  (`http://localhost:1420`) を読みに行き、そこには何も立っていない。**捕まえたのは
+  `run.mjs` の 画面を述べる診断で、それが無ければ「空台帳の入口が出ない」としか分からなかった。**
+- **ファイルを見てもどちらなのかは分からない。** `strings` に `localhost:1420` は両方に出る
+  (設定は常に埋め込まれる)。**だから「試して確かめる」が要り、註がコマンドを名指しする。**
+
 **前段と後始末の実測。**
 
 - **前段と後始末は macOS 上で通しで測った。** 実行ファイルの解決、CLI 呼び出しだけで組む fixture、
@@ -84,9 +97,13 @@ GitHub Actions の windows-latest (Windows 2025) と ubuntu-24.04 の runner ima
    doc-9 の語の略記として読まない。**主張したいのは「台帳の項と編集の結果がプロセスを跨いで残る」
    ことで、起動したままの読み直しはそれを一度も述べない。** 在アプリの 再読み込み は本経路に
    入れていない。
-4. **出荷形で走らせる。** `pnpm run build` と `cargo build --release` が作る実行ファイルを渡す —
-   バンドルは作らない。フロントエンドの資産は実行ファイルに埋め込まれ、`tauri.conf.json` の CSP が
-   現に効く。**decision-28 が「CSP が効くのは出荷形だけである」と書いた条件を、この経路は満たす。**
+4. **出荷形で走らせ、その実行ファイルは `pnpm tauri build --no-bundle` が作る。**
+   **`cargo build --release` では作れない** — 素の cargo release ビルドは dev バイナリになる
+   (下の実測)。`--no-bundle` は実行ファイルで止まり、`beforeBuildCommand` がフロントエンドを作るので
+   1 段で足りる。フロントエンドの資産は実行ファイルに埋め込まれ、`tauri.conf.json` の CSP が現に効く。
+   **decision-28 が「CSP が効くのは出荷形だけである」と書いた条件を、この経路は満たす。**
+   **製品が通る経路そのものを使う**のが要点である — 同じことを cargo の引数で書き直そうとしたのが、
+   下の実測が捕まえた失敗そのものだった。
 5. **置き場は `.github/workflows/ci.yml` の job `e2e (ubuntu-24.04)` とし、マージ要件の検査には
    しない。** `xvfb-run` で包む — `tauri-driver`・`WebKitWebDriver`・窓 はすべてその下で起き、
    同じ `DISPLAY` を要る。ruleset `main` が名指しする 3 つは `frontend`・`rust (macos-latest)`・

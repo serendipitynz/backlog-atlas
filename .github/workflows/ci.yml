@@ -157,10 +157,15 @@ jobs:
       # depended on; nothing in Cargo.toml could express it.
       - run: cargo install tauri-driver --locked
 
-      # A release build, not a bundle: it embeds the frontend and carries tauri.conf.json's CSP,
-      # which is the form decision-28 says is the only one where the CSP is in force at all.
-      - run: pnpm run build
-      - run: cargo build --release --manifest-path src-tauri/Cargo.toml
+      # `tauri build`, not `cargo build`. **A plain `cargo build --release` produces a binary that
+      # loads `devUrl`** — `tauri`'s own build script sets `dev = !has_feature("custom-protocol")`,
+      # and only the Tauri CLI passes that feature (measured: it runs
+      # `cargo build --bins --features tauri/custom-protocol --release`). This job's second Linux run
+      # died on exactly that: the window came up on `Could not connect to localhost`.
+      # `--no-bundle` stops after the binary, and `beforeBuildCommand` builds the frontend, so this
+      # one step replaces both. It is the path the product ships through, which is the point — the
+      # failure above was caused by re-deriving what this command does.
+      - run: pnpm tauri build --no-bundle
 
       # `xvfb-run` wraps the whole suite rather than the app: tauri-driver, WebKitWebDriver and the
       # window are all started below this process and all need the same DISPLAY.
