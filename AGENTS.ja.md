@@ -279,7 +279,7 @@ Svelte コンパイラを要するのは 2 つ目のプロジェクトだけで�
 **コンポーネントテストは画面横断契約だけを固定する** — 純粋関数では持てず、どの単一
 画面のものでもない契約である。モーダルの出口、詳細パネル離脱時の破棄前確認、再読込が
 破棄してはならないもの、起動時の呼出し順序。画面ごとの網羅は目的ではなく、アプリ全体を
-通す GUI E2E は別物 (TASK-105)。画面ごとにテストを置くと UI 変更のたびにテスト変更が
+通す GUI E2E は別物 (`pnpm run e2e`。下記)。画面ごとにテストを置くと UI 変更のたびにテスト変更が
 生じ、契約は何も増えない。
 
 **`jsdom` はレイアウトを行わない。** `getClientRects` は何に対しても空を返し、
@@ -322,6 +322,37 @@ Rust 側でそれを改名しても全検査を通過する。`wire_fixtures.rs`
 作り置いた struct リテラルで組む。リテラルなら新しい項目をコンパイラが名指しし、記録した
 fixture はどの機械でもバイト単位で同一でなければならない。
 
+### `pnpm test` が回さない GUI E2E
+
+**3 つ目の層が `pnpm test` の外にある** — `pnpm run e2e`、実体は `scripts/e2e/`（decision-40）。
+`tauri-driver` を通して出荷形の実行ファイルを 1 本の経路で操作する — 登録 → スイムレーン表示 →
+タスク詳細 → 編集保存 → アプリの再起動 — 実 WebView・実 Rust コマンド・実 Backlog CLI・実
+アプリ設定ディレクトリ がすべてその中に入る。**この木でスタック全体が同時に成立すると述べるのは
+これだけである** — 上の 2 プロジェクトは Svelte の `mount` で止まり、`cargo test` は IPC 境界の
+下で止まる。
+
+**最後の段はアプリの再起動であって、doc-9 の 再読み込み ではない。** 主張しているのは台帳の項と
+編集の結果がプロセスを跨いで残ることで、起動したままの読み直しはそれを一度も述べない。
+
+**macOS では走らない。これは `tauri-driver` の事情であってこの木の事情ではない** — 対応するのは
+Linux と Windows だけで、そう述べてから終了状態 1 で終わる（2026-08-22 に実測）。CI は Windows で
+走らせる。**したがってセッションが回す検査は `pnpm test`・`pnpm run check`・`pnpm run lint` の
+3 本のままである。** E2E をその列に足すと、この作業機で守れない規則になる。
+
+**走らせるには 4 つが揃っている必要がある** — Linux か Windows の機械、PATH 上の `tauri-driver`
+（`cargo install tauri-driver --locked`）、PATH 上の Backlog CLI、そして release ビルドの実行ファイル
+（`pnpm run build && cargo build --release --manifest-path src-tauri/Cargo.toml`）。バンドルではなく
+release ビルドなのは、`tauri.conf.json` の CSP が効くのがその形だからである（decision-28）。
+
+**実行の間、`projects.toml`・`settings.toml`・`.window-state.json` を退避して戻す。** Windows では
+ディレクトリを差し替える手が無い — `dirs::config_dir()` は `SHGetKnownFolderPath` を呼び `APPDATA` を
+読まない — ので、退避が唯一の隔離手段である。**死んだ実行が残した退避は上書きせず拒む。** さもないと
+2 回目の空の台帳が退避になり、本物が消える。
+
+**経路の選択子は `scripts/e2e/run.mjs` の先頭に定数で並んでいる。** 本物の `App.svelte` に対して
+実測したものであって、読んで写したものではない。**選択子を動かす分割でこのジョブが赤くなるのは
+意図どおりである。緑にするために選択子を緩めない** — 何にでも当たる経路は何も述べていない。
+
 ## 継続的インテグレーション
 
 `.github/workflows/ci.yml` は Pull Request ごとと、それが main に入った後の push で走る
@@ -334,11 +365,20 @@ fixture はどの機械でもバイト単位で同一でなければならない
   コンパイル述語を 1 つを除いてすべてコンパイルし、Linux のランナーは WebView の `apt-get` 一覧を
   3 箇所目に書くことを要求する。根拠の全文はワークフロー末尾のコメントが持つ。**読まずに Linux の
   ジョブを足さない。**
+- **`e2e`**（windows-latest）— 上の GUI E2E を release ビルドに対して走らせる（decision-40）。
+  Windows なのは `rust` と同じ apt 一覧の理由に加えて、この層自身の理由がある — `tauri-driver` が
+  対応するのは Linux と Windows だけであり、windows-latest は WebView2 とそれを自動操作する
+  Edge Driver を image に持つので、**WebView のために入れるものが 1 つも無い。**
 
 **Pull Request がマージできるようになるには 3 つの検査が要る** — `frontend`・
 `rust (macos-latest)`・`rust (windows-latest)` — リポジトリの ruleset `main` がそれを課している。
 **job の `name` がその文字列そのものである。** job を改名すると ruleset は古い名前を待ち続け、
 Pull Request は永久に緑にならない。改名するなら ruleset も一緒に変える。
+
+**`e2e (windows-latest)` は意図してその 3 つに入れていない**（decision-40 §5）。WebView2 や
+Edge Driver の更新でこれが赤くなったとき、それを起こしていない Pull Request を止めてはならない。
+**代償は、誰も課していない検査は誰かが読まなければ何も述べていないのと同じだということである。**
+後からマージ要件にするなら、ruleset にこの文字列そのものを足す。
 
 **repository admin はその検査を迂回できる。これは意図である。** タスクの状態 が述べる `Done` の
 commit のために main を書ける状態を保つのがひとつ、壊れたワークフローを直せる状態を保つのが

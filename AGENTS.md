@@ -298,7 +298,7 @@ tests have been passing in, and only the second project needs the Svelte compile
 **Component tests hold画面横断契約 only** — the contracts no pure function can hold and
 no single screen owns: a modal's exits, 破棄前確認 on leaving a detail panel, what a
 reload may not discard, the startup call order. Screen-by-screen coverage is not the
-goal and a full GUI E2E is a separate thing again (TASK-105); a component test per
+goal and a full GUI E2E is a separate thing again (`pnpm run e2e`, below); a component test per
 screen would make every UI change a test change and buy no contract.
 
 **`jsdom` runs no layout.** `getClientRects` returns nothing for everything, which would
@@ -345,6 +345,39 @@ reads the committed file. The samples are built as struct literals with fabricat
 absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
 and a recorded fixture has to be byte-identical on every machine.
 
+### The GUI E2E, which `pnpm test` does not run
+
+**A third layer sits outside `pnpm test`** — `pnpm run e2e`, in `scripts/e2e/` (decision-40). It
+drives the shipped binary through `tauri-driver` along one route — 登録 → スイムレーン表示 → タスク
+詳細 → 編集保存 → アプリの再起動 — with the real WebView, the real Rust commands, the real Backlog
+CLI and the real アプリ設定ディレクトリ all in it. It is the only thing here that states the whole
+stack works at once: the two projects above stop at Svelte's `mount`, and `cargo test` stops below
+the IPC boundary.
+
+**The last step is a restart, not doc-9's 再読み込み.** What it claims is that the ledger entry and
+the edit survive the process, and re-reading inside a running app never claims that.
+
+**It does not run on macOS**, and that is `tauri-driver` rather than this repository: it supports
+Linux and Windows only, and says so before exiting 1 (measured 2026-08-22). CI runs it on Windows.
+**So a session's checks are still `pnpm test`, `pnpm run check` and `pnpm run lint` — three, not
+four.** Putting the E2E in that list would write a rule this machine cannot keep.
+
+**Running it needs four things standing**: a Linux or Windows machine, `tauri-driver` on PATH
+(`cargo install tauri-driver --locked`), a Backlog CLI on PATH, and the release binary
+(`pnpm run build && cargo build --release --manifest-path src-tauri/Cargo.toml`). A release build
+and not a bundle, because that is the form `tauri.conf.json`'s CSP is in force in (decision-28).
+
+**It moves `projects.toml`, `settings.toml` and `.window-state.json` aside for the run and puts
+them back.** On Windows the directory cannot be redirected instead — `dirs::config_dir()` asks
+`SHGetKnownFolderPath` and never reads `APPDATA` — so this is the only isolation there is.
+**A backup left by a run that died is refused rather than overwritten**, because otherwise the
+second run's empty ledger becomes the backup and the real one is gone.
+
+**The route's selectors are constants at the top of `scripts/e2e/run.mjs`**, and they were measured
+against the real `App.svelte` rather than read off it. A refactor that moves them is meant to redden
+this job. **Do not widen a selector to make it green** — a route that matches anything states
+nothing.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and on `main` after one lands
@@ -358,11 +391,20 @@ and checks no code.
   every OS-conditional predicate in `src-tauri/src` but one, and a Linux runner would need the
   WebView `apt-get` list written in a third place. The workflow's own trailing comment carries
   the full reasoning; do not add a Linux job without reading it.
+- **`e2e`** on windows-latest — the GUI E2E above, against a release build (decision-40). Windows
+  carries the same apt-list reason as `rust` and one of its own: `tauri-driver` supports Linux and
+  Windows only, and windows-latest already ships WebView2 and the Edge Driver that automates it,
+  so nothing has to be installed for the WebView at all.
 
 **Three checks are required before a pull request can merge** — `frontend`,
 `rust (macos-latest)` and `rust (windows-latest)` — through the repository ruleset named `main`.
 **A job's `name` is that string.** Rename a job and the ruleset waits forever on the old name;
 change the two together.
+
+**`e2e (windows-latest)` is deliberately not one of the three** (decision-40 §5). A WebView2 or
+Edge Driver update that reddens it must not block a pull request that did not cause it. The cost is
+that a check nothing enforces is a check someone has to read; making it required later means adding
+that exact string to the ruleset.
 
 **Repository admins can bypass those checks**, on purpose. It is what keeps `main` writable for
 the `Done` commits Task state describes, and it is what makes a broken workflow fixable — without
