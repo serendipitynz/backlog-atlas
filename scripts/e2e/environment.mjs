@@ -48,15 +48,23 @@ export const FIXTURE_TASKS = [
  */
 export function buildFixture() {
   const projectRoot = mkdtempSync(join(tmpdir(), "atlas-e2e-"));
-  runBacklog(
-    ["init", "--defaults", "--no-git", "--agent-instructions", "none", "Atlas E2E Fixture"],
-    projectRoot,
-  );
-  for (const task of FIXTURE_TASKS) {
+  // The caller's cleanup only starts once this returns, so a CLI call that fails here would leave
+  // the directory behind — a missing Backlog CLI is the likeliest way in, and it leaves one per
+  // attempt.
+  try {
     runBacklog(
-      ["task", "create", task.title, "-d", task.description, "-s", task.status, "--plain"],
+      ["init", "--defaults", "--no-git", "--agent-instructions", "none", "Atlas E2E Fixture"],
       projectRoot,
     );
+    for (const task of FIXTURE_TASKS) {
+      runBacklog(
+        ["task", "create", task.title, "-d", task.description, "-s", task.status, "--plain"],
+        projectRoot,
+      );
+    }
+  } catch (error) {
+    rmSync(projectRoot, { recursive: true, force: true });
+    throw error;
   }
   return { projectRoot, backlogRoot: join(projectRoot, "backlog"), slug: "atlas-e2e" };
 }
