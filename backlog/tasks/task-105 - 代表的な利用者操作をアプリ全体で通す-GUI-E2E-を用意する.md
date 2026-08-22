@@ -4,7 +4,7 @@ title: 代表的な利用者操作をアプリ全体で通す GUI E2E を用意�
 status: In Review
 assignee: []
 created_date: '2026-08-01 00:44'
-updated_date: '2026-08-22 03:40'
+updated_date: '2026-08-22 04:25'
 labels:
   - test
   - 'kind:chore'
@@ -47,45 +47,71 @@ _sandbox/repository-quality-assessment-2026-08-01.md の機能性節・今回実
 - `environment.mjs` — fixture の Backlog ルートを CLI 呼び出しだけで組み、アプリ設定ディレクトリ の
   3 ファイルを退避して戻し、`tauri-driver` を起こす。
 - `run.mjs` — 経路そのもの。選択子は先頭に定数で並べてある。
-- `.github/workflows/ci.yml` — job `e2e (windows-latest)` を追加。**マージ要件にはしていない。**
+- `.github/workflows/ci.yml` — job `e2e (ubuntu-24.04)` を追加（`xvfb-run` 越し）。
+  **マージ要件にはしていない。**
 
-## 実測 (2026-08-22、この macOS 機)
+## 実測 (2026-08-22)
 
-- **`tauri-driver` 2.0.6 は macOS 非対応。** `src/main.rs` の
+### 走らせられる場所 — 2 段階で確定した
+
+- **`tauri-driver` 2.0.6 は macOS 非対応。** `main.rs` の
   `cfg(not(any(target_os = "linux", windows)))` 側の `main` が
   `tauri-driver is not supported on this platform` を出して exit 1 する。release ビルドは 17.17 秒で
-  成功し、実行してその 1 行と終了状態 1 を確認した。**未測定ではなく非対応であり、「不可能」でもない**
-  (README 自身が macOS を Appium Mac2 Driver の Todo として挙げている)。**対応順の 実? 印は 実 に確定。**
-- **windows-latest (Windows 2025) の image は Microsoft Edge Driver を同梱**し、置き場を
-  `EDGEWEBDRIVER` が名乗る (PATH には入らないのでワークフローが明示で渡す)。**WebView のために
-  入れるものが 1 つも無い**ので、decision-33 §3 が拒んだ apt 一覧の 3 箇所目が要らない。
-- **ubuntu-24.04 は xvfb を持つが、crate をリンクする前に WebView 開発パッケージが要る** —
-  Linux ジョブを採らなかった理由。
-- **経路上の選択子 13 本を、本物の `App.svelte` を実 WebKit に載せて確かめた** (偽 IPC 境界の上、
-  借り物 playwright)。**1 本が誤っており実測が直した** — 本文の 整形表示 を指す選択子は
-  `.body` ではなく `.body-block` の下にある。**保存 の控えは編集前 `aria-disabled="true"`、
-  1 文字打つと `"false"`** なので、待つ対象として意味がある。
-- **前段と後始末を macOS 上で通しで測った。** 実行ファイルの解決 → fixture 生成 → 3 ファイルの退避
-  → `tauri-driver` の非対応検出 → `finally` での復元と fixture 削除まで走り、**復元後の 3 ファイルは
-  実行前とバイト同一だった** (shasum で照合)。
-- **その通しが欠陥を 1 件出した。** 退避は移動の途中で拒んでおり、2 つ目のファイルに古い退避が
-  あると 1 つ目は動いたまま、戻す呼び出しを誰も持っていない状態になっていた (呼び出し側の `finally`
-  はまだ始まっていない)。**全部を先に検査してから動かす形に直し、その枝を実際に踏んで
-  「1 つも動いていない」ことを確かめた。**
+  成功し、実行してその 1 行と終了状態 1 を確認した。
+- **初版は Windows の CI ジョブを置き、CI がそれを否定した。** 前段はすべて通り
+  （backlog CLI 導入・`cargo install tauri-driver`・Edge Driver 解決・release ビルド 5m14s）、
+  `POST /session` だけが `500 session not created: DevToolsActivePort file doesn't exist` で落ちた。
+- **原因は版でも設定でもなく上流の構造である。** Tauri は `TAURI_WEBVIEW_AUTOMATION` を読んで
+  `WebContext::set_allows_automation` を呼ぶが、**wry 0.55.1 でその実装を持つのは webkitgtk だけで、
+  非 GTK は空の既定実装である**（`wry/src/web_context.rs`）。`webview2` モジュールには `automation` の
+  語が 1 件も無い。逃げ道の `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` も、**wry が常に
+  `set_additional_browser_arguments` を自前の既定値で呼ぶ**ため上書きされる。
+- **したがって走らせられるのは Linux だけである。** オーナーの判断で Linux の CI ジョブへ移した。
+  **「不可能」とは書いていない** — `additionalBrowserArgs` にデバッグポートを書けば Windows でも
+  通せるが、出荷する製品の設定に全利用者ぶんのポートを書くことになるので採らない。
+
+### 経路
+
+- **選択子を本物の `App.svelte` を実 WebKit に載せて確かめた**（偽 IPC 境界の上、借り物 playwright）。
+  初版の 13 本のうち **1 本が誤っており実測が直した** — 本文の 整形表示 を指す選択子は `.body` では
+  なく `.body-block` の下にある。**保存 の控えは編集前 `aria-disabled="true"`、1 文字打つと
+  `"false"`。**
+- **登録が成功してもモーダルは閉じない**（レビュー 1R [P1]）。実測: 送信後に dialog 1・notice 1・
+  **problem 1**（「Enter a project root.」）・close 1。× を押すと dialog 0・lane-head 1。
+  **初版はモーダルが自分で消えるのを待っており、確実にタイムアウトした。**
+- **成功の印に「問題文が無いこと」は使えない** — 欄が空に戻ると必須欄の問題文が同じクラスに出る。
+  notice の出現だけが成功を述べる。
+
+### 前段と後始末
+
+- **macOS 上で通しで測った。** 実行ファイルの解決 → fixture 生成 → 3 ファイルの退避 →
+  `tauri-driver` の非対応検出 → `finally` での復元と fixture 削除まで走り、**復元後の 3 ファイルは
+  実行前とバイト同一だった**（shasum で照合。Linux 移行後の書き直しでも再確認）。
+- **その通しが欠陥を 1 件出した。** 退避が移動の途中で拒んでおり、2 つ目に古い退避があると 1 つ目は
+  動いたまま、戻す呼び出しを誰も持っていない状態になっていた。**全部を先に検査してから動かす形に
+  直し、その枝を実際に踏んで「1 つも動いていない」ことを確かめた。**
+- **rename 自体が失敗する経路も塞いだ**（レビュー 1R [P2]）。それまでの移動を戻してから投げ直す。
+
+## 契約の変更
+
+- **WebView の apt 一覧の置き場が 3 つになった**（README・`release.yml`・`ci.yml` の `e2e`）。
+  decision-33 §3 が拒んだ「3 か所目」である。**拒んだ理由は取り下げていない** — 変わったのは天秤の
+  反対側で、§3 が買うと言っていたのは Linux 固有の `return` 1 行、こちらが買うのは E2E が自動で走ること
+  そのものである。**decision-33 に「Linux を外す判断の改訂」を足し、doc-13 §3.4 と AGENTS 和英を
+  数え直した。`rust` は Linux で走らせないままで、その Linux 化は 4 か所目を要求する。**
+- **decision-25 の 後続への影響 の当該項を事実へ書き換えた** — 整形表示 は通し、既定ブラウザ起動 は
+  通していない。
 
 ## 通していないもの
 
-- **既定ブラウザ起動 は経路に入れていない。** decision-25 の 後続への影響 が `Launcher` の差し替えを
-  示していたが、差し替えは出荷するバイナリに試験専用の分岐を足すことになる。**同 decision の当該項は
-  本 PR で事実へ書き換えた** (整形表示 は通し、既定ブラウザ起動 は通していない)。
-- **添付画像 の 1 枚 (decision-28 が「入れられる」と書いた形) は初版に入れていない。** 後から足せる。
-- **在アプリの 再読み込み (doc-9) は通していない。** 最後の段はアプリの再起動である。
+- **既定ブラウザ起動**（`Launcher` の差し替えは出荷バイナリに試験専用の分岐を足すことになる）。
+- **添付画像 の 1 枚**（decision-28 が「入れられる」と書いた形。後から足せる）。
+- **在アプリの 再読み込み**（doc-9）。最後の段はアプリの再起動である。
 
 ## AC の状態
 
 - **#3・#4 は満たしている。** #3 は decision-40。#4 は `package.json` の `dependencies` と
-  `Cargo.toml` の `[dependencies]` がどちらも無変更 (`tauri-driver` は `cargo install`、WebDriver
-  クライアントは自前で `fetch` のみ)。
-- **#1・#2 は CI の初回実行が決める。** この作業機は macOS なので、経路そのもの (登録以降) は
-  1 度も走っていない。**緑を見てからチェックする。**
+  `Cargo.toml` の `[dependencies]` がどちらも無変更。
+- **#1・#2 は `e2e (ubuntu-24.04)` の実行が決める。** この作業機は macOS なので、経路そのもの
+  (登録以降) は 1 度も走っていない。**緑を見てからチェックする。**
 <!-- SECTION:NOTES:END -->
