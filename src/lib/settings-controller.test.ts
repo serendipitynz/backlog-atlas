@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createSettingsController, initialSettingsState } from "./settings-controller";
+import {
+  createSettingsController,
+  initialSettingsState,
+  type SettingsController,
+  type SettingsState,
+} from "./settings-controller";
 import type {
   AppSettings,
   CliReadiness,
@@ -321,7 +326,7 @@ describe("遅い probe は新しい答えを上書きしない", () => {
 });
 
 describe("起動時の probe", () => {
-  it("CLI の拒否そのものが答えである（発行不能、理由つき）", async () => {
+  it("答えたらそれを持つ", async () => {
     const h = harness();
     const running = h.controller.probeCli();
     h.landCli(READY);
@@ -330,15 +335,31 @@ describe("起動時の probe", () => {
     expect(h.state.cli).toEqual(READY);
   });
 
+  /**
+   * **CLI の probe は、拒否そのものが答えである（doc-5 §5）。** `null` のままにすると画面はそれを 確認中 と
+   * 読み、**縮退帯 が立たないまま編集の控えが理由なしに保留される** — doc-11 §5 が禁じている形そのもので、
+   * しかもどの帯もそれを述べない。次の試験のエディタ側とはここが逆で、あちらは `null` のままが正しい。
+   */
+  it("拒否は 発行不能 という答えになり、理由を運ぶ", async () => {
+    const h = harness();
+    const { state, controller } = withPort(h, {
+      probeCli: () => Promise.reject({ kind: "ledger", detail: "backlog is not on PATH" }),
+    });
+
+    await controller.probeCli();
+
+    expect(state.cli).toEqual({ state: "unavailable", detail: "backlog is not on PATH" });
+  });
+
   it("エディタの probe が失敗したら 確認中 のままで、理由は帯が述べる", async () => {
     const h = harness();
-    const failing = createSettingsController(initialSettingsState(), {
-      ...portsOf(h),
+    const { state, controller } = withPort(h, {
       probeEditor: () => Promise.reject({ kind: "editorLaunchFailed", detail: "no editor" }),
     });
 
-    await failing.probeEditor();
+    await controller.probeEditor();
 
+    expect(state.editor).toBeNull();
     expect(h.notices.at(-1)).not.toBeNull();
   });
 });
@@ -400,6 +421,20 @@ describe("場所を開く", () => {
     expect(await h.controller.openLocation()).toBeNull();
   });
 });
+
+/**
+ * A controller over resolved-at-once ports with exactly one of them swapped, and the state it writes.
+ *
+ * The main [`harness`] holds every probe open so ordering can be tested; these three tests are about a
+ * single probe's *answer*, so they take a version where nothing has to be landed by hand.
+ */
+function withPort(
+  h: ReturnType<typeof harness>,
+  swap: Partial<ReturnType<typeof portsOf>>,
+): { state: SettingsState; controller: SettingsController } {
+  const state = initialSettingsState();
+  return { state, controller: createSettingsController(state, { ...portsOf(h), ...swap }) };
+}
 
 /** The ports the harness built, so a test can swap exactly one of them. */
 function portsOf(h: ReturnType<typeof harness>) {

@@ -22,6 +22,8 @@ function harness(options: { start?: string[]; failing?: boolean } = {}) {
   const released: string[] = [];
   const forgotten: string[] = [];
   const rereads: string[] = [];
+  /** Resolvers of the re-reads still in flight, so a test can hold one open across the flag's life. */
+  const pendingRereads: (() => void)[] = [];
   const registering: boolean[] = [];
   let hidden: string[] = [];
   /** Resolvers of the writes still in flight, so a test decides when each one lands. */
@@ -73,7 +75,9 @@ function harness(options: { start?: string[]; failing?: boolean } = {}) {
     commandError: (error) => error as CommandError,
     reread: (slug) => {
       rereads.push(slug);
-      return Promise.resolve();
+      // Held rather than resolved: the 登録 flag has to stand *across* this call, and a port that
+      // resolves at once leaves no moment in which the difference could show.
+      return new Promise((resolve) => pendingRereads.push(() => resolve()));
     },
     forget: (slug) => forgotten.push(slug),
     pruneRowState: (slugs) => prunes.push([...slugs]),
@@ -102,11 +106,22 @@ function harness(options: { start?: string[]; failing?: boolean } = {}) {
     setHidden: (next: string[]) => {
       hidden = next;
     },
-    /** Land every write, in issue order, letting the queue advance between them. */
+    /** Land the ledger answer alone, leaving whatever it starts still in flight. */
+    landLedger: async (): Promise<void> => {
+      pending.shift()?.();
+      await settle();
+    },
+    /** Land the re-read the register is waiting on. */
+    landReread: async (): Promise<void> => {
+      pendingRereads.shift()?.();
+      await settle();
+    },
+    /** Land every write and every re-read, in issue order, letting the queue advance between them. */
     flush: async (): Promise<void> => {
       await settle();
-      while (pending.length > 0) {
+      while (pending.length > 0 || pendingRereads.length > 0) {
         pending.shift()?.();
+        pendingRereads.shift()?.();
         await settle();
       }
     },
@@ -185,11 +200,15 @@ describe("登録", () => {
     await h.settle();
     expect(h.registering).toEqual([true]);
 
-    await h.flush();
-    await running;
-
-    expect(h.registering).toEqual([true, false]);
+    // 台帳が答えた。行はまだ読めていない。
+    await h.landLedger();
     expect(h.rereads).toEqual(["atlas"]);
+    expect(h.registering).toEqual([true]);
+
+    // 読み込みが終わって初めて旗が降りる。
+    await h.landReread();
+    await running;
+    expect(h.registering).toEqual([true, false]);
   });
 
   it("拒否されたら理由を返し、読み直さない", async () => {
