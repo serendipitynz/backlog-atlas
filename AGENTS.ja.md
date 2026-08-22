@@ -135,11 +135,13 @@ decision-7 が持ち、次の 5 つは表記についての規則である。
   持たず、ビルドは `pkg-config` の段階で `glib-2.0` が見つからないと言って止まる。**この
   エラーは WebKit にも Ubuntu の版にも触れない**ので、ディストリを替えるのではなくパッケージを
   1 つずつ入れる方向へ誘導してしまう。導入する開発パッケージの一覧は README の
-  「ソースからのビルド」にあり、`.github/workflows/release.yml` がそれを繰り返す。Linux
-  ランナーは、どの段が散文を読むより先にこれらを入れておく必要があるためである。**したがって
-  一覧の置き場は 1 つではなく 2 つある** (2 つ目は TASK-101 が足した)。両方を一緒に直し、
-  読者は README へ送る。ランナーは一覧の汎用な半分を既に持っているが、それも入れ直す —
-  そうすれば 2 つの一覧を行ごとに見比べられ、誰も導出し直さない部分集合へずれていかない。
+  「ソースからのビルド」にあり、`.github/workflows/release.yml` と `ci.yml` の `e2e` ジョブが
+  それを繰り返す。どちらの Linux ランナーも、どの段が散文を読むより先にこれらを入れておく必要が
+  あるためである。**したがって一覧の置き場は 1 つではなく 3 つある** (2 つ目は TASK-101、
+  3 つ目は TASK-105 が足した)。3 つを一緒に直し、読者は README へ送る。各ランナーは一覧の汎用な
+  半分を既に持っているが、それも入れ直す — そうすれば 3 つの一覧を行ごとに見比べられ、誰も
+  導出し直さない部分集合へずれていかない。**`e2e` だけが 2 つ余分に入れる** —
+  `webkit2gtk-driver` と `xvfb` で、他の 2 つには要らず、足してもいけない。
 - `pnpm install` は `@parcel/watcher` と `esbuild` を build script 未承認として報告する。
   承認しないまま残す。`@parcel/watcher` は sass 自身の watch モードにしか要らず、esbuild
   はプラットフォーム別バイナリを optional dependency で解決するため、いずれの script
@@ -279,7 +281,7 @@ Svelte コンパイラを要するのは 2 つ目のプロジェクトだけで�
 **コンポーネントテストは画面横断契約だけを固定する** — 純粋関数では持てず、どの単一
 画面のものでもない契約である。モーダルの出口、詳細パネル離脱時の破棄前確認、再読込が
 破棄してはならないもの、起動時の呼出し順序。画面ごとの網羅は目的ではなく、アプリ全体を
-通す GUI E2E は別物 (TASK-105)。画面ごとにテストを置くと UI 変更のたびにテスト変更が
+通す GUI E2E は別物 (`pnpm run e2e`。下記)。画面ごとにテストを置くと UI 変更のたびにテスト変更が
 生じ、契約は何も増えない。
 
 **`jsdom` はレイアウトを行わない。** `getClientRects` は何に対しても空を返し、
@@ -322,6 +324,51 @@ Rust 側でそれを改名しても全検査を通過する。`wire_fixtures.rs`
 作り置いた struct リテラルで組む。リテラルなら新しい項目をコンパイラが名指しし、記録した
 fixture はどの機械でもバイト単位で同一でなければならない。
 
+### `pnpm test` が回さない GUI E2E
+
+**3 つ目の層が `pnpm test` の外にある** — `pnpm run e2e`、実体は `scripts/e2e/`（decision-40）。
+`tauri-driver` を通して出荷形の実行ファイルを 1 本の経路で操作する — 登録 → スイムレーン表示 →
+タスク詳細 → 編集保存 → アプリの再起動 — 実 WebView・実 Rust コマンド・実 Backlog CLI・実
+アプリ設定ディレクトリ がすべてその中に入る。**この木でスタック全体が同時に成立すると述べるのは
+これだけである** — 上の 2 プロジェクトは Svelte の `mount` で止まり、`cargo test` は IPC 境界の
+下で止まる。
+
+**最後の段はアプリの再起動であって、doc-9 の 再読み込み ではない。** 主張しているのは台帳の項と
+編集の結果がプロセスを跨いで残ることで、起動したままの読み直しはそれを一度も述べない。
+
+**走るのは Linux だけで、これは `tauri-driver` の README が書いていることと違う。** README は Linux と
+Windows を対応と挙げるが、Tauri アプリに届くのは Linux 側だけである — Tauri は wry に自動操作の許可を
+求める（`TAURI_WEBVIEW_AUTOMATION`）が、**wry がそれを実装しているのは webkitgtk だけ**で、他の
+プラットフォームは空の既定実装を受け取る。したがって Windows では WebView2 がデバッグポートを開かず
+セッション生成が必ず失敗し、macOS では `tauri-driver` がそもそも起動を拒む。どちらも 2026-08-22 に実測し、
+decision-40 の 実測 節が持つ。**CI は ubuntu-24.04 で `xvfb-run` 越しに走らせる。**
+
+**したがってセッションが回す検査は `pnpm test`・`pnpm run check`・`pnpm run lint` の
+3 本のままである。** E2E をその列に足すと、この作業機で守れない規則になる。
+
+**走らせるには 4 つが揃っている必要がある** — Linux の機械（オーナーの WSL Ubuntu 24 で足りる）、
+PATH 上の `tauri-driver`（`cargo install tauri-driver --locked`）、PATH 上の Backlog CLI、そして
+**`pnpm tauri build --no-bundle`** が作る実行ファイル。
+
+**このコマンドであって `cargo build --release` ではない。** Tauri のビルドスクリプトは
+`dev = !has_feature("custom-protocol")` と決めており、**その feature を渡すのは Tauri CLI だけである**
+（実測: `cargo build --bins --features tauri/custom-protocol --release` を実行する）。したがって素の
+cargo release ビルドは **dev バイナリ**であり、`devUrl` を読みに行って
+`Could not connect to localhost` で立ち上がる — **ファイルを見てもどちらなのか分からない。**
+`--no-bundle` は実行ファイルで止まり、`beforeBuildCommand` がフロントエンドを作るので、1 段で両方を
+兼ねる。CSP が効くのもこの形である（decision-28）。
+**macOS でもドライバ起動の手前までは走る** — fixture・退避・復元がそれで、作業機からそこを確かめる
+ための意図的な形である。
+
+**実行の間、`projects.toml`・`settings.toml`・`.window-state.json` を退避して戻す。** Windows では
+ディレクトリを差し替える手が無い — `dirs::config_dir()` は `SHGetKnownFolderPath` を呼び `APPDATA` を
+読まない — ので、退避が唯一の隔離手段である。**死んだ実行が残した退避は上書きせず拒む。** さもないと
+2 回目の空の台帳が退避になり、本物が消える。
+
+**経路の選択子は `scripts/e2e/run.mjs` の先頭に定数で並んでいる。** 本物の `App.svelte` に対して
+実測したものであって、読んで写したものではない。**選択子を動かす分割でこのジョブが赤くなるのは
+意図どおりである。緑にするために選択子を緩めない** — 何にでも当たる経路は何も述べていない。
+
 ## 継続的インテグレーション
 
 `.github/workflows/ci.yml` は Pull Request ごとと、それが main に入った後の push で走る
@@ -334,11 +381,21 @@ fixture はどの機械でもバイト単位で同一でなければならない
   コンパイル述語を 1 つを除いてすべてコンパイルし、Linux のランナーは WebView の `apt-get` 一覧を
   3 箇所目に書くことを要求する。根拠の全文はワークフロー末尾のコメントが持つ。**読まずに Linux の
   ジョブを足さない。**
+- **`e2e`**（ubuntu-24.04、`xvfb-run` 越し）— 上の GUI E2E を release ビルドに対して走らせる
+  （decision-40）。**ここで唯一の Linux ジョブであり、`rust` の理由づけが比較される相手である** —
+  こちらは他のどこでも走れないので WebView の apt 一覧を 3 か所目として書くが、Linux の `rust` は
+  4 か所目と引き換えに `return` 1 行のコンパイルを買うだけである。`ubuntu-latest` に追随せず
+  `ubuntu-24.04` に固定するのは `release.yml` と同じ理由。
 
 **Pull Request がマージできるようになるには 3 つの検査が要る** — `frontend`・
 `rust (macos-latest)`・`rust (windows-latest)` — リポジトリの ruleset `main` がそれを課している。
 **job の `name` がその文字列そのものである。** job を改名すると ruleset は古い名前を待ち続け、
 Pull Request は永久に緑にならない。改名するなら ruleset も一緒に変える。
+
+**`e2e (ubuntu-24.04)` は意図してその 3 つに入れていない**（decision-40 §5）。WebKitGTK や
+ドライバの更新でこれが赤くなったとき、それを起こしていない Pull Request を止めてはならない。
+**代償は、誰も課していない検査は誰かが読まなければ何も述べていないのと同じだということである。**
+後からマージ要件にするなら、ruleset にこの文字列そのものを足す。
 
 **repository admin はその検査を迂回できる。これは意図である。** タスクの状態 が述べる `Done` の
 commit のために main を書ける状態を保つのがひとつ、壊れたワークフローを直せる状態を保つのが

@@ -151,12 +151,13 @@ Move the state through Backlog CLI calls, like every other task update.
   `glib-2.0` was not found — an error that names neither WebKit nor the Ubuntu version,
   so it invites installing packages one at a time instead of changing the distribution.
   The development packages to install are listed in README's "Building from source" and
-  repeated in `.github/workflows/release.yml`, whose Linux runner has to install them
-  before any step could read prose. **The list therefore has two places, not one**
-  (TASK-101 added the second) — change them together, and send a reader to the README.
-  The runner already carries the generic half of the list; it is installed again anyway,
-  so the two stay comparable line by line instead of drifting into a subset nobody
-  re-derives.
+  repeated in `.github/workflows/release.yml` and in `ci.yml`'s `e2e` job, both of whose
+  Linux runners have to install them before any step could read prose. **The list therefore
+  has three places, not one** (TASK-101 added the second, TASK-105 the third) — change them
+  together, and send a reader to the README. Each runner already carries the generic half of
+  the list; it is installed again anyway, so the three stay comparable line by line instead of
+  drifting into a subset nobody re-derives. **`e2e` adds two of its own** —
+  `webkit2gtk-driver` and `xvfb` — which the other two do not need and must not gain.
 - `pnpm install` reports `@parcel/watcher` and `esbuild` as ignored build scripts.
   Leave them unapproved: sass needs `@parcel/watcher` only for its own watch mode,
   esbuild resolves its platform binary through an optional dependency instead, and the
@@ -298,7 +299,7 @@ tests have been passing in, and only the second project needs the Svelte compile
 **Component tests hold画面横断契約 only** — the contracts no pure function can hold and
 no single screen owns: a modal's exits, 破棄前確認 on leaving a detail panel, what a
 reload may not discard, the startup call order. Screen-by-screen coverage is not the
-goal and a full GUI E2E is a separate thing again (TASK-105); a component test per
+goal and a full GUI E2E is a separate thing again (`pnpm run e2e`, below); a component test per
 screen would make every UI change a test change and buy no contract.
 
 **`jsdom` runs no layout.** `getClientRects` returns nothing for everything, which would
@@ -345,6 +346,52 @@ reads the committed file. The samples are built as struct literals with fabricat
 absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
 and a recorded fixture has to be byte-identical on every machine.
 
+### The GUI E2E, which `pnpm test` does not run
+
+**A third layer sits outside `pnpm test`** — `pnpm run e2e`, in `scripts/e2e/` (decision-40). It
+drives the shipped binary through `tauri-driver` along one route — 登録 → スイムレーン表示 → タスク
+詳細 → 編集保存 → アプリの再起動 — with the real WebView, the real Rust commands, the real Backlog
+CLI and the real アプリ設定ディレクトリ all in it. It is the only thing here that states the whole
+stack works at once: the two projects above stop at Svelte's `mount`, and `cargo test` stops below
+the IPC boundary.
+
+**The last step is a restart, not doc-9's 再読み込み.** What it claims is that the ledger entry and
+the edit survive the process, and re-reading inside a running app never claims that.
+
+**It runs on Linux and nowhere else, which is not what `tauri-driver`'s README says.** That README
+lists Linux and Windows, but only the Linux half reaches a Tauri app: Tauri asks wry to allow
+automation (`TAURI_WEBVIEW_AUTOMATION`), and wry implements that for webkitgtk alone — every other
+platform gets an empty default. So on Windows the WebView2 never opens a debugging port and session
+creation fails outright, and on macOS `tauri-driver` refuses to start at all. Both measured
+2026-08-22; decision-40 §実測 carries them. **CI runs it on ubuntu-24.04 under `xvfb-run`.**
+
+**So a session's checks are still `pnpm test`, `pnpm run check` and `pnpm run lint` — three, not
+four.** Putting the E2E in that list would write a rule this machine cannot keep.
+
+**Running it needs four things standing**: a Linux machine (the owner's WSL Ubuntu 24 qualifies),
+`tauri-driver` on PATH (`cargo install tauri-driver --locked`), a Backlog CLI on PATH, and the
+binary from **`pnpm tauri build --no-bundle`**.
+
+**That command, and not `cargo build --release`.** Tauri's build script sets
+`dev = !has_feature("custom-protocol")`, and only the Tauri CLI passes that feature — measured, it
+runs `cargo build --bins --features tauri/custom-protocol --release`. So a plain cargo release build
+is a *dev* binary: it loads `devUrl` and comes up on `Could not connect to localhost` with no server
+there, and nothing about the file says which of the two it is. `--no-bundle` stops after the binary
+and `beforeBuildCommand` builds the frontend, so it replaces both steps. It is also what makes the
+CSP apply, which is the form decision-28 says is the only one where the CSP is in force at all. **On macOS everything up to starting the driver still runs** — the fixture, the aside
+and the restore — which is deliberate, and it is how those are exercised from a development machine.
+
+**It moves `projects.toml`, `settings.toml` and `.window-state.json` aside for the run and puts
+them back.** On Windows the directory cannot be redirected instead — `dirs::config_dir()` asks
+`SHGetKnownFolderPath` and never reads `APPDATA` — so this is the only isolation there is.
+**A backup left by a run that died is refused rather than overwritten**, because otherwise the
+second run's empty ledger becomes the backup and the real one is gone.
+
+**The route's selectors are constants at the top of `scripts/e2e/run.mjs`**, and they were measured
+against the real `App.svelte` rather than read off it. A refactor that moves them is meant to redden
+this job. **Do not widen a selector to make it green** — a route that matches anything states
+nothing.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and on `main` after one lands
@@ -358,11 +405,21 @@ and checks no code.
   every OS-conditional predicate in `src-tauri/src` but one, and a Linux runner would need the
   WebView `apt-get` list written in a third place. The workflow's own trailing comment carries
   the full reasoning; do not add a Linux job without reading it.
+- **`e2e`** on ubuntu-24.04 under `xvfb-run` — the GUI E2E above, against a release build
+  (decision-40). **The one Linux job here, and the exception `rust`'s reasoning is measured
+  against**: it writes the WebView apt list a third time because it cannot run anywhere else at
+  all, where a Linux `rust` job would buy the compilation of one `return` for a fourth copy. Pinned
+  to `ubuntu-24.04` for `release.yml`'s reason, not following `ubuntu-latest`.
 
 **Three checks are required before a pull request can merge** — `frontend`,
 `rust (macos-latest)` and `rust (windows-latest)` — through the repository ruleset named `main`.
 **A job's `name` is that string.** Rename a job and the ruleset waits forever on the old name;
 change the two together.
+
+**`e2e (ubuntu-24.04)` is deliberately not one of the three** (decision-40 §5). A WebKitGTK or
+driver update that reddens it must not block a pull request that did not cause it. The cost is
+that a check nothing enforces is a check someone has to read; making it required later means adding
+that exact string to the ruleset.
 
 **Repository admins can bypass those checks**, on purpose. It is what keeps `main` writable for
 the `Done` commits Task state describes, and it is what makes a broken workflow fixable — without
