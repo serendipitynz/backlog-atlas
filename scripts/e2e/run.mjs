@@ -31,6 +31,9 @@ const EMPTY_LEDGER_ENTRY = "main.screen p.status button.link";
 const REGISTER_DIALOG = '[role="dialog"]';
 const REGISTER_FIELDS = '[role="dialog"] label .field input[type="text"]';
 const REGISTER_SUBMIT = '[role="dialog"] .issue .row button.primary';
+const REGISTER_NOTICE = '[role="dialog"] p.notice';
+const REGISTER_PROBLEM = '[role="dialog"] p.problem';
+const REGISTER_CLOSE = '[role="dialog"] button.close';
 const LANE_HEAD = ".lane-head";
 const CARD = "button.card";
 const DETAIL = "aside.detail";
@@ -98,6 +101,28 @@ async function registerFixture(session, fixture) {
   );
   await session.click(await session.find(REGISTER_SUBMIT));
 
+  // **A successful 登録 leaves the form open.** `ProjectRegister.submit` prints the 登録しました notice
+  // and empties the fields; the モーダル's only exits are its × and Escape, both wired outside the
+  // component. So the notice is what says the ledger was written, and waiting for the layer to
+  // disappear on its own would wait for something that never happens.
+  //
+  // The notice, and not the absence of `p.problem`: emptying the fields puts 必須 back under the
+  // project-root field, in the same class a refusal is printed in. So a refusal is read here as the
+  // notice never arriving, and what the form was showing is added to that failure rather than
+  // decided from it.
+  try {
+    await waitUntil(
+      "the 登録しました notice",
+      async () => (await countOf(session, REGISTER_NOTICE)) === 1,
+    );
+  } catch (error) {
+    const shown = await textsOf(session, REGISTER_PROBLEM);
+    throw new Error(
+      `${error.message}. The form was showing: ${shown.length === 0 ? "nothing" : shown.join(" / ")}`,
+    );
+  }
+
+  await session.click(await session.find(REGISTER_CLOSE));
   await waitUntil("the 登録 form to close", async () => (await countOf(session, REGISTER_DIALOG)) === 0);
 }
 
