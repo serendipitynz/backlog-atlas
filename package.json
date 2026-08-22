@@ -11,6 +11,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "lint": "biome lint",
     "test": "vitest run",
+    "e2e": "node scripts/e2e/run.mjs",
     "tauri": "tauri"
   },
   "dependencies": {
