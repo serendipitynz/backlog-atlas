@@ -205,9 +205,7 @@ async function editAndSave(session, fixture) {
     "保存 to stop being withheld",
     async () => (await propertyOf(session, DETAIL_SAVE, "ariaDisabled")) !== "true",
   );
-  // TEMPORARY MUTATION (TASK-105): the 保存 press is removed to prove this route fails without it.
-  // The next commit puts it back; if CI is green with this in, the route holds nothing.
-  // await session.click(await session.find(DETAIL_SAVE));
+  await session.click(await session.find(DETAIL_SAVE));
 
   // A save that lands ends the 編集セッション (doc-8 §6.3), which puts the heading back — so the
   // heading carrying the new title is the screen saying the write went through, not this test
