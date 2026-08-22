@@ -8,9 +8,11 @@
 // **再読込 here is a restart, not the in-app 再読み込み.** The claim worth making is that the edit and
 // the ledger entry survive the process, which is the one an in-app re-read cannot make.
 //
-// Run it with `pnpm run e2e`, after `pnpm run build && cargo build --release`. It needs
-// `tauri-driver` on PATH and a Backlog CLI on PATH, and **it runs on Linux only** — the reason is
-// upstream and `environment.mjs` carries it.
+// Run it with `pnpm run e2e`, after **`pnpm tauri build --no-bundle`** — not `cargo build --release`,
+// which produces a binary that loads `devUrl` and comes up on a connection error (`environment.mjs`'s
+// `atlasBinary` carries why, and cannot detect it: both binaries exist under the same name). It also
+// needs `tauri-driver` on PATH and a Backlog CLI on PATH, and **it runs on Linux only** — that reason
+// is upstream and `environment.mjs` carries it too.
 
 import {
   FIXTURE_TASKS,
@@ -264,26 +266,33 @@ async function withSession(driver, binary, body) {
 
 async function main() {
   const binary = atlasBinary();
+  // Each thing that has to be undone is entered inside the `try` that undoes it. The fixture is
+  // outermost because it is created first: putting `setConfigAside` ahead of its `finally` would
+  // leave the temp Backlog root behind on every run that the aside refuses — and the aside refuses
+  // for exactly the reasons a developer's machine produces.
   const fixture = buildFixture();
-  const restoreConfig = setConfigAside();
-  let driver = null;
   try {
-    driver = await startDriver({ port: PORT, nativePort: NATIVE_PORT });
-    await withSession(driver, binary, async (session) => {
-      await registerFixture(session, fixture);
-      await expectSwimlane(
-        session,
-        FIXTURE_TASKS.map((task) => task.title),
-      );
-      await openDetail(session, FIXTURE_TASKS[0].title);
-      await editAndSave(session, fixture);
-    });
-    await expectSurvivesRestart(driver, binary, fixture);
-  } finally {
-    if (driver !== null) {
-      driver.stop();
+    const restoreConfig = setConfigAside();
+    let driver = null;
+    try {
+      driver = await startDriver({ port: PORT, nativePort: NATIVE_PORT });
+      await withSession(driver, binary, async (session) => {
+        await registerFixture(session, fixture);
+        await expectSwimlane(
+          session,
+          FIXTURE_TASKS.map((task) => task.title),
+        );
+        await openDetail(session, FIXTURE_TASKS[0].title);
+        await editAndSave(session, fixture);
+      });
+      await expectSurvivesRestart(driver, binary, fixture);
+    } finally {
+      if (driver !== null) {
+        driver.stop();
+      }
+      restoreConfig();
     }
-    restoreConfig();
+  } finally {
     removeFixture(fixture);
   }
   console.log("✓ 登録 → スイムレーン → タスク詳細 → 編集保存 → 再読込 passed");
