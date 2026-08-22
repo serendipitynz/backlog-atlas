@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  emptyAssigneeReason,
-  emptyDependenciesReason,
-  emptyReferencesReason,
   editAvailability,
 } from "./edit";
 import {
@@ -161,9 +158,12 @@ describe("CLI で不能な操作の理由 (AC #5, doc-11 §8)", () => {
     // TASK-192: the route is one 区画 of this same panel and the same destination for every 不可, so
     // each reason naming it said one thing five times without widening what the reader could do. The
     // referent guarded here is the 区画 itself — its 見出し — rather than any phrasing of the advice.
+    // **Three of those five reasons are gone rather than reworded** (TASK-153): the 最後の 1 件 の
+    // 差し控え that References・dependencies・assignee each carried does not exist on v1.50.1, so what
+    // is left to hold is the 保存区分 side.
     const heading = (catalog: (typeof CATALOGS)[keyof typeof CATALOGS]) =>
       catalog.taskDetail.externalEditorHeading;
-    const reasons = [emptyReferencesReason(), emptyDependenciesReason(), emptyAssigneeReason()];
+    const reasons: string[] = [];
     for (const storageState of ["draft", "completed", "archive"] as const) {
       const availability = editAvailability(taskView({ storageState }), {
         state: "ready",
@@ -175,17 +175,9 @@ describe("CLI で不能な操作の理由 (AC #5, doc-11 §8)", () => {
       }
       reasons.push(availability.reason);
     }
+    expect(reasons).toHaveLength(3);
     for (const reason of reasons) {
       expect(reason).not.toContain(heading(CATALOGS.ja));
-    }
-    // The 3 非空全置換 reasons keep the scope doc-11 §5 asks for: Atlas's boundary, not a fault. The
-    // two 保存区分 reasons name their own mechanism instead, so they are not held to this.
-    for (const reason of [emptyReferencesReason(), emptyDependenciesReason(), emptyAssigneeReason()]) {
-      expect(reason).toContain("Atlas");
-    }
-    for (const field of ["References", "dependencies", "assignee"] as const) {
-      expect(CATALOGS.en.taskDetail.lastElementHeld(field)).not.toContain(heading(CATALOGS.en));
-      expect(CATALOGS.en.taskDetail.lastElementHeld(field)).toContain("Atlas");
     }
     for (const closed of [CATALOGS.en.taskDetail.draftReadOnly, CATALOGS.en.taskDetail.closedReadOnly]) {
       expect(closed).not.toContain(heading(CATALOGS.en));

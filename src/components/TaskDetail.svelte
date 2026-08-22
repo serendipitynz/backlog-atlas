@@ -20,8 +20,6 @@
   // capability this build does not have.
   import { onDestroy, type Snippet } from "svelte";
   import Body from "./Body.svelte";
-  import type { Availability } from "../lib/availability";
-  import { AVAILABLE } from "../lib/availability";
   import type { ImageReader } from "../lib/markdown-image";
   import DetailSection from "./DetailSection.svelte";
   import Editor from "./Editor.svelte";
@@ -43,22 +41,17 @@
   } from "../lib/detail";
   import {
     discardConfirmProceed,
-    emptyAssigneeReason,
-    emptyDependenciesReason,
-    emptyReferencesReason,
     fileMissingReason,
     PRIORITIES,
     typeNotEditable,
     acDeltaDroppedByRebase,
     acRows,
     buildSave,
-    canRemoveLast,
     confirmMarkedLabel,
     divergence,
     editAvailability,
     externallyChanged,
     isDirty,
-    lastRemovalAvailability,
     milestoneOptions,
     optionsFor,
     rebaseOnto,
@@ -505,7 +498,7 @@
 
   /**
    * Every 状態遷移 asks first (doc-11 §12 の実行前確認). Not a general habit — none of the five has a way
-   * back to the state before the press in v1.49.3 (the measurement is in doc-8 §6.5), so an
+   * back to the state before the press in v1.50.1 (the measurement is in doc-8 §6.5), so an
    * accidental one cannot be undone from Atlas at all.
    *
    * The question goes to the shell rather than being drawn here, and the act is what the shell hands
@@ -760,26 +753,23 @@
   }
 </script>
 
+<!-- 削除 は最後の 1 件も外せる: `--clear-refs`・`--clear-deps`・`-a ""` が空集合化を行う
+     (doc-5 §3.1, TASK-153). 無効化と理由文はこの版で無くなった区画である. -->
 {#snippet listEditor(
   values: string[],
   apply: (next: string[]) => void,
   draft: string,
   setDraft: (value: string) => void,
   placeholder: string,
-  lastRemoval: Availability,
 )}
   <ul class="list-edit">
     {#each values as value, index (index)}
-      {@const removable = lastRemoval.state === "ready" || canRemoveLast(values)}
       <li>
         <span class="url">{value}</span>
         <button
           type="button"
           class="mini"
-          disabled={!removable}
-          title={lastRemoval.state === "withheld" && !canRemoveLast(values)
-            ? lastRemoval.reason
-            : t().action.remove}
+          title={t().action.remove}
           onclick={() => apply(values.filter((_, at) => at !== index))}
         >
           {t().action.remove}
@@ -787,9 +777,6 @@
       </li>
     {/each}
   </ul>
-  {#if lastRemoval.state === "withheld" && values.length === 1}
-    <p class="hint">{lastRemoval.reason}</p>
-  {/if}
   <div class="add-row">
     <input
       type="text"
@@ -1330,7 +1317,7 @@
         <p>{task.assignee.join(", ")}</p>
       {/if}
     {:else}
-      <!-- 担当の設定・付け替えはこの画面で閉じる (doc-5 §3・doc-10 §7, TASK-57). 非空全置換 —
+      <!-- 担当の設定・付け替えはこの画面で閉じる (doc-5 §3・doc-10 §7, TASK-57). 全置換 —
            編集側の `-a` は値をカンマ区切りの集合として読み、frontmatter の一覧を丸ごと置き換える. -->
       {@render listEditor(
         session.draft.assignee,
@@ -1338,7 +1325,6 @@
         newAssignee,
         (value) => (newAssignee = value),
         t().taskDetail.addAssignee,
-        lastRemovalAvailability(session.baseline.task.assignee, emptyAssigneeReason()),
       )}
     {/if}
   </DetailSection>
@@ -1367,7 +1353,6 @@
         newLabel,
         (value) => (newLabel = value),
         t().field.addLabel,
-        AVAILABLE,
       )}
     {/if}
   </DetailSection>
@@ -1708,7 +1693,6 @@
         newDependency,
         (value) => (newDependency = value),
         "TASK-ID",
-        lastRemovalAvailability(session.baseline.task.dependencies, emptyDependenciesReason()),
       )}
     {/if}
   </DetailSection>
@@ -1778,7 +1762,6 @@
         newReference,
         (value) => (newReference = value),
         "URL",
-        lastRemovalAvailability(session.baseline.task.references, emptyReferencesReason()),
       )}
     {/if}
   </DetailSection>

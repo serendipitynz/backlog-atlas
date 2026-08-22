@@ -671,9 +671,11 @@ export type AcEdit =
 
 /**
  * The combinable `task edit` facets (doc-5 §3). An absent key leaves that facet untouched; the
- * adapter refuses an edit that sets nothing. `assignee` / `references` / `dependencies` are
- * 非空全置換 — the value is the whole new set, and an empty array is refused rather than silently
- * ignored, which is what `-a ""` / `--ref ""` / `--depends-on ""` do in v1.49.3 (doc-5 §3.1).
+ * adapter refuses an edit that sets nothing. `assignee` / `references` / `dependencies` are 全置換 —
+ * the value is the whole new set, and an empty array clears the field: the adapter sends
+ * `--clear-refs` / `--clear-deps` / `-a ""` for it (doc-5 §3.1). **An empty array meant "refused" here
+ * through v1.50.1**, where those three were 沈黙無変更 (doc-5 §3.5), so a reader coming from that
+ * period must not read the absent key and the empty array as the same request.
  */
 export interface TaskEdit {
   title?: string;
@@ -681,7 +683,7 @@ export interface TaskEdit {
   status?: string;
   priority?: string;
   milestone?: string;
-  /** 担当の非空全置換 (doc-5 §3). `-a` reads its value as a comma-separated set (実測). */
+  /** 担当の全置換 (doc-5 §3). `-a` reads its value as a comma-separated set (実測). */
   assignee?: string[];
   plan?: string;
   notes?: NoteEdit;

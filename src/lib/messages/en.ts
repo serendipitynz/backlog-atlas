@@ -477,7 +477,6 @@ export const EN: Catalog = {
     },
     gitHistoryHeading: "Git history",
     typeNotEditable: "Type cannot be edited in Atlas.",
-    lastElementHeld: (field: string) => `Atlas cannot remove the last ${field} entry`,
     emptyTitle:
       "title cannot be empty: it is required, and an empty one reads as unparsable and shows as inconsistent",
     noTaskIdForUpdate: "The TASK-ID cannot be read, so no update has a target to name",

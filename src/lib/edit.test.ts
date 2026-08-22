@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  emptyAssigneeReason,
-  emptyDependenciesReason,
-  emptyReferencesReason,
   emptyTitleReason,
   fileMissingReason,
   nothingToSaveReason,
   acDeltaDroppedByRebase,
   acRows,
   buildSave,
-  canRemoveLast,
   commandErrorDetail,
   confirmMarkedLabel,
   divergence,
@@ -17,7 +13,6 @@ import {
   externallyChanged,
   failureDetail,
   isDirty,
-  lastRemovalAvailability,
   milestoneOptions,
   optionsFor,
   rebaseOnto,
@@ -106,7 +101,7 @@ describe("ラベルの増減", () => {
   });
 
   it("カンマを含むラベルの追加を拒み、2 件に分かれることを理由に述べる", () => {
-    // `--add-label "b,c"` writes `b` と `c` の 2 件 (v1.49.3 実測)。作成モーダルとタグには同じ規則が
+    // `--add-label "b,c"` writes `b` と `c` の 2 件 (v1.50.1 実測)。作成モーダルとタグには同じ規則が
     // 先に掛かっており (doc-10 §7)、同じ入力が作成では拒まれ編集では通る非対称がここで閉じる。
     const session = setField(startSession(taskView({ labels: ["a"] })), "labels", ["a", "b,c"]);
     expect(buildSave(session)).toEqual({
@@ -117,7 +112,7 @@ describe("ラベルの増減", () => {
 
   it("カンマを含む既存ラベルの削除を拒み、削除できないことを理由に述べる", () => {
     // 追加側と結末が違うので理由文も別である: `--remove-label "x,y"` は値を 2 件へ分けたうえで、その
-    // どちらもタスクに無いので 1 件も消さずに終了コード 0 と `Updated` を出す (v1.49.3 実測)。発行すれば
+    // どちらもタスクに無いので 1 件も消さずに終了コード 0 と `Updated` を出す (v1.50.1 実測)。発行すれば
     // 起きなかった削除を成功として報告することになり、ラベルは divergence の突き合わせにも入っていない。
     const session = setField(startSession(taskView({ labels: ["x,y"] })), "labels", []);
     expect(buildSave(session)).toEqual({
@@ -134,7 +129,7 @@ describe("ラベルの増減", () => {
   });
 });
 
-describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
+describe("assignee の全置換 (doc-5 §3, TASK-57・TASK-151・TASK-153)", () => {
   it("既存を含む全集合を --assignee へ渡す", () => {
     const view = taskView({ assignee: ["@takkyun"] });
     const session = setField(startSession(view), "assignee", ["@takkyun", "@someone"]);
@@ -148,15 +143,15 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
     expect(editOf(ready(titleOnly).action)).toEqual({ title: "T2" });
   });
 
-  it("最後の 1 件は削除できない", () => {
-    // `-a ""` も、区切りだけで解析結果が空になる値も、終了コード 0 で何も変えない（実測）。
+  it("最後の 1 件を消すと空集合を送り、解除になる", () => {
+    // `-a ""` が一覧を空にする（v1.50.1 実測）。区切りだけで解析結果が空になる値も同じ要求なので、
+    // 同じ空集合として届く。
     const session = setField(startSession(taskView({ assignee: ["@takkyun"] })), "assignee", []);
-    expect(buildSave(session)).toEqual({ state: "refused", reason: emptyAssigneeReason() });
-    expect(canRemoveLast(["@takkyun"])).toBe(false);
+    expect(editOf(ready(session).action)).toEqual({ assignee: [] });
   });
 
   it("1 件の名前にカンマを含む保存は拒み、2 件に分かれることを理由に述べる", () => {
-    // 編集側の `-a` は値をカンマで分ける（v1.49.3 実測。作成側は分割しない）ので、"dave,erin" を
+    // 編集側の `-a` は値をカンマで分ける（v1.50.1 実測。作成側は分割しない）ので、"dave,erin" を
     // 1 件の assignee として書く手段は無い。発行してから食い違いを知るのではなく保存前に拒む。
     const view = taskView({ assignee: ["dave"] });
     const session = setField(startSession(view), "assignee", ["dave,erin"]);
@@ -167,15 +162,26 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
   });
 
   it("空だったタスクへ足した 1 件は、戻せば保存対象でなくなる", () => {
-    // 最後の 1 件の削除を差し控える理由は「CLI に空集合化の手段が無い」だが、読み取り時点で空
-    // だった一覧にはその制約が掛からない — 戻すと触れた項目でなくなり `-a` を送らないため。
-    // 差し控えると、打ち間違いを取り消す手段がセッションの破棄しか無くなる。
+    // 読み取り時点で空だった一覧を空へ戻すのは 触れた項目 でなくなることであって、空集合化の
+    // 要求ではない — `-a` を送らない。空集合化が行えるようになっても、この区別は残る。
     const view = taskView({ assignee: [] });
     let session = setField(startSession(view), "assignee", ["alcie"]);
     expect(isDirty(session)).toBe(true);
     session = setField(session, "assignee", []);
     expect(isDirty(session)).toBe(false);
     expect(buildSave(session).state).toBe("nothingToSave");
+  });
+
+  it("解除したのに残っていれば事後通知に載る", () => {
+    // 空集合化は `-a ""` で送る（`--clear-*` フラグが無い唯一の欄。doc-5 §3.5）。この形は、上位版が
+    // 空値を沈黙無変更へ戻したときに終了コード 0 の成功として報告される — その 1 通りの壊れ方を
+    // 拾うのが事後通知である。送った空集合を undefined と同じに扱っていると、ここが黙る。
+    expect(divergence({ assignee: [] }, taskView({ assignee: [] }))).toEqual([]);
+    expect(divergence({ assignee: [] }, taskView({ assignee: ["@takkyun"] }))).toEqual(["assignee"]);
+    expect(divergence({ references: [] }, taskView({ references: ["u"] }))).toEqual(["References"]);
+    expect(divergence({ dependencies: [] }, taskView({ dependencies: ["TASK-2"] }))).toEqual([
+      "dependencies",
+    ]);
   });
 
   it("再読込結果の assignee が送った集合と違えば事後通知に載る", () => {
@@ -188,26 +194,7 @@ describe("assignee の非空全置換 (doc-5 §3, TASK-57・TASK-151)", () => {
   });
 });
 
-describe("最後の 1 件の削除を差し控える条件 (doc-8 §6)", () => {
-  it("読み取り時点で空だった一覧では差し控えない", () => {
-    expect(lastRemovalAvailability([], emptyAssigneeReason())).toEqual({ state: "ready" });
-    expect(lastRemovalAvailability([], emptyReferencesReason())).toEqual({ state: "ready" });
-    expect(lastRemovalAvailability([], emptyDependenciesReason())).toEqual({ state: "ready" });
-  });
-
-  it("読み取り時点で 1 件以上あった一覧では、その理由を述べて差し控える", () => {
-    expect(lastRemovalAvailability(["@takkyun"], emptyAssigneeReason())).toEqual({
-      state: "withheld",
-      reason: emptyAssigneeReason(),
-    });
-    expect(lastRemovalAvailability(["TASK-2"], emptyDependenciesReason())).toEqual({
-      state: "withheld",
-      reason: emptyDependenciesReason(),
-    });
-  });
-});
-
-describe("References・dependencies の非空全置換 (doc-5 §3.1)", () => {
+describe("References・dependencies の全置換 (doc-5 §3.1)", () => {
   it("既存を含む全集合を渡す", () => {
     const view = taskView({ references: ["https://example.test/1"] });
     const session = setField(startSession(view), "references", [
@@ -220,14 +207,9 @@ describe("References・dependencies の非空全置換 (doc-5 §3.1)", () => {
     ]);
   });
 
-  it("最後の 1 件は削除できない", () => {
-    expect(canRemoveLast(["only"])).toBe(false);
-    expect(canRemoveLast(["a", "b"])).toBe(true);
-  });
-
   it("1 件の参照にカンマを含む保存を拒む", () => {
     // `--ref` は参照ごとに繰り返して渡すので連結は起きないが、**CLI は各値をカンマで分ける**
-    // （v1.49.3 実測）。座標を持つ地図の URL がそのまま当たるので、繰り返し渡していることは
+    // （v1.50.1 実測）。座標を持つ地図の URL がそのまま当たるので、繰り返し渡していることは
     // 掛けない理由にならない。
     const session = setField(
       startSession(taskView({ references: ["https://a.test/1"] })),
@@ -255,19 +237,16 @@ describe("References・dependencies の非空全置換 (doc-5 §3.1)", () => {
     });
   });
 
-  it("空集合にする保存はアダプターへ出す前に拒む", () => {
+  it("空集合にする保存は空の一覧として出る（アダプターが --clear-* へ写す）", () => {
     const references = setField(startSession(taskView({ references: ["u"] })), "references", []);
-    expect(buildSave(references)).toEqual({ state: "refused", reason: emptyReferencesReason() });
+    expect(editOf(ready(references).action)).toEqual({ references: [] });
 
     const dependencies = setField(
       startSession(taskView({ dependencies: ["TASK-1"] })),
       "dependencies",
       [],
     );
-    expect(buildSave(dependencies)).toEqual({
-      state: "refused",
-      reason: emptyDependenciesReason(),
-    });
+    expect(editOf(ready(dependencies).action)).toEqual({ dependencies: [] });
   });
 });
 
@@ -314,7 +293,7 @@ describe("AC の項目単位操作と全体差し替えの区別 (doc-5 §3)", (
   });
 });
 
-// v1.49.3 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
+// v1.50.1 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
 // --check-ac / --uncheck-ac は削除後の番号を指す。--ac の追加は末尾に付き番号をずらさない。
 describe("AC 項目単位操作の番号を削除後の並びへ写す", () => {
   const three = taskView({
@@ -337,7 +316,7 @@ describe("AC 項目単位操作の番号を削除後の並びへ写す", () => {
 
   it("項目が 2 件のときも範囲外にならない", () => {
     // 素の番号だと --remove-ac 1 --check-ac 2 になり、CLI は
-    // "Acceptance criterion #2 not found" で始まる文で終了コード 1（2026-08-12 に v1.49.3 で実測）。
+    // "Acceptance criterion #2 not found" で始まる文で終了コード 1（2026-08-22 に v1.50.1 で実測）。
     const two = taskView({ acceptanceCriteria: criteria(["one", false], ["two", false]) });
     let session = toggleAcRemoval(startSession(two), 1);
     session = toggleAcCheck(session, 2);
@@ -487,11 +466,13 @@ describe("保存操作の可否と理由 (doc-5 §5)", () => {
 
   it("先取り拒否の理由をそのまま出す", () => {
     const refused = buildSave(
-      setField(startSession(taskView({ references: ["u"] })), "references", []),
+      setField(startSession(taskView({ references: ["https://a.test/1"] })), "references", [
+        "https://m.test/@1,2",
+      ]),
     );
     expect(saveAvailability(refused, { fileMissing: false, busy: false })).toEqual({
       state: "blocked",
-      reason: emptyReferencesReason(),
+      reason: commaReason("References", "https://m.test/@1,2"),
     });
   });
 
@@ -614,7 +595,7 @@ describe("Type 編集の非提供 (doc-8 §4)", () => {
     expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("on this screen");
   });
 
-  it("states a reason that is true of v1.49.3 (doc-10 §1)", () => {
+  it("states a reason that is true of v1.50.1 (doc-10 §1)", () => {
     // Not "the CLI has no way": `task edit` and `task create` both take `--type` (measured
     // 2026-08-17). What is absent is an operation on Atlas's side, so neither the flag name nor a
     // claim about the CLI belongs in the sentence.
