@@ -30,7 +30,7 @@
 //!
 //! The pre-update check ([`SyncState::check_conflict`]) is the **preventable** tier: any external
 //! change that lands up to the moment of the check is caught, and the update is withheld rather than
-//! overwriting it. It is *not* atomic with the CLI write — v1.49.3 offers no expected-version update
+//! overwriting it. It is *not* atomic with the CLI write — v1.50.1 offers no expected-version update
 //! and no shared lock (doc-9 §4.1), so a change slipping in during the 照合後競合窓 (between the
 //! check and the CLI's write) to the *same* file can still be overwritten. That loss is the
 //! best-effort limit doc-9 fixes as the guarantee level; it is documented, not silently closed. This
@@ -563,7 +563,7 @@ enum TargetResolution {
     ReferenceFollowing(Vec<PathBuf>),
     /// 照合不能 (doc-9 §4.2.4): a mutation whose set this design defines no check for. Refused before
     /// launch rather than let through — an unchecked read-modify-write is exactly the overwrite
-    /// doc-9 §4.1 exists to prevent. No v1.49.3 milestone operation lands here any more; what remains
+    /// doc-9 §4.1 exists to prevent. No v1.50.1 milestone operation lands here any more; what remains
     /// is an id the model does not carry, which leaves nothing to check against.
     Unresolvable { what: &'static str, detail: String },
 }
@@ -700,7 +700,7 @@ impl DirectWriter for MilestoneDescriptions<'_> {
     }
 }
 
-/// The milestone an operand names. v1.49.3 takes either the id or the title (`milestone archive
+/// The milestone an operand names. v1.50.1 takes either the id or the title (`milestone archive
 /// <name>` is documented as "by id or title"), and compares both the way [`names_milestone`] does
 /// (doc-9 §4.2.1) — the same comparison, so an operand Atlas resolves is one the CLI resolves too.
 fn find_milestone<'a>(model: &'a ProjectModel, name: &str) -> Option<&'a crate::domain::Milestone> {
@@ -712,7 +712,7 @@ fn find_milestone<'a>(model: &'a ProjectModel, name: &str) -> Option<&'a crate::
 /// as a reference when it matches the id *or* the title modulo surrounding whitespace and case
 /// (doc-9 §4.2.1), and a set that missed those would leave them rewritten unchecked. Tasks outside
 /// `tasks/` are excluded because no operation was observed to touch them, and files the CLI does not
-/// in fact rewrite (a value already equal to the id) are kept in: that skip is v1.49.3 behaviour, not
+/// in fact rewrite (a value already equal to the id) are kept in: that skip is v1.50.1 behaviour, not
 /// a contract, so the set is the upper bound of what may be rewritten (doc-9 §4.2.2).
 fn referencing_tasks(model: &ProjectModel, milestone: &crate::domain::Milestone) -> Vec<PathBuf> {
     model
@@ -728,7 +728,7 @@ fn referencing_tasks(model: &ProjectModel, milestone: &crate::domain::Milestone)
         .collect()
 }
 
-/// Whether a value names this milestone, the way v1.49.3 decides it (doc-9 §4.2.1): the id and the
+/// Whether a value names this milestone, the way v1.50.1 decides it (doc-9 §4.2.1): the id and the
 /// title are both compared ignoring surrounding whitespace and case — `"  M-0  "` was observed to be
 /// rewritten by a rename of `m-0`. Nothing else is ignored (an inserted inner space did *not* match).
 fn names_milestone(milestone: &crate::domain::Milestone, value: &str) -> bool {
@@ -1623,7 +1623,7 @@ task_prefix: \"TASK\"\n";
 
     // --- 直接書き込み操作 (doc-5 §1, decision-21, TASK-65 AC #4/#5/#6) --------------------------
 
-    /// A milestone file in the shape v1.49.3's `milestone add -d` writes (measured 2026-08-12),
+    /// A milestone file in the shape v1.50.1's `milestone add -d` writes (measured 2026-08-22),
     /// with a second `##` section after the description so "only 説明の本文範囲 is replaced" has
     /// something on both sides of it to be true about.
     const MILESTONE_FILE: &str =
@@ -2101,7 +2101,7 @@ task_prefix: \"TASK\"\n";
             "tasks/task-2 - b.md",
             &milestone_task("TASK-2", "  phase ONE  "),
         );
-        // The id written with padding and in upper case: v1.49.3 rewrites this one too (doc-9
+        // The id written with padding and in upper case: v1.50.1 rewrites this one too (doc-9
         // §4.2.1), so an id compared exactly would leave it out of the set.
         temp.write(
             "tasks/task-3 - c.md",
@@ -2204,7 +2204,7 @@ task_prefix: \"TASK\"\n";
 
     #[test]
     fn a_milestone_operand_may_name_the_title_instead_of_the_id() {
-        // v1.49.3 takes "id or title" as the operand; resolving only ids would refuse a legitimate
+        // v1.50.1 takes "id or title" as the operand; resolving only ids would refuse a legitimate
         // operation as unresolvable.
         let temp = milestone_root();
         let source = WorkingTree::new(&temp.path);

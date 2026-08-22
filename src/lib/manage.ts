@@ -28,9 +28,9 @@
  *
  * - **Touched, not merely different**. A field the user did not touch is never sent, so issuing a
  *   文書更新 cannot revert a facet someone else changed between the read and the save.
- * - **The CLI's limits are anticipated, not discovered** (doc-5 §5). An operation v1.49.3 cannot
+ * - **The CLI's limits are anticipated, not discovered** (doc-5 §5). An operation v1.50.1 cannot
  *   perform, and one the boundary refuses before launch (doc-9 §4.2), is withheld here rather than
- *   issued and rejected. The one exception is the 直接書き込み操作, which v1.49.3 cannot perform and
+ *   issued and rejected. The one exception is the 直接書き込み操作, which v1.50.1 cannot perform and
  *   Atlas offers anyway — under decision-21's three conditions, not because the gap was awkward.
  * - **A control that is on screen but cannot be pressed says why** (doc-11 §5). What is *not* on
  *   screen says nothing: TASK-123 dropped the 提供しない操作区画 that listed the operations Atlas
@@ -131,8 +131,8 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
  * status・labels・priority・milestone・AC.
  *
  * Narrower than what the CLI accepts, and narrowed by product judgment rather than by capability:
- * v1.49.3's `task create` also takes `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` and stores
- * them in the created file (doc-5 §3, measured 2026-08-12 on v1.49.3). The form holds what identifies and
+ * v1.50.1's `task create` also takes `-a`・`--plan`・`--notes`・`--ref`・`--depends-on` and stores
+ * them in the created file (doc-5 §3, measured 2026-08-22 on v1.50.1). The form holds what identifies and
  * classifies a task at the moment it is created; plan・notes・references・dependencies accrue while
  * the work runs and are edited from タスク詳細 (doc-8 §6), so a field here would only move the same
  * input earlier. assignee is the one omission with no create-time substitute, and is closed on the
@@ -264,7 +264,7 @@ export function buildDocCreate(input: DocCreateInput): IssuePlan {
 
 /**
  * The 文書更新 form's values. `content` is the **whole** body: `doc update --content` full-replaces
- * it and v1.49.3 has no partial update (doc-5 §3.1), so the editor is seeded with the body as read
+ * it and v1.50.1 has no partial update (doc-5 §3.1), so the editor is seeded with the body as read
  * and a partial edit is reduced to handing back the edited whole (doc-5 §3.2, AC #2).
  */
 export interface DocDraft {
@@ -328,7 +328,7 @@ function docChanged(session: DocSession, field: DocField): boolean {
     case "content":
       return draft.content !== (baseline.body ?? "");
     case "docType":
-      // `""` is 変更しない, not 未設定へ戻す: v1.49.3 has no way to unset a document's type.
+      // `""` is 変更しない, not 未設定へ戻す: v1.50.1 has no way to unset a document's type.
       return draft.docType !== "" && draft.docType !== (baseline.type ?? "");
     case "path":
       // No baseline to compare against (see `DocDraft.path`), so any value is a move request.
@@ -407,7 +407,7 @@ export function buildDocUpdate(session: DocSession): DocUpdatePlan {
         break;
       case "tags": {
         // 空集合の tags is タグ全消し (doc-10 §5), not "no tags to send": `--tags ""` clears them
-        // (v1.49.3 実測). What must never reach here is an *untouched* tags field — that one is
+        // (v1.50.1 実測). What must never reach here is an *untouched* tags field — that one is
         // absent from `dirty`, so the flag is not emitted at all and someone else's tags survive.
         const tags = cleaned(draft.tags);
         const bad = firstWithComma(tags);
@@ -502,7 +502,7 @@ export function buildMilestoneAdd(input: MilestoneAddInput): IssuePlan {
  * user commits — doc-10 §6 forbids issuing one of these without that list, because doc-9 §4.2.3
  * treats "the user decided from what they saw" as the thing the check protects.
  *
- * Wider than the read layer's reference resolution on purpose: v1.49.3 treats a value as a reference
+ * Wider than the read layer's reference resolution on purpose: v1.50.1 treats a value as a reference
  * when it matches the id *or* the title modulo surrounding whitespace and case — `"  M-0  "` is
  * rewritten by a rename of `m-0` (doc-9 §4.2.1). Tasks outside `tasks/` are excluded because no
  * operation was observed to touch them.
@@ -669,8 +669,8 @@ export function buildMilestoneArchive(milestone: Milestone): IssuePlan {
  * doc-10 §7's comma-in-a-label rule, and for the same kind of reason: the value would not survive
  * the round trip it appears to make.
  *
- * The reason is **not** "the CLI cannot do it" — v1.49.3's `milestone add -d` writes such a
- * description without complaint (measured 2026-08-12). doc-10 §1 asks that a stated reason be a
+ * The reason is **not** "the CLI cannot do it" — v1.50.1's `milestone add -d` writes such a
+ * description without complaint (measured 2026-08-22). doc-10 §1 asks that a stated reason be a
  * true one.
  */
 export function milestoneDescriptionHeadingReason(): string {
@@ -786,7 +786,7 @@ export function taskCreateNote(): string {
  *
  * Names only. The flags they map to (`-a`・`--plan`・`--notes`・`--ref`・`--depends-on`) were shown
  * until TASK-123 so that the absence could not read as「CLI に無い」— the CLI does accept them
- * (doc-5 §3, measured 2026-08-12). With the reasons gone there is no false explanation left to guard
+ * (doc-5 §3, measured 2026-08-22). With the reasons gone there is no false explanation left to guard
  * against, and a flag name is doc-11 §8's 発行手段の記述 with nothing exempting it any more.
  */
 export function taskCreateLaterFields(): readonly string[] {

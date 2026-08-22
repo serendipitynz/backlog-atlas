@@ -240,7 +240,7 @@ export type BodyImagePlan =
   | { kind: "remote"; url: string }
   | { kind: "neither" };
 
-/** The one prefix a 本文 uses to name a 添付画像 — Backlog CLI v1.49.3's, copied (doc-8 §9.2). */
+/** The one prefix a 本文 uses to name a 添付画像 — Backlog CLI v1.50.1's, copied (doc-8 §9.2). */
 const ATTACHMENT_PREFIX = "/assets/";
 
 /**
