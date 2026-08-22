@@ -15,6 +15,29 @@ const ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecc";
 
 class WebDriverError extends Error {}
 
+/**
+ * The opaque id inside a returned element object.
+ *
+ * The W3C key is tried first and the object's single remaining value second, because a remote end
+ * that answers under a different key is otherwise indistinguishable from one that found nothing:
+ * the id comes back `undefined`, travels into the next request's path, and the driver rejects
+ * `.../element/undefined/click` — which reads as a missing element rather than a key this code did
+ * not know. The spec gives the object exactly one property, so the fallback is not a guess.
+ */
+function handleOf(each, selector) {
+  const direct = each?.[ELEMENT_KEY];
+  if (typeof direct === "string") {
+    return direct;
+  }
+  const values = Object.values(each ?? {});
+  if (values.length === 1 && typeof values[0] === "string") {
+    return values[0];
+  }
+  throw new WebDriverError(
+    `the element returned for ${selector} carries no usable handle: ${JSON.stringify(each)}`,
+  );
+}
+
 async function call(base, method, path, body) {
   const response = await fetch(`${base}${path}`, {
     method,
@@ -86,7 +109,7 @@ class Session {
       using: "css selector",
       value: selector,
     });
-    return (found ?? []).map((each) => each[ELEMENT_KEY]);
+    return (found ?? []).map((each) => handleOf(each, selector));
   }
 
   async find(selector) {
