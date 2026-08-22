@@ -1,10 +1,10 @@
 ---
 id: TASK-105
 title: 代表的な利用者操作をアプリ全体で通す GUI E2E を用意する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-01 00:44'
-updated_date: '2026-08-22 05:12'
+updated_date: '2026-08-22 06:05'
 labels:
   - test
   - 'kind:chore'
