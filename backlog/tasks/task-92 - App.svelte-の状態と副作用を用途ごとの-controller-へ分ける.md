@@ -1,10 +1,10 @@
 ---
 id: TASK-92
 title: App.svelte の状態と副作用を用途ごとの controller へ分ける
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-22 07:50'
+updated_date: '2026-08-22 10:30'
 labels:
   - maintainability
   - ui
