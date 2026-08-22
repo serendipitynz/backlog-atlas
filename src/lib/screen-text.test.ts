@@ -15,7 +15,7 @@
  * sequence that looks like a comment start and is not.
  *
  * `DESIGN_REFERENCE` requires the `§`, so a bare `doc-1` stays legal (it is a Backlog 文書 id) and
- * prose like「doc-5 の非空全置換」would pass. That is the deliberate trade: 文書 id reach real screen
+ * prose like「doc-5 の全置換」would pass. That is the deliberate trade: 文書 id reach real screen
  * text, section numbers do not.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason `wire-fixture.test.ts`

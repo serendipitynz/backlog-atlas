@@ -674,7 +674,7 @@ export type AcEdit =
  * adapter refuses an edit that sets nothing. `assignee` / `references` / `dependencies` are 全置換 —
  * the value is the whole new set, and an empty array clears the field: the adapter sends
  * `--clear-refs` / `--clear-deps` / `-a ""` for it (doc-5 §3.1). **An empty array meant "refused" here
- * through v1.50.1**, where those three were 沈黙無変更 (doc-5 §3.5), so a reader coming from that
+ * through v1.49.3**, where those three were 沈黙無変更 (doc-5 §3.5), so a reader coming from that
  * period must not read the absent key and the empty array as the same request.
  */
 export interface TaskEdit {

@@ -36,7 +36,7 @@
  * - **The CLI's limits are anticipated, not discovered** (doc-8 §6, AC #6). Every operation the
  *   confirmed version lacks is withheld here rather than issued and refused by the adapter. What that
  *   set holds shrinks as the requirement moves: emptying references, dependencies and the assignee
- *   list were three of its members through v1.50.1 and are none of them now (v1.50.1, TASK-153).
+ *   list were three of its members through v1.49.3 and are none of them now (v1.50.1, TASK-153).
  * - **A withheld operation says why** (doc-5 §5). Nothing is silently missing: either it is offered,
  *   or it carries the reason it is not.
  */
@@ -374,7 +374,7 @@ export interface Submitted {
   status?: string;
   priority?: string;
   milestone?: string;
-  /** The whole non-empty set sent, as `references`/`dependencies` are. */
+  /** The whole set sent, as `references`/`dependencies` are — empty included (doc-5 §3.1). */
   assignee?: string[];
   plan?: string;
   /** Replace only: an append cannot be compared against the result. */

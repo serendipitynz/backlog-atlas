@@ -302,10 +302,10 @@ pub struct TaskEdit {
     /// `--assignee` sets the whole assignee set (doc-5 §3), and is the whole GUI route for assignee
     /// (TASK-57). `task edit -a` reads its value as a comma-separated set and replaces the
     /// frontmatter list with it, however many entries either side had (measured 2026-08-22 on
-    /// v1.50.1; `task create -a` does *not* split, which is what doc-5 §3 recorded for both until
-    /// TASK-151 measured them apart). `None` leaves it untouched; `Some(empty)` clears the list —
-    /// `-a ""` writes `assignee: []` (measured 2026-08-22 on v1.50.1; through v1.49.3 the same value
-    /// exited 0 and changed nothing, doc-5 §3.5).
+    /// v1.50.1). **`task create -a` splits the same way on v1.50.1** — it did not through v1.49.3,
+    /// which is the asymmetry TASK-151 measured and doc-5 §3.5 records as gone. `None` leaves the
+    /// list untouched; `Some(empty)` clears it — `-a ""` writes `assignee: []` (measured 2026-08-22
+    /// on v1.50.1; through v1.49.3 the same value exited 0 and changed nothing, doc-5 §3.5).
     pub assignee: Option<Vec<String>>,
     pub plan: Option<String>,
     pub notes: NoteEdit,
@@ -718,7 +718,7 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
         //
         // **This is the one clearing of the three that has no `--clear-*` flag** (v1.50.1 has none
         // for the assignee), so it is the one whose regression would be silent: were a later version
-        // to return the empty value to the 沈黙無変更 it was through v1.50.1, Atlas would report a
+        // to return the empty value to the 沈黙無変更 it was through v1.49.3, Atlas would report a
         // success that did not happen. References and dependencies below take the flag form for
         // exactly that reason.
         inv = inv.opt("--assignee", assignee.join(","));
@@ -745,7 +745,7 @@ fn plan_task_edit(task_id: &str, edit: &TaskEdit) -> Result<Invocation, RejectRe
         if deps.is_empty() {
             // `--clear-deps` rather than `--depends-on ""`, though v1.50.1 performs both (measured):
             // the flag fails loudly if a later version drops it, whereas the empty value was a
-            // 沈黙無変更 through v1.50.1 and a return to that would be reported as a success. Which
+            // 沈黙無変更 through v1.49.3 and a return to that would be reported as a success. Which
             // failure a version drift produces is the whole of the choice — decision-7 fixes no upper
             // bound and relies on the CLI itself rejecting what it no longer accepts.
             inv = inv.flag("--clear-deps");
@@ -2569,7 +2569,7 @@ mod tests {
     fn emptying_references_uses_the_flag_rather_than_the_empty_value() {
         // Both forms clear on v1.50.1 (measured 2026-08-22). The flag is the one issued because a
         // later version that dropped it would fail loudly, while a later version that returned
-        // `--ref ""` to the 沈黙無変更 it was through v1.50.1 would be reported as a success.
+        // `--ref ""` to the 沈黙無変更 it was through v1.49.3 would be reported as a success.
         let cli = FakeCli::supported();
         run_one(
             UpdateOperation::TaskEdit {
