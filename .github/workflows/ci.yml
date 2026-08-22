@@ -95,22 +95,40 @@ jobs:
 
   # 代表的な利用者操作をアプリ全体で通す GUI E2E (TASK-105, decision-40). Not a merge requirement —
   # the ruleset names three checks and this is deliberately not one of them (decision-40 §5), so a
-  # WebView2 or Edge Driver update reddening it does not block a pull request that did not cause it.
+  # WebKitGTK or driver update reddening it does not block a pull request that did not cause it.
   #
-  # Windows and not Linux, and that is the whole reason this job exists here at all: `tauri-driver`
-  # supports Linux and Windows only, and a Linux runner would have to `apt-get install` the WebView
-  # development packages before it could link the crate — the third copy of the list that the comment
-  # below refuses. windows-latest needs nothing installed for the WebView: WebView2 is part of the
-  # image and so is the Edge Driver that automates it.
+  # **Linux is the only platform this can run on**, which is not what tauri-driver's own README says.
+  # It supports Linux and Windows, but only the Linux half reaches a Tauri app: Tauri asks wry to
+  # allow automation and wry implements that for webkitgtk alone, so on Windows the WebView2 never
+  # opens a debugging port and session creation fails outright. Measured on this repository's own
+  # first run of this job — see decision-40.
+  #
+  # **So this job writes the WebView apt list a third time, and decision-33 §3 refused exactly that.**
+  # What changed is not the objection — a third copy is still one nobody re-derives — but what it is
+  # weighed against: §3 traded it for one Linux-only `return`, and this trades it for having an
+  # automated E2E at all. decision-33's 2026-08-22 revision records the narrowing, doc-13 §3.4 counts
+  # the copies, and AGENTS.md Toolchain names all three. Change them together.
   e2e:
-    name: e2e (windows-latest)
-    runs-on: windows-latest
-    # The bound is a backstop, not a budget: this job builds the release binary and then drives a
-    # real window, and a driver that never answers would otherwise sit until the workflow's own
-    # six-hour limit.
+    name: e2e (ubuntu-24.04)
+    # Pinned like `release.yml`'s Linux job, and for its reason: the WebView is a system library here
+    # and which one follows from the lockfile (webkit2gtk-4.1, libsoup-3.0). ubuntu-latest would move.
+    runs-on: ubuntu-24.04
+    # A backstop, not a budget: this job builds the binary and then drives a real window, and a driver
+    # that never answers would otherwise sit until the workflow's own six-hour limit.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      # The first seven are README's "Building from source" list, unchanged — the third copy the
+      # comment above is about. `webkit2gtk-driver` is this job's own: it provides WebKitWebDriver,
+      # which tauri-driver starts. `xvfb` is on the image already and installed anyway, so that what
+      # this job needs is written here rather than inferred from an image nobody in this tree pins.
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            webkit2gtk-driver xvfb
 
       - uses: pnpm/action-setup@v4
 
@@ -139,24 +157,15 @@ jobs:
       # depended on; nothing in Cargo.toml could express it.
       - run: cargo install tauri-driver --locked
 
-      # `tauri-driver` looks for `msedgedriver.exe` on PATH. The image ships it in the directory
-      # `EDGEWEBDRIVER` names and leaves that directory off PATH, so the path is handed over
-      # explicitly — and the job fails here, naming the file, rather than inside the driver.
-      - name: Point the E2E at the runner's Edge Driver
-        shell: pwsh
-        run: |
-          $driver = Join-Path $env:EDGEWEBDRIVER 'msedgedriver.exe'
-          if (-not (Test-Path $driver)) {
-            throw "msedgedriver.exe was not at $driver"
-          }
-          "ATLAS_E2E_NATIVE_DRIVER=$driver" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       # A release build, not a bundle: it embeds the frontend and carries tauri.conf.json's CSP,
       # which is the form decision-28 says is the only one where the CSP is in force at all.
       - run: pnpm run build
       - run: cargo build --release --manifest-path src-tauri/Cargo.toml
 
-      - run: pnpm run e2e
+      # `xvfb-run` wraps the whole suite rather than the app: tauri-driver, WebKitWebDriver and the
+      # window are all started below this process and all need the same DISPLAY.
+      - run: xvfb-run -a pnpm run e2e
+
 
 # Why the `rust` job is macOS and Windows, and deliberately not Linux.
 #
@@ -170,9 +179,11 @@ jobs:
 # compilation of one `return`.
 #
 # **Cost of the alternative.** A Linux runner cannot link the crate until it has
-# `apt-get install`ed the WebView development packages, and that list already lives in exactly
-# two places — README's "Building from source" and `release.yml`, which AGENTS.md Toolchain says
-# to change together. Naming it here would make three, and the third would be the copy nobody
-# re-derives.
+# `apt-get install`ed the WebView development packages, and that list is copied per job — so a
+# Linux `rust` job would be a *fourth* copy, after README's "Building from source",
+# `release.yml`, and the `e2e` job above. AGENTS.md Toolchain says to change them together, and
+# each further copy is one more nobody re-derives. **The `e2e` job paying that price does not
+# make it free here**: it pays it because it cannot run anywhere else at all (decision-40),
+# where this would buy the compilation of one `return`.
 #
 # The Linux bundle is still built on every `v*` tag by `release.yml`.
