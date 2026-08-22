@@ -9,8 +9,8 @@
 // the ledger entry survive the process, which is the one an in-app re-read cannot make.
 //
 // Run it with `pnpm run e2e`, after `pnpm run build && cargo build --release`. It needs
-// `tauri-driver` on PATH and a Backlog CLI on PATH, and it does not run on macOS — see
-// `environment.mjs`.
+// `tauri-driver` on PATH and a Backlog CLI on PATH, and **it runs on Linux only** — the reason is
+// upstream and `environment.mjs` carries it.
 
 import {
   FIXTURE_TASKS,
@@ -25,6 +25,14 @@ import { countOf, openSession, propertyOf, textsOf } from "./webdriver.mjs";
 
 const PORT = 4444;
 const NATIVE_PORT = 4445;
+/**
+ * The first wait after a window opens gets its own budget. It is not the same wait as the others: the
+ * app has still to reach the boundary, resolve the Backlog CLI and decide what to draw, and the CI
+ * runner does all of that with no GPU — `libEGL` falls back to software rendering there and session
+ * creation alone took ~32s on the first Linux run. Every later wait keeps the default, because by
+ * then the process is warm and a slow one means something is wrong rather than starting.
+ */
+const APP_START_MS = 90_000;
 const EDITED_TITLE = "E2E が書き換えた題";
 
 const EMPTY_LEDGER_ENTRY = "main.screen p.status button.link";
@@ -77,6 +85,28 @@ function assert(condition, message) {
   }
 }
 
+/**
+ * What the window is showing, for a failure to carry with it.
+ *
+ * A route that fails on "the empty-ledger prompt never appeared" and stops there has said which
+ * selector it wanted and nothing about what it got — the app could be loading, fatally stopped, or
+ * standing in the CLI 縮退 band, and all three read the same. So every failure that reaches `main`
+ * takes the screen's own words with it.
+ */
+async function describeScreen(session) {
+  try {
+    return await session.executeScript(`
+      const text = (document.body.innerText ?? "").trim().replace(/\\n{2,}/g, "\\n").slice(0, 1200);
+      const bands = [...document.querySelectorAll("[data-band]")].map((each) => each.dataset.band);
+      const shape = [...document.querySelectorAll("main.screen > *, main.screen p.status, main.screen p.fatal")]
+        .map((each) => each.tagName.toLowerCase() + (each.className ? "." + String(each.className).split(" ").join(".") : ""));
+      return JSON.stringify({ bands, shape, text }, null, 2);
+    `);
+  } catch (error) {
+    return `(the screen could not be read: ${error.message})`;
+  }
+}
+
 /** Index of the first card whose text carries `title`, or -1. */
 async function cardIndexFor(session, title) {
   const texts = await textsOf(session, CARD);
@@ -85,7 +115,11 @@ async function cardIndexFor(session, title) {
 
 async function registerFixture(session, fixture) {
   step("登録: the empty ledger names the way in");
-  await waitUntil("the empty-ledger prompt", async () => (await countOf(session, EMPTY_LEDGER_ENTRY)) === 1);
+  await waitUntil(
+    "the empty-ledger prompt",
+    async () => (await countOf(session, EMPTY_LEDGER_ENTRY)) === 1,
+    APP_START_MS,
+  );
   await session.click(await session.find(EMPTY_LEDGER_ENTRY));
 
   await waitUntil("the 登録 form", async () => (await countOf(session, REGISTER_FIELDS)) >= 3);
@@ -191,9 +225,12 @@ async function editAndSave(session, fixture) {
 
 async function expectSurvivesRestart(driver, binary, fixture) {
   step("再読込: the app is restarted and asked for the same things again");
-  const session = await openSession(driver.base, { application: binary });
-  try {
-    await waitUntil("the restored row", async () => (await countOf(session, LANE_HEAD)) >= 1);
+  await withSession(driver, binary, async (session) => {
+    await waitUntil(
+      "the restored row",
+      async () => (await countOf(session, LANE_HEAD)) >= 1,
+      APP_START_MS,
+    );
     assert(
       (await countOf(session, EMPTY_LEDGER_ENTRY)) === 0,
       "the ledger came up empty, so the 登録 did not survive the restart",
@@ -206,6 +243,20 @@ async function expectSurvivesRestart(driver, binary, fixture) {
       fixtureCarriesTitle(fixture, EDITED_TITLE),
       `${EDITED_TITLE} is no longer in the fixture after the restart`,
     );
+  });
+}
+
+/**
+ * Open a session, run `body` against it, and close it — attaching the screen to whatever `body`
+ * threw, because a WebDriver session that has ended can no longer be asked what it was showing.
+ */
+async function withSession(driver, binary, body) {
+  const session = await openSession(driver.base, { application: binary });
+  try {
+    await body(session);
+  } catch (error) {
+    const screen = await describeScreen(session);
+    throw new Error(`${error.message}\n--- the window was showing ---\n${screen}`);
   } finally {
     await session.close();
   }
@@ -218,8 +269,7 @@ async function main() {
   let driver = null;
   try {
     driver = await startDriver({ port: PORT, nativePort: NATIVE_PORT });
-    const session = await openSession(driver.base, { application: binary });
-    try {
+    await withSession(driver, binary, async (session) => {
       await registerFixture(session, fixture);
       await expectSwimlane(
         session,
@@ -227,9 +277,7 @@ async function main() {
       );
       await openDetail(session, FIXTURE_TASKS[0].title);
       await editAndSave(session, fixture);
-    } finally {
-      await session.close();
-    }
+    });
     await expectSurvivesRestart(driver, binary, fixture);
   } finally {
     if (driver !== null) {
