@@ -1,5 +1,13 @@
 // Everything the GUI E2E needs standing before a single control is pressed: a Backlog root to point
 // Atlas at, the アプリ設定ディレクトリ put out of harm's way, and a running `tauri-driver`.
+//
+// **The suite runs on Linux.** `tauri-driver` supports Linux and Windows, but only the Linux half
+// reaches Atlas: Tauri asks wry to allow automation and wry implements that for webkitgtk alone —
+// every other platform gets the empty default (`wry`'s `WebContextImpl::set_allows_automation`), so
+// on Windows the WebView2 never opens a debugging port and the driver's session creation fails.
+// decision-40 carries the measurement. macOS gets as far as this file's own work and then stops,
+// which is deliberate: it is what lets the fixture, the aside and the restore be exercised from a
+// development machine.
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
@@ -9,29 +17,13 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-/**
- * Run the Backlog CLI with a fixed subcommand and an argument array (AGENTS.md Updates), reading and
- * writing under `cwd`.
- *
- * **Windows takes a different route, and it is not decoration.** npm installs the CLI as
- * `backlog.cmd`, and since the 2024 argument-injection hardening Node refuses to spawn a `.cmd`
- * without a shell — `execFile` fails with `EINVAL`. `cmd.exe /d /s /c` is therefore unavoidable, and
- * the command line is built here rather than by handing `shell: true` an array: Node concatenates
- * that array with plain spaces and no quoting, which loses every path containing one. Nothing user-
- * supplied reaches this — the arguments are temp-dir paths this script created and literals from
- * `fixture.mjs` — but the quoting stays because the *next* caller is what a missing one costs.
- */
+/** Run the Backlog CLI with a fixed subcommand and an argument array (AGENTS.md Updates). */
 function runBacklog(args, cwd) {
-  const environment = { ...process.env, BACKLOG_CWD: cwd };
-  const result =
-    process.platform === "win32"
-      ? spawnSync(process.env.COMSPEC ?? "cmd.exe", ["/d", "/s", "/c", windowsCommandLine(args)], {
-          cwd,
-          env: environment,
-          encoding: "utf8",
-          windowsVerbatimArguments: true,
-        })
-      : spawnSync("backlog", args, { cwd, env: environment, encoding: "utf8" });
+  const result = spawnSync("backlog", args, {
+    cwd,
+    env: { ...process.env, BACKLOG_CWD: cwd },
+    encoding: "utf8",
+  });
   if (result.error !== undefined && result.error !== null) {
     throw new Error(`backlog ${args[0]} could not be started: ${result.error.message}`);
   }
@@ -41,12 +33,6 @@ function runBacklog(args, cwd) {
     );
   }
   return result.stdout ?? "";
-}
-
-/** `"` is the only character cmd.exe's parser takes from the values here; the rest travel literally. */
-function windowsCommandLine(args) {
-  const quote = (value) => `"${String(value).replaceAll('"', '""')}"`;
-  return `"backlog ${args.map(quote).join(" ")}"`;
 }
 
 /** The one task the flow edits, and a second one so the swimlane draws more than one column. */
@@ -77,56 +63,48 @@ export function buildFixture() {
 
 /** Whether the fixture's managed files now carry `title` — the proof that a save reached the CLI. */
 export function fixtureCarriesTitle(fixture, title) {
-  const listed = runBacklog(["task", "list", "--plain"], fixture.projectRoot);
-  return listed.includes(title);
+  return runBacklog(["task", "list", "--plain"], fixture.projectRoot).includes(title);
 }
 
 /**
  * Where Atlas keeps `projects.toml` and `settings.toml`: `app_config_dir()`, which Tauri builds from
  * the platform's config directory and the bundle identifier. The identifier is read from
  * `tauri.conf.json` rather than spelled here, so a rename cannot leave this pointing at a directory
- * nothing writes.
+ * nothing writes. macOS is here because the preamble is exercised there; Windows is not, because the
+ * suite cannot run there at all.
  */
 export function atlasConfigDirectory() {
-  const config = JSON.parse(readFileSync(join(repositoryRoot, "src-tauri", "tauri.conf.json"), "utf8"));
-  const identifier = config.identifier;
-  if (process.platform === "win32") {
-    const roaming = process.env.APPDATA;
-    if (roaming === undefined) {
-      throw new Error("APPDATA is unset, so the アプリ設定ディレクトリ cannot be located");
-    }
-    return join(roaming, identifier);
-  }
+  const config = JSON.parse(
+    readFileSync(join(repositoryRoot, "src-tauri", "tauri.conf.json"), "utf8"),
+  );
   if (process.platform === "darwin") {
-    return join(homedir(), "Library", "Application Support", identifier);
+    return join(homedir(), "Library", "Application Support", config.identifier);
   }
-  return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), identifier);
+  return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), config.identifier);
 }
 
 const MANAGED_BY_ATLAS = ["projects.toml", "settings.toml", ".window-state.json"];
+
+const asideOf = (live) => `${live}.e2e-aside`;
 
 /**
  * Move any existing アプリ設定 aside so the run starts from an empty ledger, and give back the call
  * that puts them back.
  *
  * A fresh CI runner has none of them and this does nothing. The reason it exists is the other place
- * the suite runs: a developer's own machine, where these files are the real ledger. **On Windows the
- * directory cannot be redirected** — `dirs::config_dir()` asks `SHGetKnownFolderPath`, which does not
- * read `APPDATA` — so moving the files is the only isolation available, and it has to be the same
- * code path on Linux for there to be one path to get right.
+ * the suite runs: a developer's own machine, where these files are the real ledger.
  *
- * A backup left by a run that died is refused rather than overwritten: the second run's empty ledger
- * would otherwise become the backup, and the real one would be gone.
+ * **Nothing is left displaced by a failure here.** A backup left by a run that died is refused before
+ * the first move, because a refusal part-way through would strand the files ahead of it — the
+ * caller's `finally` does not exist until this function returns. For the same reason a rename that
+ * throws rolls back the moves already made before it rethrows.
  */
 export function setConfigAside() {
   const directory = atlasConfigDirectory();
   mkdirSync(directory, { recursive: true });
 
-  // Every leftover is found before anything is moved. Refusing inside the move loop would leave the
-  // files ahead of the refusal moved with nobody holding the call that puts them back — the caller's
-  // `finally` does not exist yet at this point.
   for (const name of MANAGED_BY_ATLAS) {
-    const aside = `${join(directory, name)}.e2e-aside`;
+    const aside = asideOf(join(directory, name));
     if (existsSync(aside)) {
       throw new Error(
         `${aside} is left over from a run that did not finish. Move it back to ${join(directory, name)} (or delete it if you know it is stale) before running the E2E again.`,
@@ -135,27 +113,35 @@ export function setConfigAside() {
   }
 
   const moved = [];
-  for (const name of MANAGED_BY_ATLAS) {
-    const live = join(directory, name);
-    if (existsSync(live)) {
-      renameSync(live, `${live}.e2e-aside`);
-      moved.push({ live, aside: `${live}.e2e-aside` });
-    }
-  }
-  return function restore() {
-    for (const name of MANAGED_BY_ATLAS) {
-      rmSync(join(directory, name), { force: true });
-    }
+  const putBack = () => {
     for (const { live, aside } of moved) {
       renameSync(aside, live);
     }
   };
+  try {
+    for (const name of MANAGED_BY_ATLAS) {
+      const live = join(directory, name);
+      if (existsSync(live)) {
+        renameSync(live, asideOf(live));
+        moved.push({ live, aside: asideOf(live) });
+      }
+    }
+  } catch (error) {
+    putBack();
+    throw error;
+  }
+
+  return function restore() {
+    for (const name of MANAGED_BY_ATLAS) {
+      rmSync(join(directory, name), { force: true });
+    }
+    putBack();
+  };
 }
 
-/** The release binary the driver launches. Built by `cargo build --release`, not by the bundler. */
+/** The binary the driver launches. Built by `cargo build --release`, not by the bundler. */
 export function atlasBinary() {
-  const name = process.platform === "win32" ? "backlog-atlas.exe" : "backlog-atlas";
-  const path = join(repositoryRoot, "src-tauri", "target", "release", name);
+  const path = join(repositoryRoot, "src-tauri", "target", "release", "backlog-atlas");
   if (!existsSync(path)) {
     throw new Error(
       `${path} does not exist. Build it first: pnpm run build && cargo build --release --manifest-path src-tauri/Cargo.toml`,
@@ -165,8 +151,26 @@ export function atlasBinary() {
 }
 
 /**
- * Start `tauri-driver` and wait until it answers. It is `cargo install`ed rather than depended on:
- * it is a standalone binary with no Rust API, so a `Cargo.toml` entry would express nothing.
+ * Whether a WebDriver remote end at `base` is ready to take a session.
+ *
+ * **`fetch` resolving is not the answer.** It resolves for 4xx and 5xx too, and `tauri-driver` binds
+ * its own port before the native driver behind it is necessarily up — so a status that answers `500`
+ * would otherwise be read as readiness and the failure would surface later, as a session that could
+ * not be created. W3C `/status` states it directly in `value.ready`.
+ */
+async function driverReady(base) {
+  const response = await fetch(`${base}/status`);
+  if (!response.ok) {
+    return false;
+  }
+  const payload = await response.json();
+  return payload?.value?.ready === true;
+}
+
+/**
+ * Start `tauri-driver` and wait until it is ready to take a session. It is `cargo install`ed rather
+ * than depended on: it is a standalone binary with no Rust API, so a `Cargo.toml` entry would express
+ * nothing.
  */
 export async function startDriver({ port, nativePort }) {
   const args = [`--port=${port}`, `--native-port=${nativePort}`];
@@ -188,18 +192,20 @@ export async function startDriver({ port, nativePort }) {
   while (Date.now() < deadline) {
     if (exited !== null) {
       throw new Error(
-        `tauri-driver stopped before it accepted a connection (${exited}). On macOS it always does — it supports Linux and Windows only.`,
+        `tauri-driver stopped before it was ready (${exited}). On macOS it always does — it supports Linux and Windows only, and this suite runs on Linux.`,
       );
     }
     try {
-      await fetch(`${base}/status`);
-      return { base, stop: () => child.kill() };
+      if (await driverReady(base)) {
+        return { base, stop: () => child.kill() };
+      }
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Not listening yet. Any other reason to keep waiting is `driverReady` returning false.
     }
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
   child.kill();
-  throw new Error(`tauri-driver did not answer on ${base} within 30s`);
+  throw new Error(`tauri-driver was not ready on ${base} within 30s`);
 }
 
 export function removeFixture(fixture) {
