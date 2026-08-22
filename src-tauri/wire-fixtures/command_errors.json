@@ -21,7 +21,7 @@
     "readiness": {
       "state": "unsupported",
       "version": "1.20.0",
-      "minimum": "1.49.3"
+      "minimum": "1.50.1"
     }
   },
   {

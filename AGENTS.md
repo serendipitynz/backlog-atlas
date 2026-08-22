@@ -18,10 +18,12 @@ start implementing — resolve the contradiction first.
   the managed Markdown files directly. This rule binds you as an agent without
   exception; the product has one, immediately below.
 - **A decision is outside that list, because no CLI call can write one.**
-  `backlog decision` offers `create` alone, and its only options are `<title>` and
-  `-s/--status` — so a decision's body is unwritable through the CLI at creation as
-  well as afterwards (measured on v1.49.3; `doc`, by contrast, has
-  `update --content`). Every body in `backlog/decisions/` was therefore written by
+  `backlog decision` has no `update`/`edit`, and `create`'s options are `<title>`,
+  `-s/--status` and `--plain` — none of which carries a body, so a decision's body is
+  unwritable through the CLI at creation as well as afterwards (measured on v1.50.1;
+  `doc`, by contrast, has `update --content`). **`list` and `--plain` arrived in
+  v1.50.x and changed nothing here** — both are read/output, which is why this bullet
+  names what no option carries rather than counting the options. Every body in `backlog/decisions/` was therefore written by
   editing the file, and that is how to write one. The three named kinds — tasks,
   documents, milestones — keep the rule above without exception. **The owner
   confirmed this reading on 2026-08-13** (TASK-162); it is recorded because the
@@ -29,7 +31,7 @@ start implementing — resolve the contradiction first.
   re-derives permission from an omission would be making the move the last bullet
   here forbids.
 - **The product's one exception — a milestone's description** (decision-21).
-  v1.49.3's `milestone` has no `update`/`edit`, so a description can only be set
+  v1.50.1's `milestone` has no `update`/`edit`, so a description can only be set
   at creation, and re-creating the milestone changes its id. Atlas therefore
   writes that one range itself: the bytes from the line after the
   `## Description` heading to the line before the next `##` heading (or the end

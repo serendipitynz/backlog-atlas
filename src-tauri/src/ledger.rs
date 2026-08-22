@@ -610,7 +610,7 @@ fn is_task_id(s: &str, task_prefix: &str) -> bool {
 }
 
 /// Prefix matching is case-insensitive. `backlog init --defaults` writes `task_prefix: "task"`
-/// while the ids it then generates are `TASK-N` (measured on v1.49.3), so a case-sensitive
+/// while the ids it then generates are `TASK-N` (measured on v1.50.1), so a case-sensitive
 /// comparison would make a default-initialized root unable to name its own tasks: every
 /// `<slug>:TASK-N` would be rejected as an invalid id.
 ///
@@ -1223,7 +1223,7 @@ mod tests {
     #[test]
     fn the_task_prefix_is_matched_case_insensitively() {
         // `backlog init --defaults` writes task_prefix: "task" while generating TASK-N ids
-        // (v1.49.3), so a default-initialized root must still be able to name its own tasks.
+        // (v1.50.1), so a default-initialized root must still be able to name its own tasks.
         let ledger = ledger_with(&["proj"]);
 
         let parsed = ledger

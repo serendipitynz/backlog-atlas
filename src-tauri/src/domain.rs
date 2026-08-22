@@ -41,7 +41,7 @@ pub enum StorageState {
 
 /// Resolved `config.yml` (doc-4 §3.2). Built before any task is parsed because it is the
 /// resolution basepoint (status set, task prefix). `config.yml` carries no Backlog version
-/// field (measured on v1.49.3), so nothing here records a generator version — reads are
+/// field (measured on v1.50.1), so nothing here records a generator version — reads are
 /// version-independent by schema-capability probing, not version branching (doc-4 §4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -111,7 +111,7 @@ pub struct Document {
 pub struct Decision {
     /// Source file path, the same facet the other three kinds carry. Added by TASK-88: naming
     /// which file is 不整合 needs it, and the read layer has no other handle on a decision file
-    /// (there is no `decision update` to give it a second use — v1.49.3 has `create` only).
+    /// (there is no `decision update` to give it a second use — v1.50.1 has `create` only).
     pub source_path: PathBuf,
     pub id: String,
     pub title: String,
@@ -152,7 +152,7 @@ pub struct AcceptanceCriterion {
 ///
 /// `author` and `created` are optional because the CLI writes each only when it has one:
 /// `task edit --comment` without `--comment-author` writes a `created:` line and no `author:`
-/// line (measured on v1.49.3, 2026-08-17). **No position number is carried.** The CLI writes no
+/// line (measured on v1.50.1, 2026-08-22). **No position number is carried.** The CLI writes no
 /// `index:` header — it numbers the entries by their order in the block — so a number here would
 /// be one only a hand-edited file could set, and the screen shows them in file order either way.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

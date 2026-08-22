@@ -10,10 +10,10 @@
  * ラベル・依存・References). One home keeps the sentence identical wherever it is shown.
  *
  * **The site is an option the CLI splits, not an option Atlas joins** (TASK-155, measured on
- * v1.49.3 over every option `allowed_options` permits). Seven split: `task create -l`,
+ * v1.50.1 over every option `allowed_options` permits). Seven split: `task create -l`,
  * `task edit -a` / `--add-label` / `--remove-label` / `--depends-on` / `--ref`, and
  * `doc update --tags`. **`--ref` is the one that makes the distinction load-bearing** — Atlas passes
- * it once per reference and joins nothing, and v1.49.3 splits each value anyway, so an enumeration
+ * it once per reference and joins nothing, and v1.50.1 splits each value anyway, so an enumeration
  * drawn off `join(",")` misses it. **Repeatable does not mean unsplit either way**: `--ac` is
  * repeatable and keeps its comma, `--ref` is repeatable and splits.
  *

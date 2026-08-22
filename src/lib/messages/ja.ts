@@ -632,13 +632,6 @@ export const ja = {
      * reaches them.
      */
     typeNotEditable: "Type は Atlas では編集できません。",
-    /**
-     * 非空全置換 の下限 (doc-5 §3.1): the CLI has no way to write an empty set, so the last element
-     * stays. **Says which mechanism lacks the means to no one** (doc-11 §5, TASK-192) — `Atlas からは`
-     * is what tells the reader this is Atlas's boundary rather than a fault, and the ground behind it
-     * changes nothing they can do. **Names no version** either (decision-27).
-     */
-    lastElementHeld: (field: string) => `${field} は Atlas からは最後の 1 件を削除できません`,
     emptyTitle: "title は空にできません（必須項目で、空にすると解析不能として不整合表示になります）",
     noTaskIdForUpdate: "TASK-ID を読めないため更新操作の対象を指定できません",
     noTaskIdForUpdateUnparsed: "TASK-ID を読めないため更新操作の対象を指定できません（解析不能）",
@@ -898,7 +891,7 @@ export const ja = {
     keepLeavesDangling:
       "「そのまま保持」では、参照するタスクが解決先の無い milestone 値を持ったまま残ります",
     /**
-     * Why a `##` may not start a line of the 説明 (doc-10 §6). **Not「CLI にできない」** — v1.49.3's
+     * Why a `##` may not start a line of the 説明 (doc-10 §6). **Not「CLI にできない」** — v1.50.1's
      * `milestone add -d` writes such a description without complaint; what happens is that the read
      * stops at the next `##`, so the rest would be saved and invisible. **The parsing rule itself is
      * not on screen** (TASK-188): 「読み取りは次の `##` までを説明として扱う」 is doc-10 §6's sentence

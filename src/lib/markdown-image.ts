@@ -23,7 +23,7 @@
  * a `Vec<u8>` through JSON is an array of numbers (about 370KB of text for one 80KB screenshot). The
  * table is in one place either way; this is the place where the raw path stays open.
  *
- * The extensions are Backlog CLI v1.49.3's own image subset (`handleAssetRequest`, read 2026-08-17).
+ * The extensions are Backlog CLI v1.50.1's own image subset (`handleAssetRequest`, read 2026-08-22).
  * The CLI serves `pdf`, `txt`, `css` and `js` from the same directory — those are not images, and a
  * 本文画像 naming one draws nothing in the CLI's browser mode either.
  */

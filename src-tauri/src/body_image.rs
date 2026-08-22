@@ -1,10 +1,10 @@
 //! 添付画像 (doc-8 §9.2): resolving one `/assets/<name>` reference written in a 本文 to a file under
 //! the Backlog root, and reading its bytes.
 //!
-//! **The rule here is Backlog CLI's, copied.** v1.49.3's `handleAssetRequest` is what serves these
+//! **The rule here is Backlog CLI's, copied.** v1.50.1's `handleAssetRequest` is what serves these
 //! same references in the CLI's own browser mode, so a different resolution would make one 台帳 mean
 //! two different things depending on which tool opened it (AGENTS). Read out of the shipped binary on
-//! 2026-08-17, it is five steps: percent-decode, the path must start with `/assets/`, the remainder
+//! 2026-08-22, it is five steps: percent-decode, the path must start with `/assets/`, the remainder
 //! must not contain `..` **anywhere** — as a substring, not as a path segment — the join must stay
 //! under the assets directory, and a file that is not there is a 404.
 //!
@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-/// The one prefix a 本文画像 may use to name a 添付画像 (Backlog CLI v1.49.3).
+/// The one prefix a 本文画像 may use to name a 添付画像 (Backlog CLI v1.50.1).
 const REFERENCE_PREFIX: &str = "/assets/";
 
 /// The Backlog root's own directory for these files.

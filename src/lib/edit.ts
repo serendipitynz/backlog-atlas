@@ -18,8 +18,8 @@
  * | doc-5 §3.2/§3.3 状態遷移の入口 | [`TransitionOffer`] | one transition, its 能動化 and its 無効化理由 |
  * | doc-11 §12 実行前確認 | [`IssueConfirmation`] + [`transitionConfirmation`] | the question a press raises before the act |
  * | doc-11 §12 語尾の … | [`confirmMarkedLabel`] | the mark on a 控え whose press asks first |
- * | doc-5 §3 assignee 非空全置換 | `EditDraft.assignee` + [`canRemoveLast`] | the whole non-empty set `-a` sends, last removal withheld |
- * | doc-5 §3 References 非空全置換 | `EditDraft.references` + [`canRemoveLast`] | the whole non-empty set, last removal withheld |
+ * | doc-5 §3 assignee 全置換 | `EditDraft.assignee` | the whole set `-a` sends, empty included |
+ * | doc-5 §3 References 全置換 | `EditDraft.references` | the whole set, empty included |
  * | doc-5 §3 AC 全体差し替え（複合） | [`AcDraft`] mode `replace` | remove-all ＋ add ＋ check in one `task edit` |
  * | doc-5 §3 AC 項目単位操作 | [`AcDraft`] mode `delta` | add / remove / check / uncheck on their own |
  * | doc-9 §5 防げる競合 | [`SaveState`] `conflict` | the pre-update check stopped the save; no CLI ran |
@@ -33,9 +33,10 @@
  *
  * - **Touched, not merely different** (doc-9 §5 (ii)). A field the user did not touch is never
  *   sent, so re-applying a draft onto a newer read cannot revert someone else's change.
- * - **The CLI's limits are anticipated, not discovered** (doc-8 §6, AC #6). Emptying references or
- *   dependencies, and every operation v1.49.3 lacks, are withheld here rather than issued and
- *   refused by the adapter.
+ * - **The CLI's limits are anticipated, not discovered** (doc-8 §6, AC #6). Every operation the
+ *   confirmed version lacks is withheld here rather than issued and refused by the adapter. What that
+ *   set holds shrinks as the requirement moves: emptying references, dependencies and the assignee
+ *   list were three of its members through v1.49.3 and are none of them now (v1.50.1, TASK-153).
  * - **A withheld operation says why** (doc-5 §5). Nothing is silently missing: either it is offered,
  *   or it carries the reason it is not.
  */
@@ -73,7 +74,7 @@ export interface AcDelta {
 /**
  * The AC edit in progress. The two modes are kept apart all the way to the wire because doc-5
  * §3/§3.1 require it: 全体差し替え is a composite that must not be confused with the per-item
- * operations. v1.49.3's single-option `--acceptance-criteria` does replace the whole set, but it
+ * operations. v1.50.1's single-option `--acceptance-criteria` does replace the whole set, but it
  * refuses to run beside `--check-ac` (実測), so it cannot carry the checked state the composite
  * does. Per-item text editing does not exist at all, which is why `delta` has no text field for an
  * existing item.
@@ -89,8 +90,8 @@ export interface EditDraft {
   milestone: string;
   /**
    * 担当 (doc-5 §3 `-a`). The whole frontmatter list, like `references`/`dependencies`: `task edit`
-   * reads `-a`'s value as a comma-separated set and replaces the list with it (実測 2026-08-12), so
-   * this is a 非空全置換. Empty is refused — see [`emptyAssigneeReason`], the CLI has no unassign.
+   * reads `-a`'s value as a comma-separated set and replaces the list with it (実測 2026-08-22), so
+   * this is a 全置換. Empty is sent as `-a ""`, which clears the list (doc-5 §3.1).
    */
   assignee: string[];
   plan: string;
@@ -373,7 +374,7 @@ export interface Submitted {
   status?: string;
   priority?: string;
   milestone?: string;
-  /** The whole non-empty set sent, as `references`/`dependencies` are. */
+  /** The whole set sent, as `references`/`dependencies` are — empty included (doc-5 §3.1). */
   assignee?: string[];
   plan?: string;
   /** Replace only: an append cannot be compared against the result. */
@@ -395,45 +396,14 @@ export type SavePlan =
   | { state: "refused"; reason: string };
 
 /**
- * **None of the withheld-operation reasons names the 外部エディタ経路** (doc-11 §8, TASK-192). It is
- * one 区画 of this same panel and the same destination for every one of them, so naming it per field
- * said the same thing three times and added no route the reader could not already take. What each
- * reason does keep is the scope — `Atlas からは` — because that is what doc-11 §5 asks a reason for:
- * telling a deliberate boundary apart from a fault.
- *
- * **None of them names a version either** (decision-27). Which version was
- * measured is doc-5 §3.1's to hold; on screen it would answer something the user did not ask, and
- * Atlas cannot name it truthfully anyway — these reasons are reached while `CliReadiness` may still be
- * `null` or `unavailable`, neither of which carries a version. The one sentence that does name one is
- * [`readinessAvailability`]'s unsupported branch, whose subject *is* the difference between two versions.
- */
-export function emptyReferencesReason(): string {
-  return msg().taskDetail.lastElementHeld("References");
-}
-
-/**
- * Why the last assignee cannot be removed. `-a ""` exits 0 without clearing in v1.49.3 (実測), and
- * so does a value whose parse is empty — `-a ","` and `-a " "` both return 0 and leave the list as
- * it was — so an empty set is withheld rather than issued as an unassignment that would be reported
- * as a success and not happen (doc-5 §3.1, the same silent-no-op as `--ref ""`).
- */
-export function emptyAssigneeReason(): string {
-  return msg().taskDetail.lastElementHeld("assignee");
-}
-
-export function emptyDependenciesReason(): string {
-  return msg().taskDetail.lastElementHeld("dependencies");
-}
-
-/**
  * Renumber a per-item AC edit for the CLI (doc-5 §3). One `task edit` resolves its AC options in
- * two different frames, measured on v1.49.3:
+ * two different frames, measured on v1.50.1:
  *
  * - `--remove-ac` indexes the criteria **as read** — `--remove-ac 1 --remove-ac 3` removes the
  *   first and third, not the first and then the third of what is left.
  * - `--check-ac` / `--uncheck-ac` index the list **after** the removals: on `#1 one / #2 two /
  *   #3 three`, `--remove-ac 1 --check-ac 2` checks `three`, and on a two-item list the same pair
- *   exits 1 with a message opening "Acceptance criterion #2 not found" (v1.49.3 continues it with
+ *   exits 1 with a message opening "Acceptance criterion #2 not found" (v1.50.1 continues it with
  *   the available indexes; only the opening is quoted, because the rest is wording and the failure
  *   is what this note is about — doc-8 §6.5 records that a not-found wording did change between
  *   v1.48.0 and v1.49.3 elsewhere).
@@ -466,37 +436,6 @@ export function acDeltaForCli(delta: AcDelta, baseline: TaskView): AcDelta {
 
 export function emptyTitleReason(): string {
   return msg().taskDetail.emptyTitle;
-}
-
-/**
- * Whether one more removal is allowed from a 非空全置換 field (doc-5 §3.1). The last element stays:
- * `--ref ""` / `--depends-on ""` exit 0 without clearing in v1.49.3, so an "empty it" control would
- * promise something the CLI silently declines to do.
- */
-export function canRemoveLast(values: readonly string[]): boolean {
-  return values.length > 1;
-}
-
-/**
- * Whether the last entry of a 非空全置換 field may be removed, and why not when it may not.
- *
- * The withholding only holds where emptying would be *issued*. A list the baseline already had
- * empty is not one of those: entries added in this session can be taken back down to nothing, the
- * field stops being 触れた項目 (doc-9 §5 (ii)), and no option is sent — so the CLI's missing
- * 空集合化 constrains nothing, and stating it as the reason would be false. Without this the
- * panel traps a mistyped entry on a task that had none: 削除 disabled, and the only ways out are
- * saving the typo or discarding the whole session.
- *
- * `baseline` is the session's own read, never the latest one on screen: [`changed`] judges the
- * draft against the baseline (doc-8 §6.4 keeps 未保存入力 on the read it was made against), so for
- * the length of an 外部変更 window a gate fed the newer read would offer a removal whose save is
- * then refused with this very sentence.
- */
-export function lastRemovalAvailability(
-  baseline: readonly string[],
-  reason: string,
-): Availability {
-  return baseline.length === 0 ? AVAILABLE : withheld(reason);
 }
 
 /**
@@ -544,9 +483,8 @@ export function buildSave(session: EditSession): SavePlan {
         submitted.milestone = draft.milestone;
         break;
       case "assignee": {
-        if (draft.assignee.length === 0) {
-          return { state: "refused", reason: emptyAssigneeReason() };
-        }
+        // An empty set is sent rather than refused: `-a ""` clears the list (doc-5 §3.1, 実測
+        // 2026-08-22). It is 触れた項目 either way, so 破棄 is what takes it back, not a disabled 削除.
         // A comma inside one name is not expressible: `-a` reads its value as the whole set, so the
         // name would arrive as two assignees (doc-5 §3, the same rule ラベル・タグ follow).
         const withComma = firstWithComma(draft.assignee);
@@ -597,9 +535,7 @@ export function buildSave(session: EditSession): SavePlan {
         break;
       }
       case "dependencies": {
-        if (draft.dependencies.length === 0) {
-          return { state: "refused", reason: emptyDependenciesReason() };
-        }
+        // Empty travels as the empty list and the adapter turns it into `--clear-deps` (doc-5 §3.1).
         // `--depends-on` reads its value as the whole set, as `-a` does, so one entry cannot hold a
         // comma. Gated even though a TASK-ID has no comma in its grammar: the field takes free text,
         // and「TASK-2,TASK-3」typed as one entry is drawn as one 未解決 entry while the file would get
@@ -613,10 +549,8 @@ export function buildSave(session: EditSession): SavePlan {
         break;
       }
       case "references": {
-        if (draft.references.length === 0) {
-          return { state: "refused", reason: emptyReferencesReason() };
-        }
-        // Gated even though Atlas repeats `--ref` per reference instead of joining: v1.49.3 splits
+        // Empty travels as the empty list and the adapter turns it into `--clear-refs` (doc-5 §3.1).
+        // Gated even though Atlas repeats `--ref` per reference instead of joining: the CLI splits
         // each value it is handed anyway (measured), so a URL holding a comma — a map link carrying
         // a coordinate pair is the everyday one — arrives as two references. This is the gate an
         // enumeration drawn off `join(",")` does not reach.
@@ -624,7 +558,7 @@ export function buildSave(session: EditSession): SavePlan {
         if (badReference !== undefined) {
           return { state: "refused", reason: commaReason("References", badReference) };
         }
-        // 既存を含む非空全集合 (doc-5 §3): the list starts as everything the task has, so adding a
+        // 既存を含む全集合 (doc-5 §3): the list starts as everything the task has, so adding a
         // Pull Request URL here is the References 全置換 doc-8 §6 reduces PR 登録 to.
         edit.references = [...draft.references];
         submitted.references = [...draft.references];
@@ -1100,7 +1034,7 @@ export interface TransitionOffer {
 
 /**
  * The transitions a 保存区分 has, or why it has none. `none` is 提示しない (AC #6): completed and
- * archive have no reverse operation in v1.49.3, so no control is drawn for one.
+ * archive have no reverse operation in v1.50.1, so no control is drawn for one.
  */
 export type TransitionOffers =
   | { state: "offered"; offers: TransitionOffer[] }
@@ -1201,7 +1135,7 @@ function offer(
 }
 
 /**
- * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — v1.49.3 has no way back to the state before
+ * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — v1.50.1 has no way back to the state before
  * the press for any of them (the measurement is in doc-8 §6.5), so there is no line to draw inside
  * the five.
  *
@@ -1217,13 +1151,13 @@ export function transitionConfirmation(offer: TransitionOffer): IssueConfirmatio
 
 // --- 選択肢 (doc-5 §3 の値域) --------------------------------------------------------------
 
-/** `--priority` の値域 (v1.49.3 `task edit --help`). Clearing one is not offered — no CLI option. */
+/** `--priority` の値域 (v1.50.1 `task edit --help`). Clearing one is not offered — no CLI option. */
 export const PRIORITIES = ["high", "medium", "low"] as const;
 
 /**
  * The values a select may offer for a field the CLI can set but not unset. "未設定" is offered only
  * while the field *is* unset, where choosing it changes nothing: offering it on a set field would
- * be a clear operation v1.49.3 does not have (AC #6 — not presented rather than refused later).
+ * be a clear operation v1.50.1 does not have (AC #6 — not presented rather than refused later).
  */
 export interface SelectOption {
   value: string;

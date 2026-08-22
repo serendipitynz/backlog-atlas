@@ -9,7 +9,7 @@
  *
  * **The axis is the CLI's parse, not Atlas's `join(",")`.** The first version of this file counted
  * join sites and would have passed a tree where `--ref` — repeated once per reference, joined
- * nowhere — still splits every value it is given (measured on v1.49.3, as is every entry in the table
+ * nowhere — still splits every value it is given (measured on v1.50.1, as is every entry in the table
  * below). Repeatability decides nothing either way: `--ac` is repeatable and keeps its comma, `--ref`
  * is repeatable and splits. So the option set is taken from `allowed_options`, which is the complete
  * set the adapter can emit — `validate_options` refuses anything outside it — and a new option fails
@@ -119,12 +119,13 @@ function joinedOptions(sources: Record<string, string>): string[] {
  * the CLI validates it against a fixed list, since the comma never reaches a parse that could split.
  *
  * **Where each row comes from, since the three are not the same kind of claim** (TASK-155): every
- * `splits` row and every `keeps` row was measured on v1.49.3 by passing a comma through that option
+ * `splits` row and every `keeps` row was measured on v1.50.1 by passing a comma through that option
  * and reading the file back. `--status`, `--priority`, `--type` and `--reassign-to` were measured too
  * — the first three exit 1 on a value outside their list, and the last resolved a comma-bearing
  * milestone name whole, which matters because Atlas can create such a milestone itself. The AC
- * indices, `--task-handling` and `--no-update-tasks` are classified by construction rather than by
- * measurement: Atlas builds those values, so no comma can reach them whatever the CLI would do.
+ * indices, `--task-handling`, `--no-update-tasks`, `--clear-refs` and `--clear-deps` are classified by
+ * construction rather than by measurement: Atlas builds those values, or there is no value at all, so
+ * no comma can reach them whatever the CLI would do.
  */
 type Classification =
   | { kind: "splits"; value: string; refuse: () => string | null }
@@ -212,6 +213,8 @@ const OPTIONS: Record<string, Classification> = {
     note: "台帳が持つマイルストーン名。カンマを含む名前もそのまま解決した",
   },
   "--no-update-tasks": { kind: "noUserText", note: "値を持たないフラグ" },
+  "--clear-refs": { kind: "noUserText", note: "値を持たないフラグ" },
+  "--clear-deps": { kind: "noUserText", note: "値を持たないフラグ" },
 };
 
 function refused(plan: ReturnType<typeof buildSave>): string | null {
