@@ -4,7 +4,7 @@ title: TaskDetail と ProjectDetail を区画ごとのコンポーネントへ�
 status: In Review
 assignee: []
 created_date: '2026-08-01 00:44'
-updated_date: '2026-08-23 00:24'
+updated_date: '2026-08-23 00:29'
 labels:
   - maintainability
   - ui
@@ -45,9 +45,10 @@ _sandbox/repository-quality-assessment-2026-08-01.md の可読性節。
 doc-8 §3.1 の並びの 2 つ目の写しがコンポーネント境界として生まれる。
 
 行数（markup と SCSS を含む、AC #1）は `TaskDetail.svelte` が 2,956 から **1,080** へ、
-`ProjectDetail.svelte` が 4,095 から **1,819** へ。**子の最大は `task-detail/Heading.svelte` の 817** で、
-2 番目が `project-detail/MilestonesSection.svelte` の 808。**初版は 2 番目を最大と書いていた**
-（PR #151 の [P3]）。
+`ProjectDetail.svelte` が 4,095 から **1,819** へ。**子の最大は `task-detail/Heading.svelte` の 817**
+である。**2 番目の行数は書かない** — AC #1 が要るのは「どのファイルも 2,000 行を下回る」の証人で、
+最大 1 つでそれは足りる。**初版は 2 番目を最大と書き、直した版はその 2 番目の数を古い値で書いた**
+（PR #151 の 1 巡目・2 巡目の [P3]）。仕事を持たない数は、2 度続けて間違えた数でもある。
 
 ## 分けなかったもの
 
