@@ -947,9 +947,9 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 /// Watch one root and push each debounced batch to the frontend as a re-read (doc-9 §3). Both batch
-/// shapes lead to the same whole-root re-read: the reconstruction unit is the root (decision-3,
-/// doc-4), so a known changed-file list and a `Rescan` differ only in what the watcher could tell us,
-/// not in what must be re-read.
+/// shapes lead to the same whole-root re-read: the reconstruction unit is the root (decision-42), so
+/// a known changed-file list and a `Rescan` differ only in what the watcher could tell us, not in
+/// what must be re-read.
 fn watch_loop(app: AppHandle, slug: String, session: WatchSession, stop: Arc<AtomicBool>) {
     use std::sync::mpsc::RecvTimeoutError;
 
