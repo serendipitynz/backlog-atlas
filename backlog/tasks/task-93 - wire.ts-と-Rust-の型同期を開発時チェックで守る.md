@@ -103,5 +103,5 @@ AGENTS.md / AGENTS.ja.md の テスト 節、wire payload の段落の直後。*
 `pnpm test` 51 ファイル 1,318 件 passed、`pnpm run check` 0 errors 0 warnings、`pnpm run lint` clean。
 **Rust は 1 行も変えていない**（変異はすべて `git checkout --` で戻した）ので `cargo` 系は流していない。
 本番依存は増えていない（`package.json`・`pnpm-lock.yaml`・`Cargo.toml`・`Cargo.lock` に差分なし）。
-対応表は `referent-table-task-93.md` 初版、本文より先に確定した。
+対応表は TASK-93 の 対応表 初版で、本文より先に確定した。
 <!-- SECTION:NOTES:END -->
