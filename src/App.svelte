@@ -3,29 +3,17 @@
   // state, and the wiring between the two screens and the five controllers. All placement, ordering and
   // filtering rules live in `lib/swimlane.ts` and `lib/filter.ts` as pure functions.
   //
-  // **What is a controller's and what is this file's** (TASK-92). Five subjects were held here as state
-  // plus the sequencing that goes with it, and each is now one module in `src/lib` with the state it
-  // owns: `workspace-controller.ts` (the read of every root, its re-read, 継続検出),
-  // `ledger-controller.ts` (登録・登録解除・更新・並べ替え and the one-at-a-time guard they share),
-  // `settings-controller.ts` (アプリ設定 の 読取・保存 and the probes a save changes the answer of),
-  // `history-controller.ts` (the open task's Git 履歴 read) and `overlay-controller.ts` (被せ層 と
-  // 未保存確認). What is left here is what none of them can answer: **which screen is showing, which task
-  // and row are selected, and what the grid is being handed** — and the two 起動/終了 orders, whose
-  // reasons are about what the *next* step needs.
+  // **What is left here is what no controller can answer** (TASK-92): which screen is showing, which
+  // task and row are selected, what the grid is being handed, and the two 起動/終了 orders — those two
+  // because their reasons are about what the *next* step needs, so they are stated at the sequences
+  // themselves. Each controller in `src/lib` takes the state it owns as its first argument and reaches
+  // everything else through ports; `settings-write.ts` and `history-read.ts` take ports for both,
+  // because the values they touch are the shell's, so a `peek`/`adopt` pair is the whole of their
+  // contact with it.
   //
-  // A controller takes the state it owns as its first argument and reaches everything else through
-  // ports. `settings-write.ts` and `history-read.ts` take ports for both, and the difference is
-  // ownership: those two read and write values the shell holds, so a `peek`/`adopt` pair is the whole of
-  // their contact with it.
-  //
-  // Row order is deliberately *not* screen state: it is the ledger's entry order (doc-3 §2.2),
-  // and a reorder is written back through `ledger_update` (doc-7 §5 allows reflecting it
-  // there), so the order the user arranges survives a restart. 行非表示 と 折畳み 2 種 survive one too,
-  // through アプリ設定 rather than the ledger (doc-7 §5.1, decision-13 の 再起動をまたぐ保持の改訂), and this
-  // component is the only one that writes the three — the controller stores what it is handed and holds
-  // no copy. It holds them rather than the grid because it is the one that stays: 実行内保持 (doc-7 §5.1).
-  // The 2 folds reach the grid as props for it to draw from; `hidden` never leaves, since it decides
-  // which rows the grid is handed at all.
+  // Row order is deliberately *not* screen state: it is the ledger's entry order (doc-3 §2.2), written
+  // back through `ledger_update`. Why the three row values below are held here rather than in the grid
+  // is stated at their declaration, and this component is their only writer.
   import { onDestroy, onMount, untrack } from "svelte";
   import type { Availability } from "./lib/availability";
   import { AVAILABLE, withheld } from "./lib/availability";
@@ -504,11 +492,9 @@
    * (decision-31 の Linux の改訂) — so a write it refuses leaves them with no destination, and doc-11
    * §5's refusal of a 理由の無い無効化 is the same principle.
    *
-   * **Whether the title was *applied* is not checked, and that is a decision** (decision-31 の Linux の
-   * 改訂). It was, until the platform it was written for turned out to accept the write and read the new
-   * value back while drawing the old one — so the check answered "applied" for the very defect it
-   * existed to name. What is left for it to report on Linux is a state the owner has accepted knowingly,
-   * once, per run; a 帯 saying so on every start would be noise about a decision already taken.
+   * **Whether the title was *applied* is not checked** (decision-31 の Linux の改訂). The check used to
+   * exist and answered "applied" for the very defect it was there to name, because Linux accepts the
+   * write and reads the new value back while drawing the old one.
    */
   $effect(() => {
     if (OVERLAY_TITLE_BAR) {
@@ -522,10 +508,10 @@
   /**
    * The rows an external change would not reach on its own, so the manual 再読込 is offered for them.
    * Three causes converge here: the user turned 継続検出 off (every row), the event subscription is
-   * dead so nothing can arrive at all (every row), or a root's own watch would not start. doc-9 §3.1
-   * requires exactly this — the state and its mark are the same however it came about, and only the
-   * reason differs, which `unwatchedReason` below states. Only registered rows either way: a slug
-   * that left the ledger has no row to re-read.
+   * dead so nothing can arrive at all (every row), or a root's own watch would not start. One value for
+   * all three, because doc-9 §3.1 makes the state and its mark the same however it came about; only the
+   * reason differs, which `unwatchedReason` below states. Only registered rows either way: a slug that
+   * left the ledger has no row to re-read.
    */
   let unwatchedRows = $derived(
     !watchEnabled || workspaceState.reloadFeed === "unavailable"

@@ -2,17 +2,15 @@
 //! (doc-4 §3). Tasks, config, milestones and documents.
 //!
 //! This module is *types only* (TASK-27). It defines the shape the read layer (TASK-28)
-//! fills in and never parses files itself. Two design rules from doc-4 §3 drive the shapes
-//! here:
+//! fills in and never parses files itself. Two of doc-4 §3's rules are why the shapes are
+//! these and not the obvious ones:
 //!
-//! 1. "判別できた事実" and "未確定・不足の明示" live side by side, so nothing is dropped and
-//!    a task can always be pushed to 縮退表示 (§5). That is why a [`Task`]'s required
-//!    identity fields are optional and every task carries [`FileHealth`]: a file that failed
-//!    required-field parsing is still represented, with the gap named explicitly rather than
-//!    discarded.
-//! 2. Facets Backlog stores mixed together are split at the type level so the UI can never
-//!    reassemble them wrongly: `kind:` labels vs. normal labels (§3.3), and storage state
-//!    (where the file sits) vs. status (frontmatter work state) (§3.4).
+//! 1. A [`Task`]'s required identity fields are optional and every task carries
+//!    [`FileHealth`], so a file that failed required-field parsing is still represented with
+//!    the gap named rather than discarded (§3, §5).
+//! 2. Facets Backlog stores mixed together are separate *types* here — `kind:` labels vs.
+//!    normal labels (§3.3), storage state vs. status (§3.4) — so the UI has nothing to
+//!    reassemble wrongly.
 //!
 //! Types are Tauri-independent and `Serialize` so the command layer can hand a whole
 //! [`ProjectModel`] to the frontend. Field names serialize as the camelCase used in doc-4

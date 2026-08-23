@@ -1,11 +1,9 @@
 //! Project ledger (projects.toml) — read/write and register/remove/update.
 //!
-//! Implements doc-3 "プロジェクト台帳と横断タスクID 設計". The ledger is Atlas's own
-//! configuration, not the task source of truth: it lives in the OS app-config dir and
-//! Atlas reads/writes it directly. That is outside the decision-2 boundary (Backlog
-//! management files are parsed directly, updates delegate to the Backlog CLI), because
-//! the ledger is not a Backlog.md file — so no target project's Backlog root, management
-//! files, or Git repository are ever touched by any operation here.
+//! Implements doc-3 "プロジェクト台帳と横断タスクID 設計". Atlas reads and writes this file
+//! directly, which decision-2's boundary permits because it is Atlas's own configuration rather
+//! than a Backlog.md file — **no operation here touches a target project's Backlog root,
+//! management files, or Git repository.**
 //!
 //! This module is deliberately Tauri-independent so it can be unit-tested without a
 //! running app; the command layer in `lib.rs` resolves the on-disk ledger path via

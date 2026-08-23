@@ -1,18 +1,11 @@
 //! 列対応規則 — map one project's own status value onto the canonical status columns
 //! (decision-4, doc-3 §3.3).
 //!
-//! Two questions are answered separately about the same string, because the swimlane needs
-//! both and they do not imply each other (doc-7 §5):
-//!
-//! 1. **Which column does it go to?** — a status absent from `config.yml` is kept unmapped
-//!    outright (doc-7 §5, below); otherwise the alias table is tried first, then name matching
-//!    (case and surrounding whitespace ignored). No column means 未分類 status:
-//!    [`StatusMapping::column`] is `None` and the task must go to the row's 未分類区画, never into
-//!    a canonical column.
-//! 2. **Is the value itself known?** — declared in `config.yml`, the draft-only `Draft`, or
-//!    declared nowhere. Only the last earns the stronger 想定外スキーマ mark (decision-4), so a
-//!    project that legitimately runs its own status is not painted as broken merely for not
-//!    mapping to a column.
+//! **Two questions about the same string, answered separately** (doc-7 §5): which column it goes
+//! to ([`StatusMapping::column`]) and whether the value is one the project declares. Separate
+//! because they do not imply each other — a project that legitimately runs its own status maps to
+//! no column and is still not broken, so only the second earns 想定外スキーマ (decision-4), and
+//! folding them would paint the first case with the second's mark.
 //!
 //! Nothing here rewrites the target Markdown: the alias table lives in Atlas's own ledger and
 //! the mapping is Atlas-side interpretation only (doc-2 boundary, decision-4).

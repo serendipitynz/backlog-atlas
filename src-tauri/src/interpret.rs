@@ -12,13 +12,11 @@
 //! labels, because doc-4 §3.3 fixes that separation at the read boundary. The *rule* still lives
 //! here ([`type_value::split_labels`]); `read` calls it so there is a single definition.
 //!
-//! Pull Request URL extraction is here for the mirror-image reason. Its rule is doc-6 §4's and
-//! stays defined once, in [`crate::history`]; what this layer fixes is *when* it is applied —
-//! alongside every task read, because its only input is that task's References. Deriving it here
-//! rather than inside the Git・PR history command is what lets doc-8 §4's PR ↔ References
-//! separation hold for a task the commit search cannot even key on: a 解析不能 file has no
-//! TASK-ID (doc-4 §5), but its References are still read, and doc-4 §5 keeps every field it could
-//! discern.
+//! Pull Request URL extraction is here for the mirror-image reason. The rule stays defined once in
+//! [`crate::history`] (doc-6 §4); what this layer fixes is *when* it runs — alongside every task
+//! read, because its only input is that task's References. That is what lets doc-8 §4's PR ↔
+//! References separation hold for a task the commit search cannot key on at all: a 解析不能 file
+//! has no TASK-ID, and its References are read regardless (doc-4 §5).
 
 pub mod status;
 pub mod type_value;

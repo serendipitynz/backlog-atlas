@@ -9,7 +9,7 @@
  *
  * | doc-10 | here | is |
  * |---|---|---|
- * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | the five items 概要・文書・マイルストーン・決定事項・新規タスク — a display change within one screen, not a screen transition |
+ * | §1 区画切替 | [`DetailSection`] + [`DETAIL_SECTIONS`] | a display change within one screen, never a screen transition — which is why no input is dropped by it |
  * | §1 区画ナビの件数 | [`sectionCount`] | how many the 区画's 一覧列 holds, in brackets beside the label — `null` where there is nothing to count, which is not zero |
  * | §3 区画ナビ | [`SECTION_NAV_WIDTH_REM`] | the 12rem column down the left that houses the 区画切替 — the place, where §1 is the choice |
  * | §1 一覧列 | [`LIST_COLUMN_WIDTH_REM`] | the 16rem column that keeps the selection — 文書一覧 (§5), マイルストーン一覧 (§6) and 決定事項一覧 (§10) are its three instances; the pane right of it takes the remaining width, so only the list's width is a constant |
@@ -25,7 +25,7 @@
  * | §4.1 ルートを変えたときは Backlog ルートも併せて送る | [`rootMoveNote`] | the note under the field saying which value will travel |
  * | §4.1 移動が成立すると編集セッションは閉じる | [`movesRoot`] | whether this update is a move — the trigger for closing |
  * | §8 台帳読取専用では概要区画の入力と登録解除を無効化する | [`overviewReadOnlyNote()`] | the sentence, near the controls, saying the inputs are stopped too |
- * | §4.2 別名が効くかの態 | [`ALIAS_EFFECT_NOTES`] | how one 別名表 row takes effect — four states, see below |
+ * | §4.2 別名が効くかの態 | [`AliasEffect`] + [`aliasEffectNote`] | how one 別名表 row takes effect — four states, see below |
  * | §4.3 確認は slug の入力一致とする | [`unregisterAvailability`] | slug 入力一致: holds the action until the typed text matches, and says what is holding it |
  * | §8 台帳読取専用と CLI 縮退は独立 | [`overviewAvailability`] and `manage.ts`'s `issueAvailability` applying separately | one standing leaves the other's 区画 working |
  *

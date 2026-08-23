@@ -28,17 +28,15 @@
 //!
 //! ## What is and is not guaranteed (doc-9 §4.1, AC #5)
 //!
-//! The pre-update check ([`SyncState::check_conflict`]) is the **preventable** tier: any external
-//! change that lands up to the moment of the check is caught, and the update is withheld rather than
-//! overwriting it. It is *not* atomic with the CLI write — v1.50.1 offers no expected-version update
-//! and no shared lock (doc-9 §4.1), so a change slipping in during the 照合後競合窓 (between the
-//! check and the CLI's write) to the *same* file can still be overwritten. That loss is the
-//! best-effort limit doc-9 fixes as the guarantee level; it is documented, not silently closed. This
-//! module writes exactly one managed file, and only as the 直接書き込み操作 (doc-5 §1, decision-21):
-//! [`MilestoneDescriptions`] replaces 説明の本文範囲 of a milestone file, from inside the same
-//! sequence that just checked that file's version. The watch is read-only, and nothing else here
-//! writes, so the loss window above stays what doc-9 §4.1 describes — narrower for that one write
-//! (no second process is started inside it) but not closed.
+//! [`SyncState::check_conflict`] catches every external change that lands up to the moment of the
+//! check, and is *not* atomic with the CLI write — v1.50.1 offers no expected-version update and no
+//! shared lock — so the 照合後競合窓 stays open. That is the guarantee level doc-9 §4.1 fixes, and it
+//! is why nothing here tries to close it.
+//!
+//! This module writes exactly one managed file, as the 直接書き込み操作 (doc-5 §1, decision-21):
+//! [`MilestoneDescriptions`] replaces a milestone's 説明の本文範囲 from inside the same sequence that
+//! just checked that file's version. The window is narrower for that one write — no second process
+//! starts inside it — and still not closed.
 
 use crate::domain::ProjectModel;
 use crate::read::read_project;

@@ -2,10 +2,8 @@
 //! Read-only by construction: updates go through the Backlog CLI adapter (decision-2), and
 //! nothing here writes.
 //!
-//! Order follows doc-4 §2: resolve `config.yml` first (it is the resolution basepoint), scan
-//! the declared directories, parse frontmatter and `SECTION`/`AC` bodies, then attach the two
-//! facets that live outside frontmatter — the owning project and the storage state implied by
-//! the scan directory (§3.4).
+//! Order follows doc-4 §2, and `config.yml` is first because it is the resolution basepoint the
+//! rest of the scan is relative to.
 //!
 //! Failure handling is the other half of the job (§5). Four events are kept apart:
 //!

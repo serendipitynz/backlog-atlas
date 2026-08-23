@@ -29,11 +29,11 @@
 //!
 //! ## Reading this file never stops the screen (AC #6)
 //!
-//! [`LoadedSettings::load`] is infallible. decision-13 is explicit that 設定が読めないことを理由に画面を
-//! 止めない — the settings are display defaults, not a precondition for reading anything — so a missing,
-//! unreadable or too-new file yields the defaults plus a [`SettingsStatus`] that says which of those
-//! happened. The caller states it; the ledger, by contrast, *does* fail its load (doc-3 §2.2), because
-//! an inconsistent ledger would make Atlas read the wrong roots.
+//! [`LoadedSettings::load`] is infallible (decision-13 設定が読めないことを理由に画面を止めない): a
+//! missing, unreadable or too-new file yields the defaults plus a [`SettingsStatus`] naming which of
+//! those happened, and the caller states it. The ledger's load *does* fail (doc-3 §2.2) — the
+//! difference is that a wrong ledger makes Atlas read the wrong roots, while a wrong setting only
+//! shows the right roots differently.
 //!
 //! ## What this file must never hold
 //!

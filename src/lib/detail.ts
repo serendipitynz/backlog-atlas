@@ -11,8 +11,8 @@
  * | term | here | is |
  * |---|---|---|
  * | doc-8 §1 タスク詳細画面 | `TaskDetail.svelte` | the panel showing one task's every item |
- * | doc-8 §3 見出し | the panel's `<header>` | the three fixed rows: 横断タスクID＋ID コピー＋印＋前後移動＋位置＋3 配置切替＋閉じる / title＋編集入口 / 主要属性 |
- * | doc-8 §3 主要属性 | the `<header>`'s `<dl>` | status（正準対応併記）・priority・保存区分・milestone・created・updated の 6 つ、3 段 2 列。assignee は本文側、ファイルパスは外部エディタ区画 |
+ * | doc-8 §3 見出し | the panel's `<header>` | the rows fixed against the panel's top edge (`Heading.svelte` draws them) |
+ * | doc-8 §3 主要属性 | the `<header>`'s `<dl>` | the attributes §3 puts in the heading — **not** assignee or the file path, which have 区画 of their own |
  * | doc-8 §3 milestone 参照 | [`MilestoneRef`] | the id plus the title it resolves to in this root, or 未解決 |
  * | doc-8 §3 dependencies（未解決印） | [`DependencyLink`] | one dependency id and the task it resolves to, or `null` for 参照欠損 |
  * | doc-8 §4 Pull Request ↔ References 分離 | [`ReferenceSplit`] | the task's references cut into PR URLs and ordinary references |

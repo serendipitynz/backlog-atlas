@@ -34,9 +34,8 @@
 //! any other external change does — through doc-9's watch (doc-8 §7 書き戻し), so no exit detection
 //! is needed and none is attempted.
 //!
-//! This is nevertheless the exception doc-8 §7 names: the bytes that land in the file did not pass
-//! the Backlog CLI's option checking, so a broken frontmatter is possible and is received by doc-4's
-//! 縮退表示 rather than being repaired or rejected here.
+//! Nothing here repairs or rejects what the editor wrote, which is the exception doc-8 §7 names:
+//! those bytes never passed the CLI's option checking, and doc-4's 縮退表示 is what receives them.
 //!
 //! ## No shell, ever (AGENTS)
 //!
