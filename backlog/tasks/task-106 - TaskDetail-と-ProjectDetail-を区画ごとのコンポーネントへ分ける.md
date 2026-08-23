@@ -1,10 +1,10 @@
 ---
 id: TASK-106
 title: TaskDetail と ProjectDetail を区画ごとのコンポーネントへ分ける
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-01 00:44'
-updated_date: '2026-08-23 00:29'
+updated_date: '2026-08-23 01:19'
 labels:
   - maintainability
   - ui
