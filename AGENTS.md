@@ -434,6 +434,37 @@ against the real `App.svelte` rather than read off it. A refactor that moves the
 this job. **Do not widen a selector to make it green** — a route that matches anything states
 nothing.
 
+### 規模計測, which reports numbers and no verdict
+
+**A run path outside `pnpm test` again, and the only one here that cannot fail** — `pnpm run scale`,
+in `scripts/scale/` (decision-42). 規模計測 reads synthetic Backlog roots at chosen sizes and prints
+読取時間・再読込時間・snapshot の直列化サイズ・フロントエンド再計算時間・監視 1 ルートあたりの
+thread 増分. Nothing asserts, and nothing goes red on a slow machine.
+
+**A session's checks are therefore still `pnpm test`, `pnpm run check` and `pnpm run lint`.** 規模計測
+is not a fourth, for the reason the GUI E2E above is not.
+
+**Two halves, in one command.** `src-tauri/src/scale.rs` is the read side: `#[cfg(test)]`, its tests
+`#[ignore]`d, run **in release** — a debug build reads 2–3× slower, so a number taken there describes
+a binary nobody ships. `scripts/scale/frontend.mjs` is the recompute side, timing the real
+`buildSwimlane` and `collectFacets` loaded through Vite's `ssrLoadModule`; **Node/V8, not the
+WebView**, which is a gap the numbers are labelled with rather than one they close.
+
+**What keeps each half from rotting is different, and one of them is nothing.** The Rust half is
+compiled by every `cargo test`, so a signature change in the read layer reddens the build before it
+can silently stop measuring the product. The frontend half is read by no check at all —
+`tsconfig.json` does not include `scripts/`, so `pnpm run check` does not see it either.
+**Run `pnpm run scale` in the session that touches it.**
+
+**`ATLAS_SCALE_ROOT` points the read side at a real root** beside the synthetic ones, defaulting to
+this repository's own `backlog/`. That anchor is the point of it: a shape nobody writes by hand can
+be fast for reasons no real root shares.
+
+**The measured values are in decision-42, and are not restated here**, along with the conditions
+that reopen the judgment it records. A copy of a measurement goes stale the moment the machine
+changes, and nothing in this file would notice — and the conditions are not a fixed count either,
+since a fourth was added the moment one turned out to be missing.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and on `main` after one lands

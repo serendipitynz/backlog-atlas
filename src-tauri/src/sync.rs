@@ -20,7 +20,7 @@
 //! | 未読タスクファイル | [`SyncState::scope_divergence`]'s first list | an active-task file with no recorded stamp — one of the two ways the scope differs (doc-9 §4.2.3) |
 //! | 全件一致 | [`SyncState::guarded_update`]'s check loop | every member must match, or the CLI is not launched (doc-9 §4.2.3) |
 //! | 再読込契機 | [`ReloadReason`] + [`SyncState::reload`] | the one path every re-read funnels through (update success, external change, future branch switch — AC #6) |
-//! | 再構築単位 | root (whole-root read via [`ScanSource`]) | doc-4's reconstruction unit; file-level is a forward refinement on the same method |
+//! | 再構築単位 | root (whole-root read via [`ScanSource`]) | doc-4's reconstruction unit, fixed at the root by decision-42 |
 //! | ファイル監視 | [`WatchSession`] | the read-only OS-notification subscription (doc-9 §3) |
 //! | デバウンス | [`Debouncer`] | coalescing a burst of notifications into one batch (AC #1) |
 //! | 変化したファイル（不能ならルート） | [`WatchBatch`] | one batch: the changed files, or a whole-root [`WatchBatch::Rescan`] when they cannot be identified (doc-9 §3) |
@@ -341,8 +341,8 @@ impl SyncState {
     /// Re-read the whole root and refresh both the model and the recorded index (AC #4). This is the
     /// single reconstruction path all triggers share (AC #6): the `reason` records who asked, and the
     /// `source` is a parameter so a future branch switch reloads through here with a different source
-    /// rather than a separate code path. The reconstruction unit is the root (decision-3 reads the
-    /// whole current checkout); a file-level unit would refine this method, not replace it.
+    /// rather than a separate code path. The reconstruction unit is the root (decision-42); a
+    /// file-level unit would refine this method, not replace it.
     pub fn reload(
         &mut self,
         reason: ReloadReason,
@@ -741,8 +741,8 @@ fn names_milestone(milestone: &crate::domain::Milestone, value: &str) -> bool {
 /// side by side: the changed files when they can be identified, and the whole root when they cannot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchBatch {
-    /// The managed files that changed. Reload these — or, at the root reconstruction unit, reload the
-    /// root; either way the changed set is known.
+    /// The managed files that changed. What gets reloaded is the root either way (decision-42): this
+    /// list says the watcher could name them, not that a smaller read follows.
     Changed(Vec<PathBuf>),
     /// The changed files could *not* be identified, so the whole root must be re-read (doc-9 §3
     /// "変化したファイル（不能ならルート）"). Raised when notify reports `need_rescan()` — events were
