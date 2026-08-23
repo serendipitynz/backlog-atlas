@@ -506,3 +506,29 @@ export function overviewSave(context: {
     ? { state: "ready" }
     : { state: "withheld", reason: overviewNoChangesReason() };
 }
+
+/**
+ * 保留理由 as a `title`, for a control whose withholding is expressed as `{ state, reason }`.
+ *
+ * Taken as a widened shape rather than as one of the screen's availability types: the four faces that
+ * draw a 発行 (概要区画・文書ペイン・新規タスク区画・作成モーダル) hold three different types between
+ * them, and what this reads is the pair both halves of doc-11 §5 require — the判定 and its 理由.
+ */
+export function withheldTitle(availability: { state: string; reason?: string }): string {
+  return availability.state === "blocked" ? (availability.reason ?? "") : "";
+}
+
+/**
+ * The `title` of a 発行 control that has a chord (doc-7 §2.1 の併記). When the control is pressable
+ * the chord is what the title has to carry — since 2026-08-10 the 併記 is discharged by the control
+ * itself and the キーボード操作一覧, with no visible line beside the row (目視). When it is withheld,
+ * the reason takes the title's place: naming a chord for a 発行 that cannot be issued advertises an
+ * operation the form is refusing (doc-5 §5).
+ */
+export function issueControlTitle(
+  availability: { state: string; reason?: string },
+  label: string,
+  chord: string,
+): string {
+  return availability.state === "blocked" ? (availability.reason ?? "") : `${label} (${chord})`;
+}
