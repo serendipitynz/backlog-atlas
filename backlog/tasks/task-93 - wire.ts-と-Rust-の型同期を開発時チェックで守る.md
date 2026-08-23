@@ -1,10 +1,10 @@
 ---
 id: TASK-93
 title: wire.ts と Rust の型同期を開発時チェックで守る
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-23 04:40'
+updated_date: '2026-08-23 06:17'
 labels:
   - maintainability
   - 'kind:chore'
