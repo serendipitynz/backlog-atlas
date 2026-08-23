@@ -1,0 +1,466 @@
+// プロジェクト詳細画面の区画コンポーネントが分け合う SCSS 規則 (TASK-106).
+//
+// **なぜ mixin なのか。** Svelte のスコープはコンポーネント境界を越えないので、区画のマークアップが
+// 子へ移ると、親に残した規則はその要素へ届かない。一方で 一覧列 を持つ 3 区画 (doc-10 §1/§5/§6/§10) は
+// 列の形をまるごと共有しており、doc がそれを 1 つの列の型と呼んでいる。宣言だけを持つ mixin にして
+// 呼び出し側が選択子を書くと、規則は 1 か所に残り、**使っていないものを `@include` すれば Svelte が
+// 「Unused CSS selector」を出す** — 配置の検算が効いたままになる。
+//
+// **ここに置くのは 2 つ以上の区画が要る規則だけである。** 1 つの区画しか使わない規則はその区画の
+// `<style>` に置く。
+
+@mixin heading-2 {
+  margin: 0 0 0.5rem;
+  font-size: var(--text-xl);
+}
+
+@mixin heading-3 {
+  margin: 0 0 0.35rem;
+  font-size: var(--text-lg);
+}
+
+@mixin field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.55rem;
+  min-width: 12rem;
+}
+
+@mixin field-label {
+  font-size: var(--text-md);
+  opacity: 0.85;
+}
+
+@mixin row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+@mixin row-field {
+  flex: 1;
+}
+
+/*
+ * フォーム部品の高さ (doc-11 §2.2). 1.75rem — the largest step, because this screen's 4 区画 and its
+ * 作成モーダル are forms the user is here to fill in, and the step nearest what they already drew.
+ * Stated rather than left to the engine: the padding below is written once for both, and WebKit
+ * ignores it on `select` (computed 0px against Chromium's 4px, measured 2026-08-11), so without a
+ * height the two engines gave the row three different pictures. `box-sizing` comes from app.scss.
+ */
+@mixin form-control {
+  height: 1.75rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--inset);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+/// 無効化提示 lives in one place in app.scss (doc-11 §5); a `:disabled` rule in a component would
+/// outrank it.
+@mixin button {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+@mixin actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+/*
+ * 発行の行 (doc-11 §11), for the three faces here that hold exactly one 発行: the 文書ペイン's
+ * 編集セッション, the 新規タスク区画, and each 作成モーダル. Pinned to the bottom of whichever box is
+ * scrolling — the pane, the panel, or `Modal.svelte`'s content region — so `sticky` rather than a
+ * row outside the scroll: the scroller is not this component's in the modal case, so there is no
+ * outside to sit in, and one mechanism for all three is one rule to read.
+ *
+ * Opaque and ruled off, or the form scrolls *through* it (the same requirement the タスク詳細's pinned
+ * 見出し band states). The 概要区画 and the マイルストーンペイン have no rule of their own here: they
+ * hold two 発行 apiece, so their rows stay in the flow (doc-10 §4.1・§6).
+ *
+ * Pulled out to the edges of the box that scrolls, and given that room back as its own padding —
+ * a rule that stops short of the edge reads as a line drawn *inside* the panel rather than as the
+ * panel's own division (目視 2026-08-10). Each face states its own two values because the three
+ * scrollers do not share a padding: the pane is 0.6/0.75rem, the panel 0.75rem both sides, and a
+ * modal form keeps the × clear on the right.
+ */
+@mixin issue-row {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.4rem;
+  padding: 0.45rem 0.75rem 0.6rem;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+@mixin issue-actions {
+  // 行の中で中央 (doc-11 §11).
+  justify-content: center;
+  margin-top: 0;
+}
+
+@mixin issue-reason {
+  text-align: center;
+}
+
+/// 表示パス (doc-10 §5). `display: block` because this class is worn by a `<p>` in the 閲覧ヘッダ and
+/// by a `<span>` inside the update form's path `<label>` — a `<p>` is not phrasing content and
+/// cannot go in a label, but the line has to read the same in both places.
+@mixin path {
+  display: block;
+  margin: 0.1rem 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+@mixin code {
+  font-size: 0.95em;
+}
+
+// --- 一覧列 を持つ 3 区画 (doc-10 §1/§5/§6/§10) -------------------------------------------------
+
+@mixin split-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/// 一覧列 の外に立つ直接の子は、列へ移った横 padding を自分で持つ。
+@mixin split-section-inset {
+  margin-right: 0.75rem;
+  margin-left: 0.75rem;
+}
+
+@mixin columns {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/// 一覧列 (doc-10 §1): the column that keeps the selection, worn by every 区画 that holds a list
+/// (the doc enumerates them), styled once because the doc calls them one column type. Width is
+/// design 07's 16rem, a content box like the 区画ナビ's. The heading stays out of the scroller
+/// (`.cards` is the scroll container) so the count is readable at any scroll position.
+@mixin list-column {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: var(--list-column-width);
+  padding: 0 0.35rem 0 0.75rem;
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+
+/*
+ * 一覧見出し行 (doc-10 §1): the count and the 作成の入口 on one line, at the head of the 一覧列 and
+ * outside `.cards`'s scroller — which is what keeps both readable however far the cards are
+ * scrolled. `flex: none` because this row takes its own height and `.cards` below takes the slack;
+ * it is now the row rather than the `h2` that says so, the `h2` having become this row's child
+ * instead of the column's.
+ */
+@mixin list-head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+@mixin list-head-heading {
+  flex: 1;
+  /*
+   * 件数は語の途中で折り返さない。実測 (WebKit, 16rem 列): 「マイルストーン 9 件」 の自然幅は
+   * 124.39px で、入口 (125.22px) と 0.4rem の間隔を引いた残りとちょうど同じ — 桁が 1 つ増えた
+   * だけで溢れ、折り返すと見出しは「マイルストーン」「99 件」に割れる。**割れた見出しより、
+   * 入口が次の行へ下りるほうがよい**ので、`nowrap` で見出しの最小幅をその全長に固定し、
+   * `flex-wrap` の側で行を折り返させる。`min-width: 0` を置かないのはそのためで、置くと
+   * flex はここを潰して行を 1 本に保ち、割れるのは見出しの側になる。
+   */
+  white-space: nowrap;
+}
+
+@mixin cards {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  // The side padding keeps a focused card's ring inside the scrollport (TASK-74's実測).
+  padding: 0.15rem 0.25rem 1.5rem 0.15rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+@mixin cards-item {
+  margin-bottom: 0.35rem;
+}
+
+/// カード (doc-10 §5・§6・§10): the whole area is the selection, and the current one is marked the
+/// way the 区画ナビ marks its current entry — one vocabulary for「いま開いているもの」. Worn by the
+/// cards of every 一覧列; what each 区画 puts inside one is its own business.
+@mixin card {
+  display: block;
+  width: 100%;
+  padding: 0.3rem 0.45rem;
+  text-align: left;
+}
+
+@mixin card-current {
+  border-color: var(--info);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+}
+
+@mixin card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+@mixin card-id {
+  font-family: ui-monospace, monospace;
+  font-size: var(--text-md);
+}
+
+@mixin card-meta {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+@mixin card-head-meta {
+  display: inline;
+}
+
+@mixin card-title {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: var(--text-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/// 編集中 on the current card: the same neutral info hue as 未保存 — being open is not one of
+/// decision-6's 印の族 either.
+@mixin editing-mark {
+  padding: 0 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
+  border-radius: 3px;
+  color: var(--info);
+  font-size: var(--text-sm);
+}
+
+/// The pane beside a 一覧列 — 文書ペイン (doc-10 §5), マイルストーンペイン (§6), 決定事項ペイン
+/// (§10). A name each in the doc because they open different objects, one rule here because the
+/// column is the same shape. **The states are not the same in all three**: 非選択時 の 1 行 and 閲覧
+/// everywhere, plus a 編集セッション in the two that can issue — 決定事項 has no way to open one, so
+/// there the column has two states rather than three. Its first block starts at the columns' top:
+/// the pane has no heading of its own, so an inherited margin here reads as a hole (目視反映).
+@mixin pane {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0.75rem 1.5rem 0.6rem;
+  overflow-y: auto;
+}
+
+/// 閲覧ヘッダ (doc-10 §5, widened by §10): title, and beside it the 編集 of a 区画 that has one. The
+/// heading takes the space so that button keeps its place at the right edge whatever the title's
+/// length, and both stay on the first line — which is the line the selection is meant to land on.
+/// **決定事項区画 has no 編集**, so there the row is the title alone — and needs no rule of its own
+/// because the heading is the flexible child (`h3 { flex: 1 }`), so it fills the row whether or not
+/// a button follows. The 閲覧ヘッダ differ in what they list underneath, and in whether this row has
+/// a second child — not in the row itself.
+@mixin view-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+@mixin view-head-heading {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/// Under the 閲覧ヘッダ's first line: whichever values that 区画's card carries (doc-10 §5・§6・§10
+/// list them per 区画). One line of muted metadata, repeated here because the card is 16rem and
+/// truncates, and this column is not.
+@mixin meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.1rem 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+@mixin meta-line-id {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/// 整形表示 (doc-8 §9) is drawn by a shared component, so what this screen keeps is only the gap to
+/// the 閲覧ヘッダ above it — the 0.5rem the old `.read-body` carried in its own margin (doc-11 §2.2 の
+/// 余白段階). The block's own margin is not this screen's to set now that the block is shared.
+@mixin read-body-slot {
+  margin-top: 0.5rem;
+}
+
+/// 不整合印 (decision-22, decision-24) on a card in any of the 一覧列. A 印グリフ: the family
+/// colour is the figure's own, with no chip background and no word (doc-11 §2.4). The size matches
+/// `TaskCard.svelte`'s .8rem — a figure carrying no word reads smaller than text of the same height
+/// — and the 収録条件 is decision-22's 3:1, which `theme.test.ts` recomputes from `app.scss`.
+@mixin inconsistent-glyph {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  color: var(--mark-inconsistent);
+  font-size: var(--text-lg);
+  cursor: help;
+}
+
+/// 理由行 (decision-22) in a 閲覧ヘッダ — the place doc-11 §2.4 requires the ⚠️'s reason to be
+/// readable without hovering, which decision-24 fixes as「選択が開く場所の見出し下」and which is the
+/// same領域 in every 区画 whose selection opens 閲覧. Plain lines, not a 区画: they carry no heading of
+/// their own because the ⚠️ above already said there is something to read.
+@mixin reason-lines {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--mark-inconsistent);
+  font-size: var(--text-sm);
+}
+
+@mixin reason-lines-item {
+  margin-bottom: 0.15rem;
+}
+
+@mixin reason-line {
+  display: block;
+  font-size: var(--text-sm);
+}
+
+/// 写せなかったファイルの一覧 (doc-10 §1). Below the cards and outside their scroller, so a short
+/// list is not pushed out of view by a long one. Deliberately not a card: nothing here is
+/// selectable, and giving it the card's shape would put a dead target in the list.
+@mixin unmapped-list {
+  flex: none;
+  margin: 0.35rem 0.25rem 0.5rem 0.15rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+  color: var(--mark-inconsistent);
+}
+
+@mixin unmapped-heading {
+  margin: 0 0 0.25rem;
+  font-size: var(--text-sm);
+}
+
+@mixin unmapped-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@mixin unmapped-item {
+  margin-bottom: 0.3rem;
+}
+
+@mixin unmapped-path {
+  display: block;
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+/// The 未保存入力 mark (doc-10 §5・§6). Not one of decision-6's 印の族 — nothing is degraded and
+/// nothing diverged; the user simply has not sent it yet — so it takes the neutral info hue.
+@mixin unsaved-mark {
+  padding: 0 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  color: var(--info);
+  font-size: var(--text-sm);
+}
+
+@mixin sub-panel {
+  margin-top: 0.6rem;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+/// 破棄前確認 (doc-10 §5・§6): the question above the two columns. Its two answers are a 控えの群
+/// (doc-11 §2.2) — side by side, one object, no field between them — so they take this screen's step
+/// like the fields they are asked about.
+@mixin confirm-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem;
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  font-size: var(--text-md);
+}
+
+@mixin confirm-band-button {
+  height: 1.75rem;
+}
+
+// --- 文 ----------------------------------------------------------------------------------------
+
+/// 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1). Not an opacity: the
+/// reason has to stay readable on every 表示テーマ, and dimming it is the opposite of its purpose.
+@mixin muted-note {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+@mixin neutral {
+  margin: 0.2rem 0;
+  color: var(--muted);
+  font-size: var(--text-md);
+}
+
+/// ルート読取不能 (doc-7 §6, decision-6): never drawn the same way as an empty list.
+@mixin unreadable {
+  margin: 0.3rem 0;
+  color: var(--mark-unreadable);
+  font-size: var(--text-md);
+}
+
+@mixin ok {
+  margin: 0.4rem 0;
+  color: var(--muted);
+  font-size: var(--text-md);
+}
+
+/// 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形): the reason stays in the accessibility tree because
+/// `aria-describedby` points at it.
+@mixin unseen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
