@@ -4,7 +4,7 @@ title: コード註の残り、8 行未満の本文註を decision-41 の軸で�
 status: To Do
 assignee: []
 created_date: '2026-08-23 02:45'
-updated_date: '2026-08-23 03:04'
+updated_date: '2026-08-23 03:13'
 labels: []
 milestone: m-4
 dependencies:
@@ -26,3 +26,10 @@ TASK-107 は全ファイルの頭註 121 塊 2,392 行と、本文中で 8 行�
 
 着手時に数え直すこと — decision-41 が書いた 16,747・3,800・6,182 は 2026-08-23 の値で、註を触る回ごとに動く。
 <!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 8 行未満の本文註（約 10,500 行）を decision-41 の軸で 1 塊ずつ判定し、契約の再記述を落とした
+- [ ] #2 註の主張と実装の食い違いを、註の全体について確認した記録がある
+- [ ] #3 TASK-107 の AC #3 をチェックし、TASK-107 を Done にした
+<!-- AC:END -->

@@ -134,6 +134,8 @@ const NAMEABLE_ELSEWHERE = new Map<string, string>([
 interface Comment {
   readonly file: string;
   readonly line: number;
+  /** Which run of adjacent comment lines this belongs to — the unit a §N's document binding spans. */
+  readonly block: number;
   readonly text: string;
 }
 
@@ -149,6 +151,8 @@ function comments(file: string, body: string): Comment[] {
   const found: Comment[] = []
   const lines = body.split("\n")
   let open: "block" | "html" | null = null
+  let block = 0
+  let previous = -2
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim()
     let text: string | null = null
@@ -178,7 +182,11 @@ function comments(file: string, body: string): Comment[] {
       }
     }
     if (text !== null) {
-      found.push({ file, line: i + 1, text })
+      if (i !== previous + 1) {
+        block++
+      }
+      previous = i
+      found.push({ file, line: i + 1, block, text })
     }
   }
   return found
@@ -262,13 +270,35 @@ describe("code comments cite things that exist", () => {
 
   it("names a doc that exists, and a section that doc has", () => {
     const bad: string[] = []
+    // Walked left to right rather than matched as one pattern, because a §N binds to the doc named to
+    // its left whatever sits between them: `doc-9 §4.2 照合不能 / §3 継続検出停止` names two sections
+    // of doc-9, and a pattern requiring them adjacent checked the first and skipped the second.
+    // `decision-N` and AGENTS take no §, so meeting one clears the binding — otherwise a §N belonging
+    // to neither would be charged to whichever doc was last mentioned.
+    //
+    // **A 対応表's header row binds its own rows, and nothing else spans lines.** Several tables name
+    // their document once in the header (`| doc-10 | here | is |`) and give every row a bare §N —
+    // `project-detail.ts` is thirty rows under one such header, and none of them was checked while the
+    // binding reset per line. **Prose is deliberately not treated the same way**: carrying the binding
+    // across prose lines was tried and produced six false positives, every one a bare §N whose document
+    // was named earlier in the block while a *different* one was named more recently
+    // (`lucide.ts`'s `§2.4` is doc-11's, three docs after doc-11 was last written). The tree's
+    // convention is "the document this sentence is about", which no scanner can resolve; a table row's
+    // is "the one in the header", which it can. **So a bare §N in prose is unchecked.**
+    let current: string | null = null
+    let tableDoc: string | null = null
+    let block = -1
     for (const comment of ALL_COMMENTS) {
-      // Walked left to right rather than matched as one pattern, because a §N binds to the doc named
-      // to its left whatever sits between them: `doc-9 §4.2 照合不能 / §3 継続検出停止` names two
-      // sections of doc-9, and a pattern requiring them adjacent checked the first and skipped the
-      // second. `decision-N` and AGENTS take no §, so meeting one clears the binding — otherwise a
-      // §N belonging to neither would be charged to whichever doc was last mentioned.
-      let current: string | null = null
+      if (comment.block !== block) {
+        tableDoc = null
+        block = comment.block
+      }
+      const trimmed = comment.text.trim()
+      const header = /^\|\s*(doc-\d+)\b[^|]*\|/.exec(trimmed)
+      if (header !== null && SECTIONS.has(header[1])) {
+        tableDoc = header[1]
+      }
+      current = trimmed.startsWith("|") ? tableDoc : null
       for (const hit of withoutCodeSpans(comment.text).matchAll(
         /\bdoc-(\d+)\b|\bdecision-\d+\b|\bAGENTS\b|§\s*(\d+(?:\.\d+)*)/g,
       )) {
