@@ -12,12 +12,10 @@
   // (doc-8 §6.5); what changes with the 保存区分 is which operations are *offered*, and an
   // operation that is not offered carries the reason it is not (doc-5 §5).
   //
-  // Bodies are shown as the file wrote them, not rendered as Markdown: a Markdown renderer is a
-  // new production dependency, which AGENTS requires confirming before introducing.
-  //
-  // URLs are text, not links, for the same reason inverted: an <a href> inside the Tauri WebView
-  // would navigate the app window away from Atlas, and opening an external browser needs a
-  // capability this build does not have.
+  // Bodies go through `Body.svelte`'s 整形表示 (doc-8 §9, decision-25), and a URL inside one is handed
+  // to the OS by 既定ブラウザ起動 (doc-8 §9.3). **Neither is drawn as an `<a href>`** — an href is what
+  // makes the engine treat an element as a link, and every way the engine has of following one takes
+  // the window with it (`Body.svelte` carries the 目視 that found it).
   //
   // **What this file is, since TASK-106.** 区画 1 つにつき 1 コンポーネントで `task-detail/` に置いてあり、
   // ここに残っているのは 状態・副作用・区画の並べ方 である。分けたのはマークアップと SCSS で、状態は

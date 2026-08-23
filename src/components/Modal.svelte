@@ -1,12 +1,10 @@
 <script lang="ts">
   // モーダル (doc-7 §2.1, TASK-56): the layer 登録・設定・キーボード操作一覧 open in (the third since
-  // TASK-67). §2.1 gives it three obligations and this component is where all three are met once, rather
-  // than in each thing it opens —
-  // 開いている間フォーカスを内側に留め、Escape で閉じ、閉じたら開く前の操作へフォーカスを戻す.
+  // TASK-67). **§2.1's three obligations are met here once rather than in each thing it opens** —
+  // which is the whole reason this component exists.
   //
-  // It is a layer and not a screen (AC #2 モーダルの外に画面遷移を作らない): the screen behind keeps its
-  // rows, filter and selection, because none of the three is somewhere to work — they are answered, or
-  // read, and dismissed. **Opening** one unmounts nothing, so no route *in* can lose 未保存入力.
+  // **Opening one unmounts nothing**, so no route *in* can lose 未保存入力: the screen behind keeps its
+  // rows, filter and selection.
   //
   // **Closing one does.** Two of the three hold input of their own — the 設定's 下書き and the 登録's
   // three fields — and the caller drops the whole form when this layer goes, so the way out is where
@@ -20,13 +18,11 @@
   // owns the keyboard, and Escape then cancels the conversion instead of the modal.
   //
   // **This layer covers the 上部帯, including ① 確認**, unlike the 中央モーダル詳細配置 which is drawn over
-  // the grid area alone (`App.svelte`) so a 破棄前確認 stays answerable behind it. The difference is
-  // deliberate: doc-7 §2.1 requires *this* layer to keep focus inside, and a trap that let Tab reach a
-  // control outside would not be one. An ① raised *behind* this layer is still one key away — Escape
-  // closes this modal and gives focus back. An ① raised *by* this layer cannot be, which is why the
-  // question is drawn in the box below rather than in the 帯 (doc-11 §7, TASK-86). It is the same ①,
-  // in the one place it can be read while the layer that raised it is up — not a seventh 上部帯,
-  // which doc-11 §4 does not allow.
+  // the grid area alone (`App.svelte`). That follows from the focus trap — one that let Tab reach a
+  // control outside would not be one — and it is why an ① this layer *raises* is drawn in the box below
+  // rather than in the 帯 (doc-11 §7, TASK-86). It is the same ①, in the one place it can be read while
+  // the layer that raised it is up. An ① raised *behind* the layer needs no such move: Escape closes
+  // this modal and gives focus back.
   //
   // **The × in the corner is this layer's** (doc-11 §7, TASK-76), not each caller's. Before, every one
   // of the three drew a 閉じる text button of its own beside its heading, so the one operation the three

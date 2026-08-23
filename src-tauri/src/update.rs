@@ -18,13 +18,12 @@
 //!   invocations run — アプリ設定 `backlog_cli`, then the プラットフォーム別実行ファイル reached from
 //!   an npm shim on Windows, then the bare name `backlog`. It is the only part of this module that
 //!   knows anything about how the CLI was installed; everything below it takes the answer as given.
-//! - **作業ディレクトリ + 引数配列渡し** (doc-5 §4, AC #2): [`run`] runs each invocation with
-//!   `project_root` as `current_dir`, passing every argument as its own array element — never a
-//!   shell string, so a value with spaces/newlines/metacharacters cannot word-split or inject.
-//! - **CLI 失敗時の扱い** (doc-5 §5, AC #3/#4): the exit code decides success; a non-zero exit, a
-//!   spawn failure or a 期限到達 yields [`UpdateOutcome::Failed`] carrying the failure reason, with
-//!   the domain model left untouched. A plan of several invocations aborts on the first failure and
-//!   reports how many already ran, so what already landed is observable by reload (doc-5 §6).
+//! - **作業ディレクトリ + 引数配列渡し** (doc-5 §4, AC #2): [`run`] passes every argument as its own
+//!   array element — never a shell string, so a value with spaces/newlines/metacharacters cannot
+//!   word-split or inject.
+//! - **CLI 失敗時の扱い** (doc-5 §5, AC #3/#4): a plan of several invocations aborts on the first
+//!   failure and reports **how many already ran**, which is what makes what already landed
+//!   observable by reload (doc-5 §6) rather than lost.
 //! - **CLI 終了期限** (doc-5 §5, decision-18): every launch is bounded by [`CLI_DEADLINE`]. A child
 //!   still running at the deadline is killed and reported as [`FailureKind::TimedOut`] — which is
 //!   always [`UpdateFailure::reload_required`], because a killed `backlog` may have written before

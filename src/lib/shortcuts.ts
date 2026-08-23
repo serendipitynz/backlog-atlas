@@ -12,7 +12,7 @@
  *
  * | term | here | is |
  * |---|---|---|
- * | doc-7 §2.1 割り当て一覧 | [`shortcuts`] + [`ShortcutBinding`] | the 記録, all five 欄: chord, operation, 適用範囲, whether it fires in a text field, and what default it stops. §2.1 names this side and not the three columns the モーダル prints (TASK-125) |
+ * | doc-7 §2.1 割り当て一覧 | [`shortcuts`] + [`ShortcutBinding`] | the 記録 itself — every 欄 §2.1 asks for is a field of the type. **Not the columns the モーダル prints**, which §2.1 holds apart from it (TASK-125) |
  * | doc-7 §2.1 使える場所 | [`ShortcutScope`] + [`scopeLabel`] | 適用範囲: the closed set of 6 places an assignment is answered in |
  * | doc-7 §2.1 入力欄・編集部品の内側では単独キーを発火させない | [`textEntryFocused`] + [`ShortcutBinding.firesInTextEntry`] | 文字入力中: focus is inside an element that takes characters, so a bare key belongs to the text |
  * | doc-7 §2.1 修飾キーは macOS で Command、Windows・Linux で Control | [`Chord.mod`] + [`modifierLabel`] | 共通修飾キー: one modifier on the assignment's side, mapped to this OS's real key for matching, ARIA and spelling alike |

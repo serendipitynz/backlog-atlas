@@ -16,12 +16,11 @@
 //!   resolution runs only when a remote host kind was actually determined, which by construction
 //!   requires `git_remote_present` to be true (AC #3).
 //!
-//! doc-6 §6 fixes only the *structure* of relation resolution — "pick the reference means by
-//! remote host kind" — and leaves each host's concrete means (its API, auth, rate, offline
-//! behavior) to be added per kind. The fetch of a PR's commit set is therefore an injected
-//! [`PrCommitSource`], so the gating and the local⇄remote commit matching stay testable without a
-//! network. [`HostReferences`] is the production implementation: it dispatches on the target's
-//! host kind and, for GitHub, asks the `gh` CLI (decision-14).
+//! The fetch of a PR's commit set is an injected [`PrCommitSource`] because doc-6 §6 fixes the
+//! structure and leaves each host's concrete means open: the gating and the local⇄remote commit
+//! matching therefore stay testable without a network. [`HostReferences`] is the production
+//! implementation, dispatching on the target's host kind and, for GitHub, asking `gh`
+//! (decision-14).
 //!
 //! Three bounds sit on the reference means, whichever host kind it serves (decision-19, doc-6 §6):
 //! a [`GH_DEADLINE`] on each 照会, a [`Cancel`] the caller may set when it stops wanting the answer,
