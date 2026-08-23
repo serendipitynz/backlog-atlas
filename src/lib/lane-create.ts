@@ -13,7 +13,7 @@
  * | 列の作成時 status 候補 | `ColumnCreateStatuses.statuses` (`wire.ts`) | the declared raw statuses 列対応規則 sends to one column, in `config.yml` order |
  * | 入口を置く／置かない | [`LaneCreate`] | one cell's entry: offered with its candidates, or absent with its reason |
  * | 渡す値は入力欄で読める | [`laneCreateStatus`] | the candidate the entry shows and will pass, for both the 1 件 and 複数件 cases |
- * | 候補 0 件の列には入口を置かない | [`NO_CANDIDATE_ABSENT_REASON`] | why a column this project declares nothing for has no entry |
+ * | 候補 0 件の列には入口を置かない | [`noCandidateAbsentReason`] | why a column this project declares nothing for has no entry |
  * | title は必須 | `taskTitleRequiredReason()` (`manage.ts`) | the same requirement the 新規タスク区画 states, in the same words |
  * | 発行するのは同じ task create | [`buildLaneTaskCreate`] over `buildTaskCreate` | one `task create`, built by the 新規タスク区画's own builder |
  *

@@ -23,7 +23,7 @@
  * | doc-8 §2.1 1280×800 でも 2 列 | [`modalMainColumnRem`] | what is left for the 主列 once the 脇列 is taken |
  * | doc-8 §2.1 中央モーダルの幅 | [`modalContentWidthRem`] | the box the two columns divide — content, not footprint (TASK-115) |
  * | doc-8 §2.2 既定の永続 | [`placementPersistence`] | whether the chosen placement could be stored, and why not |
- * | doc-8 §2.2 既定印 | [`DEFAULT_PLACEMENT_MARK`] + [`placementSwitchName`] | the mark on the switch for the placement stored as the 既定 |
+ * | doc-8 §2.2 既定印 | [`defaultPlacementMark`] + [`placementSwitchName`] | the mark on the switch for the placement stored as the 既定 |
  * | doc-8 §2.2 切替が刷る図形 | [`PLACEMENT_ICON`] | which lucide figure stands for each placement |
  *
  * Two rules run through the module:
