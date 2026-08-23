@@ -383,10 +383,10 @@ spellings `app` and `state`, so renaming a handle costs nothing; the pattern lis
 silently dropping a required key. **The Rust parameter name is converted rather than compared** — the
 macro defaults to `rename_all = "camelCase"`, and only that direction is implemented, so writing the
 attribute reddens the scan and is *meant* to: changing the frontend does not clear it, because the
-scan still camelCases. Supporting the attribute means teaching the scan about it. And **the set of commands the frontend never calls is locked
-at three** (`cross_task_id_generate`, `cross_task_id_parse`, `project_close`) instead of excused one
-by one with a reason: the reasons are a reading, and locking the set is what makes a fourth one
-somebody's decision.
+scan still camelCases. Supporting the attribute means teaching the scan about it. And **the set of
+commands the frontend never calls is locked at three** (`cross_task_id_generate`,
+`cross_task_id_parse`, `project_close`) instead of excused one by one with a reason: the reasons are
+a reading, and locking the set is what makes a fourth one somebody's decision.
 
 ### The GUI E2E, which `pnpm test` does not run
 
