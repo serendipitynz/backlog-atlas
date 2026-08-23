@@ -761,10 +761,6 @@
     word-break: break-all;
   }
 
-  .meta {
-    @include shared.card-meta;
-  }
-
   input[type="text"],
   select {
     @include shared.form-control;
