@@ -377,12 +377,13 @@ nothing to re-record.**
 Four things about it are deliberate. **A Rust type the small primitive table cannot map is a failure,
 not a skip** — the table holds `String`/`PathBuf`/`bool`/`()`/`tauri::ipc::Response`, `Result`,
 `Option` and `Vec`, and every other type is compared by name, which is why the table does not need
-`wire.ts`'s names in it. **A parameter Tauri injects is recognised by its type** (`AppHandle`,
-`State<'_, T>`), not by the spellings `app` and `state`, so renaming a handle costs nothing; an
-injected type this list does not carry reddens the test rather than silently dropping a required key.
-**The Rust parameter name is converted rather than compared** — the macro defaults to
-`rename_all = "camelCase"`, and only that direction is implemented, so writing the attribute reddens
-this until the frontend is changed too. And **the set of commands the frontend never calls is locked
+`wire.ts`'s names in it. **A parameter Tauri injects is recognised by its type**, not by the
+spellings `app` and `state`, so renaming a handle costs nothing; the pattern list lives in the test
+(`INJECTED`) rather than here, and an injected type it does not carry reddens the test rather than
+silently dropping a required key. **The Rust parameter name is converted rather than compared** — the
+macro defaults to `rename_all = "camelCase"`, and only that direction is implemented, so writing the
+attribute reddens the scan and is *meant* to: changing the frontend does not clear it, because the
+scan still camelCases. Supporting the attribute means teaching the scan about it. And **the set of commands the frontend never calls is locked
 at three** (`cross_task_id_generate`, `cross_task_id_parse`, `project_close`) instead of excused one
 by one with a reason: the reasons are a reading, and locking the set is what makes a fourth one
 somebody's decision.
