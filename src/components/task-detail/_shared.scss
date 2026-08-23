@@ -1,0 +1,211 @@
+// タスク詳細画面の区画コンポーネントが分け合う SCSS 規則 (TASK-106).
+//
+// **なぜ mixin なのか。** Svelte のスコープはコンポーネント境界を越えないので、区画のマークアップが
+// 子へ移ると、親に残した規則はその要素へ届かない。一方で `.hint`・`.neutral`・`button` のような規則は
+// 複数の区画が要る。宣言だけを持つ mixin にして呼び出し側が選択子を書くと、規則は 1 か所に残り、
+// **使っていないものを `@include` すれば Svelte が「Unused CSS selector」を出す** — 配置の検算が
+// 効いたままになる。全部入りの 1 mixin を全区画へ配ると、その検算が丸ごと失われる。
+//
+// **ここに置くのは 2 つ以上の区画が要る規則だけである。** 1 つの区画しか使わない規則は、その区画の
+// `<style>` に置く — ここへ集めると、区画を読む人が 2 ファイルを行き来することになる。
+
+/// 区画の中の `<p>` の地。クラスの規則より先に `@include` する — 呼び出し側での並びが効く。
+@mixin paragraph {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+/// 正常な不在は `--faint` (doc-11 §2.1・§6), the same 弱 as 空セル の `—` and the Git 履歴欄's 該当なし.
+/// An opacity would land somewhere else on every 表示テーマ and pull the three apart. Only 空表示
+/// takes it: a 理由 is 副次 (`--muted`), never 弱 — 状態遷移区画 の 提供しない理由 がそれである。
+@mixin neutral {
+  color: var(--faint);
+}
+
+@mixin hint {
+  font-size: var(--text-sm);
+  opacity: 0.65;
+}
+
+@mixin ok {
+  font-size: var(--text-sm);
+  opacity: 0.8;
+}
+
+/// 左端の 3px で族を述べる帯の地。族の色は使う側が与える (decision-6・decision-22 の
+/// 「族を同じ印へ混ぜない」)。
+@mixin band {
+  padding: 0.3rem 0.4rem;
+  border-left: 3px solid;
+  font-size: var(--text-md);
+}
+
+@mixin warn {
+  @include band;
+
+  border-left-color: var(--info);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+}
+
+/// 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形)。読み上げには残す — 木から外すと、埋まった瞬間の
+/// 読み上げが起きない。
+@mixin unseen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/// 区画の地 (`<section>`)。見出しは `h3` が持つ。
+@mixin section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/// 値の一覧 (AC・Comments・dependencies・References・Pull Request・一覧編集・状態遷移・外部エディタ)。
+@mixin value-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-md);
+}
+
+/// 1 行の中に値と印を並べる行。
+@mixin inline-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+@mixin chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+@mixin url {
+  word-break: break-all;
+}
+
+@mixin number {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
+
+@mixin effect {
+  flex-basis: 100%;
+  font-size: var(--text-sm);
+  opacity: 0.6;
+}
+
+/// 印チップ (doc-11 §3) の地。族の色は使う側が `--family` で与える (decision-12 の配色規則)。
+@mixin mark {
+  padding: 0 0.3rem;
+  border-radius: 3px;
+  font-size: var(--text-sm);
+}
+
+/// 写せなかった値・解決できない参照は輪郭だけ (doc-11 §3)。
+@mixin mark-unmapped {
+  border: 1px solid var(--line-strong);
+}
+
+/*
+ * フォーム部品の高さ (doc-11 §2.2). 1.4rem — the same step `--frame-control` takes in the 見出し, so
+ * the panel answers the question once: the title input sits in the 固定 band beside those controls,
+ * and the 編集セッション's fields sit under it in a panel that is 30rem wide in 併置サイドバー. The
+ * largest step belongs to the screens that are a form and nothing else (doc-10 §1 の作成モーダル).
+ * Stated rather than left to the engine: the three `select`s in the 属性表 drew at 18px in WebKit
+ * and 25px in Chromium against a 24.52px input, from this one declaration (変更前実測 2026-08-11).
+ */
+@mixin form-control {
+  height: 1.4rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--inset);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+/// 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5). Nothing here may add a `:disabled` rule: a
+/// component-scoped one outranks the global selector and would put this screen's blocked controls
+/// back out of step with the others.
+@mixin button {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+@mixin button-primary {
+  background: color-mix(in srgb, var(--fg) 14%, transparent);
+  font-weight: 600;
+}
+
+@mixin button-mini {
+  font-size: var(--text-sm);
+}
+
+@mixin button-mini-on {
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+}
+
+/// 控えの群 (doc-11 §2.2): buttons choosing one thing, with no field among them, so they take the
+/// panel's 1.4rem step like the 前後移動 and 配置切替 groups in the 見出し. Not a 発行の行 (doc-11 §11):
+/// nothing in such a group issues anything.
+@mixin control-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+@mixin control-group-button {
+  height: 1.4rem;
+}
+
+/// 一覧へ 1 件足す行。
+@mixin add-row {
+  display: flex;
+  gap: 0.3rem;
+}
+
+@mixin add-row-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/// AC と Definition of Done の項目行。両者は同じ形で並ぶ (doc-8 §3)。
+@mixin checklist-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+/// 完了印 (doc-11 §2.4): a span in 閲覧, a button in the 編集セッション, the same figure in both.
+/// The size is stated once rather than on each, so the two cannot drift apart — the figure draws at
+/// 1em of it (§2.4). `display: block` because the row aligns on the baseline and an svg has none:
+/// the row then puts its bottom edge on the text's baseline, which is where the glyph used to sit.
+@mixin checklist-box {
+  display: block;
+  flex: none;
+  font-size: var(--text-lg);
+}

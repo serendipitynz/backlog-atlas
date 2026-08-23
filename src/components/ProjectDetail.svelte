@@ -16,48 +16,50 @@
   // `lib/ledger.ts` / `lib/manage.ts` (building the request values); this component is layout, local
   // form state and callbacks. Text inputs bind to local state and are never rewritten while the user
   // is typing — the same IME rule the other screens follow.
+  //
+  // **What this file is, since TASK-106.** doc-10 §1 の 5 区画は `project-detail/` の 1 コンポーネント
+  // ずつで、被せ層 (§1・§7) はどの区画にも属さないのでもう 1 つ。ここに残っているのは 状態・副作用・
+  // ヘッダ・区画ナビ である。分けたのはマークアップと SCSS で、状態は動かしていない — 区画切替が
+  // 何も落とさないのは全区画の入力がこの 1 か所にあるからで (§1)、`dirty` も 5 区画ぶんをここで足して
+  // いる。だから子が受け取るのは値と、書き戻しの口だけである。
+  //
+  // 複数の区画が要る SCSS 規則は `project-detail/_shared.scss` の mixin で、使う側が選択子を書く —
+  // Svelte のスコープはコンポーネント境界を越えないので、規則そのものを親に残すことはできない。
+  // 一覧列 を持つ 3 区画 (§1/§5/§6/§10) が列の形をまるごと分け合うのはその mixin である。
   import { tick, untrack, type Snippet } from "svelte";
   import type { Availability } from "../lib/availability";
   import { AVAILABLE, withheld } from "../lib/availability";
-  import Body from "./Body.svelte";
   import type { ImageReader } from "../lib/markdown-image";
-  import Editor from "./Editor.svelte";
-  import Modal from "./Modal.svelte";
   import Icon from "../lib/icons/Icon.svelte";
-  import {
-    fileInconsistencyReasons,
-    inconsistencyLabel,
-    unmappedFileReason,
-  } from "../lib/mark";
-  import { PRIORITIES, type DiscardAnswers } from "../lib/edit";
-  import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
-  import { MAC_KEYBOARD } from "../lib/platform";
+  // 区画コンポーネント (TASK-106). doc-10 §1 の 5 区画に 1 つずつで、被せ層 はどの区画にも属さないので
+  // 別に 1 つ。状態はこのファイルが持ち、子は値と入力の受け渡しだけを持つ — 区画切替が入力を落とさない
+  // のはそれが理由である (m-1 TASK-55, AC #2)。
+  import CreateLayer from "./project-detail/CreateLayer.svelte";
+  import DecisionsSection from "./project-detail/DecisionsSection.svelte";
+  import DocumentsSection from "./project-detail/DocumentsSection.svelte";
+  import MilestonesSection from "./project-detail/MilestonesSection.svelte";
+  import NewTaskSection from "./project-detail/NewTaskSection.svelte";
+  import OverviewSection from "./project-detail/OverviewSection.svelte";
+  import { fileInconsistencyReasons } from "../lib/mark";
+  import type { DiscardAnswers } from "../lib/edit";
   import { messages } from "../lib/messages-context";
   import {
     CANONICAL_STATUS_NAMES,
-    aliasKeyEffect,
     editOf,
     editProblems,
     resolvedBacklogRoot,
     toUpdateRequest,
     type EntryEdit,
-    type FieldProblem,
     type LedgerActionResult,
-    type LedgerField,
     type RefusalReport,
   } from "../lib/ledger";
   import {
-    DOC_TYPES,
     EMPTY_DOC_CREATE,
     EMPTY_MILESTONE_ADD,
     EMPTY_MILESTONE_REMOVE,
     EMPTY_MILESTONE_RENAME,
     EMPTY_TASK_CREATE,
     issueBusyReason,
-    milestoneKeepLeavesDanglingReferences,
-    milestoneRemoveMovesTheFile,
-    taskCreateLaterFields,
-    taskCreateNote,
     buildDocCreate,
     buildDocUpdate,
     buildMilestoneAdd,
@@ -80,7 +82,6 @@
     type DocCreateInput,
     type DocDraft,
     type DocSession,
-    omitsSentence,
     type IssueAvailability,
     type IssueOutcome,
     type IssuePlan,
@@ -90,17 +91,13 @@
     type TaskCreateInput,
   } from "../lib/manage";
   import {
-    aliasEffectNote,
     sectionLabel,
     DETAIL_SECTIONS,
     displayPath,
     ledgerWriteInFlightReason,
     LIST_COLUMN_WIDTH_REM,
-    overviewReadOnlyNote,
     SECTION_NAV_WIDTH_REM,
-    slugImmutableNote,
     sectionCount,
-    unregisterScopeNote,
     gitRemoteDisagreement,
     gitRemoteLine,
     movesRoot,
@@ -509,10 +506,6 @@
     } finally {
       ledgerSaving = false;
     }
-  }
-
-  function problemsFor(problems: FieldProblem[], field: LedgerField): string[] {
-    return problems.filter((problem) => problem.field === field).map((problem) => problem.message);
   }
 
   // --- 更新操作の発行 (doc-5 §3, doc-9 §4) -------------------------------------------------------
@@ -1409,110 +1402,21 @@
 
   // --- 表示の小道具 -------------------------------------------------------------------------------
 
-  /** Where a 一覧列's cards send `aria-describedby` while issuance is held (doc-11 §5). One id per
-   * 区画, because the two lists are never on screen together but their sentences differ. */
-  const DOC_EDIT_BLOCKED_ID = "detail-doc-edit-blocked";
-  const DOC_UPDATE_BLOCKED_ID = "detail-doc-update-blocked";
-  const DESCRIBE_BLOCKED_ID = "detail-milestone-describe-blocked";
-  /** The same for the 閲覧ヘッダ's 編集: a different sentence, since that one is about editing. */
-  const DOC_EDIT_HELD_ID = "detail-doc-edit-held";
-  const MILESTONE_SELECT_BLOCKED_ID = "detail-milestone-select-blocked";
-  /** The same for the マイルストーン閲覧ヘッダ's 編集 (doc-10 §6, TASK-121). */
-  const MILESTONE_EDIT_HELD_ID = "detail-milestone-edit-held";
-
-  function why(availability: { state: string; reason?: string }): string {
-    return availability.state === "blocked" ? (availability.reason ?? "") : "";
-  }
-
-  /**
-   * The `title` of a 発行 control that has a chord (doc-7 §2.1 の併記). When the control is pressable
-   * the chord is what the title has to carry — since 2026-08-10 the 併記 is discharged by the control
-   * itself and the キーボード操作一覧, with no visible line beside the row (目視). When it is withheld,
-   * the reason takes the title's place: naming a chord for a 発行 that cannot be issued advertises an
-   * operation the form is refusing (doc-5 §5).
-   */
-  function issueTitle(availability: { state: string; reason?: string }, label: string): string {
-    return availability.state === "blocked"
-      ? (availability.reason ?? "")
-      : `${label} (${shortcutHint("saveEditSession", MAC_KEYBOARD)})`;
-  }
-
-  function addTo(values: string[], value: string): string[] {
-    const trimmed = value.trim();
-    return trimmed === "" || values.includes(trimmed) ? values : [...values, trimmed];
-  }
-
   /** What stands in for a list the screen cannot draw because the root is unreadable (doc-10 §8). */
   let unreadableNote = $derived(
     unreadable === null
       ? null
       : t().projectDetail.sectionUnreadable,
   );
+
+  /**
+   * 新規タスク区画 が欄を出しているか。**1 つの述語で足りるようにここに置いてある** — 欄が出ている
+   * ときだけ 発行の行 が立ち (doc-11 §11)、そのとき `.panel` の下 padding をその行が持つので、区画と
+   * パネルの両方がこの値を読む。分割前は `.panel:has(> section > .issue)` が要素の有無を読んでいたが、
+   * 区画が子コンポーネントになった以上、その要素はこの木のスコープクラスを持たない。
+   */
+  let taskFormShown = $derived(unreadableNote === null && project !== null);
 </script>
-
-{#snippet listEditor(
-  values: string[],
-  apply: (next: string[]) => void,
-  draft: string,
-  setDraft: (value: string) => void,
-  placeholder: string,
-)}
-  {#if values.length > 0}
-    <ul class="list-edit">
-      {#each values as value, index (index)}
-        <li>
-          <span class="value">{value}</span>
-          <button
-            type="button"
-            class="mini"
-            onclick={() => apply(values.filter((_, at) => at !== index))}
-          >
-            {t().action.remove}
-          </button>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-  <div class="add-row">
-    <input
-      type="text"
-      {placeholder}
-      value={draft}
-      oninput={(event) => setDraft(event.currentTarget.value)}
-    />
-    <button
-      type="button"
-      class="mini"
-      onclick={() => {
-        apply(addTo(values, draft));
-        setDraft("");
-      }}
-    >
-      {t().action.add}
-    </button>
-  </div>
-{/snippet}
-
-{#snippet listHead(count: string, entry: string, hint: string, onopen: () => void)}
-  <!-- 一覧見出し行 (doc-10 §1, TASK-117). One snippet for the 一覧列 that have a 作成の入口, because
-       §1 makes the row a property of the column rather than of any one 区画 — written out per 区画,
-       they would start to differ in exactly the way §1 rules out. What each 区画 supplies is its own
-       wording. **決定事項区画 does not use this snippet**: it has nothing to add to its list, so §1
-       leaves it the heading alone and this row's second half has no subject there.
-
-       The 作成の入口 is never withheld: it issues nothing, and the reason a 作成 cannot be issued
-       right now (CLI 縮退, a write in flight) is printed beside the 発行 control inside the layer,
-       which is where it can actually be read. -->
-  <div class="list-head">
-    <h2>{count}</h2>
-    <!-- 可視の文言を持つ控えの中のアイコン (doc-11 §2.4): the wording is the button's name, so the
-         figure takes no `aria-label` of its own and adds nothing to the accessibility tree. -->
-    <button type="button" class="create-entry" title={hint} onclick={onopen}>
-      <Icon name="plus" />
-      {entry}
-    </button>
-  </div>
-{/snippet}
 
 <!-- The column widths come from `project-detail.ts` so the number a doc cites and the number laid
      out are the same one (TASK-113's pattern). Both size content boxes (TASK-115). 行長上限 comes
@@ -1568,7 +1472,8 @@
 
   <div class="body">
     <!-- 区画切替 (doc-10 §1): a display change within one screen, not a screen transition. Every
-         区画's input lives in this one component, so moving between them loses nothing. -->
+         区画's input lives in this one component, so moving between them loses nothing — which is why
+         the 区画コンポーネント below hold none of it (TASK-106). -->
     <nav class="sections" aria-label={t().projectDetail.sectionsLabel}>
       {#each DETAIL_SECTIONS as item (item)}
         {@const count = sectionCount(item, project)}
@@ -1591,1491 +1496,162 @@
     <div
       class="panel"
       class:split={section === "documents" || section === "milestones" || section === "decisions"}
+      class:issue-row={section === "newTask" && taskFormShown}
     >
       {#if message !== null}
         <p class={message.tone}>{message.text()}</p>
       {/if}
 
       {#if section === "overview"}
-        <!-- 概要区画 (doc-10 §4): the ledger file is the only thing it writes, so CLI 縮退 does not
-             reach it. -->
-        <section>
-          <h2>{t().projectDetail.overviewHeading}</h2>
-
-          {#if ledgerReadOnly}
-            <!-- doc-10 §8 asks for both the inputs and 登録解除 to be disabled. With only the save
-                 held back, the user could edit values that can never be written, that input would
-                 count as 未保存入力, and they would later be asked whether to discard changes that
-                 were never saveable (review [P2]). `disabled` is allowed because this sentence is on
-                 screen near the controls at all times (doc-11 §5). -->
-            <p class="blocked-note" id={OVERVIEW_BLOCKED_ID}>{overviewReadOnlyNote()}</p>
-          {/if}
-
-          {#if overviewNotice}
-            <p class="ok">{overviewNotice()}</p>
-          {/if}
-
-          <div class="field">
-            <span class="label">slug</span>
-            <p class="value-line"><code>{entry.slug}</code></p>
-            <!-- No unpressable field for it (doc-10 §4.1): what is shown is the value, and what
-                 changing it would take instead. -->
-            <p class="hint">{slugImmutableNote()}</p>
-          </div>
-
-          <label class="field">
-            <span class="label">project_root</span>
-            <span class="row-inline">
-              <input
-                type="text"
-                bind:value={edit.projectRoot}
-                spellcheck="false"
-                disabled={ledgerReadOnly}
-              />
-              <button type="button" disabled={ledgerReadOnly} onclick={() => pickRoot("projectRoot")}>
-                {t().action.pick}
-              </button>
-            </span>
-          </label>
-          {#if moveNote !== null}
-            <p class="hint">{moveNote}</p>
-          {/if}
-          {#each problemsFor(editIssues, "projectRoot") as text (text)}
-            <p class="problem">{text}</p>
-          {/each}
-
-          <label class="field">
-            <span class="label">backlog_root</span>
-            <span class="row-inline">
-              <input
-                type="text"
-                bind:value={edit.backlogRoot}
-                spellcheck="false"
-                disabled={ledgerReadOnly}
-              />
-              <button type="button" disabled={ledgerReadOnly} onclick={() => pickRoot("backlogRoot")}>
-                {t().action.pick}
-              </button>
-              <button type="button" disabled={ledgerReadOnly} onclick={followBacklogDefault}>
-                {t().projectDetail.matchDefault}
-              </button>
-            </span>
-          </label>
-          {#each problemsFor(editIssues, "backlogRoot") as text (text)}
-            <p class="problem">{text}</p>
-          {/each}
-
-          <div class="field">
-            <span class="label">Git remote</span>
-            <p class="value-line remote" class:setting={remoteLine.kind === "setting"} class:failure={remoteLine.kind === "failure"}>
-              {#if remoteLine.address}
-                <code>{remoteLine.text}</code>
-                <span class="remote-name">{t().projectDetail.remoteName(remoteLine.name ?? "")}</span>
-              {:else}
-                {remoteLine.text}
-              {/if}
-            </p>
-            {#if remoteDisagreement !== null}
-              <p class="hint">{remoteDisagreement}</p>
-            {/if}
-            <span class="row-inline">
-              <button
-                type="button"
-                disabled={redetect.state !== "ready"}
-                aria-describedby={redetect.state === "withheld" ? REDETECT_BLOCKED_ID : undefined}
-                onclick={redetectGitRemote}
-              >
-                {redetect.label}
-              </button>
-            </span>
-            {#if redetect.state === "withheld"}
-              <!-- doc-11 §5: a withheld control carries its reason in view, not on hover. The
-                   running state has no line of its own — its label is what says so. -->
-              <p class="problem" id={REDETECT_BLOCKED_ID}>{redetect.reason}</p>
-            {/if}
-          </div>
-
-          <fieldset class="aliases">
-            <legend>{t().projectDetail.aliasLegend}</legend>
-            <p class="hint">
-              {t().projectDetail.aliasNote}
-            </p>
-            {#each edit.aliases as row, index (index)}
-              {@const effect =
-                declaredStatuses === null ? null : aliasKeyEffect(row.key, declaredStatuses)}
-              {@const note = effect === null ? null : aliasEffectNote(effect)}
-              {@const invalidValue = !CANONICAL_STATUS_NAMES.includes(row.value)}
-              <div class="alias-row">
-                <input
-                  type="text"
-                  placeholder={t().projectDetail.aliasKeyPlaceholder}
-                  list={`declared-${entry.slug}`}
-                  bind:value={row.key}
-                  disabled={ledgerReadOnly}
-                />
-                <!-- 値の対応を示す記号 (doc-11 §2.4). 操作に属さないアイコン: not inside a pressable
-                     control, and what it shows — 原文 status を正準列へ対応づける — is what the 区画's
-                     own hint sentence above says in words, which is the condition §2.4 puts on this
-                     type. So it carries no `aria-label`, no `title` and no focus. -->
-                <Icon name="arrow-right" />
-                <select bind:value={row.value} disabled={ledgerReadOnly}>
-                  {#each CANONICAL_STATUS_NAMES as name (name)}
-                    <option value={name}>{name}</option>
-                  {/each}
-                  {#if invalidValue}
-                    <!-- 不正な別名を台帳から削除しない (doc-3 §3.3, TASK-42). Showing the row with its
-                         own out-of-range value *is* what「削除しない」means on this screen: listing
-                         only the canonical four would swap the value for the first option the moment
-                         the form opened, and the save would then drop it. -->
-                    <option value={row.value}>{t().projectDetail.aliasInvalid(row.value)}</option>
-                  {/if}
-                </select>
-                <!-- アイコンのみのボタン (doc-11 §2.4). 原文 is the wording「行を外す」; doc-10 §4.2
-                     records why this row takes a figure instead. The name has to name *which* row —
-                     with the glyph gone there is no visible name left, and the rows are otherwise
-                     alike. A row whose 原文 status is still empty has nothing to be called but its
-                     place in the table. -->
-                <button
-                  type="button"
-                  class="drop"
-                  aria-label={row.key.trim() === ""
-                    ? t().projectDetail.aliasRemoveByIndex(index + 1)
-                    : t().projectDetail.aliasRemoveByKey(row.key)}
-                  title={t().projectDetail.aliasRemoveHint}
-                  disabled={ledgerReadOnly}
-                  onclick={() => removeAliasRow(index)}
-                >
-                  <Icon name="x" />
-                </button>
-                {#if row.key.trim() !== ""}
-                  {#if note !== null}
-                    <!-- Whether the alias actually applies (doc-10 §4.2). Only the one ineffective
-                         state takes the 不整合 family's colour. -->
-                    <span class="alias-effect" class:ineffective={note.ineffective} title={note.note}>
-                      {note.label}
-                    </span>
-                  {:else}
-                    <span class="alias-effect">
-                      {t().projectDetail.aliasUncheckable}
-                    </span>
-                  {/if}
-                {/if}
-              </div>
-              {#if row.key.trim() !== "" && note !== null}
-                <p class="alias-note" class:ineffective={note.ineffective}>{note.note}</p>
-              {/if}
-            {/each}
-            <div class="row-inline">
-              <button type="button" disabled={ledgerReadOnly} onclick={addAliasRow}>{t().projectDetail.aliasAdd}</button>
-              {#if declaredStatuses !== null}
-                <datalist id={`declared-${entry.slug}`}>
-                  {#each declaredStatuses as status (status)}
-                    <option value={status}></option>
-                  {/each}
-                </datalist>
-              {/if}
-            </div>
-            {#each problemsFor(editIssues, "aliases") as text (text)}
-              <p class="problem">{text}</p>
-            {/each}
-          </fieldset>
-
-          <!-- 送る属性を保存の直前に列挙する (doc-10 §4.1). What is listed is what the request
-               actually carries, not what the screen thinks it changed — a move carrying both roots
-               shows up here. -->
-          <div class="submit-preview">
-            <h3>{t().projectDetail.attributesHeading}</h3>
-            <!-- 状態文 (doc-11 §8): what this 区画 has to show when the list is empty. §8 puts 状態文
-                 outside its own scope, so the 一掃 that dropped this line as a 状態の言い換え
-                 (`8aa4be9`) was applying the wrong rule — and doc-10 §4.1 names「変更なし」as the
-                 word to use. It is also the 保存's 保留理由 stated by the 区画 itself (§8 の licence ①),
-                 which is why no second sentence is printed under the control. -->
-            {#if submitted.length === 0}
-              <p class="neutral">{t().projectDetail.attributesNone}</p>
-            {:else}
-              <ul class="submitted">
-                {#each submitted as attribute (attribute.attribute)}
-                  <!-- 値の対応を示す記号 (doc-11 §2.4 の 操作に属さないアイコン). That type requires the
-                       区画's own words to say what the figure says, and here nothing did: the two
-                       values were told apart by the arrow alone, which is `aria-hidden`, so a reader
-                       heard「project_root 旧パス 新パス」. The words are 視覚的にのみ隠す (doc-11 §5 の
-                       2 つ目の形) — the figure already says it to the eye. -->
-                  <li>
-                    <code>{attribute.attribute}</code>
-                    <span class="unseen">{t().projectDetail.before}</span>
-                    <span class="from">{attribute.from}</span>
-                    <Icon name="arrow-right" />
-                    <span class="unseen">{t().projectDetail.after}</span>
-                    <span class="to">{attribute.to}</span>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          </div>
-
-          {#if entryReport !== null}
-            <p class="problem">{entryReport.message}</p>
-          {/if}
-
-          <div class="actions">
-            <button
-              type="button"
-              class="primary"
-              aria-disabled={saveControl.state !== "ready"}
-              aria-describedby={saveControl.state === "ready"
-                ? undefined
-                : ledgerReadOnly
-                  ? OVERVIEW_BLOCKED_ID
-                  : SAVE_BLOCKED_ID}
-              title={saveControl.state === "withheld"
-                ? saveControl.reason
-                : t().projectDetail.saveHint}
-              onclick={save}>{t().action.save}</button
-            >
-          </div>
-          {#if !ledgerReadOnly}
-            <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because `aria-describedby`
-                 points at it: hidden when the 区画 already states it (doc-11 §8), visible otherwise.
-                 On a read-only ledger the note above is the reason instead, so nothing is placed
-                 here at all. -->
-            <p
-              id={SAVE_BLOCKED_ID}
-              class={saveControl.state === "withheld" && !omitsSentence(saveControl.reason)
-                ? "blocked-note"
-                : "unseen"}
-            >
-              {saveControl.state === "withheld" ? saveControl.reason : ""}
-            </p>
-          {/if}
-
-          <!-- 登録解除 (doc-10 §4.3): a 危険区画, kept apart from the other operations. -->
-          <div class="danger">
-            <h3>{t().projectDetail.unregisterHeading}</h3>
-            <p>{unregisterScopeNote()}</p>
-            <label class="field">
-              <span class="label">{t().projectDetail.unregisterConfirmLabel}</span>
-              <input
-                type="text"
-                placeholder={entry.slug}
-                spellcheck="false"
-                bind:value={unregisterInput}
-                disabled={ledgerReadOnly}
-              />
-            </label>
-            <div class="actions">
-              <button
-                type="button"
-                aria-disabled={unregisterAvailable.state === "withheld"}
-                aria-describedby={unregisterAvailable.state === "ready"
-                  ? undefined
-                  : ledgerReadOnly
-                    ? OVERVIEW_BLOCKED_ID
-                    : UNREGISTER_BLOCKED_ID}
-                title={unregisterAvailable.state === "withheld"
-                  ? unregisterAvailable.reason
-                  : t().projectDetail.unregisterHint}
-                onclick={unregister}>{t().projectDetail.unregister}</button
-              >
-            </div>
-            {#if unregisterAvailable.state === "withheld" && !ledgerReadOnly}
-              <p class="blocked-note" id={UNREGISTER_BLOCKED_ID}>{unregisterAvailable.reason}</p>
-            {/if}
-          </div>
-        </section>
+        <OverviewSection
+          {entry}
+          {ledgerReadOnly}
+          notice={overviewNotice}
+          {edit}
+          {moveNote}
+          {editIssues}
+          {submitted}
+          {entryReport}
+          {saveControl}
+          {unregisterAvailable}
+          {redetect}
+          {remoteLine}
+          {remoteDisagreement}
+          {declaredStatuses}
+          {unregisterInput}
+          setUnregisterInput={(value) => (unregisterInput = value)}
+          onpickRoot={(field) => void pickRoot(field)}
+          onfollowBacklogDefault={followBacklogDefault}
+          onaddAliasRow={addAliasRow}
+          onremoveAliasRow={removeAliasRow}
+          onredetect={() => void redetectGitRemote()}
+          onsave={() => void save()}
+          onunregister={() => void unregister()}
+        />
       {:else if section === "documents"}
-        <!-- 文書区画 (doc-10 §5): 文書一覧 (16rem) beside the 文書ペイン, the screen's own second and
-             third column after the 区画ナビ. Each column scrolls on its own — a deliberate departure
-             from design 07's single scroller, recorded in doc-10 §5 — so choosing a document swaps
-             the pane while the list keeps its scroll position. The 破棄前確認 stays above the
-             columns: it must be visible whatever either column has scrolled to. -->
-        <section class="split-section">
-          {#if unreadableNote !== null}
-            <h2>{t().projectDetail.documentsHeading}</h2>
-            <p class="unreadable">{unreadableNote}</p>
-          {:else if project === null}
-            <h2>{t().projectDetail.documentsHeading}</h2>
-            <p class="neutral">{t().state.loading}</p>
-          {:else}
-            {#if pendingDocument !== null}
-              <!-- 破棄前確認: 未保存入力 is held and the requested action would drop it. The action
-                   itself has not been applied. -->
-              <div class="confirm">
-                <span>
-                  {#if pendingDocument.document === null}
-                    {t().projectDetail.documentUnsavedOnClose}
-                  {:else}
-                    {t().projectDetail.documentUnsavedOnOpen(pendingDocument.document.id)}
-                  {/if}
-                </span>
-                <button type="button" onclick={leaveConfirmed}>{t().projectDetail.discardAndContinue}</button>
-                <button type="button" onclick={() => (pendingDocument = null)}>{t().projectDetail.backToInput}</button>
-              </div>
-            {/if}
-
-            <div class="columns">
-              <div class="list-column">
-                <!-- 一覧見出し行 (doc-10 §1, TASK-117): the count and the 作成の入口 on one line, at
-                     the head of the column and outside its scroller — so both stay readable however
-                     far the cards are scrolled. The count is the cards' own (目視反映), which is why
-                     the 写せなかったファイル below are not in it (decision-24). -->
-                {@render listHead(
-                  t().projectDetail.documentsCount(project.documents.length),
-                  t().projectDetail.documentNew,
-                  t().projectDetail.documentNewHint,
-                  () => openCreate("document"),
-                )}
-                {#if project.documents.length === 0}
-                  <p class="neutral">{t().projectDetail.documentsEmpty}</p>
-                {:else}
-                  {#if issuance.state === "withheld"}
-                    <!-- Every card is held by the same one thing (doc-11 §5): the reason is written
-                         once above the list and each card is bound to it. They stay `aria-disabled`
-                         so they keep taking focus, which is what makes the binding reachable
-                         without a pointer. -->
-                    <p class="reason" id={DOC_EDIT_BLOCKED_ID}>
-                      {t().projectDetail.documentIssuingBlocksOthers(issuance.reason)}
-                    </p>
-                  {/if}
-                  <ul class="cards">
-                    {#each project.documents as document (document.id)}
-                      {@const current = docSelection === document.id}
-                      {@const editing = docSession?.baseline.id === document.id}
-                      {@const reasons = fileInconsistencyReasons(document.health, "document")}
-                      <li>
-                        <!-- カード (doc-10 §5): the whole area is the selection — no separate 編集
-                             button, and the current card is marked (目視反映: which document is
-                             being read must be readable from the list). No path here: the 表示パス
-                             moved to the 文書ペイン (doc-10 §5's recorded departure). Since TASK-116
-                             the emphasis says「読んでいる」and the chip below says「編集している」:
-                             a selection opens 閲覧 and no 編集セッション. -->
-                        <button
-                          type="button"
-                          class="card"
-                          class:current
-                          aria-current={current ? "true" : undefined}
-                          aria-disabled={issuing}
-                          aria-describedby={issuing ? DOC_EDIT_BLOCKED_ID : undefined}
-                          title={issuance.state === "withheld"
-                            ? issuance.reason
-                            : t().projectDetail.documentOpenHint}
-                          onclick={() => !issuing && selectDocument(document)}
-                        >
-                          <span class="card-head">
-                            <span class="id">{document.id}</span>
-                            <span class="meta">{document.type ?? t().projectDetail.typeUnset}</span>
-                            {#if editing}
-                              <span class="editing">{t().projectDetail.editing}</span>
-                            {/if}
-                            {#if editing && docEditorDirty}
-                              <!-- 未保存入力のある文書には印を付ける (doc-10 §5). Only one 編集セッション
-                                   exists at a time, so only one card can carry it; it is shown on the
-                                   list side so that「まだ送っていない」stays readable even when the
-                                   editor has scrolled out of view. -->
-                              <span class="unsaved">{t().projectDetail.unsaved}</span>
-                            {/if}
-                            {#if reasons.length > 0}
-                              <!-- 不整合印 (decision-22, widened to 管理ファイル 1 件 by decision-24):
-                                   one ⚠️, no family name and no 由来名. `role="img"` on the wrapper
-                                   because `Icon.svelte` is always `aria-hidden` (doc-11 §2.4). The
-                                   lines themselves are read in the 閲覧ヘッダ, which is what the
-                                   selection opens — the ⚠️ is allowed only where そこが用意されて
-                                   いる (doc-11 §2.4, decision-24 as TASK-116 revised it). -->
-                              <span
-                                class="inconsistent"
-                                role="img"
-                                aria-label={inconsistencyLabel(reasons)}
-                                title={inconsistencyLabel(reasons)}
-                              >
-                                <Icon name="triangle-alert" />
-                              </span>
-                            {/if}
-                          </span>
-                          <span class="card-title">{document.title}</span>
-                          {#if document.tags.length > 0}
-                            <span class="meta">tags: {document.tags.join(", ")}</span>
-                          {/if}
-                        </button>
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
-                {#if unmappedDocuments.length > 0}
-                  <!-- 写せなかったファイルの一覧 (doc-10 §1, decision-24): not cards — these have no
-                       id, so there is nothing to select or load into the pane. The heading above
-                       still counts only the cards; this region states its own count. -->
-                  <div class="unmapped">
-                    <h3>{t().projectDetail.unmappedFiles(unmappedDocuments.length)}</h3>
-                    <ul>
-                      {#each unmappedDocuments as file (file.sourcePath)}
-                        <li>
-                          <code>{displayPath(file.sourcePath, entry.project_root)}</code>
-                          <span class="reason-line">{unmappedFileReason(file)}</span>
-                        </li>
-                      {/each}
-                    </ul>
-                  </div>
-                {/if}
-              </div>
-
-              <!-- 文書ペイン (doc-10 §5): three states in one column — the update form alone while a
-                   session is open, 閲覧 while a document is merely selected, and a line saying what
-                   the column is for while nothing is. Renamed from 編集ペイン by TASK-116: selection
-                   opens 閲覧, so editing is one state of three. -->
-              <div class="pane" bind:this={docPane}>
-                {#if docSession !== null}
-                  {@const session = docSession}
-                  <div class="sub-panel">
-                    <h3>{t().projectDetail.documentUpdateHeading(session.baseline.id)}</h3>
-
-                    <label class="field">
-                      <span class="label">{t().field.titleRequired}</span>
-                      <input
-                        type="text"
-                        value={session.draft.title}
-                        oninput={(event) => setDoc("title", event.currentTarget.value)}
-                      />
-                    </label>
-
-                    <div class="field">
-                      <span class="label">{t().field.body}</span>
-                      <Editor
-                        label={t().field.body}
-                        value={session.draft.content}
-                        rows={14}
-                        onchange={(value) => setDoc("content", value)}
-                        onsave={updateDoc}
-                      />
-                      <p class="hint">
-                        {t().projectDetail.bodyReplaceNote}
-                      </p>
-                    </div>
-
-                    <div class="row">
-                      <label class="field">
-                        <span class="label">type</span>
-                        <select
-                          value={session.draft.docType}
-                          onchange={(event) => setDoc("docType", event.currentTarget.value)}
-                        >
-                          <option value="">{t().projectDetail.keepUnchanged}</option>
-                          {#each DOC_TYPES as value (value)}
-                            <option {value}>{value}</option>
-                          {/each}
-                        </select>
-                      </label>
-
-                      <label class="field">
-                        <span class="label">{t().projectDetail.pathLabel}</span>
-                        <!-- 表示パス (doc-10 §5), repeated here from the 閲覧ヘッダ: this field is a
-                             move request holding no current value, and「空欄なら変更しません」only
-                             reads against where the file is now. One derivation for both places
-                             (`selectedDocPath`, from the current read) — the baseline would put a
-                             second reading of the same file on screen beside the card's ⚠️. -->
-                        <!-- `null` is a state the design reaches: the `$effect` above exempts an
-                             open session from the drop rule, so a document broken or removed
-                             externally leaves the editor standing with nothing to resolve. Printing
-                             the null would put「現在の所在:」over an empty path, which asserts a
-                             location rather than admitting there is none (PR #72 1R [P2]). -->
-                        {#if selectedDocPath === null}
-                          <span class="path">
-                            {t().projectDetail.pathUnreadable}
-                          </span>
-                        {:else}
-                          <span class="path">{t().projectDetail.pathCurrent} <code>{selectedDocPath}</code></span>
-                        {/if}
-                        <input
-                          type="text"
-                          placeholder={t().projectDetail.pathPlaceholder}
-                          value={session.draft.path}
-                          oninput={(event) => setDoc("path", event.currentTarget.value)}
-                        />
-                      </label>
-                    </div>
-
-                    <div class="field">
-                      <span class="label">tags</span>
-                      {@render listEditor(
-                        session.draft.tags,
-                        (next) => setDoc("tags", next),
-                        newTag,
-                        (value) => (newTag = value),
-                        t().projectDetail.addTag,
-                      )}
-                    </div>
-
-                  </div>
-                  <!-- 発行の行 (doc-11 §11): this 編集セッション is the only 発行 this column holds, so
-                       the row pins to the bottom of the column and is read wherever the form has been
-                       scrolled to. **Outside the framed 更新フォーム above**, the way the 設定モーダル's
-                       下部操作行 sits outside its body: a row inside that frame is held off the column's
-                       edges by the frame's own border and padding, and cannot reach the edge it pins
-                       to (目視 2026-08-10). The reason the 発行 is withheld goes in with it. -->
-                  <div class="issue">
-                    <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because
-                         `aria-describedby` points at it: hidden when the 区画 already states it
-                         (doc-11 §8), visible otherwise. -->
-                    <span
-                      id={DOC_UPDATE_BLOCKED_ID}
-                      class={docUpdateIssue.state === "blocked" &&
-                      omitsSentence(docUpdateIssue.reason)
-                        ? "unseen"
-                        : "reason"}
-                    >
-                      {docUpdateIssue.state === "blocked" ? docUpdateIssue.reason : ""}
-                    </span>
-                    <!-- 併記 は控えの `title` と `aria-keyshortcuts`、そしてキーボード操作一覧が担う
-                         (doc-7 §2.1)。可視の 1 行はここに置かない。 -->
-                    <div class="actions">
-                      <!-- 取りやめ → 発行 (doc-11 §11): one order everywhere, since the row is centred. -->
-                      <button type="button" onclick={closeEditor}>{t().action.cancel}</button>
-                      <button
-                        type="button"
-                        aria-disabled={docUpdateIssue.state !== "ready"}
-                        aria-describedby={docUpdateIssue.state === "blocked" ? DOC_UPDATE_BLOCKED_ID : undefined}
-                        aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-                        title={issueTitle(docUpdateIssue, t().projectDetail.documentUpdate)}
-                        onclick={() => docUpdateIssue.state === "ready" && updateDoc()}
-                      >
-                        {t().projectDetail.documentUpdate}
-                      </button>
-                    </div>
-                  </div>
-                {:else if selectedDocument !== null}
-                  {@const document = selectedDocument}
-                  <!-- 閲覧 (doc-10 §5, TASK-116): what the selection opens. No input of any kind, so
-                       nothing here can hold 未保存入力 and no 破棄前確認 can arise from reading. -->
-                  <div class="sub-panel">
-                    <!-- 閲覧ヘッダ: title and 編集 on one line, then ID・type・tags・表示パス, then
-                         the 理由行 (選択を解除 left this row with TASK-121). The heading is the
-                         document's own title rather
-                         than a sentence about it — the pane is showing that document, and a title is
-                         what names it. -->
-                    <div class="view-head">
-                      <h3>{document.title}</h3>
-                      <!-- Held while a 発行 is in flight, and the reason is reachable without a
-                           pointer: `aria-disabled` keeps the button focusable and points at the
-                           sentence below, which is route (b) of doc-11 §5. `disabled` would need an
-                           always-visible 補助文 instead, and a `title` alone is neither. -->
-                      <button
-                        type="button"
-                        aria-disabled={issuing}
-                        aria-describedby={issuing ? DOC_EDIT_HELD_ID : undefined}
-                        title={issuanceTitle(t().projectDetail.documentEditOpenHint)}
-                        onclick={() => !issuing && startDocEdit()}
-                      >
-                        {t().action.edit}
-                      </button>
-                      <!-- No 選択を解除 here since TASK-121 (doc-10 §5). The reason it was placed —
-                           the create form's 未保存入力 sitting off screen while still counting
-                           toward the screen's 破棄前確認 — died with TASK-117's 作成モーダル, and
-                           the reason written in its place (always being able to return to「何も
-                           選んでいない」) was judged insufficient at 目視. Nothing is lost by not
-                           returning: 閲覧 shows every value the card carries and holds no input. -->
-                    </div>
-                    {#if issuance.state === "withheld"}
-                      <p class="reason" id={DOC_EDIT_HELD_ID}>
-                        {t().projectDetail.documentIssuingBlocksEdit(issuance.reason)}
-                      </p>
-                    {/if}
-                    <p class="meta-line">
-                      <span class="id">{document.id}</span>
-                      <span>{document.type ?? t().projectDetail.typeUnset}</span>
-                      <span>
-                        {document.tags.length > 0
-                          ? `tags: ${document.tags.join(", ")}`
-                          : t().projectDetail.tagsNone}
-                      </span>
-                    </p>
-                    <!-- 表示パス (doc-10 §5): which file this is, project-relative. -->
-                    <p class="path"><code>{selectedDocPath}</code></p>
-                    {#if openDocReasons.length > 0}
-                      <!-- 理由行 (decision-22, doc-10 §5 as TASK-116 revised it): the place doc-11
-                           §2.4 requires the ⚠️'s full reason to be readable without hovering. It
-                           sits here, not in the update form, because 選択 is what opens this and the
-                           guarantee is about the place the selection reaches. No 区画 of its own —
-                           one line per reason is the whole of it. -->
-                      <!-- Keyed by index, not by the string: two reasons can read identically
-                           (two same-named unclosed SECTION pairs, two stray `:END`s), and a
-                           duplicate key throws in production Svelte (PR #71 [P2]). -->
-                      <ul class="reason-lines">
-                        {#each openDocReasons as reason, at (at)}
-                          <li>{reason}</li>
-                        {/each}
-                      </ul>
-                    {/if}
-                    <!-- 本文: the string as read. Nothing formats Markdown in this build, so a
-                         rendered look would be a claim the screen cannot keep — the same treatment
-                         タスク詳細 gives Description. -->
-                    {#if (document.body ?? "") === ""}
-                      <p class="neutral">{t().projectDetail.bodyEmpty}</p>
-                    {:else}
-                      <div class="read-body-slot"><Body source={document.body ?? ""} {onopenlink} {readimage} /></div>
-                    {/if}
-                  </div>
-                {:else}
-                  <!-- 非選択時の文書ペイン (doc-10 §5). The 作成フォーム left this column for the
-                       作成モーダル (TASK-117) and the 提供しない操作区画 was dropped altogether
-                       (TASK-123), so what remains is the line saying what the column is for. It is
-                       what keeps the column from reading as an empty box the user has broken.
-                       doc-11 §6's `—` is not this: that mark stands for a value that is absent, and
-                       what is absent here is a selection. -->
-                  <p class="neutral">{t().projectDetail.documentNotSelected}</p>
-                {/if}
-              </div>
-            </div>
-          {/if}
-        </section>
+        <DocumentsSection
+          projectRoot={entry.project_root}
+          documents={project?.documents ?? null}
+          {unreadableNote}
+          {unmappedDocuments}
+          pending={pendingDocument}
+          onleaveConfirmed={leaveConfirmed}
+          onbackToInput={() => (pendingDocument = null)}
+          {issuance}
+          {issuing}
+          {issuanceTitle}
+          selection={docSelection}
+          {selectedDocument}
+          selectedPath={selectedDocPath}
+          reasons={openDocReasons}
+          session={docSession}
+          editorDirty={docEditorDirty}
+          {setDoc}
+          {newTag}
+          setNewTag={(value) => (newTag = value)}
+          updateIssue={docUpdateIssue}
+          oncreateOpen={() => openCreate("document")}
+          onselect={(document) => selectDocument(document)}
+          onstartEdit={() => void startDocEdit()}
+          oncloseEditor={closeEditor}
+          onupdate={() => void updateDoc()}
+          onpane={(element) => (docPane = element)}
+          {onopenlink}
+          {readimage}
+        />
       {:else if section === "milestones"}
-        <!-- マイルストーン区画 (doc-10 §6): マイルストーン一覧 — this 区画's 一覧列 (§1) — beside the
-             マイルストーンペイン, the same three columns the 文書区画 has. Each column scrolls on its
-             own and the 破棄前確認 stays above both, for the reasons doc-10 §5 records and §6
-             repeats. -->
-        <section class="split-section">
-          {#if unreadableNote !== null}
-            <h2>{t().projectDetail.milestonesHeading}</h2>
-            <p class="unreadable">{unreadableNote}</p>
-          {:else if project === null}
-            <h2>{t().projectDetail.milestonesHeading}</h2>
-            <p class="neutral">{t().state.loading}</p>
-          {:else}
-            {#if pendingMilestone !== null}
-              <!-- 破棄前確認 (doc-10 §6): the open 編集セッション holds 未保存入力 and the requested
-                   move would drop it. The move itself has not been applied. The two paths are 別の
-                   マイルストーンを選ぶ and 編集を閉じる since TASK-121 — the second used to be
-                   選択を解除する, and the count of two is unchanged by the swap. -->
-              <div class="confirm">
-                <span>
-                  {#if pendingMilestone.milestone === null}
-                    {t().projectDetail.milestoneUnsavedOnClose}
-                  {:else}
-                    {t().projectDetail.milestoneUnsavedOnOpen(pendingMilestone.milestone.id)}
-                  {/if}
-                </span>
-                <button type="button" onclick={milestoneLeaveConfirmed}>{t().projectDetail.discardAndContinue}</button>
-                <button type="button" onclick={() => (pendingMilestone = null)}>{t().projectDetail.backToInput}</button>
-              </div>
-            {/if}
-
-            <div class="columns">
-              <div class="list-column">
-                <!-- 一覧見出し行 (doc-10 §1, TASK-117) — the same row as the 文書一覧's, from the
-                     same snippet. §1 puts it on the 一覧列 rather than on the 区画, so the two that
-                     can add an object cannot come to differ in how one is added. -->
-                {@render listHead(
-                  t().projectDetail.milestonesCount(project.milestones.length),
-                  t().projectDetail.milestoneNew,
-                  t().projectDetail.milestoneNewHint,
-                  () => openCreate("milestone"),
-                )}
-                {#if project.milestones.length === 0}
-                  <p class="neutral">{t().projectDetail.milestonesEmpty}</p>
-                {:else}
-                  {#if issuance.state === "withheld"}
-                    <!-- Every card is held by the same one thing (doc-11 §5): written once above the
-                         list and each card bound to it. They stay `aria-disabled` so they keep
-                         taking focus, which is what makes the binding reachable without a pointer. -->
-                    <p class="reason" id={MILESTONE_SELECT_BLOCKED_ID}>
-                      {t().projectDetail.milestoneIssuingBlocksOthers(issuance.reason)}
-                    </p>
-                  {/if}
-                  <ul class="cards">
-                    {#each project.milestones as milestone (milestone.id)}
-                      {@const held = project.tasks.filter(
-                        (view) => view.task.milestone === milestone.id,
-                      ).length}
-                      {@const current = milestoneSelection === milestone.id}
-                      {@const editing = current && milestoneEditing}
-                      {@const reasons = fileInconsistencyReasons(milestone.health, "milestone")}
-                      <li>
-                        <!-- カード (doc-10 §6): id・title・所属タスク件数. No 説明 — the 一覧列 is
-                             16rem and the description is stated in the pane instead (§6's recorded
-                             departure). Since TASK-121 the emphasis says「読んでいる」and the chip
-                             below says「編集している」, the same split the 文書カード makes: a
-                             selection opens 閲覧 and no 編集セッション. -->
-                        <button
-                          type="button"
-                          class="card"
-                          class:current
-                          aria-current={current ? "true" : undefined}
-                          aria-disabled={issuing}
-                          aria-describedby={issuing ? MILESTONE_SELECT_BLOCKED_ID : undefined}
-                          title={issuanceTitle(t().projectDetail.milestoneOpenHint)}
-                          onclick={() => !issuing && selectMilestone(milestone)}
-                        >
-                          <span class="card-head">
-                            <span class="id">{milestone.id}</span>
-                            <span class="meta">{t().projectDetail.heldTasks(held)}</span>
-                            {#if editing}
-                              <span class="editing">{t().projectDetail.editing}</span>
-                            {/if}
-                            {#if editing && milestoneDirty}
-                              <!-- 未保存入力の印 (doc-10 §6): only the card with the open 編集
-                                   セッション can carry it, and it is shown here so「まだ発行して
-                                   いない」stays readable when the マイルストーンペイン has scrolled
-                                   out of view. -->
-                              <span class="unsaved">{t().projectDetail.unsaved}</span>
-                            {/if}
-                            {#if reasons.length > 0}
-                              <!-- 不整合印 — same figure and same rule as the 文書カード (doc-10 §6
-                                   defers to §5 here rather than deciding it again). -->
-                              <span
-                                class="inconsistent"
-                                role="img"
-                                aria-label={inconsistencyLabel(reasons)}
-                                title={inconsistencyLabel(reasons)}
-                              >
-                                <Icon name="triangle-alert" />
-                              </span>
-                            {/if}
-                          </span>
-                          <span class="card-title">{milestone.title}</span>
-                        </button>
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
-                {#if unmappedMilestones.length > 0}
-                  <!-- 写せなかったファイルの一覧 — same form as the 文書区画's (doc-10 §1/§6). -->
-                  <div class="unmapped">
-                    <h3>{t().projectDetail.unmappedFiles(unmappedMilestones.length)}</h3>
-                    <ul>
-                      {#each unmappedMilestones as file (file.sourcePath)}
-                        <li>
-                          <code>{displayPath(file.sourcePath, entry.project_root)}</code>
-                          <span class="reason-line">{unmappedFileReason(file)}</span>
-                        </li>
-                      {/each}
-                    </ul>
-                  </div>
-                {/if}
-              </div>
-
-              <!-- マイルストーンペイン (doc-10 §6, renamed from 操作ペイン by TASK-121): 非選択時 の
-                   1 行, then 閲覧 while a milestone is merely selected, then the 編集セッション
-                   alone once 編集 is pressed. The same three states — and the same order of
-                   branches — as the 文書ペイン's, since selection now opens the same thing in both.
-                   The name follows §5's rule that a column is named for what it opens. -->
-              <div class="pane" bind:this={milestonePane}>
-                {#if selectedMilestone !== null && milestoneEditing}
-                  {@const milestone = selectedMilestone}
-                  {@const plan = milestoneOpPlan(milestone)}
-                  {@const open = milestoneOp}
-                  {@const opIssue = plan === null ? null : availability(plan)}
-                  {@const targets = rewriteTargets(milestone, plan)}
-                  {@const describeIssue = availability(
-                    buildMilestoneDescribe(milestone, milestoneDescriptionText),
-                  )}
-                  <!-- 編集セッション (doc-8 §1, doc-10 §6): everything that takes input or issues a
-                       write is behind 編集への切替, so that 閲覧 keeps the property §5 gave it —
-                       holding no input, and therefore never raising a 破棄前確認 from reading. -->
-                  <div class="sub-panel">
-                    <!-- Which milestone this session is about, in the place the 文書区画's update
-                         form states the same thing. The 一覧 says it too (emphasis and 編集中 chip),
-                         but the two columns scroll apart — the selected card can be above the
-                         viewport while this pane is being typed into, which is the direction §6
-                         already argues in for the 未保存 chip. -->
-                    <h3>{t().projectDetail.milestoneEditHeading(milestone.id)}</h3>
-                    <!-- 説明 (doc-10 §6): stated on this column rather than on the card, which is the
-                         second of this 区画's departures from design 07 — and editable, which is the
-                         third (decision-21). The box is not one of the 改称・削除・アーカイブ
-                         operations: it is open for as long as the session is, because the
-                         description is what this column states about the milestone and editing it is
-                         that statement being corrected. -->
-                    <label class="field">
-                      <span class="label">{t().field.description}</span>
-                      <textarea
-                        rows="4"
-                        placeholder={t().projectDetail.milestoneDescriptionPlaceholder}
-                        value={milestoneDescriptionText}
-                        oninput={(event) =>
-                          (milestoneDescriptionDraft = event.currentTarget.value)}
-                      ></textarea>
-                    </label>
-                    <!-- Not pinned (doc-11 §11): this column holds 改称・削除・アーカイブ as well, so no
-                         one 発行 owns its bottom row. 取りやめ → 発行 all the same. -->
-                    <div class="actions">
-                      <button type="button" onclick={closeMilestoneEdit}>{t().action.cancel}</button>
-                      <button
-                        type="button"
-                        aria-disabled={describeIssue.state !== "ready"}
-                        aria-describedby={describeIssue.state === "blocked" ? DESCRIBE_BLOCKED_ID : undefined}
-                        title={why(describeIssue)}
-                        onclick={() =>
-                          describeIssue.state === "ready" && saveMilestoneDescription(milestone)}
-                      >
-                        {t().projectDetail.milestoneDescriptionSave}
-                      </button>
-                      <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). See the 文書ペイン's copy above. -->
-                      <span
-                        id={DESCRIBE_BLOCKED_ID}
-                        class={describeIssue.state === "blocked" &&
-                        omitsSentence(describeIssue.reason)
-                          ? "unseen"
-                          : "reason"}
-                      >
-                        {describeIssue.state === "blocked" ? describeIssue.reason : ""}
-                      </span>
-                    </div>
-
-                    <!-- 改称・削除・アーカイブ (doc-10 §6). doc-9 §4.2 defines the 照合 for all
-                         three, which is why Atlas offers them at all (TASK-45).
-                         アーカイブ takes no input, but it issues a write, and §6 keeps every issuing
-                         operation on this side of 編集への切替 rather than splitting the three. -->
-                    <div class="actions">
-                      <button
-                        type="button"
-                        aria-expanded={open === "rename"}
-                        disabled={issuing}
-                        title={issuanceTitle("")}
-                        onclick={() => openMilestoneOp("rename")}
-                      >
-                        {t().projectDetail.rename}
-                      </button>
-                      <button
-                        type="button"
-                        aria-expanded={open === "remove"}
-                        disabled={issuing}
-                        title={issuanceTitle("")}
-                        onclick={() => openMilestoneOp("remove")}
-                      >
-                        {t().projectDetail.remove}
-                      </button>
-                      <button
-                        type="button"
-                        aria-expanded={open === "archive"}
-                        disabled={issuing}
-                        title={issuanceTitle("")}
-                        onclick={() => openMilestoneOp("archive")}
-                      >
-                        {t().projectDetail.archive}
-                      </button>
-                    </div>
-
-                    {#if open !== null}
-                      <div class="sub-panel">
-                        {#if open === "rename"}
-                          <h3>{t().projectDetail.rename}</h3>
-                          <label class="field">
-                            <span class="label">{t().projectDetail.renameNewName}</span>
-                            <input
-                              type="text"
-                              value={renameInput.to}
-                              oninput={(event) => (renameInput.to = event.currentTarget.value)}
-                            />
-                          </label>
-                          <label class="check">
-                            <input
-                              type="checkbox"
-                              checked={renameInput.updateTasks}
-                              onchange={(event) =>
-                                (renameInput.updateTasks = event.currentTarget.checked)}
-                            />
-                            <span>{t().projectDetail.renameUpdatesTasks}</span>
-                          </label>
-                          <!-- 改称が id を変えないことの測定は doc-9 §4.2.1 にあり、版は画面に出さない
-                               (decision-27). -->
-                          <p class="hint">
-                            {t().projectDetail.renameNote(milestone.id)}
-                          </p>
-                        {:else if open === "remove"}
-                          <h3>{t().projectDetail.remove}</h3>
-                          <p class="hint">{milestoneRemoveMovesTheFile()}</p>
-                          <fieldset class="handling">
-                            <legend>{t().projectDetail.removeTasksLegend}</legend>
-                            {#each [{ mode: "clear", label: t().projectDetail.removeTasksClear }, { mode: "keep", label: t().projectDetail.removeTasksKeep }, { mode: "reassign", label: t().projectDetail.removeTasksReassign }] as choice (choice.mode)}
-                              <label class="check">
-                                <input
-                                  type="radio"
-                                  name={`handling-${milestone.id}`}
-                                  checked={removeInput.handling === choice.mode}
-                                  onchange={() =>
-                                    (removeInput.handling = choice.mode as
-                                      | "clear"
-                                      | "keep"
-                                      | "reassign")}
-                                />
-                                <span>{choice.label}</span>
-                              </label>
-                            {/each}
-                          </fieldset>
-                          {#if removeInput.handling === "keep"}
-                            <p class="hint">{milestoneKeepLeavesDanglingReferences()}</p>
-                          {/if}
-                          {#if removeInput.handling === "reassign"}
-                            <label class="field">
-                              <span class="label">{t().projectDetail.reassignTarget}</span>
-                              <select
-                                value={removeInput.reassignTo}
-                                onchange={(event) =>
-                                  (removeInput.reassignTo = event.currentTarget.value)}
-                              >
-                                <option value="">{t().projectDetail.chooseOne}</option>
-                                {#each project.milestones.filter((candidate) => candidate.id !== milestone.id) as candidate (candidate.id)}
-                                  <option value={candidate.id}>
-                                    {candidate.id}
-                                    {candidate.title}
-                                  </option>
-                                {/each}
-                              </select>
-                            </label>
-                          {/if}
-                        {:else}
-                          <h3>{t().projectDetail.archive}</h3>
-                          <p class="hint">
-                            {t().projectDetail.archiveNote}
-                          </p>
-                        {/if}
-
-                        <!-- 実行前に書き換え対象集合を示す (doc-10 §6, doc-9 §4.2.2/§4.2.3): what the
-                             user decides from has to be what the check protects. -->
-                        <div class="targets">
-                          <h4>{t().projectDetail.rewriteTargetsHeading}</h4>
-                          <ul class="paths">
-                            <li>{milestone.sourcePath}</li>
-                          </ul>
-                          {#if targets.fanOut}
-                            <p class="meta">
-                              {t().projectDetail.rewriteTargets(targets.tasks.length)}
-                            </p>
-                            {#if targets.tasks.length > 0}
-                              <ul class="paths">
-                                {#each targets.tasks as view (view.task.sourcePath)}
-                                  <li>{view.task.id ?? view.task.sourcePath}</li>
-                                {/each}
-                              </ul>
-                            {/if}
-                          {:else}
-                            <p class="meta">{t().projectDetail.rewriteNone}</p>
-                          {/if}
-                        </div>
-
-                        <div class="actions">
-                          <!-- 取りやめ → 発行 (doc-11 §11). Not pinned: see the 説明を保存 row above. -->
-                          <button type="button" onclick={closeMilestoneOp}>{t().action.cancel}</button>
-                          <button
-                            type="button"
-                            disabled={opIssue?.state !== "ready"}
-                            title={opIssue === null ? "" : why(opIssue)}
-                            onclick={() =>
-                              open !== null && runMilestoneOp(milestone, open)}
-                          >
-                            {open === "rename"
-                              ? t().projectDetail.issueRename
-                              : open === "remove"
-                                ? t().projectDetail.issueRemove
-                                : t().projectDetail.issueArchive}
-                          </button>
-                          {#if opIssue?.state === "blocked" && !omitsSentence(opIssue.reason)}
-                            <span class="reason">{opIssue.reason}</span>
-                          {/if}
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {:else if selectedMilestone !== null}
-                  {@const milestone = selectedMilestone}
-                  {@const held = project.tasks.filter(
-                    (view) => view.task.milestone === milestone.id,
-                  ).length}
-                  <!-- 閲覧 (doc-10 §6, TASK-121): what the selection opens. No input of any kind, so
-                       nothing here can hold 未保存入力 and no 破棄前確認 can arise from reading —
-                       the property §5 attached to this word, kept by using the same word. -->
-                  <div class="sub-panel">
-                    <!-- 閲覧ヘッダ: title and 編集 on one line, then id・所属タスク件数, then the
-                         理由行. The heading is the milestone's own title rather than a sentence
-                         about it, for the reason the 文書区画's copy gives. -->
-                    <div class="view-head">
-                      <h3>{milestone.title}</h3>
-                      <!-- Held while a 発行 is in flight, and the reason is reachable without a
-                           pointer — route (b) of doc-11 §5, the same treatment the 文書区画's
-                           編集 gets. -->
-                      <button
-                        type="button"
-                        aria-disabled={issuing}
-                        aria-describedby={issuing ? MILESTONE_EDIT_HELD_ID : undefined}
-                        title={issuanceTitle(t().projectDetail.milestoneEditOpenHint)}
-                        onclick={() => !issuing && startMilestoneEdit()}
-                      >
-                        {t().action.edit}
-                      </button>
-                    </div>
-                    {#if issuance.state === "withheld"}
-                      <p class="reason" id={MILESTONE_EDIT_HELD_ID}>
-                        {t().projectDetail.milestoneIssuingBlocksEdit(issuance.reason)}
-                      </p>
-                    {/if}
-                    <p class="meta-line">
-                      <span class="id">{milestone.id}</span>
-                      <span>{t().projectDetail.heldTasks(held)}</span>
-                    </p>
-                    {#if openMilestoneReasons.length > 0}
-                      <!-- 理由行 (decision-22, doc-10 §6 as TASK-121 revised it): the place doc-11
-                           §2.4 requires the ⚠️'s full reason to be readable without hovering. It
-                           moved here from the pane's heading when the selection started opening
-                           閲覧 — decision-24's rule (under the heading of whatever the selection
-                           opens) did not change, only the place it points at. -->
-                      <!-- Keyed by index for the reason the 文書区画's copy gives. -->
-                      <ul class="reason-lines">
-                        {#each openMilestoneReasons as reason, at (at)}
-                          <li>{reason}</li>
-                        {/each}
-                      </ul>
-                    {/if}
-                    <!-- 説明 (doc-10 §6): the current value, read-only. Same treatment as the
-                         文書区画's 本文 — the string as read, with doc-8 §2.1's 48rem line length on
-                         it, since this column takes whatever width is left. -->
-                    {#if (milestone.description ?? "") === ""}
-                      <p class="neutral">{t().projectDetail.milestoneDescriptionEmpty}</p>
-                    {:else}
-                      <div class="read-body-slot"><Body source={milestone.description ?? ""} {onopenlink} {readimage} /></div>
-                    {/if}
-                  </div>
-                {:else}
-                  <!-- 非選択時のマイルストーンペイン (doc-10 §6, TASK-117). The same single line the
-                       文書ペイン draws in this state: the 作成フォーム went to the 作成モーダル, and
-                       what used to differ — this 区画 had no 提供しない操作 to list where the 文書区画
-                       had one — stopped differing when TASK-123 dropped that 区画 from both. The
-                       column is still drawn — folding it would move the cards' width every time a
-                       selection came and went (§5・§6) — and the line says what the column is for.
-                       Since TASK-121 this state is reached only by the three occasions §6 lists, not
-                       by a press: 選択を解除 is gone. -->
-                  <p class="neutral">{t().projectDetail.milestoneNotSelected}</p>
-                {/if}
-              </div>
-            </div>
-          {/if}
-        </section>
+        <MilestonesSection
+          projectRoot={entry.project_root}
+          milestones={project?.milestones ?? null}
+          tasks={project?.tasks ?? []}
+          {unreadableNote}
+          {unmappedMilestones}
+          pending={pendingMilestone}
+          onleaveConfirmed={milestoneLeaveConfirmed}
+          onbackToInput={() => (pendingMilestone = null)}
+          {issuance}
+          {issuing}
+          {issuanceTitle}
+          selection={milestoneSelection}
+          selected={selectedMilestone}
+          sessionOpen={milestoneEditing}
+          dirty={milestoneDirty}
+          reasons={openMilestoneReasons}
+          operation={milestoneOp}
+          {renameInput}
+          {removeInput}
+          descriptionText={milestoneDescriptionText}
+          setDescriptionDraft={(value) => (milestoneDescriptionDraft = value)}
+          opPlan={milestoneOpPlan}
+          targetsOf={rewriteTargets}
+          availabilityOf={availability}
+          oncreateOpen={() => openCreate("milestone")}
+          onselect={(milestone) => selectMilestone(milestone)}
+          onstartEdit={() => void startMilestoneEdit()}
+          oncloseEdit={closeMilestoneEdit}
+          onsaveDescription={(milestone) => void saveMilestoneDescription(milestone)}
+          onopenOperation={openMilestoneOp}
+          oncloseOperation={closeMilestoneOp}
+          onrun={(milestone, kind) => void runMilestoneOp(milestone, kind)}
+          onpane={(element) => (milestonePane = element)}
+          {onopenlink}
+          {readimage}
+        />
       {:else if section === "decisions"}
-        <!-- 決定事項区画 (doc-10 §10, TASK-118): 決定事項一覧 — this 区画's 一覧列 (§1) — beside the
-             決定事項ペイン, the same three columns the other two 一覧列-holding 区画 have. Each column
-             scrolls on its own, for the reason doc-10 §5 records.
-
-             No 破棄前確認 stands above the columns here, and no 作成の入口 sits in the 一覧見出し行:
-             this 区画 issues nothing, so it holds no 未保存入力 to protect and has no 発行 to offer.
-             Nothing states *why* editing is absent — no control is shown, so doc-11 §8's 本則
-             (画面が操作も欄も見せていないものについて、なぜ無いかを述べない) applies with no
-             exception left in it (TASK-123). -->
-        <section class="split-section">
-          {#if unreadableNote !== null}
-            <h2>{t().projectDetail.decisionsHeading}</h2>
-            <p class="unreadable">{unreadableNote}</p>
-          {:else if project === null}
-            <h2>{t().projectDetail.decisionsHeading}</h2>
-            <p class="neutral">{t().state.loading}</p>
-          {:else}
-            <div class="columns">
-              <div class="list-column">
-                <!-- 一覧見出し行 (doc-10 §1) without its 作成の入口: `backlog decision create` exists,
-                     but it takes a title and a status and cannot write a body, so a 作成 here would
-                     produce a decision no screen in Atlas can then fill in. The count is the cards'
-                     own, which is why the 写せなかったファイル below are outside it (decision-24). -->
-                <div class="list-head">
-                  <h2>{t().projectDetail.decisionsCount(project.decisions.length)}</h2>
-                </div>
-                {#if project.decisions.length === 0}
-                  <p class="neutral">{t().projectDetail.decisionsEmpty}</p>
-                {:else}
-                  <ul class="cards">
-                    {#each project.decisions as decision (decision.id)}
-                      {@const current = decisionSelection === decision.id}
-                      {@const reasons = fileInconsistencyReasons(decision.health, "decision")}
-                      <li>
-                        <!-- カード (doc-10 §10): the whole area is the selection, and the current one
-                             is marked — the same form the other two 一覧列 take. Cards are never
-                             withheld here: opening one drops nothing, so a 発行 elsewhere in the
-                             screen is not a reason to stop a reader (doc-11 §5). id・title・status
-                             are what a reader picks by; date and 本文 are read in the pane. -->
-                        <button
-                          type="button"
-                          class="card"
-                          class:current
-                          aria-current={current ? "true" : undefined}
-                          title={t().projectDetail.decisionOpenHint}
-                          onclick={() => void selectDecision(decision)}
-                        >
-                          <span class="card-head">
-                            <span class="id">{decision.id}</span>
-                            <span class="meta status">{decision.status ?? t().projectDetail.statusUnset}</span>
-                            {#if reasons.length > 0}
-                              <!-- 不整合印 (decision-22, decision-24): one ⚠️, no family name. The
-                                   lines themselves are read in the 閲覧ヘッダ, the place doc-11 §2.4
-                                   requires before this mark may be drawn at all. -->
-                              <span
-                                class="inconsistent"
-                                role="img"
-                                aria-label={inconsistencyLabel(reasons)}
-                                title={inconsistencyLabel(reasons)}
-                              >
-                                <Icon name="triangle-alert" />
-                              </span>
-                            {/if}
-                          </span>
-                          <span class="card-title">{decision.title}</span>
-                        </button>
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
-                {#if unmappedDecisions.length > 0}
-                  <!-- 写せなかったファイルの一覧 (doc-10 §1, decision-24). doc-10 §9 required this to
-                       arrive together with the normal list, never before it: on its own it would tell
-                       a reader Atlas handles decisions while giving them no decision to find. -->
-                  <div class="unmapped">
-                    <h3>{t().projectDetail.unmappedFiles(unmappedDecisions.length)}</h3>
-                    <ul>
-                      {#each unmappedDecisions as file (file.sourcePath)}
-                        <li>
-                          <code>{displayPath(file.sourcePath, entry.project_root)}</code>
-                          <span class="reason-line">{unmappedFileReason(file)}</span>
-                        </li>
-                      {/each}
-                    </ul>
-                  </div>
-                {/if}
-              </div>
-
-              <!-- 決定事項ペイン (doc-10 §10): two states, not the other two 区画's three — 閲覧 while
-                   a decision is selected, and a line saying what the column is for while none is.
-                   The missing third is the 編集セッション, which this 区画 cannot open. -->
-              <div class="pane" bind:this={decisionPane}>
-                {#if selectedDecision !== null}
-                  {@const decision = selectedDecision}
-                  <!-- 閲覧 (doc-10 §10): what the selection opens. It is the only thing selection can
-                       open here, so 閲覧 is the whole of the pane rather than one state of three. -->
-                  <div class="sub-panel">
-                    <!-- 閲覧ヘッダ (doc-10 §5, widened by §10): title on the first line — no 編集
-                         beside it, since this 区画 has no 編集への切替 — then id・status・date・
-                         表示パス, then the 理由行. -->
-                    <div class="view-head">
-                      <h3>{decision.title}</h3>
-                    </div>
-                    <p class="meta-line">
-                      <span class="id">{decision.id}</span>
-                      <span class="status">{decision.status ?? t().projectDetail.statusUnset}</span>
-                      <span>{decision.date ?? t().projectDetail.dateUnset}</span>
-                    </p>
-                    <!-- 表示パス (doc-10 §5): which file this is, project-relative. -->
-                    <p class="path"><code>{selectedDecisionPath}</code></p>
-                    {#if openDecisionReasons.length > 0}
-                      <!-- 理由行 (decision-22, decision-24): the place doc-11 §2.4 requires the ⚠️'s
-                           full reason to be readable without hovering. Keyed by index, not by the
-                           string — two reasons can read identically and a duplicate key throws in
-                           production Svelte (PR #71 [P2]). -->
-                      <ul class="reason-lines">
-                        {#each openDecisionReasons as reason, at (at)}
-                          <li>{reason}</li>
-                        {/each}
-                      </ul>
-                    {/if}
-                    <!-- 本文: 整形表示 (doc-8 §9, decision-25). Not decided again here — doc-8 §9
-                         states that it is not confined to タスク詳細, and this is the same object it
-                         names: 管理ファイルの本文 1 つを読むだけの表示. -->
-                    {#if (decision.body ?? "") === ""}
-                      <p class="neutral">{t().projectDetail.bodyEmpty}</p>
-                    {:else}
-                      <div class="read-body-slot">
-                        <Body source={decision.body ?? ""} {onopenlink} {readimage} />
-                      </div>
-                    {/if}
-                  </div>
-                {:else}
-                  <!-- 非選択時の決定事項ペイン (doc-10 §10). The column is not collapsed and the
-                       区画 does not fall to two columns: the cards' width would move every time a
-                       selection came and went (doc-10 §5's reason, taken as it stands). -->
-                  <p class="neutral">{t().projectDetail.decisionNotSelected}</p>
-                {/if}
-              </div>
-            </div>
-          {/if}
-        </section>
+        <DecisionsSection
+          {entry}
+          {project}
+          {unreadableNote}
+          {unmappedDecisions}
+          selection={decisionSelection}
+          selected={selectedDecision}
+          selectedPath={selectedDecisionPath}
+          reasons={openDecisionReasons}
+          onselect={(decision) => void selectDecision(decision)}
+          onpane={(element) => (decisionPane = element)}
+          {onopenlink}
+          {readimage}
+        />
       {:else}
-        <!-- 新規タスク区画 (doc-10 §7) -->
-        <section>
-          <!-- 区画見出しの横に 注記の入口 (doc-10 §7, TASK-123). アイコンのみのボタン (doc-11 §2.4):
-               the figure carries no word, so the `aria-label` carries the name — the same name the
-               layer it raises is announced by, since that is what the reader is being offered.
-               Until TASK-123 the five fields sat at the foot of this 区画 at all times, 361px of an
-               885px 区画 and the reason the form did not fit its scroller (measured). -->
-          <div class="section-head">
-            <h2>{t().projectDetail.taskNewHeading}</h2>
-            <!-- Only where the form is. What the note answers is「この欄はどこにあるのか」, a
-                 question a reader has while filling the form in — beside a 読み込み中 or a
-                 ルート読取不能 message there is no form to have it about, and an entry offering
-                 advice about one is the noise this task exists to remove. Same placement rule the
-                 作成の入口 follows one 区画 over. -->
-            {#if unreadableNote === null && project !== null}
-              <button
-                type="button"
-                class="note-entry"
-                aria-label={taskNoteLabel()}
-                title={taskNoteLabel()}
-                onclick={openTaskNote}
-              >
-                <Icon name="circle-question-mark" />
-              </button>
-            {/if}
-          </div>
-
-          {#if unreadableNote !== null}
-            <p class="unreadable">{unreadableNote}</p>
-          {:else if project === null}
-            <p class="neutral">{t().state.loading}</p>
-          {:else}
-            <label class="field">
-              <span class="label">{t().field.titleRequired}</span>
-              <input
-                type="text"
-                value={taskInput.title}
-                oninput={(event) => (taskInput.title = event.currentTarget.value)}
-              />
-            </label>
-
-            <div class="field">
-              <span class="label">description</span>
-              <Editor
-                label="description"
-                value={taskInput.description}
-                rows={5}
-                onchange={(value) => (taskInput.description = value)}
-                onsave={createTask}
-              />
-            </div>
-
-            <div class="row">
-              <label class="field">
-                <span class="label">status</span>
-                <select
-                  value={taskInput.status}
-                  onchange={(event) => (taskInput.status = event.currentTarget.value)}
-                >
-                  <!-- 未指定 stays selectable throughout: leaving `--status` off is what makes
-                       `default_status` apply, and that is a different request from setting one. -->
-                  <option value="">{t().projectDetail.configDefaultStatus}</option>
-                  <!-- 選択肢は宣言済みの原文 status に限る (doc-10 §7): `-s` takes only what
-                       `config.yml` declares, and an undeclared value is refused with exit code 1.
-                       Canonical column names are deliberately not listed. -->
-                  {#each project.config.statuses as status (status)}
-                    <option value={status}>{status}</option>
-                  {/each}
-                </select>
-              </label>
-
-              <label class="field">
-                <span class="label">priority</span>
-                <select
-                  value={taskInput.priority}
-                  onchange={(event) => (taskInput.priority = event.currentTarget.value)}
-                >
-                  <option value="">{t().projectDetail.unset}</option>
-                  {#each PRIORITIES as priority (priority)}
-                    <option value={priority}>{priority}</option>
-                  {/each}
-                </select>
-              </label>
-
-              <label class="field">
-                <span class="label">milestone</span>
-                <select
-                  value={taskInput.milestone}
-                  onchange={(event) => (taskInput.milestone = event.currentTarget.value)}
-                >
-                  <option value="">{t().projectDetail.unset}</option>
-                  {#each project.milestones as milestone (milestone.id)}
-                    <option value={milestone.id}>{milestone.id} {milestone.title}</option>
-                  {/each}
-                </select>
-              </label>
-            </div>
-
-            <div class="field">
-              <span class="label">{t().field.plainLabels}</span>
-              {@render listEditor(
-                taskInput.labels,
-                (next) => (taskInput.labels = next),
-                newLabel,
-                (value) => (newLabel = value),
-                t().field.addLabel,
-              )}
-              <p class="hint">
-                {t().projectDetail.labelNote}
-              </p>
-            </div>
-
-            <div class="field">
-              <span class="label">Acceptance Criteria</span>
-              {@render listEditor(
-                taskInput.acceptanceCriteria,
-                (next) => (taskInput.acceptanceCriteria = next),
-                newCriterion,
-                (value) => (newCriterion = value),
-                t().field.addCriterion,
-              )}
-            </div>
-
-            <!-- 発行の行 (doc-11 §11): the only 発行 this 区画 holds, and the form is long enough to
-                 carry it off screen, so it pins to the bottom of the 区画. -->
-            <div class="issue">
-              {#if taskIssue.state === "blocked" && !omitsSentence(taskIssue.reason)}
-                <span class="reason">{taskIssue.reason}</span>
-              {/if}
-              <!-- 併記 は控えの `aria-keyshortcuts`・`title` とキーボード操作一覧が担う (doc-7 §2.1)。 -->
-              <div class="actions">
-                <button
-                  type="button"
-                  disabled={taskIssue.state !== "ready"}
-                  aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-                  title={issueTitle(taskIssue, t().projectDetail.taskCreate)}
-                  onclick={createTask}
-                >
-                  {t().projectDetail.taskCreate}
-                </button>
-              </div>
-            </div>
-          {/if}
-
-        </section>
+        <NewTaskSection
+          {unreadableNote}
+          formShown={taskFormShown}
+          statuses={project?.config.statuses ?? []}
+          milestones={project?.milestones ?? []}
+          {taskInput}
+          {newLabel}
+          setNewLabel={(value) => (newLabel = value)}
+          {newCriterion}
+          setNewCriterion={(value) => (newCriterion = value)}
+          {taskIssue}
+          oncreate={() => void createTask()}
+          onopenNote={openTaskNote}
+          noteLabel={taskNoteLabel()}
+        />
       {/if}
     </div>
   </div>
 </div>
 
-<!--
-  この画面が上げる被せ層 — 作成モーダル (doc-10 §1, TASK-117) と 注記モーダル (doc-10 §7, TASK-123).
-  Outside the screen's own boxes because a 被せ層 is not a part of any 区画: `Modal.svelte` draws a
-  fixed backdrop over the window, and the layer covers the 上部帯 the same way the 共通入口's three do.
-
-  One `Modal` for all three contents rather than one each: 被せ層 は 1 枚だけ (doc-7 §2.1), and
-  `layerOpen` already makes that structural. It carries the same three obligations here as anywhere —
-  focus held inside, Escape, focus back to the 入口 the layer captured as it mounted.
-
-  `closeAvailability` and `confirmDiscard` are about a 下書き, so neither withholds for the 注記モーダル,
-  which has none. On a 作成モーダル `closeAvailability` is `issuance`, which stands exactly while
-  `issuing` does: doc-11 §7 wants the circumstance held by the thing that wires *both* exits, and here
-  that is this file. What the reason guards is a 作成 already sent to a management file — offering
-  破棄して閉じる over that would ask the user about input that is at this moment being written.
--->
-{#if layerOpen !== null}
-  <Modal
-    label={layerLabel}
-    closeAvailability={createOpen === null ? AVAILABLE : issuance}
-    confirmDiscard={createConfirm}
-    onclose={requestLayerClose}
-  >
-    {#if createOpen === "document"}
-      <div class="modal-form">
-        <h2>{t().projectDetail.documentCreateHeading}</h2>
-        <!-- 欄は 1 欄ずつ縦に積む (doc-10 §1): 作成モーダルの「同じ型」に欄の積み方が入るので、
-             マイルストーン側と並び方が違う形はもう取れない。横 1 行だったのは §1 が積み方を
-             覆っていなかった間のことで、実装の逸脱ではない。 -->
-        <label class="field">
-          <span class="label">{t().field.titleRequired}</span>
-          <input
-            type="text"
-            value={docInput.title}
-            oninput={(event) => (docInput.title = event.currentTarget.value)}
-          />
-        </label>
-        <label class="field">
-          <span class="label">type</span>
-          <select
-            value={docInput.docType}
-            onchange={(event) => (docInput.docType = event.currentTarget.value)}
-          >
-            <option value="">{t().projectDetail.cliDefault}</option>
-            {#each DOC_TYPES as value (value)}
-              <option {value}>{value}</option>
-            {/each}
-          </select>
-        </label>
-        <label class="field">
-          <span class="label">path</span>
-          <input
-            type="text"
-            placeholder={t().projectDetail.docPathPlaceholder}
-            value={docInput.path}
-            oninput={(event) => (docInput.path = event.currentTarget.value)}
-          />
-        </label>
-        <!-- 本文の欄をここに出さないことについては何も述べない (doc-10 §5, doc-11 §8): 画面が欄を
-             見せていないものについて、なぜ無いかを述べない、が本則である。代替経路の案内 にも
-             当たらない — この層は `doc create` が受け取る 3 項目を全部出しており、欄の不在を
-             作っていない (§7 の 注記モーダル と分かれるのはそこである)。作成した文書へ本文を
-             入れる先は文書ペインの編集セッションで、そこには欄がある。 -->
-        <!-- No 下部操作行 (doc-11 §7): 「文書を作成」 writes but does not leave the layer, so there is
-             only one way out and nothing for a second wording to tell apart. What the × does with
-             what is typed here is said by the 破棄前確認 instead. **The pinned 発行の行 below is not one**
-             (doc-11 §11): that row carries a 発行, and a 下部操作行 carries exits. -->
-        <div class="issue">
-          {#if docCreateIssue.state === "blocked" && !omitsSentence(docCreateIssue.reason)}
-            <span class="reason">{docCreateIssue.reason}</span>
-          {/if}
-          <div class="actions">
-            <button
-              type="button"
-              disabled={docCreateIssue.state !== "ready"}
-              title={why(docCreateIssue)}
-              onclick={createDoc}
-            >
-              {t().projectDetail.documentCreate}
-            </button>
-          </div>
-        </div>
-      </div>
-    {:else if layerOpen === "task-note"}
-      <!-- 注記モーダル (doc-10 §7). 代替経路の案内 (doc-11 §8) and nothing else: where these are
-           added, never why the form has no input for them. No 下部操作行 — the layer holds no
-           下書き, so it has no exit that writes and leaves for the ✕ to be told apart from
-           (doc-11 §7 の条件). -->
-      <div class="modal-form note">
-        <h2>{taskNoteLabel()}</h2>
-        <p>{taskCreateNote()}</p>
-        <ul>
-          {#each taskCreateLaterFields() as field (field)}
-            <li>{field}</li>
-          {/each}
-        </ul>
-      </div>
-    {:else}
-      <div class="modal-form">
-        <h2>{t().projectDetail.milestoneCreateHeading}</h2>
-        <label class="field">
-          <span class="label">{t().projectDetail.nameRequired}</span>
-          <input
-            type="text"
-            value={milestoneInput.name}
-            oninput={(event) => (milestoneInput.name = event.currentTarget.value)}
-          />
-        </label>
-        <label class="field">
-          <span class="label">{t().field.description}</span>
-          <input
-            type="text"
-            value={milestoneInput.description}
-            oninput={(event) => (milestoneInput.description = event.currentTarget.value)}
-          />
-        </label>
-        <!-- 発行の行 (doc-11 §11), as the 文書を作成 layer above. -->
-        <div class="issue">
-          {#if milestoneIssue.state === "blocked" && !omitsSentence(milestoneIssue.reason)}
-            <span class="reason">{milestoneIssue.reason}</span>
-          {/if}
-          <div class="actions">
-            <button
-              type="button"
-              disabled={milestoneIssue.state !== "ready"}
-              title={why(milestoneIssue)}
-              onclick={addMilestone}
-            >
-              {t().projectDetail.milestoneCreate}
-            </button>
-          </div>
-        </div>
-      </div>
-    {/if}
-  </Modal>
-{/if}
+<CreateLayer
+  {layerOpen}
+  {createOpen}
+  label={layerLabel}
+  {issuance}
+  confirm={createConfirm}
+  onclose={requestLayerClose}
+  {docInput}
+  {docCreateIssue}
+  oncreateDoc={() => void createDoc()}
+  {milestoneInput}
+  {milestoneIssue}
+  onaddMilestone={() => void addMilestone()}
+  noteLabel={taskNoteLabel()}
+/>
 
 <style lang="scss">
+  @use "./project-detail/shared" as shared;
+
   .detail {
     display: flex;
     flex: 1;
@@ -3186,14 +1762,11 @@
     padding: 0.6rem 0.75rem 1.5rem;
     overflow-y: auto;
 
-    // 発行の行 を持つ区画では、この箱の下 padding は行が持つ (上の `.pane` と同じ理由)。
-    &:has(> section > .issue) {
+    // 発行の行 を持つ区画では、この箱の下 padding は行が持つ (doc-11 §11)。**区画が子コンポーネントに
+    // なったので、条件は要素の有無ではなく `taskFormShown` から来る** — Svelte のスコープはコンポーネント
+    // 境界を越えないので、`:has(> section > .issue)` はあの要素に届かない (TASK-106)。
+    &.issue-row {
       padding-bottom: 0;
-    }
-
-    > section > .issue {
-      margin-right: -0.75rem;
-      margin-left: -0.75rem;
     }
 
     // 一覧列を持つ区画 (doc-10 §1 enumerates them): the panel stops being the scroller
@@ -3214,806 +1787,14 @@
     }
   }
 
-  .split-section {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-
-    > h2,
-    > .confirm,
-    > .unreadable,
-    > .neutral {
-      margin-right: 0.75rem;
-      margin-left: 0.75rem;
-    }
-  }
-
-  .columns {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-  }
-
-  // 一覧列 (doc-10 §1): the column that keeps the selection, worn by every 区画 that holds a list
-  // (the doc enumerates them), styled once because the doc calls them one column type. Width is
-  // design 07's 16rem, a content box like the 区画ナビ's. The heading stays out of the scroller
-  // (`.cards` is the scroll container) so the count is readable at any scroll position.
-  .list-column {
-    display: flex;
-    flex: none;
-    flex-direction: column;
-    width: var(--list-column-width);
-    padding: 0 0.35rem 0 0.75rem;
-    border-right: 1px solid var(--line);
-    overflow: hidden;
-  }
-
-  /*
-   * 一覧見出し行 (doc-10 §1): the count and the 作成の入口 on one line, at the head of the 一覧列 and
-   * outside `.cards`'s scroller — which is what keeps both readable however far the cards are
-   * scrolled. `flex: none` because this row takes its own height and `.cards` below takes the slack;
-   * it is now the row rather than the `h2` that says so, the `h2` having become this row's child
-   * instead of the column's.
-   */
-  .list-head {
-    display: flex;
-    flex: none;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.4rem;
-
-    h2 {
-      flex: 1;
-      /*
-       * 件数は語の途中で折り返さない。実測 (WebKit, 16rem 列): 「マイルストーン 9 件」 の自然幅は
-       * 124.39px で、入口 (125.22px) と 0.4rem の間隔を引いた残りとちょうど同じ — 桁が 1 つ増えた
-       * だけで溢れ、折り返すと見出しは「マイルストーン」「99 件」に割れる。**割れた見出しより、
-       * 入口が次の行へ下りるほうがよい**ので、`nowrap` で見出しの最小幅をその全長に固定し、
-       * `flex-wrap` の側で行を折り返させる。`min-width: 0` を置かないのはそのためで、置くと
-       * flex はここを潰して行を 1 本に保ち、割れるのは見出しの側になる。
-       */
-      white-space: nowrap;
-    }
-  }
-
-  /*
-   * 作成の入口 (doc-10 §1). A 控え with visible wording *and* a figure, which is doc-11 §2.4's
-   * 可視の文言を持つ控えの中のアイコン — so the figure is `aria-hidden` and adds no name.
-   *
-   * `font-size` is what sizes the ＋ (doc-11 §2.4 の 1em), so the figure follows the wording rather
-   * than carrying a second size knob of its own.
-   */
-  .create-entry {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: 0.2rem;
-    padding: 0.1rem 0.4rem;
-    border: 1px solid var(--line-strong);
-    // カード・ボタン 4px (doc-11 §2.2).
-    border-radius: 4px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: var(--text-md);
-    white-space: nowrap;
-    cursor: pointer;
-
-    // hover は 枠線 --line → --line-strong (doc-11 §2.3); at rest this one is already the stronger
-    // line, so the change is the background wash the other 控え use.
-    &:hover {
-      background: color-mix(in srgb, var(--fg) 8%, transparent);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--sel);
-      outline-offset: 1px;
-    }
-  }
-
-  .cards {
-    flex: 1;
-    min-height: 0;
-    margin: 0;
-    // The side padding keeps a focused card's ring inside the scrollport (TASK-74's実測).
-    padding: 0.15rem 0.25rem 1.5rem 0.15rem;
-    overflow-y: auto;
-    list-style: none;
-
-    li {
-      margin-bottom: 0.35rem;
-    }
-  }
-
-  // カード (doc-10 §5・§6・§10): the whole area is the selection, and the current one is marked the
-  // way the 区画ナビ marks its current entry — one vocabulary for「いま開いているもの」. Worn by the
-  // cards of every 一覧列; what each 区画 puts inside one is its own business.
-  .card {
-    display: block;
-    width: 100%;
-    padding: 0.3rem 0.45rem;
-    text-align: left;
-
-    &.current {
-      border-color: var(--info);
-      background: color-mix(in srgb, var(--info) 12%, transparent);
-    }
-
-    .card-head {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      gap: 0.35rem;
-    }
-
-    .id {
-      font-family: ui-monospace, monospace;
-      font-size: var(--text-md);
-    }
-
-    .meta {
-      display: block;
-      color: var(--muted);
-      font-size: var(--text-sm);
-    }
-
-    .card-head .meta {
-      display: inline;
-    }
-
-    .card-title {
-      display: block;
-      margin-top: 0.1rem;
-      font-size: var(--text-md);
-      font-weight: 600;
-      overflow-wrap: anywhere;
-    }
-  }
-
-  // 編集中 on the current card: the same neutral info hue as 未保存 — being open is not one of
-  // decision-6's 印の族 either.
-  .editing {
-    padding: 0 0.3rem;
-    border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
-    border-radius: 3px;
-    color: var(--info);
-    font-size: var(--text-sm);
-  }
-
-  // The pane beside a 一覧列 — 文書ペイン (doc-10 §5), マイルストーンペイン (§6), 決定事項ペイン
-  // (§10). A name each in the doc because they open different objects, one rule here because the
-  // column is the same shape. **The states are not the same in all three**: 非選択時 の 1 行 and 閲覧
-  // everywhere, plus a 編集セッション in the two that can issue — 決定事項 has no way to open one, so
-  // there the column has two states rather than three. Its first block starts at the columns' top:
-  // the pane has no heading of its own, so an inherited margin here reads as a hole (目視反映).
-  .pane {
-    flex: 1;
-    min-width: 0;
-    padding: 0 0.75rem 1.5rem 0.6rem;
-    overflow-y: auto;
-
-    > :first-child {
-      margin-top: 0;
-    }
-
-    // 編集セッション中は下端に発行の行が居るので、この列自身の下 padding は要らない — 残すと行が
-    // 縁から浮き、スクロールの末尾でそのぶん持ち上がる (目視 2026-08-10)。
-    &:has(.issue) {
-      padding-bottom: 0;
-    }
-
-    // 発行の行 は框の外 — 列の子として直接置いているので、引き出しは要らない。左右は列の padding を
-    // 打ち消して縁まで届かせ、内側の余白は行が自分で持つ。
-    > .issue {
-      margin-right: -0.75rem;
-      margin-left: -0.6rem;
-    }
-  }
-
-  h2 {
-    margin: 0 0 0.5rem;
-    font-size: var(--text-xl);
-  }
-
-  h3 {
-    margin: 0 0 0.35rem;
-    font-size: var(--text-lg);
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    margin-bottom: 0.55rem;
-    min-width: 12rem;
-  }
-
-  .label {
-    font-size: var(--text-md);
-    opacity: 0.85;
-  }
-
-  .check {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 0.35rem;
-    margin-bottom: 0.55rem;
-    font-size: var(--text-md);
-  }
-
-  .row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.6rem;
-
-    .field {
-      flex: 1;
-    }
-  }
-
-  .row-inline {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem;
-
-    // 同じ行に並ぶ押しボタンはフォーム部品である (doc-11 §1・§2.2). The row is `center`, not the flex
-    // default `stretch`, so the buttons do not pick the input's height up on their own — that is what
-    // left 選択… 3.95px shorter than the path beside it (WebKit, 変更前実測).
-    button {
-      height: 1.75rem;
-    }
-  }
-
-  .value-line {
-    margin: 0;
-  }
-
-  // remote 現在値 (doc-10 §4.1). The three families are decision-6's, drawn as GitHistory.svelte
-  // draws the same three — 正常な不在 は中立、設定で解消できるものは中間、失敗だけが族の色.
-  .remote {
-    margin-bottom: 0.35rem;
-    // No font-size of its own: it is a `.value-line` like the slug's two fields above, and 実測 put
-    // a size here 0.48px off that one (TASK-124). Two value lines in the same list differing for no
-    // reason is what TASK-74 measured on two controls in one row.
-    overflow-wrap: anywhere;
-
-    &.setting {
-      padding: 0.2rem 0.35rem;
-      border-left: 2px solid var(--line-strong);
-      background: var(--inset);
-    }
-
-    &.failure {
-      color: var(--mark-unreadable);
-    }
-  }
-
-  .remote-name {
-    color: var(--muted);
-  }
-
-  /*
-   * フォーム部品の高さ (doc-11 §2.2). 1.75rem — the largest step, because this screen's 4 区画 and its
-   * 作成モーダル are forms the user is here to fill in, and the step nearest what they already drew.
-   * Stated rather than left to the engine: the padding below is written once for both, and WebKit
-   * ignores it on `select` (computed 0px against Chromium's 4px, measured 2026-08-11), so without a
-   * height the two engines gave the row three different pictures. `box-sizing` comes from app.scss.
-   */
-  input[type="text"],
-  select {
-    height: 1.75rem;
-    padding: 0.25rem 0.35rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 4px;
-    background: var(--inset);
-    color: inherit;
-    font: inherit;
-    font-size: var(--text-md);
-  }
-
-  .row-inline input[type="text"] {
-    flex: 1;
-    min-width: 0;
-  }
-
+  // ヘッダと区画ナビの控え。**区画の側の控えは区画コンポーネントが持つ** — Svelte のスコープは
+  // コンポーネント境界を越えないので、この規則が届くのはこのファイルが描く控えだけである。
   button {
-    padding: 0.15rem 0.5rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 4px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: var(--text-md);
-    cursor: pointer;
-    // 無効化提示 lives in one place in app.scss (doc-11 §5); a `:disabled` rule here would outrank it.
-
-    &.mini {
-      padding: 0 0.3rem;
-      font-size: var(--text-sm);
-    }
-
-    &.primary {
-      border-color: var(--info);
-      background: color-mix(in srgb, var(--info) 14%, transparent);
-    }
-  }
-
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
-    margin-top: 0.4rem;
-  }
-
-  /*
-   * 発行の行 (doc-11 §11), for the three faces here that hold exactly one 発行: the 文書ペイン's
-   * 編集セッション, the 新規タスク区画, and each 作成モーダル. Pinned to the bottom of whichever box is
-   * scrolling — the pane, the panel, or `Modal.svelte`'s content region — so `sticky` rather than a
-   * row outside the scroll: the scroller is not this component's in the modal case, so there is no
-   * outside to sit in, and one mechanism for all three is one rule to read.
-   *
-   * Opaque and ruled off, or the form scrolls *through* it (the same requirement `TaskDetail.svelte`
-   * states for its pinned 見出し band). The 概要区画 and the マイルストーンペイン have no rule of their
-   * own here: they hold two 発行 apiece, so their rows stay in the flow (doc-10 §4.1・§6).
-   */
-  .issue {
-    position: sticky;
-    bottom: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    /*
-     * Pulled out to the edges of the box that scrolls, and given that room back as its own padding —
-     * a rule that stops short of the edge reads as a line drawn *inside* the panel rather than as the
-     * panel's own division (目視 2026-08-10). Each face states its own two values because the three
-     * scrollers do not share a padding: the pane is 0.6/0.75rem, the panel 0.75rem both sides, and a
-     * modal form keeps the × clear on the right.
-     */
-    margin-top: 0.4rem;
-    padding: 0.45rem 0.75rem 0.6rem;
-    border-top: 1px solid var(--line);
-    background: var(--panel);
-
-    .actions {
-      // 行の中で中央 (doc-11 §11).
-      justify-content: center;
-      margin-top: 0;
-    }
-
-    .reason {
-      text-align: center;
-    }
-  }
-
-  .aliases {
-    margin: 0 0 0.6rem;
-    padding: 0.45rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-
-    legend {
-      font-size: var(--text-md);
-      opacity: 0.8;
-    }
-  }
-
-  /* 参照するタスクの扱い (doc-10 §6): the same framed group the alias table uses, so a required
-     choice reads as one field rather than three loose radios. */
-  .handling {
-    margin: 0 0 0.6rem;
-    padding: 0.45rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-
-    legend {
-      font-size: var(--text-md);
-      opacity: 0.8;
-    }
-
-    .check {
-      margin-bottom: 0.25rem;
-    }
-  }
-
-  /* 書き換え対象集合 (doc-9 §4.2.2) shown before the operation is issued. */
-  .targets {
-    margin: 0 0 0.55rem;
-    padding: 0.4rem 0.45rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    background: var(--inset);
-
-    h4 {
-      margin: 0 0 0.25rem;
-      font-size: var(--text-md);
-      opacity: 0.85;
-    }
-  }
-
-  .paths {
-    margin: 0 0 0.25rem;
-    padding-left: 1rem;
-    font-size: var(--text-md);
-    word-break: break-all;
-  }
-
-  .alias-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3rem;
-    margin-bottom: 0.2rem;
-
-    input[type="text"] {
-      width: 12rem;
-    }
-
-    // 行削除 as an アイコンのみのボタン (doc-11 §2.4, doc-10 §4.2 の逸脱 1 件目). Centred and squared
-    // off: the shared `button` padding above is sized for a word, and a figure given it sits in a box
-    // wider than it is tall — beside an input and a select, that reads as a third field.
-    // The height is the row's (doc-11 §2.2): this row is `center`, so nothing hands it down.
-    .drop {
-      display: inline-flex;
-      height: 1.75rem;
-      align-items: center;
-      padding: 0.15rem 0.3rem;
-    }
-  }
-
-  // How one alias row takes effect (doc-10 §4.2). Only the one ineffective state takes the 不整合
-  // family's colour; the rest stay the colour of a secondary sentence — which is what keeps
-  // 宣言集合なし, where the alias works without a declaration behind it, out of that mark.
-  .alias-effect {
-    color: var(--muted);
-    font-size: var(--text-sm);
-
-    &.ineffective {
-      color: var(--mark-inconsistent);
-    }
-  }
-
-  .alias-note {
-    margin: 0 0 0.35rem;
-    color: var(--muted);
-    font-size: var(--text-sm);
-
-    &.ineffective {
-      color: var(--mark-inconsistent);
-    }
-  }
-
-  .submit-preview {
-    margin: 0.6rem 0;
-    padding: 0.45rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-  }
-
-  .submitted {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-
-    li {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      gap: 0.35rem;
-      padding: 0.12rem 0;
-      font-size: var(--text-md);
-    }
-
-    .from {
-      color: var(--muted);
-    }
-
-    .to {
-      font-weight: 600;
-    }
-  }
-
-  // 危険区画 (doc-10 §4.3): kept apart from the other operations. The confirmation is slug 入力一致,
-  // a stricter condition than doc-11 §5's two-press default.
-  .danger {
-    margin-top: 1rem;
-    padding: 0.5rem;
-    border: 1px solid color-mix(in srgb, var(--mark-unreadable) 45%, transparent);
-    border-radius: 4px;
-
-    p {
-      margin: 0 0 0.4rem;
-      font-size: var(--text-md);
-    }
-  }
-
-  // 表示パス (doc-10 §5). `display: block` because this class is worn by a `<p>` in the 閲覧ヘッダ and
-  // by a `<span>` inside the update form's path `<label>` — a `<p>` is not phrasing content and
-  // cannot go in a label, but the line has to read the same in both places.
-  .path {
-    display: block;
-    margin: 0.1rem 0 0;
-    color: var(--muted);
-    font-size: var(--text-sm);
-    word-break: break-all;
-  }
-
-  // 閲覧ヘッダ (doc-10 §5, widened by §10): title, and beside it the 編集 of a 区画 that has one. The
-  // heading takes the space so that button keeps its place at the right edge whatever the title's
-  // length, and both stay on the first line — which is the line the selection is meant to land on.
-  // **決定事項区画 has no 編集**, so there the row is the title alone — and needs no rule of its own
-  // because the heading is the flexible child (`h3 { flex: 1 }`), so it fills the row whether or not
-  // a button follows. The 閲覧ヘッダ differ in what they list underneath, and in whether this row has
-  // a second child — not in the row itself.
-  .view-head {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-
-    h3 {
-      flex: 1;
-      min-width: 0;
-      word-break: break-word;
-    }
-
-    button {
-      flex: none;
-    }
-  }
-
-  // Under the 閲覧ヘッダ's first line: whichever values that 区画's card carries (doc-10 §5・§6・§10
-  // list them per 区画). One line of muted metadata, repeated here because the card is 16rem and
-  // truncates, and this column is not.
-  .meta-line {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin: 0.1rem 0 0;
-    color: var(--muted);
-    font-size: var(--text-sm);
-
-    .id {
-      color: var(--fg);
-      font-weight: 600;
-    }
-  }
-
-
-  // 決定事項の status は 中立の情報 の 3 つ目で、輪郭のみ・`--muted`・角丸 3px を取る (doc-11 §3。
-  // `TaskCard.svelte` の 保存区分印 と 未分類区画の原文 status が同じ姿である)。族の色も優先度色も
-  // 与えないのは、この値に台帳の側が宣言する集合が無いためで、上流 browser が 4 語を色で描くことは
-  // その理由を変えない — doc-11 §3 がその判断を持つ。**同じ 一覧列 に並ぶ 文書の `type` と
-  // マイルストーンの件数は素のテキストのまま**なので、`.card-head .meta` そのものではなくこの class に
-  // 付ける。一覧のカードと閲覧ヘッダで同じ姿になるよう、規則はこの 1 か所だけに置く。
-  //
-  // **カード側を `.card .card-head` で限るのは、`color` を順序に頼らず勝たせるためである** — カードの
-  // span は `.meta` も持ち、`.card .meta` が `--muted` を宣言している (0,2,0)。裸の `.status` (0,1,0) では
-  // その宣言が勝ち、doc-11 §3 が姿の一部として挙げている `--muted` だけがこの規則の外に出る。いまはどちらも
-  // 同じ値なので画面は変わらないが、`.card .meta` を動かした回にカードと閲覧ヘッダが離れる (PR #140 の [P3])。
-  .card .card-head .status,
-  .meta-line .status {
-    padding: 0 0.3rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 3px;
-    // 語を割ってよい。frontmatter の status は任意の文字列で、`decision create -s` は長さを見ない —
-    // 42 字の 1 語を差し替えて測ると、札は一覧列の右端を 2.25px 越えて枠が切れた (素のテキストだった
-    // ときは 10.28px 内側に収まっていた。差は札の左右余白と枠の 12.53px である)。`.card-title` が
-    // 同じ列で同じ理由から取っている手当てと同じものを取る。
-    overflow-wrap: anywhere;
-    color: var(--muted);
-  }
-
-  // 整形表示 (doc-8 §9) is drawn by a shared component, so what this screen keeps is only the gap to the
-  // 閲覧ヘッダ above it — the 0.5rem the old `.read-body` carried in its own margin (doc-11 §2.2 の余白段階).
-  // The block's own margin is not this screen's to set now that the block is shared.
-  .read-body-slot {
-    margin-top: 0.5rem;
-  }
-
-  // 不整合印 (decision-22, decision-24) on a card in any of the 一覧列. A 印グリフ: the family
-  // colour is the figure's own, with no chip background and no word (doc-11 §2.4). The size matches
-  // `TaskCard.svelte`'s .8rem — a figure carrying no word reads smaller than text of the same height
-  // — and the 収録条件 is decision-22's 3:1, which `theme.test.ts` recomputes from `app.scss`.
-  .inconsistent {
-    display: inline-flex;
-    align-items: center;
-    align-self: center;
-    color: var(--mark-inconsistent);
-    font-size: var(--text-lg);
-    cursor: help;
-  }
-
-  // 理由行 (decision-22) in a 閲覧ヘッダ — the place doc-11 §2.4 requires the ⚠️'s reason to be
-  // readable without hovering, which decision-24 fixes as「選択が開く場所の見出し下」and which is the
-  // same領域 in every 区画 whose selection opens 閲覧. Plain lines, not a 区画: they carry no heading of their own
-  // because the ⚠️ above already said there is something to read.
-  .reason-lines {
-    margin: 0.35rem 0 0;
-    padding-left: 1.1rem;
-    color: var(--mark-inconsistent);
-    font-size: var(--text-sm);
-
-    li {
-      margin-bottom: 0.15rem;
-    }
-  }
-
-  // 写せなかったファイルの一覧 (doc-10 §1). Below the cards and outside their scroller, so a short
-  // list is not pushed out of view by a long one. Deliberately not `.card`: nothing here is
-  // selectable, and giving it the card's shape would put a dead target in the list.
-  .unmapped {
-    flex: none;
-    margin: 0.35rem 0.25rem 0.5rem 0.15rem;
-    padding-top: 0.4rem;
-    border-top: 1px solid var(--line);
-    color: var(--mark-inconsistent);
-
-    h3 {
-      margin: 0 0 0.25rem;
-      font-size: var(--text-sm);
-    }
-
-    ul {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    li {
-      margin-bottom: 0.3rem;
-    }
-
-    code {
-      display: block;
-      font-size: var(--text-sm);
-      word-break: break-all;
-    }
-  }
-
-  .reason-line {
-    display: block;
-    font-size: var(--text-sm);
-  }
-
-  // The 未保存入力 mark (doc-10 §5・§6). Not one of decision-6's 印の族 — nothing is degraded and nothing
-  // diverged; the user simply has not sent it yet — so it takes the neutral info hue.
-  .unsaved {
-    padding: 0 0.3rem;
-    border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--info) 12%, transparent);
-    color: var(--info);
-    font-size: var(--text-sm);
-  }
-
-  .sub-panel {
-    margin-top: 0.6rem;
-    padding: 0.5rem;
-    border: 1px solid var(--line);
-    border-radius: 5px;
-  }
-
-  /*
-   * The inside of a 作成モーダル (doc-10 §1). No border of its own — the layer `Modal.svelte` draws is
-   * already a box, and a second one inside it would read as a 区画 within the 被せ層.
-   *
-   * The right padding clears the ×, which `Modal.svelte` puts out of the flow above whatever the
-   * caller draws first. The two numbers are that layer's own custom properties, so moving the × moves
-   * the room kept for it here without this file restating either.
-   */
-  .modal-form {
-    padding: 0.75rem;
-    padding-right: calc(var(--modal-close-inset) * 2 + var(--modal-close-size));
-    // The 発行の行 pins to the bottom of the layer's scrolling region (doc-11 §11); a padding here
-    // would hold it that far off the edge it pins to, and it carries its own instead.
-    padding-bottom: 0;
-
-    > :first-child {
-      margin-top: 0;
-    }
-
-    // 区切りは層の幅いっぱいに引く — 設定モーダルの下部操作行と同じ見え方にする (目視 2026-08-10)。
-    // 右は × のぶんまで戻す: 行の中身は × を避ける必要が無く、避けているのは上の欄だけである。
-    .issue {
-      margin-right: calc(-1 * (var(--modal-close-inset) * 2 + var(--modal-close-size)));
-      margin-left: -0.75rem;
-    }
-  }
-
-  .list-edit {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-
-    li {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-      padding: 0.1rem 0.3rem;
-      border: 1px solid var(--line-strong);
-      border-radius: 3px;
-      font-size: var(--text-md);
-    }
-  }
-
-  .add-row {
-    display: flex;
-    gap: 0.25rem;
-    margin-top: 0.25rem;
-  }
-
-  // 視覚的にのみ隠す (doc-11 §5 の 2 つ目の形): the reason stays in the accessibility tree because
-  // `aria-describedby` points at it. Its own rule — a `//` comment does not end a selector list, so
-  // appending this to the group below would have pulled `.hint` into it.
-  .unseen {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .hint,
-  // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1). Not an opacity: the
-  // reason has to stay readable on every 表示テーマ, and dimming it is the opposite of its purpose.
-  .reason,
-  .blocked-note {
-    margin: 0.2rem 0 0;
-    color: var(--muted);
-    font-size: var(--text-sm);
-  }
-
-  .neutral {
-    margin: 0.2rem 0;
-    color: var(--muted);
-    font-size: var(--text-md);
-  }
-
-  // A correctable input problem. decision-6's unreadable hue is deliberately not reused: this is
-  // input the user can fix, not a root Atlas failed to read.
-  .problem {
-    margin: 0.15rem 0;
-    color: var(--mark-inconsistent);
-    font-size: var(--text-md);
-  }
-
-  // ルート読取不能 (doc-7 §6, decision-6): never drawn the same way as an empty list.
-  .unreadable {
-    margin: 0.3rem 0;
-    color: var(--mark-unreadable);
-    font-size: var(--text-md);
-  }
-
-  // 破棄前確認 (doc-10 §5・§6): the question above the two columns. Its two answers are a 控えの群
-  // (doc-11 §2.2) — side by side, one object, no field between them — so they take this screen's step
-  // like the fields they are asked about.
-  .confirm {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem;
-    background: color-mix(in srgb, var(--info) 12%, transparent);
-    font-size: var(--text-md);
-
-    button {
-      height: 1.75rem;
-    }
+    @include shared.button;
   }
 
   .ok {
-    margin: 0.4rem 0;
-    color: var(--muted);
-    font-size: var(--text-md);
+    @include shared.ok;
   }
 
   // 照合不能 is neither a conflict nor a failure (doc-9 §4.2/§5): its own family's colour, so it
@@ -4034,62 +1815,5 @@
   .undetectable {
     border-left-color: var(--mark-undetectable);
     background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);
-  }
-
-  // 区画見出しと、その横に置く入口 (doc-10 §7). `baseline` so the figure sits on the heading's own
-  // line rather than on the middle of its box, which is where an icon beside text is looked for.
-  //
-  // The h2 keeps its own `margin: 0 0 0.5rem` — zeroing it here would close the gap below the
-  // heading that every other 区画 has, and `.list-head` (the same shape one column over) does not
-  // zero it either.
-  .section-head {
-    display: flex;
-    align-items: baseline;
-    gap: 0.35rem;
-  }
-
-  // 注記の入口: アイコンのみのボタン (doc-11 §2.4). The figure is 1em of whatever box it sits in, so
-  // the size comes from this button's font-size and nothing here names a second one.
-  .note-entry {
-    padding: 0.15rem;
-    border: 0;
-    background: none;
-    color: var(--muted);
-    font-size: var(--text-lg);
-    line-height: 1;
-    cursor: pointer;
-
-    &:hover {
-      color: var(--fg);
-    }
-
-    // 選択の描き方 (doc-11 §2.3), the same ring 作成の入口 carries: the entry is reachable by
-    // keyboard (doc-10 §7 の AC), and a control that takes focus without showing it is reachable
-    // only in the accessibility tree.
-    &:focus-visible {
-      outline: 2px solid var(--sel);
-      outline-offset: 1px;
-    }
-  }
-
-  // 注記モーダル (doc-10 §7): one sentence and the names under it. No `code`, no per-item reason —
-  // what the layer is for is 代替経路の案内 alone (doc-11 §8).
-  .note {
-    // Keeps the bottom padding the other two give up: this layer holds no 発行, so there is no row
-    // pinned to the bottom edge to carry it (doc-11 §11 — 発行の控えを持たない面は本節の外である).
-    padding-bottom: 0.75rem;
-
-    ul {
-      margin: 0.35rem 0 0;
-      padding-left: 1.1rem;
-    }
-
-    li {
-      margin-bottom: 0.2rem;
-    }
-  }
-
-  code {
-    font-size: 0.95em;
   }
 </style>

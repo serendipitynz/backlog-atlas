@@ -20,7 +20,9 @@
  */
 import { describe, expect, it } from "vitest";
 
-const SOURCES: Record<string, string> = import.meta.glob("../components/*.svelte", {
+// **区画コンポーネントも走る** (TASK-106): `src/components/task-detail/` と `project-detail/` の
+// それぞれが自分の `unseen` を持つので、1 階層だけを見る glob ではこの検査が届かなくなる。
+const SOURCES: Record<string, string> = import.meta.glob("../components/**/*.svelte", {
   eager: true,
   query: "?raw",
   import: "default",

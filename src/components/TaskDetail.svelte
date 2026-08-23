@@ -18,20 +18,46 @@
   // URLs are text, not links, for the same reason inverted: an <a href> inside the Tauri WebView
   // would navigate the app window away from Atlas, and opening an external browser needs a
   // capability this build does not have.
+  //
+  // **What this file is, since TASK-106.** 区画 1 つにつき 1 コンポーネントで `task-detail/` に置いてあり、
+  // ここに残っているのは 状態・副作用・区画の並べ方 である。分けたのはマークアップと SCSS で、状態は
+  // 動かしていない — 区画を切り替えても折り畳んでも 未保存入力 が残るのは、それが 1 か所にあるからで
+  // (m-1 TASK-55)、子が `$state` を持てばその瞬間に壊れる。だから子が受け取るのは値と、書き戻しの口
+  // (`edit`・`setSession`・`set…` の 3 形) だけである。
+  //
+  // 複数の区画が要る SCSS 規則は `task-detail/_shared.scss` の mixin で、使う側が選択子を書く —
+  // Svelte のスコープはコンポーネント境界を越えないので、規則そのものを親に残すことはできない。
+  // **`@include` し忘れ・し過ぎは「Unused CSS selector」として出る**が、親と子が同じ規則を要る箇所は
+  // その検算に掛からない (TASK-106 は実際に 2 件そこで落とし、実エンジンの実測で見つけた)。
   import { onDestroy, type Snippet } from "svelte";
-  import Body from "./Body.svelte";
   import type { ImageReader } from "../lib/markdown-image";
-  import DetailSection from "./DetailSection.svelte";
-  import Editor from "./Editor.svelte";
-  import GitHistory from "./GitHistory.svelte";
-  import Icon from "../lib/icons/Icon.svelte";
-  import { cardIdentity, crossTaskId, priorityStep } from "../lib/card";
-  import { omitsSentence } from "../lib/manage";
-  import { ariaKeyShortcuts, shortcutHint } from "../lib/shortcuts";
-  import { MAC_KEYBOARD } from "../lib/platform";
+  // 区画コンポーネント (TASK-106). 1 区画につき 1 つで、doc-8 §3 の割当表の行に対応する。状態は
+  // このファイルが持ち、子は値と入力の受け渡しだけを持つ — 区画切替と折畳みが入力を捨てないのは
+  // それが理由である (m-1 TASK-55, AC #2)。
+  import AcSection from "./task-detail/AcSection.svelte";
+  import AssigneeSection from "./task-detail/AssigneeSection.svelte";
+  import CommentsSection from "./task-detail/CommentsSection.svelte";
+  import DependenciesSection from "./task-detail/DependenciesSection.svelte";
+  import DescriptionSection from "./task-detail/DescriptionSection.svelte";
+  import DodSection from "./task-detail/DodSection.svelte";
+  import EditConsole from "./task-detail/EditConsole.svelte";
+  import EditIssueRow from "./task-detail/EditIssueRow.svelte";
+  import ExternalEditorSection from "./task-detail/ExternalEditorSection.svelte";
+  import FinalSummarySection from "./task-detail/FinalSummarySection.svelte";
+  import GitHistorySection from "./task-detail/GitHistorySection.svelte";
+  import Heading from "./task-detail/Heading.svelte";
+  import HeadingNotes from "./task-detail/HeadingNotes.svelte";
+  import InconsistencyPanel from "./task-detail/InconsistencyPanel.svelte";
+  import LabelsSection from "./task-detail/LabelsSection.svelte";
+  import NotesSection from "./task-detail/NotesSection.svelte";
+  import PlanSection from "./task-detail/PlanSection.svelte";
+  import PullRequestSection from "./task-detail/PullRequestSection.svelte";
+  import ReferencesSection from "./task-detail/ReferencesSection.svelte";
+  import TransitionsSection from "./task-detail/TransitionsSection.svelte";
+  import TypeSection from "./task-detail/TypeSection.svelte";
+  import { cardIdentity, crossTaskId } from "../lib/card";
   import { messages } from "../lib/messages-context";
   import {
-    crossIdUnavailable,
     acProgress,
     checklistProgress,
     dependencyLinks,
@@ -40,28 +66,17 @@
     type HistoryState,
   } from "../lib/detail";
   import {
-    discardConfirmProceed,
-    fileMissingReason,
-    PRIORITIES,
-    typeNotEditable,
     acDeltaDroppedByRebase,
     acRows,
     buildSave,
-    confirmMarkedLabel,
     divergence,
     editAvailability,
     externallyChanged,
     isDirty,
-    milestoneOptions,
-    optionsFor,
     rebaseOnto,
     saveAvailability,
-    setAcMode,
     setField,
-    setNotesMode,
     startSession,
-    toggleAcCheck,
-    toggleAcRemoval,
     transitionConfirmation,
     transitionOffers,
     type ApplyOutcome,
@@ -71,10 +86,6 @@
     type TransitionOffer,
   } from "../lib/edit";
   import {
-    frontmatterNotice,
-    rereadRootLabel,
-    unsavedInputWarning,
-    watchStoppedNote,
     editorOffers,
     launchConfirmation,
     launchSummary,
@@ -83,43 +94,28 @@
     type OpenOutcome,
   } from "../lib/external-editor";
   import {
-    conflictSetDetail,
-    inconsistencyLabel,
     inconsistencyReasons,
-    versionConflictReason,
     type ConflictTarget,
     type VersionConflict,
   } from "../lib/mark";
   import {
-    DISCLOSURE_ICON,
     MAIN_COLUMN_ORDER,
     MODAL_COLUMN_GAP_REM,
     MODAL_INSET_REM,
     MODAL_MAX_WIDTH_REM,
     MODAL_SIDE_COLUMN_REM,
     PANEL_PADDING_REM,
-    PLACEMENTS,
-    PLACEMENT_ICON,
     PROSE_MAX_WIDTH_REM,
     SIDEBAR_WIDTH_REM,
     SIDE_COLUMN_ORDER,
     SINGLE_COLUMN_ORDER,
-    STEP_ICON,
     layoutFor,
     placementPersistence,
     placementPersistenceNote,
-    placementSwitchName,
-    // `DetailSection` is the component imported above; the type takes an alias here.
     type DetailSection as SectionKey,
   } from "../lib/placement";
   import { detailPlacementLabel } from "../lib/settings";
-  import {
-    CANONICAL_COLUMN_LABEL,
-    noLaneCellReason,
-    laneGroupLabel,
-    laneNeighbourLabel,
-    type LaneNeighbours,
-  } from "../lib/swimlane";
+  import type { LaneNeighbours } from "../lib/swimlane";
   import type {
     CliReadiness,
     DetailPlacement,
@@ -127,7 +123,6 @@
     LaunchMethod,
     ProjectEntry,
     ProjectSnapshot,
-    StorageState,
     TaskView,
     UpdateOperation,
   } from "../lib/wire";
@@ -257,13 +252,6 @@
   /** The 文言表 in force, read through the accessor so a 表示言語 change redraws the panel. */
   const t = messages();
 
-  const STORAGE_LABEL: Record<StorageState, string> = {
-    active: "active",
-    draft: "draft",
-    completed: "completed",
-    archive: "archive",
-  };
-
   let task = $derived(view.task);
   let status = $derived(view.interpretation.status);
   let types = $derived(view.interpretation.types);
@@ -293,15 +281,10 @@
 
   // --- 編集セッション (doc-8 §6.3) ---------------------------------------------------------
 
-  /** The 発行の行's reason element — named so `aria-describedby` can point at it (doc-11 §5). */
-  const SAVE_REASON_ID = "task-detail-save-reason";
-
   /** `null` outside a session: the panel is display-only until 編集 is pressed (明示保存の前提). */
   let session = $state<EditSession | null>(null);
   let saveState = $state<SaveState>({ state: "idle" });
   let busy = $state(false);
-  /** Why every 状態遷移 is withheld while one is in flight (doc-11 §5: 理由の無い無効化を残さない). */
-  const transitionBusyReason = (): string => t().taskDetail.transitionBusy;
   /** Draft text of the "add one" boxes, which are inputs rather than part of the session. */
   let newLabel = $state("");
   let newAssignee = $state("");
@@ -367,6 +350,15 @@
     if (session !== null) {
       session = setField(session, key, value);
     }
+  }
+
+  /**
+   * Take the next session a 区画 built. 完了印の切替・モード切替 return a whole session rather than one
+   * field, so the 区画 that offer them hand it back through here instead of through `edit` — and the
+   * value still lives in this file, which is what keeps a 折畳み or a 区画切替 from discarding it.
+   */
+  function setSession(next: EditSession): void {
+    session = next;
   }
 
   function clearAddBoxes(): void {
@@ -505,21 +497,6 @@
    * back on a 進む answer. That is also what closes the hole the 二度押し had: the layer is the shell's,
    * so it goes with the question when the panel is pointed at another task (doc-11 §12 の失効).
    */
-  /**
-   * What the 状態遷移 row says beside its control: the 保留理由 while it is withheld, and what the
-   * transition would do while it is not. One place, because the same string is the `title` and the
-   * line under the button — and reading it off `availability` keeps the sentence and the withholding
-   * from being able to disagree (doc-11 §5).
-   */
-  function transitionNote(offer: TransitionOffer): string {
-    return offer.availability.state === "withheld" ? offer.availability.reason : offer.effect;
-  }
-
-  /** The same, for 外部エディタ経路: the 保留理由, or the caveat that stands while the route is open. */
-  function editorNote(offer: EditorOffer): string | null {
-    return offer.availability.state === "withheld" ? offer.availability.reason : offer.caveat;
-  }
-
   function runTransition(offer: TransitionOffer, control: HTMLButtonElement): void {
     if (offer.availability.state === "withheld" || busy) {
       return;
@@ -731,11 +708,6 @@
     }
   }
 
-  function addTo(values: string[], value: string): string[] {
-    const trimmed = value.trim();
-    return trimmed === "" || values.includes(trimmed) ? values : [...values, trimmed];
-  }
-
   function addCriterion(): void {
     if (session === null || session.draft.ac.mode !== "delta") {
       return;
@@ -753,1145 +725,217 @@
   }
 </script>
 
-<!-- 削除 は最後の 1 件も外せる: `--clear-refs`・`--clear-deps`・`-a ""` が空集合化を行う
-     (doc-5 §3.1, TASK-153). 無効化と理由文はこの版で無くなった区画である. -->
-{#snippet listEditor(
-  values: string[],
-  apply: (next: string[]) => void,
-  draft: string,
-  setDraft: (value: string) => void,
-  placeholder: string,
-)}
-  <ul class="list-edit">
-    {#each values as value, index (index)}
-      <li>
-        <span class="url">{value}</span>
-        <button
-          type="button"
-          class="mini"
-          title={t().action.remove}
-          onclick={() => apply(values.filter((_, at) => at !== index))}
-        >
-          {t().action.remove}
-        </button>
-      </li>
-    {/each}
-  </ul>
-  <div class="add-row">
-    <input
-      type="text"
-      {placeholder}
-      value={draft}
-      oninput={(event) => setDraft(event.currentTarget.value)}
-    />
-    <button
-      type="button"
-      class="mini"
-      onclick={() => {
-        apply(addTo(values, draft));
-        setDraft("");
-      }}
-    >
-      {t().action.add}
-    </button>
-  </div>
-{/snippet}
-
-<!-- 見出し (doc-8 §3): 常設 in all three placements. -->
-{#snippet heading()}
-  <header class="heading">
-    <div class="line id-line">
-      <!-- 横断タスクID を併記 (doc-8 §2, doc-3 §5.3): the panel is single-project, but the heading
-           still says which project's task this is. A 解析不能 file has no id, so it is named by
-           its file — the only stable handle it has (doc-4 §5). -->
-      <!-- 行に収まらない幅では末尾を落とす (doc-8 §2.2 の「1 行に収める」)。落ちるのは描かれる字だけで、
-           全体は `title` が持ち、隣の控えは描かれた字ではなく値そのものをコピーする。 -->
-      <span class="identity" title={cardIdentity(view)}>{cardIdentity(view)}</span>
-      <!-- ID コピーは ID の右横 (doc-8 §2.2, TASK-72). アイコンのみのボタン (doc-11 §2.4): the figure
-           carries no words, so `aria-label` holds the whole name — and it holds the *operation* name
-           only. 成功 is said by the sentence below, which is a live region, rather than by a name that
-           would change under a user who is looking for this button by it (doc-11 §2.4 の「持続する
-           状態の印」はここに及ばない). 無効化提示 (doc-11 §5) keeps its reason beside the control as
-           well as in `title`: the hint under this line carries it. -->
-      <button
-        type="button"
-        class="copy"
-        class:copied={copyNotice?.state === "copied"}
-        class:fading={copyNotice?.state === "fading"}
-        style="--copy-fade: {COPY_FADE_MS}ms"
-        disabled={crossId === null}
-        aria-label={t().taskDetail.copyCrossId}
-        title={crossId === null ? crossIdUnavailable() : t().taskDetail.copyCrossId}
-        onclick={copyCrossTaskId}
-      >
-        <Icon name={copied ? "clipboard-check" : "clipboard"} />
-      </button>
-      {#if crossId === null}
-        <!-- 解析不能 (doc-4 §5): a required field the read layer could not get. Still a 印チップ and
-             not part of the ⚠️ — it names the field that is missing *here*, where the ID would have
-             been, which is a different act from listing the task's reasons (decision-22). -->
-        <span class="mark" data-kind="inconsistent">{t().taskDetail.taskIdUnknown}</span>
-      {/if}
-      <!-- 不整合印 (decision-22): カードと同じ ⚠️ 1 つで、族名も由来名も出さない。理由は下の
-           不整合区画が持つ。同じ 1 つの derivation から出るので、カード・見出し・区画が同じタスク
-           について食い違うことがない。 -->
-      {#if reasons.length > 0}
-        <span
-          class="inconsistent"
-          role="img"
-          aria-label={inconsistencyLabel(reasons)}
-          title={inconsistencyLabel(reasons)}
-        >
-          <Icon name="triangle-alert" />
-        </span>
-      {/if}
-      {#if missing}
-        <span class="mark" data-kind="unreadable">{t().taskDetail.fileUnknown}</span>
-      {/if}
-
-      <!-- 前後移動 (doc-8 §2.2) は 1 行目の右端、配置切替の手前 (画面設計案 02。doc-12 §3)。
-           ↑↓ のアイコンのみのボタン (doc-11 §2.4) で、名前は `aria-label` が全部持つ — 操作の名前
-           だけで、群の名前は入れない (doc-11 §2.4 が `aria-label` に操作の名前だけを求めている)。
-           **群の名前を刷るのはこの 2 つの `title` だけで、どちらも `laneGroupLabel` から取る**
-           (doc-8 §2.2)。`aria-label` が `title` に優先するので、群の名前はこの控えの説明であって
-           名前ではない。
-           2 つが別の語を刷れば、同じ群を同じ行の中で 2 つの語で呼ぶことになる。未分類区画はレーン
-           セルではない (doc-7 §1)。**隣の位置表示は群の名前を持たない** — 1 行に収める必要があり、
-           名前がその行の 97px を占めていた (TASK-72 の実測)。端での無効化の理由は隣の位置表示と
-           下の控えが担う — 読めない位置に理由を隠さない、が doc-11 §5 の要求である。 -->
-      <div class="nav">
-        {#each [{ dir: "previous" }, { dir: "next" }] as const as step (step.dir)}
-          {@const stepName =
-            step.dir === "previous" ? t().taskDetail.previousTask : t().taskDetail.nextTask}
-          {@const edge = step.dir === "previous" ? t().taskDetail.headEdge : t().taskDetail.tailEdge}
-          {@const target = neighbours === null ? null : neighbours[step.dir]}
-          <button
-            type="button"
-            class="step"
-            disabled={target === null}
-            aria-label={stepName}
-            title={neighbours === null
-              ? noLaneCellReason()
-              : target === null
-                ? t().taskDetail.atEdge(laneGroupLabel(neighbours.group), edge)
-                : t().taskDetail.withinGroup(laneGroupLabel(neighbours.group), stepName)}
-            onclick={() => moveTo(target)}
-          >
-            <!-- 移動の図形 (doc-11 §2.4) は `placement.ts` の `STEP_ICON` が持つ — the family rule is
-                 cross-screen (this pair is 行の並べ替え's too), so the choice has to be somewhere a
-                 test can read it rather than here. -->
-            <Icon name={STEP_ICON[step.dir]} />
-          </button>
-        {/each}
-        <span class="position">
-          {neighbours === null ? t().taskDetail.positionUnknown : laneNeighbourLabel(neighbours)}
-        </span>
-      </div>
-
-      <!-- 配置の切替は「閉じる ×」と同じ操作群に置く (doc-8 §2.2): both answer "この面をどうするか",
-           and neither belongs among the operations on the task's contents. -->
-      <div class="frame">
-        <div class="placement" role="group" aria-label={t().taskDetail.placementGroup}>
-          {#each PLACEMENTS as candidate (candidate)}
-            {@const isDefault = candidate === defaultPlacement}
-            <!-- アイコンのみのボタン (doc-11 §2.4): the figure is decorative, so `aria-label` carries
-                 the whole name — 配置名, and 既定 for the one the 下線 marks. Both come from
-                 `placementSwitchName`, since a label and a title that disagreed would be two answers
-                 to the same question. -->
-            <button
-              type="button"
-              class="switch"
-              class:on={candidate === placement}
-              class:is-default={isDefault}
-              aria-pressed={candidate === placement}
-              aria-label={placementSwitchName(detailPlacementLabel(candidate), isDefault)}
-              title={placementSwitchName(detailPlacementLabel(candidate), isDefault)}
-              onclick={() => onplacement(candidate)}
-            >
-              <Icon name={PLACEMENT_ICON[candidate]} />
-            </button>
-          {/each}
-        </div>
-        <button type="button" class="close" onclick={onclose}>{t().action.close}</button>
-      </div>
-    </div>
-
-
-    <!-- 2 行目: title と編集入口 (画面設計案 02。doc-12 §3, doc-8 §3). 編集入口は押しボタンだけで、
-         保存キーの注記・未保存の予告・バージョン不整合の告知は編集卓に残る — それらは長さが変わる文であり、
-         見出しは固定されているので、伸びた分だけ本文の高さを奪うことになる。 -->
-    <div class="line title-line">
-      {#if session === null}
-        <!-- 2 行を超える title は末尾を落とす (doc-11 §13)。全体は `title` が持つ — 落ちるのは
-             描かれる字だけで、値は編集セッションの欄がそのまま持っている。 -->
-        <h2 title={task.title ?? t().state.titleUnknown}>{task.title ?? t().state.titleUnknown}</h2>
-      {:else}
-        <label class="field">
-          <span>title</span>
-          <input
-            type="text"
-            value={session.draft.title}
-            oninput={(event) => edit("title", event.currentTarget.value)}
-          />
-        </label>
-      {/if}
-      {@render editEntry()}
-    </div>
-  </header>
-
-  <!-- 主要属性の属性表 (doc-8 §3): 見出しの 3 行目でありながら、上の 2 行と違って固定帯の外に立つ。
-       固定行の高さの上限 (doc-11 §13) がこの行を締め出す — 6 つの値は面が狭くなるほど折り返し、
-       実測では 560px 幅の窓で 94.58px、320px で 162.58px を取っていた (WebKit・閲覧)。固定帯が
-       それを背負うと、帯の残りが控え 1 つぶんを切って面の内容が届かなくなる。**この行を固定する
-       理由は doc-8 §3 に書かれていない** — 同節が固定の理由に挙げるのは ID コピー・前後移動・
-       閉じる の 3 つで、いずれも 1 行目の控えである。 -->
-  <dl class="facts">
-    <dt>status</dt>
-    <dd>
-      {#if session !== null}
-        <select
-          aria-label="status"
-          value={session.draft.status}
-          onchange={(event) => edit("status", event.currentTarget.value)}
-        >
-          {#each optionsFor(task.status, snapshot.config.statuses) as option (option.value)}
-            <option value={option.value}>{option.label}</option>
-          {/each}
-        </select>
-      {:else if status === null}
-        <span class="mark" data-kind="inconsistent">{t().taskDetail.statusUnreadable}</span>
-      {:else}
-        <span class="raw">{status.raw}</span>
-        <!-- 正準対応を併記 (AC #1): 未分類 status is stated as such rather than shown blank. -->
-        {#if status.column === null}
-          <span class="mark unmapped">{t().taskDetail.canonicalUnmapped}</span>
-        {:else}
-          <span class="column">
-            {t().taskDetail.canonicalColumn(CANONICAL_COLUMN_LABEL[status.column])}
-          </span>
-        {/if}
-        {#if status.declaration === "undeclared"}
-          <span class="mark unmapped">{t().taskDetail.configUndeclared}</span>
-        {:else if status.declaration === "noDeclaredSet"}
-          <span class="mark neutral">{t().taskDetail.configNoStatuses}</span>
-        {:else if status.declaration === "draft"}
-          <span class="mark neutral">{t().taskDetail.draftKnownStatus}</span>
-        {/if}
-      {/if}
-    </dd>
-
-    <dt>priority</dt>
-    <!-- priority の値は 優先度色 で書く (decision-23): カードが色で述べていることを、詳細でも同じ
-         色で述べる。札にはしない — 主要属性の値は素の文字で並んでおり、ここだけ札にすると
-         doc-11 §3 のチップの 4 系統に 5 つ目が現れる。3 段のどれでもない値と `—` は色を持たない
-         (`data-priority` が付かない)。編集中は `<select>` がプラットフォームの描画なので、色は
-         閲覧時の値にだけ効く。 -->
-    <dd data-priority={session === null ? priorityStep(task.priority) : null}>
-      {#if session !== null}
-        <select
-          aria-label="priority"
-          value={session.draft.priority}
-          onchange={(event) => edit("priority", event.currentTarget.value)}
-        >
-          {#each optionsFor(task.priority, PRIORITIES) as option (option.value)}
-            <option value={option.value}>{option.label}</option>
-          {/each}
-        </select>
-      {:else}
-        {task.priority ?? "—"}
-      {/if}
-    </dd>
-
-    <dt>{t().taskDetail.storageTerm}</dt>
-    <dd>
-      {task.storageState === null ? t().state.storageUnknown : STORAGE_LABEL[task.storageState]}
-    </dd>
-
-    <dt>milestone</dt>
-    <dd>
-      {#if session !== null}
-        <select
-          aria-label="milestone"
-          value={session.draft.milestone}
-          onchange={(event) => edit("milestone", event.currentTarget.value)}
-        >
-          {#each milestoneOptions(snapshot, task.milestone) as option (option.value)}
-            <option value={option.value}>{option.label}</option>
-          {/each}
-        </select>
-      {:else if milestone === null}
-        —
-      {:else}
-        {milestone.id}
-        {#if milestone.title === null}
-          <span class="mark unmapped">{t().taskDetail.unresolved}</span>
-        {:else}
-          <span class="resolved">{milestone.title}</span>
-        {/if}
-      {/if}
-    </dd>
-
-    <!-- created と updated は別のセル (画面設計案 02 の 3 段目。doc-12 §3). 1 セルに 2 つ収めると
-         `tabular-nums` が桁を揃える相手を持たない — 揃えたい 2 つが同じ列に立って初めて効く。 -->
-    <dt>created</dt>
-    <dd class="date">{task.createdDate ?? "—"}</dd>
-
-    <dt>updated</dt>
-    <dd class="date">{task.updatedDate ?? "—"}</dd>
-  </dl>
-{/snippet}
-
-<!-- 見出しの操作が述べる文 (doc-8 §3, doc-11 §5): drawn *below* the 見出し rather than inside it. Every
-     one of these appears and disappears — a 既定 write that was refused, an end-of-cell move, an id that
-     cannot be built, the result of a copy, a file that left the read — so inside the 固定 band each of
-     them would grow it, and the failed-copy one would grow it and stay. The band is the three rows
-     doc-12 §3 transcribed and nothing else; height it takes is height the body never gets back.
-     Adjacency is what doc-11 §5 actually asks for (a reason readable without hovering), and these sit
-     immediately under the controls they speak for. -->
-{#snippet headingNotes()}
-  <div class="heading-notes">
-    {#if persistenceNote !== null}
-      <p class="hint">{persistenceNote}</p>
-    {/if}
-    {#if neighbours === null}
-      <!-- 無効化提示 (doc-11 §5): the reason sits beside the control, not only in a tooltip. -->
-      <p class="hint">{noLaneCellReason()}</p>
-    {/if}
-    {#if crossId === null}
-      <p class="hint">{crossIdUnavailable()}</p>
-    {/if}
-    <!-- 成功・失敗を述べる語 (doc-11 §2.4, TASK-72). A live region because the control's own name must
-         not change under the user: the figure and the 成功色 reach the eye, and this is what reaches
-         the ear. `role="status"` — polite — so it waits for a pause rather than cutting in on whatever
-         is being read; the copy has already happened either way. Always in the tree, empty when there is
-         nothing to say: a region inserted at the moment it fills is not reliably announced. -->
-    <div
-      role="status"
-      aria-live="polite"
-      class="live"
-      class:unseen={copyNotice?.state !== "failed"}
-    >
-      {#if copied}
-        <p class="ok">{t().taskDetail.copied}</p>
-      {:else if copyNotice !== null && copyNotice.state === "failed"}
-        <p class="warn">
-          {t().taskDetail.copyFailed}
-          <input type="text" readonly value={copyNotice.text} aria-label={t().taskDetail.crossIdLabel} />
-        </p>
-      {/if}
-    </div>
-    {#if missing}
-      <!-- doc-8 §6.4: an external move does not get to take the 未保存入力 with it. The panel
-           stays up showing the last read that resolved, so the input can be copied out before it
-           is discarded on purpose. -->
-      <p class="warn">{fileMissingReason()}</p>
-    {/if}
-  </div>
-{/snippet}
-
-<!-- 編集入口 (doc-8 §3): drawn at the right end of the heading's title row so that the way into an
-     edit is reachable without scrolling — the same requirement that fixes the heading at all.
-     **保存 と キャンセル are not here** (2026-08-10, doc-11 §11): those are the 発行 and its 取りやめ,
-     and the rule puts them in a row pinned to the bottom of the panel (`editIssueRow`). What stays is
-     the entry, which issues nothing. The slot is empty during a session, and the console below keeps
-     every sentence that outlives the press. -->
-{#snippet editEntry()}
-  <div class="entry">
-    {#if session === null}
-      <button
-        type="button"
-        class="primary"
-        disabled={availability.state !== "editable"}
-        title={availability.state === "editable" ? t().action.edit : availability.reason}
-        onclick={startEditing}
-      >
-        {t().action.edit}
-      </button>
-    {/if}
-  </div>
-{/snippet}
-
-<!-- 発行の行 (doc-11 §11): the 編集セッション is the only 発行 this panel holds and the panel scrolls,
-     so the row pins to its bottom. Inside it goes what has to be read *before* the press — the reason
-     保存 is withheld, and the chord that runs it. The result of the press does not: a save that lands
-     ends the session (doc-8 §6.3), so a sentence in this row would go down with the row. Those stay in
-     the 編集卓 (doc-8 §3), which is drawn whether or not a session is open. -->
-{#snippet editIssueRow()}
-  <div class="issue">
-    <!-- 無効化の理由 (doc-11 §5 の 2 つ目の形). Always in the DOM, because `aria-describedby` points at
-         it; printed unless the reason is one §8 licences the screen to leave unsaid. 変更はまだありません
-         is such a reason (licence ②: the form itself says what to do next), so the row stays quiet
-         until there is something to say. The chord's 併記 is not here at all any more — doc-7 §2.1
-         takes `title` and `aria-keyshortcuts` plus the キーボード操作一覧 as discharging it. -->
-    <span
-      class="hint"
-      id={SAVE_REASON_ID}
-      class:unseen={saveGate.state === "ready" || omitsSentence(saveGate.reason)}
-    >
-      {saveGate.state === "ready" ? "" : saveGate.reason}
-    </span>
-    <div class="issue-actions">
-      <!-- 取りやめ → 発行 (doc-11 §11). -->
-      <button type="button" onclick={cancelEditing}>{t().action.cancel}</button>
-      <!-- `aria-disabled` rather than `disabled`: this control's 保留理由 are of both kinds (doc-11 §8)
-           — 発行中 and ファイルが無い are caused from outside the form and keep a printed line, 変更は
-           まだありません is licensed away — and one control may not take focus or not depending on why
-           it is withheld. `save()` holds the same gate, so a press while withheld issues nothing. -->
-      <button
-        type="button"
-        class="primary"
-        aria-disabled={saveGate.state !== "ready"}
-        aria-describedby={saveGate.state === "ready" ? undefined : SAVE_REASON_ID}
-        aria-keyshortcuts={ariaKeyShortcuts("saveEditSession", MAC_KEYBOARD)}
-        title={saveGate.state === "ready"
-          ? t().taskDetail.saveWithChord(shortcutHint("saveEditSession", MAC_KEYBOARD))
-          : saveGate.reason}
-        onclick={save}
-      >
-        {busy ? t().action.saving : t().action.save}
-      </button>
-    </div>
-  </div>
-{/snippet}
-
-<!-- 編集（明示保存） (doc-8 §3): 常設 in all three. Nothing here writes as you type, and Enter is
-     not one of the save keys (doc-8 §6.2). The buttons are in the heading (`editEntry`); what is left
-     here is every sentence that explains, warns or foretells. -->
-{#snippet editConsole()}
-  <section class="console">
-    {#if session === null}
-      {#if availability.state !== "editable"}
-        <!-- 無効化提示 (doc-11 §5): the disabled 編集 button in the heading carries this in its
-             `title`, and doc-11 §5 refuses to leave a reason on hover alone. -->
-        <p class="hint">{availability.reason}</p>
-      {/if}
-    {:else}
-      <!-- The chord's 併記 and the reason 保存 is withheld moved to the 発行の行 (doc-11 §11,
-           `editIssueRow`): both have to be read at the moment the control is pressed, and that
-           control is no longer here. Enter's own meaning stays stated at the field itself
-           (`Editor.svelte`), where the key is pressed. -->
-      {#if dirty}
-        <!-- 破棄前確認 (doc-8 §6.3) を、押す前に読める形で置く: 入力を失う操作の前には同じ確認が
-             上部帯に出る、という予告である。§6.3 の 5 経路をここへ数え上げないのは doc-11 §8 の
-             設計文の写しに当たるためで、予告として要るのは「確認を通る」ことだけである。 -->
-        <p class="hint">{t().taskDetail.unsavedWarn(discardConfirmProceed())}</p>
-      {/if}
-      {#if externalChange}
-        <!-- 編集中の継続検出 (doc-8 §6.4). 不整合 の色を取り、generic notice ではない: the version has
-             *been observed* to move against this session's baseline. It is not recorded on the card,
-             though — no save has been attempted, and doc-8 §6.4 keeps this stated rather than acted
-             on, so it belongs to the live session and ends with it. -->
-        <p class="conflict">{t().taskDetail.externallyChanged}</p>
-      {/if}
-    {/if}
-
-    {#if saveState.state === "applied"}
-      <p class="ok">{t().taskDetail.saved}</p>
-    {:else if saveState.state === "failed"}
-      <!-- CLI 失敗 (doc-5 §5): the display above is unchanged and the input is still here. -->
-      <p class="warn">{t().action.saveFailed(saveState.detail)}</p>
-    {:else if saveState.state === "uncheckable"}
-      <!-- 照合不能 (doc-9 §4.2/§5): its own family (`undetectable`), because 版がずれているとは
-           限らず、確かめる方法が無い — doc-9 §5 requires this not to read as a conflict, and forbids
-           offering an unchecked run as the way around it. -->
-      <p class="undetectable">{saveState.detail}</p>
-    {:else if saveState.state === "conflict"}
-      <!-- 防げる競合の未然提示 (doc-9 §5): the check stopped this before the CLI ran. -->
-      <div class="conflict">
-        <p>{t().taskDetail.conflictStopped(conflictSetDetail(saveState))}</p>
-        <div class="buttons">
-          <button type="button" onclick={restartFromLatest}>
-            {t().taskDetail.conflictDiscard}
-          </button>
-          <button type="button" onclick={reapplyOntoLatest}>
-            {t().taskDetail.conflictReapply}
-          </button>
-        </div>
-        <p class="hint">{t().taskDetail.conflictReapplyNote}</p>
-      </div>
-    {:else if saveState.state === "diverged"}
-      <!-- 防げない喪失の事後通知 (doc-9 §4.1/§5). Deliberately worded apart from the conflict
-           above: this one was *not* prevented, and what an overwrite removed cannot be shown. -->
-      <div class="conflict">
-        <p>{t().taskDetail.postCheckMismatch(saveState.fields)}</p>
-        <p class="hint">{t().taskDetail.postCheckNote}</p>
-      </div>
-    {:else if conflict !== null}
-      <!-- A バージョン不整合 recorded on an earlier visit to this task: the banners above belong to
-           the save that just happened, and this one is what the swimlane card is still marking. Kept
-           dismissible so the mark can be retired without a save — the input it belonged to is gone,
-           so neither doc-9 §5 path applies any more. -->
-      <div class="conflict">
-        <p>{versionConflictReason(conflict)}</p>
-        <p class="hint">{t().taskDetail.postCheckFresh}</p>
-        <div class="buttons">
-          <button type="button" onclick={() => onconflict(null, conflictTarget())}>
-            {t().taskDetail.acknowledge}
-          </button>
-        </div>
-      </div>
-    {/if}
-
-    {#if acDeltaDropped}
-      <!-- Stated rather than done quietly: the rebase kept every other field's input, and a
-           silently dropped AC operation would look like the save simply ignored it. -->
-      <p class="warn">{t().taskDetail.criteriaReordered}</p>
-    {/if}
-  </section>
-{/snippet}
-
-<!-- 不整合区画 (decision-22, doc-8 §3): 3 配置とも常設で、折り畳めない。折畳みへ落とすと問題のある
-     タスクが正常に見えるためであり（doc-8 §3）、それは開閉できる折畳みでも「前のタスクで閉じた状態」が
-     引き継がれる形で起こりうる。**理由行だけを並べ、族名も総称も行には出さない** — 何件あるかと
-     「不整合である」ことは、区画が在ることと見出しの ⚠️ が既に述べている。 -->
-{#snippet inconsistencyPanel()}
-  <!-- 条件は理由行の有無だけである。未知セクションは読み取り層が想定外スキーマとして記録する
-       (`domain.rs` の `UnknownSection`) ので、それを持つタスクは必ず理由行を持つ — `||` で足すと、
-       ⚠️ の無いタスクに「⚠️ 不整合」の見出しを描く枝ができる。 -->
-  {#if reasons.length > 0}
-    <section class="inconsistency-panel">
-      <h3>
-        <span class="glyph"><Icon name="triangle-alert" /></span>
-        {t().taskDetail.inconsistentHeading}
-      </h3>
-      {#each reasons as reason, index (index)}
-        <p>{reason}</p>
-      {/each}
-      <!-- 未知セクション は区画ではなく不整合区画の中の項目だが、開閉の記号は折畳み区画に揃える
-           (doc-8 §3) — 同じ面の中で UA 既定マーカーと 開閉印 が並ぶと、同じ操作が 2 通りの記号で
-           出ることになる。向きは `[open]` から CSS で選ぶ: 開いているかを持つのは要素自身で、
-           それを写した変数を別に置くと、タスクを移った先の別のセクションへ前の開閉が付く
-           (この一覧の鍵は index であり、節の名前ではない)。 -->
-      {#each task.unknownSections as section, index (index)}
-        <details class="unknown">
-          <summary>
-            <!-- `mark` ではない: そのクラスは 状態の印 チップ (doc-11 §3) が取っており、
-                 開閉印はその 4 系統のどれでもない。 -->
-            <span class="disclosure closed"><Icon name={DISCLOSURE_ICON.closed} /></span>
-            <span class="disclosure open"><Icon name={DISCLOSURE_ICON.open} /></span>
-            {t().taskDetail.unknownSection(section.name)}
-          </summary>
-          <pre class="body">{section.body}</pre>
-        </details>
-      {/each}
-    </section>
-  {/if}
-{/snippet}
-
-<!-- Type と通常ラベルは別区画 (doc-8 §4): two sections, never one label list. -->
-{#snippet typeSection()}
-  <DetailSection title="Type" section="type" {layout}>
-    <ul class="chips">
-      {#if types.length === 0}
-        <!-- Type 未設定 は破線輪郭のチップ (doc-11 §3), カードと同じ形で. A sentence here and a chip on
-             the card made the same 未設定 read as two different findings. -->
-        <li class="type unset">{t().state.typeUnset}</li>
-      {:else}
-        {#each types as value, index (index)}
-          <li class="type" class:unknown={!value.known}>
-            {value.value}{value.known ? "" : t().state.valueUnknown}
-          </li>
-        {/each}
-      {/if}
-    </ul>
-    {#if session !== null}
-      <p class="hint">{typeNotEditable()}</p>
-    {/if}
-  </DetailSection>
-{/snippet}
-
-<!-- assignee (doc-8 §3): 見出しから外して本文側の区画へ置いた (TASK-72). 画面設計案 02 の属性表には
-     あるが、本書は意図的に外れている (doc-12 §3) — 属性表を 2 列に保ったまま created と updated を
-     別のセルへ割くためで、assignee は編集セッションでだけ書き換える値なので、常に読める必要がある
-     見出しの側に要らない。割当表にはこの区画自身の行がある (TASK-73 まで通常ラベルの行を借りていた)。 -->
-{#snippet assigneeSection()}
-  <DetailSection
-    title="assignee"
-    section="assignee" {layout}
-    count={t().state.count(task.assignee.length)}
-  >
-    {#if session === null}
-      {#if task.assignee.length === 0}
-        <p class="neutral">{t().state.none}</p>
-      {:else}
-        <p>{task.assignee.join(", ")}</p>
-      {/if}
-    {:else}
-      <!-- 担当の設定・付け替えはこの画面で閉じる (doc-5 §3・doc-10 §7, TASK-57). 全置換 —
-           編集側の `-a` は値をカンマ区切りの集合として読み、frontmatter の一覧を丸ごと置き換える. -->
-      {@render listEditor(
-        session.draft.assignee,
-        (next) => edit("assignee", next),
-        newAssignee,
-        (value) => (newAssignee = value),
-        t().taskDetail.addAssignee,
-      )}
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet labelsSection()}
-  <DetailSection
-    title={t().field.plainLabels}
-    section="labels" {layout}
-    count={t().state.count(task.labels.length)}
-  >
-    {#if session === null}
-      {#if task.labels.length === 0}
-        <p class="neutral">{t().state.none}</p>
-      {:else}
-        <ul class="chips">
-          {#each task.labels as label, index (index)}
-            <li class="label">{label}</li>
-          {/each}
-        </ul>
-      {/if}
-    {:else}
-      {@render listEditor(
-        session.draft.labels,
-        (next) => edit("labels", next),
-        newLabel,
-        (value) => (newLabel = value),
-        t().field.addLabel,
-      )}
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet descriptionSection()}
-  <DetailSection title="Description" section="description" {layout}>
-    {#if session === null}
-      {#if task.description}
-        <Body source={task.description} {onopenlink} {readimage} />
-      {:else}
-        <p class="neutral">{t().state.none}</p>
-      {/if}
-    {:else}
-      <Editor
-        label="Description"
-        value={session.draft.description}
-        rows={8}
-        onchange={(value) => edit("description", value)}
-        onsave={save}
-      />
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet acSection()}
-  <DetailSection title="Acceptance Criteria" section="ac" {layout} progress={ac}>
-    {#if session === null}
-      {#if ac.total === 0}
-        <p class="neutral">{t().state.none}</p>
-      {:else}
-        <ul class="ac">
-          {#each task.acceptanceCriteria as item (item.number)}
-            <li class:checked={item.checked}>
-              <!-- 族を持たない状態の印 (doc-11 §2.4): not pressable outside an 編集セッション, so the
-                   name goes on the wrapper. `role="img"` is required, not decoration — with the figure
-                   `aria-hidden` this span has no content left, and `aria-label` on a bare span is not
-                   announced. While it printed a glyph, the glyph itself was the name. -->
-              <span class="box" role="img" aria-label={item.checked ? t().taskDetail.done : t().taskDetail.notDone}>
-                <Icon name={item.checked ? "square-check" : "square"} />
-              </span>
-              <span class="number">#{item.number}</span>
-              <span class="text">{item.text}</span>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    {:else}
-      <!-- 項目単位操作 と 全体差し替え を区別する (doc-5 §3/§3.1): the CLI has no single option that
-           sets all criteria, so the composite replacement is its own mode, entered on purpose. -->
-      <div class="modes">
-        <button
-          type="button"
-          class="mini"
-          class:on={session.draft.ac.mode === "delta"}
-          onclick={() => (session = setAcMode(session!, "delta"))}
-        >
-          {t().taskDetail.criteriaModeItems}
-        </button>
-        <button
-          type="button"
-          class="mini"
-          class:on={session.draft.ac.mode === "replace"}
-          onclick={() => (session = setAcMode(session!, "replace"))}
-        >
-          {t().taskDetail.criteriaModeReplace}
-        </button>
-      </div>
-
-      {#if session.draft.ac.mode === "delta"}
-        <ul class="ac">
-          {#each acView as row (row.number)}
-            <li class:checked={row.checked} class:removed={row.removed}>
-              <!-- 編集セッション中は同じ印がアイコンのみのボタンになる (doc-11 §2.4). The figure pair is
-                   the one 閲覧 draws, so the項 does not change appearance when the session opens; what
-                   changes is that it can be pressed. The state the figure shows is in the name already
-                   (「を完了にする」 can only be said of an unchecked one), so nothing is added for it. -->
-              <button
-                type="button"
-                class="box"
-                aria-label={t().taskDetail.toggleCriterion(row.number, row.checked)}
-                onclick={() => (session = toggleAcCheck(session!, row.number))}
-              >
-                <Icon name={row.checked ? "square-check" : "square"} />
-              </button>
-              <span class="number">#{row.number}</span>
-              <span class="text">{row.text}</span>
-              <button
-                type="button"
-                class="mini"
-                onclick={() => (session = toggleAcRemoval(session!, row.number))}
-              >
-                {row.removed ? t().taskDetail.undoRemove : t().action.remove}
-              </button>
-            </li>
-          {/each}
-        </ul>
-        {#each session.draft.ac.delta.add as text, index (index)}
-          <p class="hint">{t().taskDetail.pendingAdd(text)}</p>
-        {/each}
-        <div class="add-row">
-          <input
-            type="text"
-            placeholder={t().field.addCriterion}
-            value={newCriterion}
-            oninput={(event) => (newCriterion = event.currentTarget.value)}
-          />
-          <button type="button" class="mini" onclick={addCriterion}>{t().action.add}</button>
-        </div>
-      {:else}
-        {@const items = session.draft.ac.mode === "replace" ? session.draft.ac.items : []}
-        <ul class="ac-replace">
-          {#each items as item, index (index)}
-            <li>
-              <label class="check">
-                <input
-                  type="checkbox"
-                  checked={item.checked}
-                  onchange={(event) =>
-                    edit("ac", {
-                      mode: "replace",
-                      items: items.map((entry, at) =>
-                        at === index
-                          ? { ...entry, checked: event.currentTarget.checked }
-                          : entry,
-                      ),
-                    })}
-                />
-                {t().taskDetail.done}
-              </label>
-              <Editor
-                label={`Acceptance Criterion ${index + 1}`}
-                value={item.text}
-                rows={2}
-                onchange={(value) =>
-                  edit("ac", {
-                    mode: "replace",
-                    items: items.map((entry, at) =>
-                      at === index ? { ...entry, text: value } : entry,
-                    ),
-                  })}
-                onsave={save}
-              />
-              <button
-                type="button"
-                class="mini"
-                onclick={() =>
-                  edit("ac", {
-                    mode: "replace",
-                    items: items.filter((_, at) => at !== index),
-                  })}
-              >
-                {t().action.remove}
-              </button>
-            </li>
-          {/each}
-        </ul>
-        <button
-          type="button"
-          class="mini"
-          onclick={() =>
-            edit("ac", { mode: "replace", items: [...items, { text: "", checked: false }] })}
-        >
-          {t().taskDetail.addItem}
-        </button>
-        <p class="hint">
-          {t().taskDetail.replaceAllNote}
-        </p>
-      {/if}
-    {/if}
-  </DetailSection>
-{/snippet}
-
 <!--
-  TASK-185 の 3 区画。**どれも 編集セッション 中も読み取りのまま描く** — 画面からの書き戻しは
-  持つと決まっているが、この回の範囲ではない (doc-5 §3.2)。編集の枝を空で置くと、その区画だけ
-  保存の宛先が無い編集卓に見える。
--->
-{#snippet dodSection()}
-  <!-- 達成数 は出るが 達成割合のバー は出ない — バーは 区画境界 そのもので、折畳みの区画は
-       区画境界 を持たないためである (doc-8 §3)。`DetailSection` がその判定を持っているので、
-       ここは AC と同じ prop を渡すだけでよい。 -->
-  <DetailSection
-    title={t().taskDetail.definitionOfDoneHeading}
-    section="dod"
-    {layout}
-    progress={dod}
-  >
-    {#if dod.total === 0}
-      <p class="neutral">{t().state.none}</p>
-    {:else}
-      <ul class="ac">
-        <!-- 位置で鍵を作る（#N ではなく）。読み取り層は番号の一意性を保証しない — CLI は
-             max+1 を振るが、手で書いたファイルは `#1` を 2 行持てる。Svelte の
-             `each_key_duplicate` は本番でも throw するので、鍵が重なるとタスク詳細ごと落ちる。 -->
-        {#each task.definitionOfDone as item, index (index)}
-          <li class:checked={item.checked}>
-            <span class="box" role="img" aria-label={item.checked ? t().taskDetail.done : t().taskDetail.notDone}>
-              <Icon name={item.checked ? "square-check" : "square"} />
-            </span>
-            <span class="number">#{item.number}</span>
-            <span class="text">{item.text}</span>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet commentsSection()}
-  <DetailSection
-    title={t().taskDetail.commentsHeading}
-    section="comments"
-    {layout}
-    count={t().taskDetail.commentCount(task.comments.length)}
-  >
-    {#if task.comments.length === 0}
-      <p class="neutral">{t().state.none}</p>
-    {:else}
-      <ul class="comments">
-        {#each task.comments as comment, index (index)}
-          <li>
-            <!-- author と created は無いことがある (doc-4 §4)。中立表示 で「記録が無い」と述べる —
-                 欄ごと落とすと、書かれなかったことと読めなかったことが同じ絵になる (doc-11 §6)。 -->
-            <p class="comment-head">
-              <span class:neutral={comment.author === null}>
-                {comment.author ?? t().taskDetail.commentAuthorUnknown}
-              </span>
-              <span class:neutral={comment.created === null}>
-                {comment.created ?? t().taskDetail.commentCreatedUnknown}
-              </span>
-            </p>
-            <Body source={comment.body} {onopenlink} {readimage} />
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet finalSummarySection()}
-  <DetailSection title={t().taskDetail.finalSummaryHeading} section="finalSummary" {layout}>
-    {#if task.finalSummary}
-      <Body source={task.finalSummary} {onopenlink} {readimage} />
-    {:else}
-      <p class="neutral">{t().state.none}</p>
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet planSection()}
-  <DetailSection title={t().taskDetail.planHeading} section="plan" {layout}>
-    {#if session === null}
-      {#if task.implementationPlan}
-        <Body source={task.implementationPlan} {onopenlink} {readimage} />
-      {:else}
-        <p class="neutral">{t().state.none}</p>
-      {/if}
-    {:else}
-      <Editor
-        label={t().taskDetail.planHeading}
-        value={session.draft.plan}
-        onchange={(value) => edit("plan", value)}
-        onsave={save}
-      />
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet notesSection()}
-  <DetailSection title={t().taskDetail.notesHeading} section="notes" {layout}>
-    {#if session === null}
-      {#if task.implementationNotes}
-        <Body source={task.implementationNotes} {onopenlink} {readimage} />
-      {:else}
-        <p class="neutral">{t().state.none}</p>
-      {/if}
-    {:else}
-      <div class="modes">
-        <button
-          type="button"
-          class="mini"
-          class:on={session.draft.notesMode === "set"}
-          onclick={() => (session = setNotesMode(session!, "set"))}
-        >
-          {t().taskDetail.notesReplace}
-        </button>
-        <button
-          type="button"
-          class="mini"
-          class:on={session.draft.notesMode === "append"}
-          onclick={() => (session = setNotesMode(session!, "append"))}
-        >
-          {t().taskDetail.notesAppend}
-        </button>
-      </div>
-      <Editor
-        label={session.draft.notesMode === "append" ? t().taskDetail.notesAppendLabel : t().taskDetail.notesHeading}
-        value={session.draft.notes}
-        onchange={(value) => edit("notes", value)}
-        onsave={save}
-      />
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet dependenciesSection()}
-  <DetailSection
-    title="dependencies"
-    section="dependencies" {layout}
-    count={t().state.count(task.dependencies.length)}
-  >
-    {#if session === null}
-      {#if dependencies.length === 0}
-        <p class="neutral">{t().state.none}</p>
-      {:else}
-        <ul class="deps">
-          {#each dependencies as dependency, index (index)}
-            <li>
-              {#if dependency.target === null}
-                <span class="id">{dependency.id}</span>
-                <span class="mark unmapped">{t().taskDetail.unresolved}</span>
-              {:else}
-                {@const target = dependency.target}
-                <button type="button" onclick={() => onselect(target)}>
-                  {dependency.id}
-                  <span class="dep-title">{target.task.title ?? t().state.titleUnknown}</span>
-                </button>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    {:else}
-      {@render listEditor(
-        session.draft.dependencies,
-        (next) => edit("dependencies", next),
-        newDependency,
-        (value) => (newDependency = value),
-        "TASK-ID",
-      )}
-    {/if}
-  </DetailSection>
-{/snippet}
-
-<!-- Pull Request URL は References と分離して独立表示 (doc-8 §4). Both sections stay visible in
-     every 保存区分 (doc-8 §6.5) — they are 参照系, which reading never depends on edit rights. -->
-{#snippet pullRequestSection()}
-  <DetailSection
-    title="Pull Request"
-    section="pullRequest" {layout}
-    count={t().state.count(references.pullRequests.length)}
-  >
-    {#if references.pullRequests.length === 0}
-      <p class="neutral">{t().taskDetail.noPullRequests}</p>
-    {:else}
-      <ul class="prs">
-        {#each references.pullRequests as pr, index (index)}
-          <li>
-            <span class="url">{pr.url}</span>
-            <span class="meta">
-              {pr.host ?? t().taskDetail.hostUnknown}{pr.owner && pr.repo
-                ? ` / ${pr.owner}/${pr.repo}`
-                : ""}{pr.number === null ? "" : ` / #${pr.number}`}
-            </span>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-    {#if session !== null}
-      <p class="hint">
-        {t().taskDetail.pullRequestNote}
-      </p>
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet referencesSection()}
-  <!-- 折畳み（件数を見せる） (doc-8 §3): the count is on the summary, so a folded References still
-       says how many there are. -->
-  <DetailSection
-    title="References"
-    section="references" {layout}
-    count={t().state.count(references.references.length)}
-  >
-    {#if session === null}
-      {#if references.references.length === 0}
-        <p class="neutral">{t().state.none}</p>
-      {:else}
-        <ul class="refs">
-          {#each references.references as reference, index (index)}
-            <li>
-              <span class="url">{reference.value}</span>
-              {#if reference.dangling}
-                <span class="mark unmapped">{t().taskDetail.referenceMissing}</span>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    {:else}
-      <!-- The list is every reference, Pull Request URLs included: `--ref` replaces the whole set,
-           so editing anything less would drop the rest (doc-5 §3, doc-8 §6). -->
-      {@render listEditor(
-        session.draft.references,
-        (next) => edit("references", next),
-        newReference,
-        (value) => (newReference = value),
-        "URL",
-      )}
-    {/if}
-  </DetailSection>
-{/snippet}
-
-<!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行であり、同じ割当（3 配置とも折畳み。既定は併置・モーダルで
-     閉、全面で開）で動く。2 つの区画に分けてあるのは操作の系統が違うためで、開き方は 1 つの規則に従う。 -->
-{#snippet transitionsSection()}
-  <DetailSection title={t().taskDetail.transitionsHeading} section="transitions" {layout}>
-    {#if transitions.state === "none"}
-      <!-- 提供しない理由であって不在ではない (doc-11 §5): 空表示の弱 (`--faint`) で描くと、読ませたい
-           理由が一番読みにくい文字になる。 -->
-      <p class="withheld-reason">{transitions.reason}</p>
-    {:else}
-      {#if busy}
-        <!-- 発行中は全ての遷移が同じ理由で押せない (doc-11 §5): the offers' own reasons say nothing about
-             it, so it is stated once for the list rather than left to each button's `title`. -->
-        <p class="hint">{transitionBusyReason()}</p>
-      {/if}
-      <ul class="transition-list">
-        {#each transitions.offers as offer (offer.kind)}
-          <li>
-            <button
-              type="button"
-              class="transition"
-              disabled={offer.availability.state === "withheld" || busy}
-              title={busy ? transitionBusyReason() : transitionNote(offer)}
-              onclick={(event) => runTransition(offer, event.currentTarget)}
-            >
-              <!-- 語尾の … (doc-11 §12): every 状態遷移 asks first, so the mark is unconditional here. -->
-              {confirmMarkedLabel(offer.label)}
-            </button>
-            <span class="effect">{transitionNote(offer)}</span>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </DetailSection>
-{/snippet}
-
-<!-- 外部エディタ経路 (doc-8 §7). Atlas starts the editor and writes nothing; the editor's save comes
-     back through the file watch (doc-9 §3), so nothing here waits for it to close. Offered for every
-     保存区分 and independently of the CLI probe: this is where doc-8 §6.5 and doc-5 §3.1 send the
-     edits Atlas itself cannot issue. -->
-{#snippet externalEditorSection()}
-  <DetailSection title={t().taskDetail.externalEditorHeading} section="transitions" {layout}>
-    <!-- 管理ファイルのパス (doc-8 §7): 見出しから移した (TASK-72). 開く操作の隣がパスの置き場である —
-         何を開こうとしているのかは押す前に読めていなければならない。画面でこのパスを出しているのは
-         ここだけなので、不整合や外部変更の切り分けでファイルを特定する手掛かりもここにある。 -->
-    <p class="path">{task.sourcePath}</p>
-    <!-- 開く前に示す (doc-8 §7 難点と受け方): the frontmatter is exposed and the CLI's schema checking
-         is bypassed, so this is stated before a launch rather than after a degraded read. -->
-    <p class="warn">{frontmatterNotice()}</p>
-    {#if watchStopped}
-      <!-- 継続検出が止まっている場合の書き戻し (doc-8 §7): said before the launch, with the re-read
-           that is the only thing which will bring the edit back. -->
-      <p class="warn">{watchStoppedNote()}</p>
-      <p><button type="button" class="mini" onclick={onreread}>{rereadRootLabel()}</button></p>
-    {/if}
-    {#if dirty}
-      <!-- 二重取り込みの回避 (doc-8 §6.4): stated here, and the launch asks before it starts
-           (doc-11 §12) with this same text as the question. The input is not discarded either way. -->
-      <p class="warn">{unsavedInputWarning()}</p>
-    {/if}
-    <ul class="editor-list">
-      {#each editorOfferList as offer (offer.method)}
-        <li>
-          <button
-            type="button"
-            disabled={offer.availability.state === "withheld"}
-            title={editorNote(offer) ?? offer.command}
-            onclick={(event) => openExternally(offer, event.currentTarget)}
-          >
-            <!-- 語尾の … only while the launch asks (doc-11 §12): the question is raised by 未保存入力,
-                 and a mark left on when nothing will be asked predicts nothing. -->
-            {needsConfirmation(dirty) ? confirmMarkedLabel(offer.label) : offer.label}
-          </button>
-          <span class="effect">{offer.availability.state === "ready" ? offer.command : ""}</span>
-          {#if editorNote(offer) !== null}
-            <span class="effect">{editorNote(offer)}</span>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-    {#if openNotice !== null && openNotice.state === "launched"}
-      <p class="ok">{openNotice.summary}</p>
-    {:else if openNotice !== null}
-      <!-- `deferred` and `failed` both read as "not opened, and here is why"; the notice above says
-           what to do next in either case. -->
-      <p class="warn">{openNotice.detail}</p>
-    {/if}
-  </DetailSection>
-{/snippet}
-
-{#snippet gitHistorySection()}
-  <DetailSection title={t().taskDetail.gitHistoryHeading} section="gitHistory" {layout}>
-    <GitHistory
-      {history}
-      {entry}
-      detail={layout.history}
-      onexpand={placement === "full" ? null : () => onplacement("full")}
-      onreload={onreloadHistory}
-    />
-  </DetailSection>
-{/snippet}
-
-<!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行なので、2 つの snippet が 1 区画を描く。並びを引く側は
-     その行を 1 つの区画として扱えなければならないので、ここでまとめておく。 -->
-{#snippet transitionsRow()}
-  {@render transitionsSection()}
-  {@render externalEditorSection()}
-{/snippet}
-
-<!--
-  区画 1 つにつき snippet 1 つ。**ここに並びは無い** — 並びを持つのは `placement.ts` の
-  `MAIN_COLUMN_ORDER` / `SIDE_COLUMN_ORDER` / `SINGLE_COLUMN_ORDER` だけで、下の `{#each}` が
-  それを引いて描く。区画名から snippet への対応は並びではないので、ここに綴っても正本は割れない。
-  以前はこの位置に列ごとの呼び出し列があり、それが doc-8 §3.1 の並びの 2 つ目の写しになっていた —
-  片方だけ入れ替えてもテストは全部通る形だったので、写しを持たない形へ替えた。
+  区画 1 つにつき snippet 1 つで、その snippet は 区画コンポーネント を 1 つ描く。**ここに並びは無い** —
+  並びを持つのは `placement.ts` の `MAIN_COLUMN_ORDER` / `SIDE_COLUMN_ORDER` / `SINGLE_COLUMN_ORDER`
+  だけで、下の `{#each}` がそれを引いて描く。区画名から snippet への対応は並びではないので、ここに
+  綴っても正本は割れない。以前はこの位置に列ごとの呼び出し列があり、それが doc-8 §3.1 の並びの
+  2 つ目の写しになっていた — 片方だけ入れ替えてもテストは全部通る形だったので、写しを持たない形へ替えた。
   `satisfies` が `Record<SectionKey, Snippet>` を要求するので、doc-8 §3 の割当表へ行が増えたら
-  この表もコンパイルが通らなくなる (`placement.ts` の割当表と同じ守り方)。`SectionKey` は
-  `DetailSection` 型の別名である — このファイルでは `DetailSection` は同名のコンポーネントを指す。
+  この表もコンパイルが通らなくなる (`placement.ts` の割当表と同じ守り方)。
   見出しと編集卓もここに居るが、どちらの並びにも入らない — 列の上に固定される行だからである
   (doc-8 §2.2)。それは `SECTION_COLUMN` の `"wide"` としてテストが押さえている。
 -->
+{#snippet headingSection()}
+  <Heading
+    {task}
+    {snapshot}
+    identity={cardIdentity(view)}
+    {crossId}
+    copyNotice={copyNotice}
+    {copied}
+    fadeMs={COPY_FADE_MS}
+    oncopy={copyCrossTaskId}
+    {status}
+    {milestone}
+    {reasons}
+    {missing}
+    {neighbours}
+    onmove={moveTo}
+    {placement}
+    {defaultPlacement}
+    {onplacement}
+    {onclose}
+    {session}
+    {edit}
+    {availability}
+    onedit={startEditing}
+  />
+{/snippet}
+
+{#snippet editConsoleSection()}
+  <EditConsole
+    editing={session !== null}
+    {availability}
+    {dirty}
+    {externalChange}
+    {saveState}
+    {conflict}
+    {acDeltaDropped}
+    onrestart={restartFromLatest}
+    onreapply={reapplyOntoLatest}
+    onacknowledge={() => onconflict(null, conflictTarget())}
+  />
+{/snippet}
+
+{#snippet inconsistency()}
+  <InconsistencyPanel {reasons} unknownSections={task.unknownSections} />
+{/snippet}
+
+{#snippet typeSection()}
+  <TypeSection {types} {layout} editing={session !== null} />
+{/snippet}
+
+{#snippet labelsSection()}
+  <LabelsSection
+    labels={task.labels}
+    draft={session === null ? null : session.draft.labels}
+    apply={(next) => edit("labels", next)}
+    entry={newLabel}
+    setEntry={(value) => (newLabel = value)}
+    {layout}
+  />
+{/snippet}
+
+{#snippet assigneeSection()}
+  <AssigneeSection
+    assignee={task.assignee}
+    draft={session === null ? null : session.draft.assignee}
+    apply={(next) => edit("assignee", next)}
+    entry={newAssignee}
+    setEntry={(value) => (newAssignee = value)}
+    {layout}
+  />
+{/snippet}
+
+{#snippet descriptionSection()}
+  <DescriptionSection
+    description={task.description}
+    draft={session === null ? null : session.draft.description}
+    onchange={(value) => edit("description", value)}
+    onsave={save}
+    {layout}
+    {onopenlink}
+    {readimage}
+  />
+{/snippet}
+
+{#snippet acSection()}
+  <AcSection
+    items={task.acceptanceCriteria}
+    progress={ac}
+    {session}
+    rows={acView}
+    {setSession}
+    setAc={(value) => edit("ac", value)}
+    entry={newCriterion}
+    setEntry={(value) => (newCriterion = value)}
+    addEntry={addCriterion}
+    onsave={save}
+    {layout}
+  />
+{/snippet}
+
+{#snippet dodSection()}
+  <DodSection items={task.definitionOfDone} progress={dod} {layout} />
+{/snippet}
+
+{#snippet commentsSection()}
+  <CommentsSection comments={task.comments} {layout} {onopenlink} {readimage} />
+{/snippet}
+
+{#snippet finalSummarySection()}
+  <FinalSummarySection finalSummary={task.finalSummary} {layout} {onopenlink} {readimage} />
+{/snippet}
+
+{#snippet planSection()}
+  <PlanSection
+    implementationPlan={task.implementationPlan}
+    draft={session === null ? null : session.draft.plan}
+    onchange={(value) => edit("plan", value)}
+    onsave={save}
+    {layout}
+    {onopenlink}
+    {readimage}
+  />
+{/snippet}
+
+{#snippet notesSection()}
+  <NotesSection
+    implementationNotes={task.implementationNotes}
+    {session}
+    {setSession}
+    onchange={(value) => edit("notes", value)}
+    onsave={save}
+    {layout}
+    {onopenlink}
+    {readimage}
+  />
+{/snippet}
+
+{#snippet dependenciesSection()}
+  <DependenciesSection
+    {dependencies}
+    draft={session === null ? null : session.draft.dependencies}
+    apply={(next) => edit("dependencies", next)}
+    entry={newDependency}
+    setEntry={(value) => (newDependency = value)}
+    {layout}
+    {onselect}
+  />
+{/snippet}
+
+{#snippet pullRequestSection()}
+  <PullRequestSection
+    pullRequests={references.pullRequests}
+    {layout}
+    editing={session !== null}
+  />
+{/snippet}
+
+{#snippet referencesSection()}
+  <ReferencesSection
+    references={references.references}
+    draft={session === null ? null : session.draft.references}
+    apply={(next) => edit("references", next)}
+    entry={newReference}
+    setEntry={(value) => (newReference = value)}
+    {layout}
+  />
+{/snippet}
+
+{#snippet gitHistorySection()}
+  <GitHistorySection
+    {history}
+    {entry}
+    {layout}
+    {placement}
+    {onplacement}
+    {onreloadHistory}
+  />
+{/snippet}
+
+<!-- 状態遷移・外部エディタ は doc-8 §3 の 1 行なので、2 つのコンポーネントが 1 区画を描く。並びを引く側は
+     その行を 1 つの区画として扱えなければならないので、ここでまとめておく。 -->
+{#snippet transitionsRow()}
+  <TransitionsSection {transitions} {busy} onrun={runTransition} {layout} />
+  <ExternalEditorSection
+    sourcePath={task.sourcePath}
+    offers={editorOfferList}
+    {watchStopped}
+    {dirty}
+    notice={openNotice}
+    {onreread}
+    onopen={openExternally}
+    {layout}
+  />
+{/snippet}
+
 {#snippet column(order: readonly SectionKey[])}
   {@const draw = {
-    heading,
-    editConsole,
-    inconsistency: inconsistencyPanel,
+    heading: headingSection,
+    editConsole: editConsoleSection,
+    inconsistency,
     description: descriptionSection,
     ac: acSection,
     dod: dodSection,
@@ -1915,14 +959,22 @@
 
 <aside
   class="detail"
+  class:issue-row={session !== null}
   data-placement={placement}
   aria-label={t().taskDetail.panelLabel}
   style="--modal-side-column: {MODAL_SIDE_COLUMN_REM}rem; --modal-column-gap: {MODAL_COLUMN_GAP_REM}rem; --panel-padding: {PANEL_PADDING_REM /
     2}rem; --modal-inset: {MODAL_INSET_REM / 2}rem; --modal-max-width: {MODAL_MAX_WIDTH_REM}rem; --prose-max-width: {PROSE_MAX_WIDTH_REM}rem; --sidebar-width: {SIDEBAR_WIDTH_REM}rem;"
 >
-  {@render heading()}
-  {@render headingNotes()}
-  {@render editConsole()}
+  {@render headingSection()}
+  <HeadingNotes
+    {persistenceNote}
+    noNeighbours={neighbours === null}
+    crossIdMissing={crossId === null}
+    {copyNotice}
+    {copied}
+    {missing}
+  />
+  {@render editConsoleSection()}
 
   {#if layout.columns === 2}
     <!-- 中央モーダルと全面シングルビューは 2 列を保つ (doc-8 §2.1): the 脇列 is a fixed 18rem and the
@@ -1941,7 +993,7 @@
        the same box the 見出し pins against at the top. Only while a session is open: there is no 発行
        to place otherwise, and a row standing empty would take height from the body for nothing. -->
   {#if session !== null}
-    {@render editIssueRow()}
+    <EditIssueRow gate={saveGate} {busy} onsave={save} oncancel={cancelEditing} />
   {/if}
 </aside>
 
@@ -1950,10 +1002,10 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    // No top padding: the sticky 見出し owns it (see `.heading`). Left here, it became a 9.6px strip
-    // above the band that the content scrolled through — measured, and visible in a screenshot as the
-    // 縮退帯 appearing over the pinned heading. The sideways value comes from `lib/placement.ts` so
-    // that this padding and the band's pull-out below are one number rather than two that have to
+    // No top padding: the sticky 見出し owns it (see `Heading.svelte`). Left here, it became a 9.6px
+    // strip above the band that the content scrolled through — measured, and visible in a screenshot
+    // as the 縮退帯 appearing over the pinned heading. The sideways value comes from `lib/placement.ts`
+    // so that this padding and the band's pull-out are one number rather than two that have to
     // agree (TASK-115).
     padding: 0 var(--panel-padding) 1rem;
     background: var(--panel);
@@ -1962,7 +1014,11 @@
 
     // 編集セッション中は下端に発行の行が居るので、この箱の下 padding は要らない — 残すと行が縁から
     // 浮き、スクロールの末尾でそのぶん持ち上がる (目視 2026-08-10。3 配置とも)。
-    &:has(> .issue) {
+    //
+    // 発行の行 が在ることを、それを描く枝と同じ条件から取る。以前は `:has(> .issue)` で要素の有無を
+    // 読んでいたが、TASK-106 で 発行の行 が子コンポーネントになったので、その要素はこの木のスコープ
+    // クラスを持たない — Svelte のスコープはコンポーネント境界を越えないので、構造の選択子では届かない。
+    &.issue-row {
       padding-bottom: 0;
     }
   }
@@ -2020,937 +1076,5 @@
     grid-template-columns: minmax(0, 1fr) var(--modal-side-column);
     gap: var(--modal-column-gap);
     align-items: start;
-  }
-
-  /*
-   * 見出しは 3 配置とも固定 (doc-8 §3, AC #2). `.detail` is the scroll container (`overflow-y: auto`)
-   * and this is its direct child, so `sticky` pins against that box in all three placements without
-   * any per-placement rule.
-   *
-   * The band has to reach all four of the panel's edges, or the content scrolls through whatever it does
-   * not cover. Sideways that is negative margins with matching padding, against the panel's horizontal
-   * padding. Upwards it is the panel having *no* top padding and this element carrying it instead: a
-   * negative top margin does not work, because a sticky box is pinned by its static position and the
-   * pull-up is given straight back when it sticks. That was measured — the band settled 9.6px below the
-   * panel's edge in both engines, and a screenshot showed the 縮退帯 riding through the gap.
-   * `--panel` is the same requirement in the third dimension: a transparent sticky band is a band the
-   * text scrolls *through*.
-   *
-   * What is fixed is deliberately only the three rows doc-12 §3 transcribed. Every sentence that comes
-   * and goes is drawn outside it — the ones the heading's own controls speak (`.heading-notes`) and the
-   * ones the session speaks (the 編集卓) — because the band cannot grow without taking that height from
-   * the body permanently, and the failed-copy notice would grow it and then stay.
-   */
-  .heading {
-    /*
-     * The height and the text size of every control in the heading's first row, as one value each —
-     * the same reason `Swimlane.svelte` has `--head-control`. The ↑↓, the 3 配置切替 and 閉じる draw a
-     * figure or a word in boxes that do not otherwise share anything, and a figure is `1em` of its own
-     * box (doc-11 §2.4) rather than a line box handed down by the row: without one font-size taken by
-     * all of them they would only line up by coincidence, and the coincidence differs by engine.
-     * Declared here rather than on `.frame` because the ↑↓ group sits outside it and has to take the
-     * same two numbers (TASK-72 moved 前後移動 into this row).
-     */
-    --frame-control: 1.4rem;
-    --frame-text: var(--text-sm);
-
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    margin: 0 calc(var(--panel-padding) * -1);
-    padding: 0.6rem var(--panel-padding) 0.4rem;
-    border-bottom: 1px solid var(--line);
-    background: var(--panel);
-
-    h2 {
-      margin: 0;
-      font-size: var(--text-3xl);
-      line-height: 1.35;
-    }
-  }
-
-  // The band needs no per-placement rule sideways. There used to be one for the 中央モーダル, on the
-  // grounds that its horizontal padding differed — it does not: `.detail` takes `--panel-padding` in
-  // all three placements, so that rule wrote the same value back (TASK-115 measured 12px a side in
-  // each). The pull-out above draws on that one value and reaches the edges of every placement.
-
-  // 2 行目: title が伸びしろを取り、編集入口は右端で自分の幅のまま。
-  .title-line {
-    align-items: center;
-    gap: 0.5rem;
-    // The items stay on one line (`.line` above), and the title takes at most two — the clamp below
-    // is what makes that true. The earlier note here read "one line in both states (目視 2026-08-04)",
-    // which the 2026-08-11 measurement contradicts: the 目視 was done in a wide window, and in a
-    // narrow one this row grows with the title it is drawing.
-
-    /*
-     * 2 行で止める (doc-11 §13). A title has no length limit — it is whatever the task's frontmatter
-     * says — and this row is inside the 固定帯, so an unbounded one takes the 覆われない帯 with it:
-     * measured at 480 characters the band went to -126.0px in a 640×480 窓 and every control in the
-     * panel became unreachable (2026-08-11, both engines). §13 asks for exactly this — what stands in
-     * a fixed row must not grow with what it is drawing — so the row keeps two lines and the whole
-     * string stays in `title`, the same trade the id line makes one row up.
-     *
-     * `-webkit-line-clamp` rather than a `max-height` in `em`: the clamp counts line boxes, so it
-     * lands on a line boundary in both engines instead of slicing one in half at whatever
-     * `line-height` resolves to.
-     */
-    h2 {
-      display: -webkit-box;
-      flex: 1;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
-      min-width: 0;
-      overflow: hidden;
-    }
-
-    // Editing: the label sits *beside* its input rather than above it, so the field is one line like
-    // the `h2` it replaces. `min-width: 0` on both is what lets the input give way instead of pushing
-    // 保存・キャンセル onto a line of their own — a flex item's default `min-width: auto` refuses to
-    // shrink below its content.
-    .field {
-      flex: 1;
-      min-width: 0;
-      flex-direction: row;
-      align-items: center;
-      gap: 0.3rem;
-
-      span {
-        flex: none;
-      }
-
-      input {
-        flex: 1;
-        min-width: 0;
-      }
-    }
-  }
-
-  /*
-   * 見出しが述べる文の置き場: 固定帯のすぐ下、本文より前。
-   *
-   * `display: contents` so the group itself lays nothing out: its children become items of the panel's
-   * own column and take that column's spacing, and — when there is nothing to say — this subtree
-   * contributes no box at all. A wrapper with its own box would spend one of the panel's `gap`s
-   * whether or not it had anything in it.
-   */
-  .heading-notes {
-    display: contents;
-  }
-
-  /*
-   * 成功の語は読み上げにだけ残す (doc-11 §2.4)。The figure already says it to the eye — `clipboard`
-   * becomes `clipboard-check` and takes the 成功色 — so a sentence repeating that is one the sighted
-   * reader has to read past every time they copy an id. What it must not do is disappear from the
-   * accessibility tree, because the tree is the *only* place the result exists for a screen reader:
-   * `aria-label` stays fixed on the button by doc-11 §2.4, and a figure announces nothing.
-   *
-   * Hence visually hidden rather than `display: none` or a removed element. Both of those take it out
-   * of the tree, and an unmounted region announces nothing when it fills, which is the whole reason it
-   * is kept mounted. Out of flow as well, so a silent round spends none of the panel's `gap`.
-   *
-   * The failure notice is not covered by this: it carries the id as selectable text, which is the only
-   * way left to copy it, and no figure says that. It stays visible — which is why the class is driven
-   * by the failure state rather than by "is there anything to say".
-   */
-  /*
-   * The 発行の行's reason takes the same treatment for a different requirement: doc-11 §8 licences the
-   * screen not to *print* 変更はまだありません, and doc-11 §5 keeps it reachable all the same, because
-   * 保存 points at it with `aria-describedby`. Selecting on the class alone rather than qualifying it
-   * as `.live.unseen` does, so both users of it get the same hiding — this was two rules for one
-   * behaviour until the reason was added (2026-08-10), and the reason was drawn on screen in the
-   * meantime because nothing here matched the class the markup was setting.
-   */
-  .unseen {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .entry {
-    display: flex;
-    flex: none;
-    gap: 0.3rem;
-    margin-left: auto;
-  }
-
-  /*
-   * 発行の行 (doc-11 §11), pinned against the same box the 見出し band pins against — `.detail` is the
-   * scroll container in all three placements, so one rule covers them. The sideways pull-out and the
-   * opaque background are the band's requirements read the other way up: a transparent pinned row is
-   * one the body scrolls *through*, and a row that stops at the panel's padding leaves a strip of
-   * text showing beside it.
-   *
-   * Unlike the band, this row may grow: the withheld reason is a sentence of unknown length. That is
-   * affordable here and was not there — the band takes its height off the top of the body permanently,
-   * while this row stands only during a session and is what the session is being read for.
-   */
-  .issue {
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    margin: 0 calc(var(--panel-padding) * -1);
-    padding: 0.45rem var(--panel-padding) 0.5rem;
-    border-top: 1px solid var(--line);
-    background: var(--panel);
-
-    .hint {
-      margin: 0;
-      text-align: center;
-      font-size: var(--text-sm);
-    }
-  }
-
-  .issue-actions {
-    display: flex;
-    // 行の中で中央 (doc-11 §11).
-    justify-content: center;
-    gap: 0.3rem;
-  }
-
-  .line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.35rem;
-  }
-
-  /*
-   * 1 行に収める (doc-8 §2.2) は、収まる幅では守り、収まらない幅では折り返す。**収まらない幅がある** —
-   * この行の控えの群は 253.73px (WebKit) / 257.14px (Chromium) を占め、縮まない。一方 併置サイドバーは
-   * `min(30rem, 45vw)` なので、窓 590px あたりでパネルの内容幅がその数を切る (2026-08-11 実測)。
-   *
-   * `nowrap` で押し通すと、そこから下は**横あふれ**になる (560px 窓で 12 / 16px) か、ID の描画幅が 0 に
-   * なる (600 / 620px 窓で実測) かのどちらかである。後者は doc-8 §2.2 が ID に与えた役目 —— 他所から
-   * このタスクを指し示す唯一の手段 —— を画面から消す。
-   *
-   * だから ID に**下限**を与え、折り返しを許す。**この行が折り返しても 覆われない帯 (doc-11 §13) は
-   * 割れない** — 帯を割っていたのは 3 行目の属性表で、それは固定帯の外へ出た。1 行に収めることは、
-   * それ自体が目的だったのではなく、帯を守るための手段だった。
-   *
-   * `flex: 1 1 0` は「折り返すかどうかは下限で決め、収まったら余りを全部取る」を 1 つの宣言で書く形で
-   * ある: 折り返しの判定が読むのは基準寸法を下限で留めた値なので、行は ID が下限を割るときにだけ
-   * 折り返し、そうでなければ ID が余白を吸って全体が出る。
-   */
-  .id-line {
-    // 控えと印は自分の寸法のまま。縮ませると図形と語が潰れ、doc-11 §2.2 の控えの群の 1 値も崩れる。
-    > :not(.identity) {
-      flex: none;
-    }
-  }
-
-  // 前後移動 (doc-8 §2.2): 1 行目の右端、配置切替の手前。`margin-left: auto` はこちらが持ち、
-  // `.frame` はその隣に続く — 2 つとも auto を持つと間が開いて 1 つの群に見えなくなる。
-  .nav {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    margin-left: auto;
-    // The same two values the 操作群 beside it takes (`.frame`), so the ↑↓ and the 3 配置切替 line up
-    // by one number rather than by coincidence.
-    font-size: var(--frame-text);
-  }
-
-  .step {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--frame-control);
-    height: var(--frame-control);
-    padding: 0;
-  }
-
-  .position {
-    font-size: var(--text-sm);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    opacity: 0.7;
-  }
-
-  .identity {
-    // 下限 4rem は「`atlas:TASK-1` の頭が読める幅」で、`.copy` が同じ行に居られる最小でもある
-    // (実測 64px ＝ 約 6 字 ＋ 省略記号)。0 を許すと、行は収まったまま ID が消える。
-    flex: 1 1 0;
-    min-width: 4rem;
-    overflow: hidden;
-    font-size: var(--text-md);
-    font-variant-numeric: tabular-nums;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    opacity: 0.75;
-  }
-
-  // 横断タスクID のコピー (doc-8 §2.2): アイコンのみのボタン sitting against the id it copies.
-  .copy {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    // Square, and sized from the id beside it rather than from `--frame-control`: this control belongs
-    // to the ID, not to the 操作群 at the other end of the line (doc-8 §2.2 puts those two apart).
-    width: 1.35rem;
-    height: 1.35rem;
-    padding: 0;
-    font-size: var(--text-md);
-    // No transition at rest. `color` is the property the 成功色 and its fade both move (the figure is
-    // `currentColor`, doc-11 §2.4), and a standing `transition: color` on this button animates *every*
-    // change of it — 表示テーマ の切り替え included, which measured as this one control easing to its
-    // new colour while the rest of the panel had already changed. The transition belongs to the fade,
-    // so `.fading` is what carries it.
-
-    /*
-     * 成功色 (AC #5, TASK-72): `--info` の代替 — decision-12 と doc-11 §2.1 が `--info` を通知・確認の
-     * 色と定めており、コピー成功は確認そのものである。新しい変数を起こしていないのは、成功が図形
-     * (`clipboard-check`) で述べられていて色がその繰り返しだからで、色相を 1 つ増やしても新しい判別は
-     * 生まれない。実測では 10 テーマとも `--info` 対 `--panel` が 5.67:1 以上あり、非文字要素の下限
-     * 3:1 を満たす。
-     *
-     * `transition: none` on the way in: 成功は押した瞬間の返事なので、色が育つのを待たせない。
-     * 成功は押した瞬間の返事なので、入るときは transition を持たせない (色が育つのを待たせない)。
-     * フェードは `.fading` に入った瞬間から始まり、図形は色が引き終わるまで `clipboard-check` の
-     * ままで、そのあと `clipboard` へ戻る。時間はスクリプトの `COPY_FADE_MS` から `--copy-fade` で
-     * 入ってくるので、フェードとそれを終わらせるタイマーは 1 つの数である。
-     */
-    &.copied {
-      color: var(--info);
-    }
-
-    &.fading {
-      color: inherit;
-      transition: color var(--copy-fade) ease;
-    }
-  }
-
-  // 配置の切替と閉じるは 1 つの操作群 (doc-8 §2.2).
-  .frame {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .placement {
-    display: flex;
-    gap: 0.2rem;
-  }
-
-  .switch {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    // A step taller than the `--head-control` the 列・行折畳み use, because this control carries a
-    // mark below its figure and that one does not: measured at 1.2rem the 既定印 sat against the
-    // frame and read as part of it.
-    height: var(--frame-control);
-    // Square: an アイコンのみのボタン has nothing to be wider than its figure for, and three of them
-    // side by side read as one group of switches only if they are the same size.
-    width: var(--frame-control);
-    padding: 0;
-    font-size: var(--frame-text);
-
-    &.on {
-      border-color: var(--info);
-      background: color-mix(in srgb, var(--info) 14%, transparent);
-    }
-
-    /*
-     * 既定印 (doc-8 §2.2): the 下線 画面設計案 02 puts on the button of the placement the next start
-     * will open in (doc-12 §3). Its own element rather than a bottom border or an inset shadow —
-     * both of those follow the border radius and end up reading as the button's own frame, which the
-     * first measurement showed. Absolute, so it takes no part in the layout: the three switches stay
-     * the same size whichever of them is the 既定.
-     *
-     * `--fg` rather than the `--line-strong` of the frame around it: a mark that shares the frame's
-     * colour is a thicker frame. It stays 中立 (decision-6) all the same — being the 既定 is which
-     * placement is stored, not a 族 of state — and `.on`'s `--info` border is left to say the other
-     * thing, since いま出ている配置 と 次回開く配置 can be true of different buttons at once.
-     */
-    &.is-default::after {
-      content: "";
-      position: absolute;
-      right: 0.25rem;
-      bottom: 0.1rem;
-      left: 0.25rem;
-      height: 2px;
-      border-radius: 1px;
-      background: var(--fg);
-    }
-  }
-
-  .close {
-    // The height is written with a border and padding in play; app.scss folds them in for every
-    // フォーム部品 (doc-11 §2.2), so this rule states only the placement. `inline-flex` centres the
-    // word in that height — the switches beside it centre a figure the same way.
-    display: inline-flex;
-    align-items: center;
-    height: var(--frame-control);
-    padding: 0 0.4rem;
-    font-size: var(--frame-text);
-  }
-
-  /*
-   * 主要属性の属性表 (画面設計案 02。doc-12 §3): 3 段 2 列。Four grid tracks — label, value, label,
-   * value — so the six items fall into three rows of two pairs in source order, which is the order
-   * doc-8 §3 writes them in. The label tracks are `auto` rather than a fixed 5.5rem: with two pairs on
-   * a line, a fixed label column spends width the values need, and the labels here are short.
-   *
-   * `--frame-control` is not involved: these rows carry text only, so the line box is the right thing
-   * to size them. (An earlier note here said the table "drops to one pair per line under a narrow
-   * box". It does not — the four tracks have no wrapping rule — and what it actually did was push the
-   * panel sideways, measured at 35 / 66 / 84px of horizontal overflow in a 700 / 560 / 480px 窓 during
-   * an 編集セッション, 変更前 2026-08-11. `minmax(0, 1fr)` lets the *track* reach zero; the `select` in
-   * it kept its own `min-width: auto`, so the track could not take the value with it.)
-   */
-  .facts {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
-    gap: 0.15rem 0.5rem;
-    margin: 0;
-    font-size: var(--text-md);
-
-    // 値は列の幅に従う。値が列を押し広げると、押し広げた分だけパネルが横へスクロールする。
-    select {
-      min-width: 0;
-    }
-
-    dt {
-      opacity: 0.6;
-    }
-
-    dd {
-      margin: 0;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      gap: 0.3rem;
-
-      // priority の値 (decision-23): 素の文字なので満たすのは面に対する 4.5:1 のほう
-      // (優先度色の収録条件)。`font-weight` は上げない — カードのチップと違い、ここは 6 つの属性が
-      // 同じ体裁で並ぶ表であり、1 行だけ太くすると色ではなく太さが目を引く。
-      &[data-priority="high"] {
-        color: var(--priority-high);
-      }
-
-      &[data-priority="medium"] {
-        color: var(--priority-medium);
-      }
-
-      &[data-priority="low"] {
-        color: var(--priority-low);
-      }
-    }
-  }
-
-  .date {
-    font-variant-numeric: tabular-nums;
-  }
-
-  .path {
-    word-break: break-all;
-    opacity: 0.7;
-  }
-
-  .raw {
-    font-weight: 600;
-  }
-
-  .column,
-  .resolved {
-    opacity: 0.7;
-  }
-
-  section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-
-    h3 {
-      margin: 0;
-      font-size: var(--text-lg);
-    }
-  }
-
-  .body {
-    margin: 0;
-    padding: 0.35rem 0.45rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    background: var(--inset);
-    font-family: inherit;
-    font-size: var(--text-md);
-    line-height: 1.5;
-    // Long lines wrap instead of scrolling the panel sideways; newlines are kept as written.
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    font-size: var(--text-sm);
-  }
-
-  // Same rule as the card's (doc-11 §3), so the two screens do not draw the same distinction two
-  // ways: Type は塗り＋太字＋角丸 3px、通常ラベルは輪郭ピル＋細字＋`--muted`. Here the two are already
-  // separate 区画 (doc-8 §4), and the chip shapes keep them apart once both are on screen at once.
-  .type {
-    padding: 0 0.35rem;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--fg) 13%, transparent);
-    font-weight: 600;
-
-    &.unset {
-      background: none;
-      border: 1px dashed var(--line-strong);
-      color: var(--muted);
-      font-weight: 400;
-    }
-
-    &.unknown {
-      background: none;
-      border: 1px solid var(--line-strong);
-    }
-  }
-
-  .label {
-    padding: 0 0.35rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    color: var(--muted);
-  }
-
-  .ac,
-  .comments,
-  .deps,
-  .refs,
-  .prs,
-  .list-edit,
-  .ac-replace,
-  .transition-list,
-  .editor-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    font-size: var(--text-md);
-  }
-
-  // 1 件ずつを面ではなく間隔で分ける — doc-11 §3 のチップ 4 系統にも カード にも当たらないものなので、
-  // 枠を与えると 5 つ目の面が現れる。
-  .comments {
-    gap: 0.6rem;
-  }
-
-  // author の長さに上限は無い — frontmatter ではなく本文の行だが、決めるのは書き手である。
-  // 併置サイドバーの 252px で実測すると、切れずに続く 60 字の author が区画の外へ出た
-  // (2026-08-17、WebKit)。**行を増やして受ける** — doc-11 §13 が長さを止めるのは固定帯の中の行で、
-  // ここは固定帯ではないので、止める理由がそのままは及ばない。
-  .comment-head {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--muted);
-    overflow-wrap: anywhere;
-  }
-
-  .ac li {
-    display: flex;
-    align-items: baseline;
-    gap: 0.35rem;
-
-    &.checked .text {
-      opacity: 0.65;
-    }
-
-    // A criterion marked for removal is still listed: the save has not happened, and taking it out
-    // of the list would hide what the mark is about to do.
-    &.removed .text {
-      text-decoration: line-through;
-      opacity: 0.55;
-    }
-  }
-
-  .number {
-    font-variant-numeric: tabular-nums;
-    opacity: 0.6;
-  }
-
-  .deps li {
-    display: flex;
-    align-items: baseline;
-    gap: 0.3rem;
-
-    button {
-      display: flex;
-      align-items: baseline;
-      gap: 0.4rem;
-      padding: 0.1rem 0.35rem;
-      border: 1px solid var(--line-strong);
-      border-radius: 4px;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      font-size: var(--text-md);
-      text-align: left;
-      cursor: pointer;
-
-      &:hover {
-        border-color: var(--line-strong);
-      }
-    }
-  }
-
-  .dep-title {
-    opacity: 0.7;
-  }
-
-  .refs li,
-  .prs li,
-  .list-edit li {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.3rem;
-  }
-
-  .url {
-    word-break: break-all;
-  }
-
-  .meta {
-    font-size: var(--text-sm);
-    opacity: 0.6;
-  }
-
-  .mark {
-    padding: 0 0.3rem;
-    border-radius: 3px;
-    font-size: var(--text-sm);
-  }
-
-  // 不整合印 (decision-22): 印グリフ なので族の色は図形自身が持ち、背景も枠も無い。カードと同じ扱いで、
-  // 大きさは隣の 印チップ・横断タスクID より 1 段大きい .8rem — 語を持たない図形は、同じ高さの文字より
-  // 小さく見えるためである（カード側と同じ理由・同じ値）。
-  .inconsistent {
-    display: inline-flex;
-    align-items: center;
-    align-self: center;
-    color: var(--mark-inconsistent);
-    font-size: var(--text-lg);
-    cursor: help;
-  }
-
-  // 印の族を混ぜない (decision-6, decision-22): each family takes
-  // its own colour from the 表示テーマ's one definition in `app.scss` (`lib/mark.ts` の MarkKind), an
-  // unmapped or dangling reference is outlined, and a merely-informative state stays plain.
-  //
-  // 印チップ配色規則 (decision-12): 文字＝族の色、背景＝族の色 12% 混色、枠＝族の色 45% 混色。Each family
-  // sets `--family` and nothing else, so the same three declarations serve all of them.
-  .mark[data-kind] {
-    border: 1px solid color-mix(in srgb, var(--family) 45%, transparent);
-    background: color-mix(in srgb, var(--family) 12%, transparent);
-    color: var(--family);
-  }
-
-  .mark[data-kind="inconsistent"] {
-    --family: var(--mark-inconsistent);
-  }
-
-  .mark[data-kind="unreadable"] {
-    --family: var(--mark-unreadable);
-  }
-
-  .mark.unmapped {
-    border: 1px solid var(--line-strong);
-  }
-
-  // 中立の情報は族でも Type でもない (doc-11 §3): `--muted`, no family colour — it reports what the
-  // project's config says, not that anything is wrong with it.
-  .mark.neutral {
-    color: var(--muted);
-  }
-
-  p {
-    margin: 0;
-    font-size: var(--text-md);
-  }
-
-  // 正常な不在は `--faint` (doc-11 §2.1・§6), the same 弱 as 空セル の `—` and the Git 履歴欄's 該当なし.
-  // An opacity would land somewhere else on every 表示テーマ and pull the three apart. Only 空表示
-  // takes it: a 理由 is 副次 (`--muted`), never 弱 — see `.withheld-reason`.
-  .neutral {
-    color: var(--faint);
-  }
-
-  .withheld-reason {
-    color: var(--muted);
-  }
-
-  // 不整合区画 (decision-22). 面の左端の 3px は残る — doc-11 §2.3 の 問題の縁 のうち外れたのは
-  // カードの側だけで、こちらは区画そのものが何の区画かを述べている（カードでは ⚠️ がそれを述べる）。
-  .inconsistency-panel {
-    padding: 0.35rem 0.45rem;
-    border-left: 3px solid var(--mark-inconsistent);
-    background: color-mix(in srgb, var(--mark-inconsistent) 10%, transparent);
-
-    // 区画見出しの中の 印グリフ (decision-22): 見出しの語と同じ色で、同じ 1em に従う。
-    h3 {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-      color: var(--mark-inconsistent);
-    }
-
-    .glyph {
-      display: inline-flex;
-    }
-
-    details {
-      font-size: var(--text-md);
-    }
-  }
-
-  .unknown {
-    summary {
-      display: flex;
-      align-items: center;
-      gap: 0.3rem;
-      // 開閉印 が UA 既定マーカーの代わりに立つ (doc-8 §3). WebKit は擬似要素、Chromium は
-      // `list-style` に答えるので、両方を書かないと片方の webview で記号が 2 つ出る。
-      list-style: none;
-      cursor: pointer;
-
-      &::-webkit-details-marker {
-        display: none;
-      }
-    }
-
-    .disclosure.open {
-      display: none;
-    }
-
-    &[open] .disclosure.open {
-      display: block;
-    }
-
-    &[open] .disclosure.closed {
-      display: none;
-    }
-  }
-
-  // --- editing ---------------------------------------------------------------------------
-
-  .console {
-    gap: 0.3rem;
-    padding: 0.4rem 0.45rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-
-    // 述べることが無いときは枠ごと消す。TASK-72 が押しボタンを見出しへ移してから、この区画は文だけを
-    // 持つようになり、何も述べない状態 (編集できるタスクを編集していないとき) が通常になった — 空の枠は
-    // 読むものが 1 つあるように見えて何も無い。doc-11 §6 の 正常な不在 に当たらないので目印も置かない:
-    // そこが要求しているのは「空セル」のように不在そのものが情報である場合で、ここは言うことが無いだけ。
-    // 上の `{#if}` 群の条件を書き写さず要素の有無で見るのは、二重に持つと片方だけが動くためである。
-    &:not(:has(*)) {
-      display: none;
-    }
-  }
-
-  // 控えの群 (doc-11 §2.2): the two ways out of a 更新前競合 (doc-9 §5), side by side with no field
-  // between them. The panel's step, like the groups in its heading — neither answer is a 発行 (§11):
-  // one re-reads, the other re-applies what is already typed, and the 保存 that follows is elsewhere.
-  .buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-
-    button {
-      height: 1.4rem;
-    }
-  }
-
-  // 控えの群 (doc-11 §2.2): two buttons choosing one mode, with no field among them, so they take a
-  // step like the 前後移動 and 配置切替 groups above — the panel's 1.4rem. Not a 発行の行 (§11): neither
-  // of them issues anything, they pick which shape the 編集 below takes.
-  .modes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-
-    button {
-      height: 1.4rem;
-    }
-  }
-
-  .add-row {
-    display: flex;
-    gap: 0.3rem;
-
-    input {
-      flex: 1;
-      min-width: 0;
-    }
-  }
-
-  /*
-   * フォーム部品の高さ (doc-11 §2.2). 1.4rem — the same step `--frame-control` above already takes, so
-   * the panel answers the question once: the title input sits in the 固定 band beside those controls,
-   * and the 編集セッション's fields sit under it in a panel that is 30rem wide in 併置サイドバー. The
-   * largest step belongs to the screens that are a form and nothing else (doc-10 §1 の作成モーダル).
-   * Stated rather than left to the engine: the three `select`s in the 属性表 drew at 18px in WebKit
-   * and 25px in Chromium against a 24.52px input, from this one declaration (変更前実測 2026-08-11).
-   */
-  input[type="text"],
-  select {
-    height: 1.4rem;
-    padding: 0.15rem 0.3rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 4px;
-    background: var(--inset);
-    color: inherit;
-    font: inherit;
-    font-size: var(--text-md);
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    font-size: var(--text-sm);
-
-    span {
-      opacity: 0.6;
-    }
-  }
-
-  button {
-    padding: 0.1rem 0.4rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 4px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: var(--text-md);
-    cursor: pointer;
-    // 無効化提示 は app.scss の 1 箇所が持つ (doc-11 §5). Nothing here may add a `:disabled` rule: a
-    // component-scoped one outranks the global selector and would put this screen's blocked controls
-    // back out of step with the others.
-  }
-
-  button.primary {
-    background: color-mix(in srgb, var(--fg) 14%, transparent);
-    font-weight: 600;
-  }
-
-  button.mini {
-    font-size: var(--text-sm);
-  }
-
-  button.mini.on {
-    background: color-mix(in srgb, var(--fg) 18%, transparent);
-  }
-
-  // AC の完了印 (doc-11 §2.4): a span in 閲覧, a button in the 編集セッション, the same figure in both.
-  // The size is stated once here rather than on each, so the two cannot drift apart — the figure draws
-  // at 1em of it (§2.4). `display: block` because `.ac li` aligns on the baseline and an svg has none:
-  // the row then puts its bottom edge on the text's baseline, which is where the glyph used to sit.
-  .ac .box {
-    display: block;
-    flex: none;
-    font-size: var(--text-lg);
-  }
-
-  .ac button.box {
-    padding: 0;
-    border: none;
-    background: none;
-  }
-
-  .ac-replace li {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding-bottom: 0.25rem;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .check {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: var(--text-sm);
-  }
-
-  .transition-list li,
-  .editor-list li {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.3rem;
-  }
-
-  .effect {
-    flex-basis: 100%;
-    font-size: var(--text-sm);
-    opacity: 0.6;
-  }
-
-  .hint {
-    font-size: var(--text-sm);
-    opacity: 0.65;
-  }
-
-  .ok {
-    font-size: var(--text-sm);
-    opacity: 0.8;
-  }
-
-  // 更新前競合の告知 は 不整合 の色を取る (decision-22): バージョン不整合 が持っていた紫の族は廃されたので、
-  // 同じ 1 つの事象（バージョン不整合）を告知と理由行で 2 色に描くことがなくなった。generic notice
-  // blue (`--info`) へは戻さない — 通知は族ではなく、青い確認は不整合ではない (doc-11 §2.1)。
-  .warn,
-  .conflict,
-  .undetectable {
-    padding: 0.3rem 0.4rem;
-    border-left: 3px solid;
-    font-size: var(--text-md);
-  }
-
-  .warn {
-    border-left-color: var(--info);
-    background: color-mix(in srgb, var(--info) 12%, transparent);
-  }
-
-  .conflict {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    border-left-color: var(--mark-inconsistent);
-    background: color-mix(in srgb, var(--mark-inconsistent) 14%, transparent);
-  }
-
-  // 照合不能 は不整合ではない: 版がずれているとは限らず、確かめる方法が無い (doc-9 §4.2/§5).
-  .undetectable {
-    border-left-color: var(--mark-undetectable);
-    background: color-mix(in srgb, var(--mark-undetectable) 14%, transparent);
   }
 </style>

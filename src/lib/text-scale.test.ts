@@ -27,6 +27,39 @@ const SOURCES: Record<string, string> = import.meta.glob("../**/*.svelte", {
 });
 
 /**
+ * 区画コンポーネント が分け合う SCSS の mixin (TASK-106) は、この走査が読む `.svelte` の外に居る。
+ *
+ * Svelte のスコープはコンポーネント境界を越えないので、複数の区画が要る規則は宣言だけを持つ mixin として
+ * `_shared.scss` に置き、呼び出し側が選択子を書く。**そこには `font-size` がある** — 素の文面だけを
+ * 読む走査は、段の置き場が 1 か所であるという主張の外側に 2 つ目の置き場ができたことを見逃す。
+ *
+ * **`?raw` ではその partial を読めない。** `app.scss` と同じく vite の CSS 経路を通り、キーは在るのに
+ * 中身が 0 バイトになる (実測。`typeof` を見る検査は素通りする)。だから各コンポーネントの `<style>` を
+ * **sass に通した結果**を走査対象へ継ぐ — `@use` の先も、mixin が展開した宣言も、そこには出ている。
+ * これは前より広い走査である: 素の文面では、sass が組み立てた値はどれも見えていなかった。
+ *
+ * `loadPaths` はそのコンポーネント自身のディレクトリで、Svelte が `@use "./shared"` を解く先と同じ。
+ */
+function styleBlock(source: string): string {
+  const start = source.indexOf("<style");
+  if (start === -1) {
+    return "";
+  }
+  const open = source.indexOf(">", start);
+  const end = source.indexOf("</style>", open);
+  return open === -1 || end === -1 ? "" : source.slice(open + 1, end);
+}
+
+const COMPILED_STYLES: [string, string][] = Object.entries(SOURCES).flatMap(([path, source]) => {
+  const scss = styleBlock(source);
+  if (scss.trim() === "") {
+    return [];
+  }
+  const directory = path.replace(/^\.\.\//, "src/").replace(/\/[^/]+$/, "");
+  return [[`${path} (compiled)`, sass.compileString(scss, { loadPaths: [directory] }).css]];
+});
+
+/**
  * doc-11 §2.2 の 文字寸法段階 の行。**この行が段の値の正本である。**
  *
  * The step values are not written into this file. They are the design document's, and a test that
@@ -71,7 +104,7 @@ const STEP_NAMES = ["--text-xs", "--text-sm", "--text-md", "--text-lg", "--text-
  */
 const RELATIVE = /^(inherit|[\d.]+em)$/;
 
-const componentSources = () => Object.entries(SOURCES);
+const componentSources = () => [...Object.entries(SOURCES), ...COMPILED_STYLES];
 
 const declarationsIn = (source: string) => [...source.matchAll(DECLARATION)].map((m) => m[1].trim());
 
@@ -125,6 +158,16 @@ describe("走査する対象", () => {
     expect(componentSources().length).toBeGreaterThan(15);
     const withFontSize = componentSources().filter(([, source]) => declarationsIn(source).length > 0);
     expect(withFontSize.length).toBeGreaterThan(15);
+    // `<style>` を sass に通した側も空でないこと。**キーの有無では足りない** — 空文字も string である。
+    expect(COMPILED_STYLES.length).toBeGreaterThan(15);
+    expect(COMPILED_STYLES.every(([, css]) => css.length > 0)).toBe(true);
+    // **mixin が持つ宣言に届いていること。** 素の文面には `font-size` が 1 件も無く、sass を通した側には
+    // 在るコンポーネントが 1 つ以上ある — それが無くなったら、この走査は共有 SCSS を読めていない。
+    const reachedByCompiling = COMPILED_STYLES.filter(([path, css]) => {
+      const raw = SOURCES[path.replace(" (compiled)", "")];
+      return declarationsIn(css).length > 0 && declarationsIn(styleBlock(raw)).length === 0;
+    });
+    expect(reachedByCompiling.length).toBeGreaterThan(0);
   });
 });
 
@@ -234,19 +277,27 @@ describe("整形表示 (doc-11 §14) の 4 か所", () => {
 
   it("はどれも Body.svelte を描く — 4 つの区画ぶんの本文がそこを通る", () => {
     const expressions = mounts.map((m) => m.expression);
-    // タスク詳細は 3 区画 (doc-8 §3) を持つので、4 か所は 6 つの mount になる。
-    expect(expressions).toContain("task.description");
-    expect(expressions).toContain("task.implementationPlan");
-    expect(expressions).toContain("task.implementationNotes");
+    // タスク詳細は 3 区画 (doc-8 §3) を持つので、4 か所は 6 つの mount になる。**区画ごとに
+    // コンポーネントが分かれてからは、式は区画が受け取る prop の名前である** (TASK-106) — `task.` を
+    // 綴っていた 3 つは、その値を親から渡される 3 つの区画へ移った。
+    expect(expressions).toContain("description");
+    expect(expressions).toContain("implementationPlan");
+    expect(expressions).toContain("implementationNotes");
     expect(expressions.some((e) => e.startsWith("document.body"))).toBe(true);
     expect(expressions.some((e) => e.startsWith("milestone.description"))).toBe(true);
     expect(expressions.some((e) => e.startsWith("decision.body"))).toBe(true);
   });
 
   it("の本文ブロックの見え方を書いている画面は Body.svelte だけである", () => {
-    const drawers = componentSources()
-      .filter(([, source]) => /\.body-block\s*\{/.test(source))
-      .map(([path]) => path);
+    // 素の文面と sass を通した側の両方を見て、同じファイルは 1 つに数える — mixin の中に書かれた
+    // `.body-block` も、書いたコンポーネントの名前で出る。
+    const drawers = [
+      ...new Set(
+        componentSources()
+          .filter(([, source]) => /\.body-block\s*\{/.test(source))
+          .map(([path]) => path.replace(" (compiled)", "")),
+      ),
+    ];
     expect(drawers).toEqual(["../components/Body.svelte"]);
   });
 
