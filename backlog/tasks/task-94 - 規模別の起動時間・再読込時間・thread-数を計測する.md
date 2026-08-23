@@ -1,10 +1,10 @@
 ---
 id: TASK-94
 title: 規模別の起動時間・再読込時間・thread 数を計測する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:34'
-updated_date: '2026-08-23 09:08'
+updated_date: '2026-08-23 23:22'
 labels:
   - performance
   - 'kind:research'
