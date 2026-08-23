@@ -12,13 +12,23 @@
 
 import { createServer } from "vite";
 
-/** Ledger sizes × tasks per root. The second axis is the one App.svelte's chain is linear in. */
+/**
+ * Ledger sizes × tasks per root. The second axis is the one App.svelte's chain is linear in.
+ *
+ * **The 200-task rows mirror `scale.rs`'s `ROOT_COUNTS` × `TASKS_PER_ROOT` exactly**, so that a read
+ * time and a recompute time can be compared as a pair. Without that, the only way to put the two
+ * halves side by side is across different workloads, and a ratio taken from such a pair says nothing
+ * — which is a claim decision-42 made once before this list covered 3 and 20 roots. Change one sweep
+ * and change the other.
+ */
 const SCALES = [
   { roots: 1, perRoot: 200 },
-  { roots: 1, perRoot: 1_000 },
-  { roots: 1, perRoot: 4_000 },
+  { roots: 3, perRoot: 200 },
   { roots: 5, perRoot: 200 },
   { roots: 10, perRoot: 200 },
+  { roots: 20, perRoot: 200 },
+  { roots: 1, perRoot: 1_000 },
+  { roots: 1, perRoot: 4_000 },
   { roots: 10, perRoot: 1_000 },
   { roots: 20, perRoot: 1_000 },
 ];
