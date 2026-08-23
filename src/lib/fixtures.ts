@@ -1,6 +1,8 @@
 /**
  * Test fixtures: the boundary's payloads with every field filled in, so a test names only the
- * facet it is about. Not imported by the app — the swimlane's own tests are its only consumer.
+ * facet it is about. Not imported by the app. Two consumers: the swimlane's own tests, and
+ * 規模計測's recompute side (`scripts/scale/frontend.mjs`), which builds its payloads here so the
+ * shape it times is the one the tests agree with rather than a second hand-written copy.
  */
 
 import type {

@@ -73,6 +73,11 @@ pub mod update;
 // rule worth testing without a Tauri app around it and because the reasoning behind it is longer than
 // the call site.
 pub mod window_state;
+// Test-only: the Rust half of 規模計測 (decision-42). Not a layer — it holds no logic the app runs,
+// only synthetic Backlog roots at chosen sizes and the clocks around the real read path. Its tests
+// are `#[ignore]`d and assert nothing; `scripts/scale/run.mjs` is what runs them.
+#[cfg(test)]
+mod scale;
 // Test-only: the recorded wire payloads `src/lib/wire.ts` mirrors. Not a layer — it holds no logic,
 // only the samples whose serialized form is committed under `wire-fixtures/` for the frontend test to
 // read back (TASK-91).
