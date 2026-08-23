@@ -241,6 +241,24 @@ why the tooling below stops where it does, is decision-32.
   clearly in code, such as behavioral guarantees, preconditions, side effects, error semantics, or
   compatibility constraints.
 
+**What a comment may hold, and what falls, is decision-41** — the answer to this section's
+"raise it instead", for comments. Two of its rules fire while you write and need no reading.
+
+- **Ask whether the sentence would still be true if this code took another shape.** If it would, it
+  states a contract, and the document that decides it is where the contract belongs. A summary in
+  code is coarser than its source, and **nothing notices when the two diverge** — the reason the
+  sweep happened at all. **`why` does not separate the two**: a re-description of a decision is
+  written as a why as well.
+- **A bare `doc-N §X` or `decision-N` in code is attribution and stays**, one per claim.
+  **doc-11 §8's "not one design-document reference" is the screen's rule and does not reach here** —
+  its ground is that the user cannot open the document, and a reader of this tree can.
+
+**TASK-107 swept every file header, and the body comments of eight lines or more that name a doc or
+a decision. Everything else is unjudged, not approved** — a shorter comment that re-describes a
+contract is still one, and finishing the sweep is its own task. **`src/lib/comment-citation.test.ts`
+holds one thing only**: that the sections, decisions, identifiers and paths a comment names exist.
+Whether a comment re-describes a contract has no machine check and is held by review.
+
 ### Control flow
 
 - Always use explicit block syntax for control-flow bodies where the language allows omission.
