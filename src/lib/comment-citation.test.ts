@@ -31,10 +31,16 @@
  * - **A citation of a section that exists but says something else.** `doc-7 §4` resolves whether or
  *   not §4 is about what the comment claims; renumbering that keeps the count of sections intact
  *   passes.
+ * - **A bare `§N` charged to the wrong doc.** A section binds to the doc named to its left, which is
+ *   this repository's own reading convention, so a comment naming doc-11 and then meaning doc-10 §4.1
+ *   is checked against doc-11 and passes when doc-11 happens to have a §4.1.
  * - **An id written inside a code span.** Those are stripped before scanning, because the tree
  *   discusses ids as values (`read.rs` explains folding an outside file into the id `doc-404`;
  *   `id_order.rs` compares the spellings `doc-01` and `doc-1`). Stripping is what makes those four
  *   sites legal, and it is also why a real citation must not be written in backticks.
+ *
+ * Test sources are in scope, not excluded: they carry 458 doc-section citations of their own
+ * (measured 2026-08-23) and nothing else watches those.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason
  * `third-party-licenses.test.ts` gives: `node:fs` would pull in `@types/node`, and the dependency
@@ -51,7 +57,6 @@ const SOURCES: Record<string, string> = import.meta.glob(
     "../**/*.svelte",
     "../../src-tauri/src/**/*.rs",
     "../../scripts/**/*.mjs",
-    "!../**/*.test.ts",
   ],
   { eager: true, query: "?raw", import: "default" },
 );
@@ -79,6 +84,25 @@ const TREE: Record<string, unknown> = import.meta.glob(
   ],
   { eager: false },
 )
+
+/**
+ * Every path the tree carries, repo-relative. The glob keys are relative to *this* file, so they
+ * have to be resolved against `src/lib` — stripping the leading `../` instead turns
+ * `../components/X.svelte` into `components/X.svelte`, which then matches nothing a comment writes.
+ */
+function repoRelative(key: string): string {
+  const parts = "src/lib".split("/")
+  for (const segment of key.split("/")) {
+    if (segment === "..") {
+      parts.pop()
+    } else if (segment !== "." && segment !== "") {
+      parts.push(segment)
+    }
+  }
+  return parts.join("/")
+}
+
+const PATHS = Object.keys(TREE).map(repoRelative)
 
 const DOCS: Record<string, string> = import.meta.glob("../../backlog/docs/*.md", {
   eager: true,
@@ -124,24 +148,34 @@ interface Comment {
 function comments(file: string, body: string): Comment[] {
   const found: Comment[] = []
   const lines = body.split("\n")
-  let inBlock = false
+  let open: "block" | "html" | null = null
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim()
     let text: string | null = null
-    if (inBlock) {
+    if (open === "block") {
       text = trimmed.replace(/^\*+\s?/, "").replace(/\*\/\s*$/, "")
       if (trimmed.includes("*/")) {
-        inBlock = false
+        open = null
+      }
+    } else if (open === "html") {
+      // Every line until the close, not just the opener: `Icon.svelte`'s four-line one carries two
+      // citations below its first line, and taking the opener alone let those two rot unwatched.
+      text = trimmed.replace(/-->\s*$/, "")
+      if (trimmed.includes("-->")) {
+        open = null
       }
     } else if (trimmed.startsWith("/*")) {
       text = trimmed.replace(/^\/\*+\s?/, "").replace(/\*\/\s*$/, "")
       if (!trimmed.includes("*/")) {
-        inBlock = true
+        open = "block"
       }
     } else if (trimmed.startsWith("//")) {
       text = trimmed.replace(/^\/\/[/!]?\s?/, "")
     } else if (trimmed.startsWith("<!--")) {
       text = trimmed.replace(/^<!--\s?/, "").replace(/-->\s*$/, "")
+      if (!trimmed.includes("-->")) {
+        open = "html"
+      }
     }
     if (text !== null) {
       found.push({ file, line: i + 1, text })
@@ -183,7 +217,7 @@ const DECISION_IDS = new Set(
 )
 
 const ALL_COMMENTS: Comment[] = Object.entries(SOURCES).flatMap(([path, body]) =>
-  comments(path.replace(/^(\.\.\/)+/, ""), body),
+  comments(repoRelative(path), body),
 )
 
 /**
@@ -201,8 +235,10 @@ const CODE_TEXT = Object.entries(SOURCES)
   })
   .join("\n")
 
-/** Every basename the tree carries, so a comment may name a file by its name alone. */
-const BASENAMES = new Set(Object.keys(TREE).map((path) => path.split("/").pop() ?? path))
+
+
+/** Every basename among them, so a comment may name a file by its name alone. */
+const BASENAMES = new Set(PATHS.map((path) => path.split("/").pop() ?? path))
 
 describe("code comments cite things that exist", () => {
   it("reads the whole tree", () => {
@@ -215,7 +251,7 @@ describe("code comments cite things that exist", () => {
     // Each language separately: one glob going quiet is the failure this guards, and a total would
     // hide it behind the other three.
     for (const [ext, floor] of [
-      [".ts", 40],
+      [".ts", 90],
       [".svelte", 40],
       [".rs", 20],
       [".mjs", 3],
@@ -227,18 +263,27 @@ describe("code comments cite things that exist", () => {
   it("names a doc that exists, and a section that doc has", () => {
     const bad: string[] = []
     for (const comment of ALL_COMMENTS) {
-      const text = withoutCodeSpans(comment.text)
-      for (const hit of text.matchAll(/\bdoc-(\d+)\b((?:\s*§\s*\d+(?:\.\d+)*)*)/g)) {
-        const id = `doc-${hit[1]}`
-        const sections = SECTIONS.get(id)
-        if (sections === undefined) {
-          bad.push(`${comment.file}:${comment.line} names ${id}, which is not a document`)
-          continue
-        }
-        for (const section of hit[2].match(/\d+(?:\.\d+)*/g) ?? []) {
-          if (!sections.has(section)) {
-            bad.push(`${comment.file}:${comment.line} names ${id} §${section}, which that document has no heading for`)
+      // Walked left to right rather than matched as one pattern, because a §N binds to the doc named
+      // to its left whatever sits between them: `doc-9 §4.2 照合不能 / §3 継続検出停止` names two
+      // sections of doc-9, and a pattern requiring them adjacent checked the first and skipped the
+      // second. `decision-N` and AGENTS take no §, so meeting one clears the binding — otherwise a
+      // §N belonging to neither would be charged to whichever doc was last mentioned.
+      let current: string | null = null
+      for (const hit of withoutCodeSpans(comment.text).matchAll(
+        /\bdoc-(\d+)\b|\bdecision-\d+\b|\bAGENTS\b|§\s*(\d+(?:\.\d+)*)/g,
+      )) {
+        if (hit[1] !== undefined) {
+          const id = `doc-${hit[1]}`
+          if (SECTIONS.has(id)) {
+            current = id
+          } else {
+            bad.push(`${comment.file}:${comment.line} names ${id}, which is not a document`)
+            current = null
           }
+        } else if (hit[2] === undefined) {
+          current = null
+        } else if (current !== null && !SECTIONS.get(current)?.has(hit[2])) {
+          bad.push(`${comment.file}:${comment.line} names ${current} §${hit[2]}, which that document has no heading for`)
         }
       }
     }
@@ -262,11 +307,19 @@ describe("code comments cite things that exist", () => {
     for (const comment of ALL_COMMENTS) {
       for (const hit of comment.text.matchAll(/`(\w[\w./-]*\.(?:ts|svelte|rs|mjs|json|scss|toml|yml|html))`/g)) {
         const named = hit[1]
-        const base = named.split("/").pop() ?? named
-        if (BASENAMES.has(base) || NAMEABLE_ELSEWHERE.has(named) || NAMEABLE_ELSEWHERE.has(base)) {
+        if (NAMEABLE_ELSEWHERE.has(named)) {
           continue
         }
-        bad.push(`${comment.file}:${comment.line} names ${named}, which is neither in the tree nor listed`)
+        // **A citation carrying a directory is checked whole.** Matching such a one by basename would
+        // accept `src/lib/wire-fixture.test.ts` after the file moved to another directory — the
+        // citation's whole point is where to look. Only a bare filename falls back to the basename,
+        // because it claims no location.
+        const ok = named.includes("/")
+          ? PATHS.some((path) => path === named || path.endsWith(`/${named}`))
+          : BASENAMES.has(named) || NAMEABLE_ELSEWHERE.has(named)
+        if (!ok) {
+          bad.push(`${comment.file}:${comment.line} names ${named}, which is neither in the tree nor listed`)
+        }
       }
     }
     expect(bad).toEqual([])
