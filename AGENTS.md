@@ -460,9 +460,10 @@ can silently stop measuring the product. The frontend half is read by no check a
 this repository's own `backlog/`. That anchor is the point of it: a shape nobody writes by hand can
 be fast for reasons no real root shares.
 
-**The measured values are in decision-42, and are not restated here**, along with the three numbers
+**The measured values are in decision-42, and are not restated here**, along with the conditions
 that reopen the judgment it records. A copy of a measurement goes stale the moment the machine
-changes, and nothing in this file would notice.
+changes, and nothing in this file would notice — and the conditions are not a fixed count either,
+since a fourth was added the moment one turned out to be missing.
 
 ## Continuous integration
 
