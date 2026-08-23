@@ -364,6 +364,30 @@ reads the committed file. The samples are built as struct literals with fabricat
 absolute paths, not from a temp-dir read: a literal makes the compiler name a new field,
 and a recorded fixture has to be byte-identical on every machine.
 
+**The call itself is held by a scan, not a recording** (`src/lib/invoke-signature.test.ts`,
+TASK-93). The fixtures above tie the payloads and leave the call untied: a command name is spelled
+three times (the `#[tauri::command]` function, the `generate_handler!` entry, the `invoke("…")`
+literal), an argument name twice, a return type twice, and an event name twice — and both sides
+build, both test suites pass, and the call fails in a Tauri window, which is the one place none of
+the three layers reaches. **Nothing is recorded here, because none of those four needs to be:** each
+is a literal in the source on both sides, so a fixture would add a third place to drift.
+**Changing a command therefore means changing both sides and re-running `pnpm test` — there is
+nothing to re-record.**
+
+Four things about it are deliberate. **A Rust type the small primitive table cannot map is a failure,
+not a skip** — the table holds `String`/`PathBuf`/`bool`/`()`/`tauri::ipc::Response`, `Result`,
+`Option` and `Vec`, and every other type is compared by name, which is why the table does not need
+`wire.ts`'s names in it. **A parameter Tauri injects is recognised by its type**, not by the
+spellings `app` and `state`, so renaming a handle costs nothing; the pattern list lives in the test
+(`INJECTED`) rather than here, and an injected type it does not carry reddens the test rather than
+silently dropping a required key. **The Rust parameter name is converted rather than compared** — the
+macro defaults to `rename_all = "camelCase"`, and only that direction is implemented, so writing the
+attribute reddens the scan and is *meant* to: changing the frontend does not clear it, because the
+scan still camelCases. Supporting the attribute means teaching the scan about it. And **the set of
+commands the frontend never calls is locked at three** (`cross_task_id_generate`,
+`cross_task_id_parse`, `project_close`) instead of excused one by one with a reason: the reasons are
+a reading, and locking the set is what makes a fourth one somebody's decision.
+
 ### The GUI E2E, which `pnpm test` does not run
 
 **A third layer sits outside `pnpm test`** — `pnpm run e2e`, in `scripts/e2e/` (decision-40). It
