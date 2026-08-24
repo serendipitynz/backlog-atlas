@@ -44,6 +44,11 @@ pub mod navigation;
 // command layer will call, and its scan-source boundary (decision-3) is meant to be
 // implementable from outside this module.
 pub mod read;
+// Public: 版の告知 (decision-44). Not a layer — one `gh` 照会 and the comparison it feeds, held apart
+// from the command layer because "is the published release newer than this build" is worth testing
+// without a Tauri app around it, and because the two constants naming this build's release 置き場
+// belong nowhere a user's settings could reach.
+pub mod release;
 // Public: アプリ設定 (TASK-46 / decision-13). The ledger's sibling under the app-config dir — the
 // ledger defines what Atlas reads, this holds how it is shown — kept a separate file so the ledger's
 // read-only degrade cannot also freeze the display defaults.
@@ -147,6 +152,9 @@ pub fn run() {
             commands::task_file_open,
             // 本文リンク (doc-8 §9.3): the same association launcher, with a URL from a 本文.
             commands::body_link_open,
+            // 版の告知 (decision-44): whether a newer release is out, and its page.
+            commands::release_notice_read,
+            commands::release_page_open,
             // 添付画像 (doc-8 §9.2): bytes for one `/assets/<name>` a 本文 named.
             commands::body_image_read,
             // 解決結果の表示 (decision-29): which `git`/`gh` the 設定画面's own panel is reporting on.

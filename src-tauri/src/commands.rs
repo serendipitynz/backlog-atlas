@@ -79,6 +79,7 @@ use crate::ledger::{
 };
 use crate::read::scan::{ScanSource, WorkingTree};
 use crate::read::RootError;
+use crate::release::{self, ReleaseNotice};
 use crate::settings::{self, AppSettings, LoadedSettings, SettingsError};
 use crate::store::{self, Files};
 use crate::subprocess::Cancel;
@@ -1822,6 +1823,31 @@ pub fn task_file_open(
 #[tauri::command(async)]
 pub fn body_link_open(url: String) -> Result<(), CommandError> {
     Ok(editor::open_url(&SystemLauncher, &url)?)
+}
+
+// --- commands: 版の告知 (decision-44) ------------------------------------------------------------
+
+/// 版照会 (decision-44 §1): whether a 新しい版 is published, asked once per start.
+///
+/// **`None` is both 照会の縮退 and "the published release is the one running"**, and the caller cannot
+/// tell them apart. That is decision-44 §5: the screen draws the same nothing either way, so the
+/// difference would be a value on the wire that nobody may read.
+///
+/// Never fails. A `Result` here would have exactly one thing a screen could do with an `Err` — draw
+/// nothing — which is what the `None` already says.
+#[tauri::command(async)]
+pub fn release_notice_read(app: AppHandle) -> Option<ReleaseNotice> {
+    let settings = current_settings(&app);
+    release::lookup(&ExternalProgram::gh(settings.gh_cli.as_deref()))
+}
+
+/// リリースページ (decision-44 §4) in whatever the OS registered for `https`.
+///
+/// **Takes no URL**, unlike [`body_link_open`]: the value is this build's, so the frontend has nothing
+/// to send and no string that arrived over the network reaches a launcher.
+#[tauri::command(async)]
+pub fn release_page_open() -> Result<(), CommandError> {
+    Ok(editor::open_url(&SystemLauncher, &release::releases_url())?)
 }
 
 // --- commands: 添付画像 (doc-8 §9.2) --------------------------------------------------------------

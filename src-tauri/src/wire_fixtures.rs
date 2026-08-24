@@ -42,6 +42,7 @@ use crate::history::{
 use crate::interpret::status::{StatusColumn, StatusDeclaration, StatusMapping};
 use crate::interpret::type_value::derive_types;
 use crate::ledger::{Ledger, ProjectEntry};
+use crate::release::ReleaseNotice;
 use crate::settings::{
     AppSettings, CardDensity, CardOrder, DetailPlacement, GridColumn, LoadedSettings,
     SettingsStatus, StorageSelection, KNOWN_SCHEMA_VERSION,
@@ -593,6 +594,23 @@ fn external_program_report_failed_is_recorded() {
                 },
                 detail: "No such file or directory (os error 2)".to_string(),
             },
+        },
+    );
+}
+
+/// 版の告知 (decision-44). The payload the 照会 answers with when there is a 新しい版; the other
+/// answer is `null`, which carries no shape to record.
+///
+/// **The version is spelled here** rather than derived from `CARGO_PKG_VERSION`: a recorded fixture
+/// has to be byte-identical on every machine, and this build's own version is not that — it moves on
+/// every release. Nothing compares it with 利用中の版 either; what the recording anchors is the field
+/// name and that the value is a string.
+#[test]
+fn release_notice_is_recorded() {
+    recorded(
+        "release_notice.json",
+        &ReleaseNotice {
+            version: "9.9.9".to_string(),
         },
     );
 }
