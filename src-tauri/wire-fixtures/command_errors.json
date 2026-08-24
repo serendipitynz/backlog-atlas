@@ -30,7 +30,7 @@
     "task_id": "TASK-99"
   },
   {
-    "kind": "unknownTaskFile",
+    "kind": "unknownManagedFile",
     "slug": "atlas",
     "path": "/elsewhere/evil.md"
   },

@@ -475,7 +475,7 @@ fn command_errors_are_recorded() {
                 slug: "atlas".to_string(),
                 task_id: "TASK-99".to_string(),
             },
-            CommandError::UnknownTaskFile {
+            CommandError::UnknownManagedFile {
                 slug: "atlas".to_string(),
                 path: PathBuf::from("/elsewhere/evil.md"),
             },
@@ -632,6 +632,7 @@ fn loaded_settings_is_recorded() {
                 default_detail_placement: DetailPlacement::Modal,
                 default_card_order: CardOrder::UpdatedDesc,
                 watch_external_changes: false,
+                suppress_frontmatter_notice: true,
                 // 未分類列 among the collapsed ones, and two slugs apiece, so the recording exercises
                 // the 5th `GridColumn` member and a multi-element list on both row values.
                 collapsed_columns: vec![GridColumn::InReview, GridColumn::Unmapped],
@@ -662,7 +663,29 @@ fn editor_payloads_are_recorded() {
                 program: "code".to_string(),
                 args: vec!["-w".to_string()],
             }),
-            association: "open".to_string(),
+            // Three rows rather than one, so the sample carries every shape a `MethodOffer` takes: a
+            // named editor (product, program), the 起動指定 row (**empty program** — the screen reads
+            // `configured` for it), and a 所在に効く row (`edits: false`).
+            methods: vec![
+                editor::MethodOffer {
+                    method: LaunchMethod::Vscode,
+                    program: "open".to_string(),
+                    product: "Visual Studio Code".to_string(),
+                    edits: true,
+                },
+                editor::MethodOffer {
+                    method: LaunchMethod::Configured,
+                    program: String::new(),
+                    product: String::new(),
+                    edits: true,
+                },
+                editor::MethodOffer {
+                    method: LaunchMethod::Reveal,
+                    program: "open".to_string(),
+                    product: "Finder".to_string(),
+                    edits: false,
+                },
+            ],
         },
     );
     recorded(
@@ -998,10 +1021,26 @@ fn every_remote_read_failure() -> Vec<RemoteReadFailure> {
 }
 
 fn every_launch_method() -> Vec<LaunchMethod> {
-    let all = vec![LaunchMethod::Configured, LaunchMethod::Association];
+    let all = vec![
+        LaunchMethod::Configured,
+        LaunchMethod::Association,
+        LaunchMethod::Vscode,
+        LaunchMethod::Zed,
+        LaunchMethod::CotEditor,
+        LaunchMethod::NotepadPlusPlus,
+        LaunchMethod::Reveal,
+        LaunchMethod::Terminal,
+    ];
     for value in &all {
         match value {
-            LaunchMethod::Configured | LaunchMethod::Association => {}
+            LaunchMethod::Configured
+            | LaunchMethod::Association
+            | LaunchMethod::Vscode
+            | LaunchMethod::Zed
+            | LaunchMethod::CotEditor
+            | LaunchMethod::NotepadPlusPlus
+            | LaunchMethod::Reveal
+            | LaunchMethod::Terminal => {}
         }
     }
     all
@@ -1427,7 +1466,7 @@ fn every_command_error() -> Vec<CommandError> {
             slug: blank(),
             detail: blank(),
         },
-        CommandError::UnknownTaskFile {
+        CommandError::UnknownManagedFile {
             slug: blank(),
             path: PathBuf::new(),
         },
@@ -1463,7 +1502,7 @@ fn every_command_error() -> Vec<CommandError> {
             | CommandError::ReloadFailed { .. }
             | CommandError::VersionProbeFailed { .. }
             | CommandError::WatchFailed { .. }
-            | CommandError::UnknownTaskFile { .. }
+            | CommandError::UnknownManagedFile { .. }
             | CommandError::EditorUnavailable
             | CommandError::EditorLaunchFailed { .. }
             | CommandError::HistoryCancelled { .. }

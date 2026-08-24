@@ -1,6 +1,6 @@
 {
   "settings": {
-    "schema_version": 6,
+    "schema_version": 7,
     "theme": "nord",
     "language": "en",
     "card_density": "l",
@@ -23,6 +23,7 @@
       "retired"
     ],
     "backlog_cli": "/opt/backlog/backlog",
+    "suppress_frontmatter_notice": true,
     "git_cli": "/opt/git/bin/git",
     "gh_cli": "/opt/gh/bin/gh",
     "external_editor": {
@@ -34,6 +35,6 @@
   },
   "status": {
     "state": "readOnly",
-    "version": 7
+    "version": 8
   }
 }
