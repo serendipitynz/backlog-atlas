@@ -4,7 +4,7 @@ title: ファイル監視の実 OS 通知を検証する経路を用意する
 status: In Review
 assignee: []
 created_date: '2026-08-01 00:44'
-updated_date: '2026-08-24 00:55'
+updated_date: '2026-08-24 01:05'
 labels:
   - test
   - rust
@@ -28,7 +28,7 @@ _sandbox/repository-quality-assessment-2026-08-01.md の堅牢性節・今回実
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 実 OS 通知を使う監視テストを実行する手順が記録されている
-- [ ] #2 3 プラットフォームのうちどこで通したかが記録されている
+- [x] #2 3 プラットフォームのうちどこで通したかが記録されている
 - [x] #3 通知が届かない環境での扱い（skip か失敗か）が決まっている
 <!-- AC:END -->
 
@@ -56,4 +56,14 @@ CI の置き場は 3 か所で、どれもマージ要件ではない: `os-notif
 ## 起票したもの
 
 **TASK-200（m-4）** — 環境依存 ignored の残る 3 本を回す経路。**問いが違うので同じ決定に載せなかった。** あちらは「そのプログラムを CI が用意できるか」で、測っていない。
+## 通した環境（AC #2）
+
+**3 プラットフォームとも届いた。** 作業機の macOS（`darwin/arm64`、Darwin 25.6.0）に加えて、本 PR の
+1 回目の run（commit `0577257`）で `os-notify (macos-latest)` が 0.47 秒、`os-notify (windows-latest)`
+が 0.39 秒、`e2e (ubuntu-24.04)` の最後の段（`linux/x64`）が 0.38 秒。**3 つとも束は 1 本の `Changed`
+で、Rescan へ倒れた run は無い。** 数値と条件の正本は decision-43 の 実測。
+
+**突き合わせるのは「1 passed」であって filtered out の数ではない** — 同じ run で macOS と Linux が 462、
+Windows が 461 と報告する。crate が `#[cfg]` でプラットフォームごとに違うテスト集合を持つためで、
+総数の差は配送について何も述べない。
 <!-- SECTION:NOTES:END -->
