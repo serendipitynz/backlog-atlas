@@ -1423,20 +1423,10 @@ task_prefix: \"TASK\"\n";
 
     // --- AC #1/#5: the real watcher delivers a debounced batch, read-only -----------------------
 
-    /// End-to-end check that the real OS watcher reaches the debounced batch channel.
-    ///
-    /// `#[ignore]` by default: this asserts on OS file-change notifications actually being delivered,
-    /// which a sandboxed environment can withhold entirely. On macOS the FSEvents stream is not
-    /// delivered to processes under some sandbox profiles (observed in review: this test times out
-    /// there while passing on the same machine outside the sandbox), so leaving it in the default run
-    /// makes `cargo test` red for an environment property rather than a code defect. Everything that
-    /// is Atlas's own logic — the managed-path filter, the debounce/rescan rules, the index, conflict
-    /// detection and reload — is covered by the deterministic tests above, which need no real watcher.
-    ///
-    /// Run it explicitly where OS notifications are available:
-    /// `cargo test --lib -- --ignored the_watch_session_delivers_a_batch_for_an_external_change`
+    /// The one check that a real OS file-change notification reaches the debounced batch channel.
+    /// `#[ignore]`d out of the default run and run by `pnpm run os-notify`, per decision-43 §2 and §3.
     #[test]
-    #[ignore = "requires OS file-change notifications; a sandboxed macOS FSEvents stream withholds them"]
+    #[ignore = "OS notification delivery; run by `pnpm run os-notify` (decision-43)"]
     fn the_watch_session_delivers_a_batch_for_an_external_change() {
         let temp = minimal_root();
         let session = WatchSession::start(&temp.path, Duration::from_millis(80))
@@ -1449,8 +1439,6 @@ task_prefix: \"TASK\"\n";
 
         // The debounced batch must arrive and account for the changed managed file. FS-event latency
         // varies by platform, so allow a generous ceiling; the assertion is on content, not timing.
-        // A Rescan is also a pass: it is the documented "cannot identify the files, re-read the root"
-        // outcome (doc-9 §3), which still tells the caller to reload.
         let batch = session
             .batches()
             .recv_timeout(Duration::from_secs(10))
@@ -1465,7 +1453,15 @@ task_prefix: \"TASK\"\n";
                     "batch {paths:?} should include the changed task file {changed:?}"
                 );
             }
-            WatchBatch::Rescan { .. } => {}
+            // Not a pass. A rescan says the stream was lossy or the watcher errored, so this run
+            // observed no delivery — and the deterministic tests above are what hold that
+            // degradation. Reading it as success here would let the environment's failure be
+            // recorded as this check's.
+            WatchBatch::Rescan { reason } => {
+                panic!(
+                    "the batch degraded to a whole-root rescan ({reason:?}): no delivery observed"
+                );
+            }
         }
 
         // The watch never wrote: the file still holds exactly what the external change put there.

@@ -171,6 +171,43 @@ jobs:
       # window are all started below this process and all need the same DISPLAY.
       - run: xvfb-run -a pnpm run e2e
 
+      # 実 OS 通知の配送検査 (TASK-108, decision-43 §4). Here rather than in `os-notify` below because
+      # `cargo test` needs the apt list above to link on Linux. Last, so the E2E's verdict is reached
+      # first; a red job now has two causes and the failing step names which.
+      - run: pnpm run os-notify
+
+  # 実 OS 通知の配送検査 (TASK-108, decision-43). Its placement, its merge-requirement status and the
+  # absence of Linux from this matrix are decision-43 §4 and §5; Linux runs as the `e2e` job's last
+  # step, above.
+  os-notify:
+    name: os-notify (${{ matrix.platform }})
+    strategy:
+      # Each platform has its own notification API (FSEvents, ReadDirectoryChangesW), so the one that
+      # has not failed yet is the one worth still hearing from.
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      # No `pnpm install`, and no `cache: pnpm` above to key it on: `scripts/os-notify/run.mjs`
+      # imports node builtins only. `pnpm run` is still the entry point, because it is the one a
+      # reader is told to use and a second spelling of the command is a second place to drift.
+      - run: pnpm run os-notify
+
 
 # Why the `rust` job is macOS and Windows, and deliberately not Linux.
 #
