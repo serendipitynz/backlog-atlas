@@ -97,12 +97,19 @@ fn lookup_within(gh: &ExternalProgram, deadline: Duration) -> Option<ReleaseNoti
 /// Whether a tag names a 新しい版 (decision-44). Split from the launch so the comparison is testable
 /// without a `gh` on the host.
 ///
-/// The tag is parsed with the same [`Version`] the CLI probe uses, which tolerates the leading `v`
-/// and treats a trailing non-numeric part as absent. A prerelease tag would therefore compare as its
-/// release, and cannot arrive here: `releases/latest` excludes drafts and prereleases.
+/// **The tag has to be a plain `major.minor.patch` before it is compared at all**, which is what
+/// [`plain_version`] decides. [`Version::parse`] is the CLI probe's, and it is deliberately tolerant —
+/// it takes the leading integer run and treats the rest as absent — so handing it a tag with anything
+/// after the patch number silently answers about a different version: `v0.1.1+build.1` parses as
+/// `0.1.0`, which equals a running `0.1.0` and suppresses the notice. **A tag Atlas cannot compare
+/// announces nothing**, the same answer every 照会の縮退 gives (decision-44 §5), rather than a comparison
+/// against a number the tag does not carry.
+///
+/// Prereleases are a second reason the strict form is right and not the reason it is here: those cannot
+/// arrive at all, because `releases/latest` excludes drafts and prereleases.
 fn notice_for(tag: &str) -> Option<ReleaseNotice> {
-    let published = Version::parse(tag)?;
-    let running = Version::parse(RUNNING_VERSION)?;
+    let published = plain_version(tag)?;
+    let running = plain_version(RUNNING_VERSION)?;
     if published > running {
         Some(ReleaseNotice {
             version: published.to_string(),
@@ -112,6 +119,36 @@ fn notice_for(tag: &str) -> Option<ReleaseNotice> {
     }
 }
 
+/// A version only when the text is exactly three dot-separated runs of digits, after an optional
+/// leading `v`. `None` for everything else — build metadata, a prerelease suffix, two components, a
+/// trailing word.
+///
+/// **Not a change to [`Version::parse`]**: that one answers `backlog --version`, whose output is a
+/// version embedded in a sentence, and tightening it would move the CLI floor comparison
+/// (decision-7). This is the release tag's own shape, which doc-13 §3.1 already pins to the four
+/// files a tag is checked against.
+fn plain_version(text: &str) -> Option<Version> {
+    let mut parts = text.trim().trim_start_matches('v').split('.');
+    let numeric = |part: Option<&str>| -> Option<u32> {
+        let part = part?;
+        if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        part.parse().ok()
+    };
+    let major = numeric(parts.next())?;
+    let minor = numeric(parts.next())?;
+    let patch = numeric(parts.next())?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(Version {
+        major,
+        minor,
+        patch,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,7 +156,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn bump_major() -> String {
-        let running = Version::parse(RUNNING_VERSION).unwrap();
+        let running = plain_version(RUNNING_VERSION).unwrap();
         format!("v{}.0.0", running.major + 1)
     }
 
@@ -153,6 +190,40 @@ mod tests {
                 "{tag:?} should not announce a version"
             );
         }
+    }
+
+    /// **A tag that is not a plain `major.minor.patch` announces nothing rather than being compared
+    /// as some other version.** Every case here is above the running version by its own text, and
+    /// [`Version::parse`] would take each one to a *lower* number by dropping the part it cannot read
+    /// — `+build`, a prerelease suffix, a missing component — so a permissive parse would suppress
+    /// the notice for a release that really is newer. Each case is built from the running version, so
+    /// it stays a case about a newer release after this crate's version moves.
+    #[test]
+    fn a_tag_that_is_not_a_plain_version_announces_nothing() {
+        let next = plain_version(RUNNING_VERSION).unwrap().major + 1;
+        for tag in [
+            format!("v{next}.0.0+build.1"),
+            format!("v{next}.0.0-rc.1"),
+            format!("v{next}.0"),
+            format!("v{next}"),
+            format!("v{next}.0.0.1"),
+            format!("release-{next}.0.0"),
+        ] {
+            assert_eq!(
+                notice_for(&tag),
+                None,
+                "{tag:?} is not a plain version and must not be compared"
+            );
+        }
+    }
+
+    /// The half of the same rule that must keep working: the plain form still compares, with or
+    /// without the tag's `v`, and nothing else is needed for it to.
+    #[test]
+    fn the_plain_form_is_what_gets_compared() {
+        let running = plain_version(RUNNING_VERSION).unwrap();
+        assert_eq!(running.to_string(), RUNNING_VERSION);
+        assert_eq!(plain_version(&format!("v{RUNNING_VERSION}")), Some(running));
     }
 
     /// リリースページ is the listing (decision-44 §4), built from the two constants and never from a
