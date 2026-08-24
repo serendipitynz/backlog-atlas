@@ -93,6 +93,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   collapsed_columns: [],
   folded_rows: [],
   hidden_rows: [],
+  suppress_frontmatter_notice: false,
 };
 
 function emptyLedger(): LedgerResponse {
@@ -127,7 +128,21 @@ export const answers = {
       outcome: { state: "launched", report: "gh version 2.97.0" },
     },
   ] as ExternalProgramReport[],
-  editor: { configured: null, association: "open" } as EditorReadiness,
+  editor: {
+    configured: null,
+    // The rows the real macOS probe reports (decision-45 §4), so a component test walking the submenu
+    // walks the same seven the app does. `configured` is `null` beside them on purpose: that row's
+    // 保留理由 is one of the things the submenu has to draw.
+    methods: [
+      { method: "vscode", program: "open", product: "Visual Studio Code", edits: true },
+      { method: "zed", program: "open", product: "Zed", edits: true },
+      { method: "cotEditor", program: "open", product: "CotEditor", edits: true },
+      { method: "configured", program: "", product: "", edits: true },
+      { method: "association", program: "open", product: "", edits: true },
+      { method: "reveal", program: "open", product: "Finder", edits: false },
+      { method: "terminal", program: "open", product: "Terminal", edits: false },
+    ],
+  } as EditorReadiness,
   ledger: emptyLedger(),
   ledgerPath: "/config/ledger.toml",
   settings: { settings: DEFAULT_SETTINGS, status: { state: "stored" } } as LoadedSettings,
@@ -256,7 +271,21 @@ export function reset(): void {
       outcome: { state: "launched", report: "gh version 2.97.0" },
     },
   ];
-  answers.editor = { configured: null, association: "open" };
+  answers.editor = {
+    configured: null,
+    // The rows the real macOS probe reports (decision-45 §4), so a component test walking the submenu
+    // walks the same seven the app does. `configured` is `null` beside them on purpose: that row's
+    // 保留理由 is one of the things the submenu has to draw.
+    methods: [
+      { method: "vscode", program: "open", product: "Visual Studio Code", edits: true },
+      { method: "zed", program: "open", product: "Zed", edits: true },
+      { method: "cotEditor", program: "open", product: "CotEditor", edits: true },
+      { method: "configured", program: "", product: "", edits: true },
+      { method: "association", program: "open", product: "", edits: true },
+      { method: "reveal", program: "open", product: "Finder", edits: false },
+      { method: "terminal", program: "open", product: "Terminal", edits: false },
+    ],
+  };
   answers.ledger = emptyLedger();
   answers.ledgerPath = "/config/ledger.toml";
   answers.settings = { settings: { ...DEFAULT_SETTINGS }, status: { state: "stored" } };
@@ -461,8 +490,8 @@ export const commandFakes = {
    *  a test can read back. */
   releasePageOpen: (): Promise<void> => record("release_page_open", [], () => Promise.resolve()),
 
-  taskFileOpen: (slug: string, sourcePath: string, method: LaunchMethod): Promise<EditorLaunch> =>
-    record("task_file_open", [slug, sourcePath, method], () =>
+  managedFileOpen: (slug: string, sourcePath: string, method: LaunchMethod): Promise<EditorLaunch> =>
+    record("managed_file_open", [slug, sourcePath, method], () =>
       Promise.resolve({ method, program: "open", args: [sourcePath] }),
     ),
 

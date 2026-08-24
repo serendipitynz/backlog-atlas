@@ -301,7 +301,16 @@ const STATUS_DECLARATIONS = unionValues<StatusDeclaration>()(
 const REFERENCE_KINDS = unionValues<ReferenceKind>()("milestone", "documentation", "reference");
 const REQUIRED_FIELDS = unionValues<RequiredField>()("id", "title", "status");
 const REMOTE_HOST_KINDS = unionValues<RemoteHostKind>()("gitHub");
-const LAUNCH_METHODS = unionValues<LaunchMethod>()("configured", "association");
+const LAUNCH_METHODS = unionValues<LaunchMethod>()(
+  "configured",
+  "association",
+  "vscode",
+  "zed",
+  "cotEditor",
+  "notepadPlusPlus",
+  "reveal",
+  "terminal",
+);
 const EDITOR_SOURCES = unionValues<EditorSource>()("appSettings", "visual", "editor");
 const EXTERNAL_PROGRAM_SOURCES = unionValues<ExternalProgramSource>()(
   "configured",
@@ -418,7 +427,7 @@ const ERROR_KINDS = unionValues<CommandError["kind"]>()(
   "reloadFailed",
   "versionProbeFailed",
   "watchFailed",
-  "unknownTaskFile",
+  "unknownManagedFile",
   "editorUnavailable",
   "editorLaunchFailed",
   "historyCancelled",
@@ -580,6 +589,7 @@ const SETTINGS_EXEMPLAR: LoadedSettings = {
     collapsed_columns: ["inReview", "unmapped"],
     folded_rows: ["atlas", "kanri"],
     hidden_rows: ["retired"],
+    suppress_frontmatter_notice: true,
     backlog_cli: "/opt/backlog/backlog",
     external_editor: { program: "code", args: ["-w"] },
   },
@@ -827,6 +837,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
         "collapsed_columns",
         "folded_rows",
         "hidden_rows",
+        "suppress_frontmatter_notice",
         "backlog_cli",
         "git_cli",
         "gh_cli",
@@ -1086,7 +1097,7 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
     } satisfies CliReadiness);
     sameValueTypes("editor_readiness", fixture<EditorReadiness>("editor_readiness.json"), {
       configured: { source: "appSettings", program: "code", args: ["-w"] },
-      association: "open",
+      methods: [{ method: "vscode", program: "open", product: "Visual Studio Code", edits: true }],
     } satisfies EditorReadiness);
     sameValueTypes("editor_launch", fixture<EditorLaunch>("editor_launch.json"), {
       method: "association",
@@ -1111,7 +1122,7 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
         readiness: { state: "unsupported", version: "1.20.0", minimum: CONFIRMED_CLI_VERSION },
       },
       { kind: "taskNotFound", slug: "atlas", task_id: "TASK-99" },
-      { kind: "unknownTaskFile", slug: "atlas", path: "/elsewhere/evil.md" },
+      { kind: "unknownManagedFile", slug: "atlas", path: "/elsewhere/evil.md" },
       { kind: "historyCancelled", read_id: "3f2a1c-7" },
       {
         kind: "editorLaunchFailed",
@@ -1322,6 +1333,12 @@ describe("記録した enum・variant tag の値が wire.ts の union に収ま�
     const readiness = fixture<EditorReadiness>("editor_readiness.json");
     if (readiness.configured !== null) {
       admits(EDITOR_SOURCES, readiness.configured.source, "editor_readiness.configured.source");
+    }
+    // Every row's own token, not just the launch's: the rows are what the submenu draws, so a Rust-side
+    // rename of one would otherwise be anchored to `wire.ts` alone.
+    expect(readiness.methods.length).toBeGreaterThan(0);
+    for (const [index, offer] of readiness.methods.entries()) {
+      admits(LAUNCH_METHODS, offer.method, `editor_readiness.methods[${index}].method`);
     }
     admits(
       LAUNCH_METHODS,

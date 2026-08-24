@@ -34,6 +34,7 @@ const DEFAULTS: AppSettings = {
   collapsed_columns: [],
   folded_rows: [],
   hidden_rows: [],
+  suppress_frontmatter_notice: false,
 };
 
 describe("statusNotice", () => {
