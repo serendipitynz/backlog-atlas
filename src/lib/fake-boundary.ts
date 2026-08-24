@@ -30,6 +30,7 @@ import type {
   ProjectSnapshot,
   RegisterRequest,
   RegisterResponse,
+  ReleaseNotice,
   ReloadEvent,
   TaskHistory,
   UpdateOperation,
@@ -133,6 +134,17 @@ export const answers = {
   settingsPath: "/config/settings.toml",
   /** Answers `settings_directory_present` — whether 場所を開く has a folder to open (doc-3 §2.1). */
   settingsDirectory: true,
+  /**
+   * Answers `release_notice_read` (decision-44). `null` is the ordinary case and covers both of the
+   * real boundary's: 照会の縮退, and a build that is already the published one.
+   */
+  releaseNotice: null as ReleaseNotice | null,
+  /**
+   * Holds `release_notice_read` open, for the contract that startup does not wait on it
+   * (decision-44 §1). A deferred rather than a flag because the test has to *end* the 照会 as well as
+   * start it — a call left pending at teardown is a rejection nobody catches.
+   */
+  releaseNoticeHold: null as Deferred<void> | null,
   loads: [] as ProjectLoad[],
   /** Answers `git_remote_read` — the 概要区画's remote 現在値 (doc-10 §4.1). */
   gitRemote: { state: "remoteAbsent" } as GitRemoteRead,
@@ -250,6 +262,8 @@ export function reset(): void {
   answers.settings = { settings: { ...DEFAULT_SETTINGS }, status: { state: "stored" } };
   answers.settingsPath = "/config/settings.toml";
   answers.settingsDirectory = true;
+  answers.releaseNotice = null;
+  answers.releaseNoticeHold = null;
   answers.loads = [];
   answers.gitRemote = { state: "remoteAbsent" };
   answers.history = new Map();
@@ -430,6 +444,22 @@ export const commandFakes = {
 
   editorProbe: (): Promise<EditorReadiness> =>
     record("editor_probe", [], () => Promise.resolve(answers.editor)),
+
+  /** 版照会 (decision-44). Never rejects, like the command. */
+  releaseNoticeRead: (): Promise<ReleaseNotice | null> =>
+    record("release_notice_read", [], async () => {
+      // Captured before the wait, as `cli_probe` does it: the answer belongs to the moment the 照会
+      // was issued.
+      const answer = answers.releaseNotice;
+      if (answers.releaseNoticeHold !== null) {
+        await answers.releaseNoticeHold.promise;
+      }
+      return answer;
+    }),
+
+  /** リリースページ (decision-44 §4). Takes no URL — the boundary holds it — so the call itself is all
+   *  a test can read back. */
+  releasePageOpen: (): Promise<void> => record("release_page_open", [], () => Promise.resolve()),
 
   taskFileOpen: (slug: string, sourcePath: string, method: LaunchMethod): Promise<EditorLaunch> =>
     record("task_file_open", [slug, sourcePath, method], () =>

@@ -29,6 +29,7 @@ import { buildSwimlane } from "./swimlane";
 import { inconsistencyReasons, isInconsistent } from "./mark";
 import { gitRemoteLine } from "./project-detail";
 import { probeFailureText } from "./failure";
+import { releaseNoticeText } from "./header";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import type {
   AcceptanceCriterion,
@@ -55,6 +56,7 @@ import type {
   PrRelation,
   PullRequestRef,
   RegisterResponse,
+  ReleaseNotice,
   ReloadEvent,
   CardDensity,
   CardOrder,
@@ -654,6 +656,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       "project_load_loaded.json",
       "project_load_unreadable.json",
       "register_response.json",
+      "release_notice.json",
       "reload_event.json",
       "task_history.json",
       "update_result_conflict.json",
@@ -1062,6 +1065,18 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
       // sentence coming out empty would mean the code reached no entry.
       expect(probeFailureText(failed.outcome.reason, failed.outcome.detail)).toContain("gh");
     }
+  });
+
+  it("ReleaseNotice — 版の告知", () => {
+    const notice = fixture<ReleaseNotice>("release_notice.json");
+    expect(keysOf(notice)).toEqual(keysOfType<ReleaseNotice>()("version"));
+    sameValueTypes("release_notice", notice, { version: "1.2.3" } satisfies ReleaseNotice);
+    // The frontend's own function over the recording (decision-44 §3): the 文言表 words the line, so a
+    // sentence that did not carry the version would mean the catalog entry was reached with nothing.
+    expect(releaseNoticeText(notice)).toContain(notice.version);
+    // The other answer, which has no shape to record: `null` is 照会の縮退 and "already the published
+    // build" at once, and the line says nothing for it.
+    expect(releaseNoticeText(null)).toBeNull();
   });
 
   it("CliReadiness と外部エディタ経路", () => {

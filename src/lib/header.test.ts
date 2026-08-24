@@ -6,7 +6,10 @@ import {
   shortcutHelpLabel,
   showAllProjectsHeldReason,
   showAllProjectsLabel,
+  releaseNoticeText,
+  releasePageLabel,
   headerMenu,
+  menuName,
   omitsSentence,
   projectMenuLabel,
   showAllProjectsAvailability,
@@ -45,7 +48,9 @@ describe("共通入口 (doc-7 §2.1)", () => {
 describe("メニュー項目 (doc-7 §2.1)", () => {
   /** doc-7 §2.1: メニューが 共通入口 を全部持つ — since TASK-66 it is the only place they are drawn. */
   it("carries every 共通入口, in the order 共通入口 are listed", () => {
-    const entries = headerMenu([]).flatMap((item) => (item.kind === "entry" ? [item.entry] : []));
+    const entries = headerMenu([], null).flatMap((item) =>
+      item.kind === "entry" ? [item.entry] : [],
+    );
     expect(entries).toEqual(HEADER_ENTRIES.map((entry) => headerEntryView(entry)));
     // The 語 come from the 文言表 since TASK-187, so the check is that each entry got its own pair
     // rather than another's — a `headerEntryView` keyed wrong would still return two views.
@@ -64,10 +69,10 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
    */
   it("puts the 割り当て一覧 line above the プロジェクト一覧, whatever its length", () => {
     for (const projects of [[], [project("atlas")], [project("atlas"), project("kanri")]]) {
-      const order = kinds(headerMenu(projects));
+      const order = kinds(headerMenu(projects, null));
       expect(order.indexOf("shortcutHelp")).toBeLessThan(order.indexOf("showAllProjects"));
     }
-    expect(headerMenu([]).find((item) => item.kind === "shortcutHelp")?.label).toBe(
+    expect(headerMenu([], null).find((item) => item.kind === "shortcutHelp")?.label).toBe(
       shortcutHelpLabel(),
     );
   });
@@ -78,11 +83,12 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
    * the grid — and the order is the ledger's, which is the order the grid draws its rows in.
    */
   it("lists every registered project in ledger order, marking the shown ones (AC #1)", () => {
-    const items = headerMenu([project("atlas"), project("kanri", false), project("mallow")]);
+    const items = headerMenu([project("atlas"), project("kanri", false), project("mallow")], null);
     expect(kinds(items)).toEqual([
       "entry",
       "entry",
       "shortcutHelp",
+      "releasePage",
       "showAllProjects",
       "toggleProject",
       "toggleProject",
@@ -99,8 +105,8 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
    * than from a separate count, so the line cannot disagree with the ticks below it.
    */
   it("holds すべてのプロジェクトを表示 exactly while every row is shown (AC #3)", () => {
-    const allShown = headerMenu([project("atlas"), project("kanri")]);
-    const some = headerMenu([project("atlas"), project("kanri", false)]);
+    const allShown = headerMenu([project("atlas"), project("kanri")], null);
+    const some = headerMenu([project("atlas"), project("kanri", false)], null);
     const held = allShown.find((item) => item.kind === "showAllProjects");
     const free = some.find((item) => item.kind === "showAllProjects");
     expect(held?.label).toBe(showAllProjectsLabel());
@@ -118,7 +124,10 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
    * name from (doc-7 §6), and a line with no word at all would name no row.
    */
   it("names each 表示切替行 by its project name, falling back to the slug", () => {
-    const items = headerMenu([project("atlas", true, "Backlog Atlas"), project("kanri", true, null)]);
+    const items = headerMenu(
+      [project("atlas", true, "Backlog Atlas"), project("kanri", true, null)],
+      null,
+    );
     const labels = items.flatMap((item) => (item.kind === "toggleProject" ? [item.label] : []));
     expect(labels).toEqual(["Backlog Atlas", "kanri"]);
   });
@@ -131,10 +140,10 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
    * this list added: the key has to come from the slug, which the ledger keeps unique (doc-3 §3.1).
    */
   it("gives every line a key of its own, even when two projects share a name", () => {
-    const keys = headerMenu([
-      project("atlas", true, "同じ名前"),
-      project("kanri", false, "同じ名前"),
-    ]).map((item) => item.key);
+    const keys = headerMenu(
+      [project("atlas", true, "同じ名前"), project("kanri", false, "同じ名前")],
+      null,
+    ).map((item) => item.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 });
@@ -161,7 +170,9 @@ describe("保留理由 (doc-11 §5)", () => {
     });
     expect(omitsSentence(noProjectsReason())).toBe(false);
     expect(omitsSentence(showAllProjectsHeldReason())).toBe(true);
-    expect(headerMenu([]).find((item) => item.kind === "showAllProjects")?.availability).toEqual({
+    expect(
+      headerMenu([], null).find((item) => item.kind === "showAllProjects")?.availability,
+    ).toEqual({
       state: "withheld",
       reason: noProjectsReason(),
     });
@@ -190,30 +201,34 @@ describe("保留理由 (doc-11 §5)", () => {
 describe("区切り線 (doc-7 §2.1)", () => {
   /** Every index a 区切り線 is drawn above, for a given project list. */
   function rules(projects: readonly MenuProject[]): number[] {
-    const items = headerMenu(projects);
+    const items = headerMenu(projects, null);
     return items.flatMap((_, index) => (startsGroup(items, index) ? [index] : []));
   }
 
   /**
    * AC #2 の肯定形 of TASK-130, still held here. Stated as "the mark does not appear and disappear",
-   * which a menu with no mark at all satisfies vacuously — so the check has to be that a mark is there
-   * and at the same index in both conditions. The two conditions are the two the user saw: nothing to
-   * restore (すべてのプロジェクトを表示 held, 破線枠 up) and something to restore (pressable, no frame).
-   * doc-11 §5 keeps drawing that frame; what must not move with it is this.
+   * which a menu with no mark at all satisfies vacuously — so the check has to be that the marks are
+   * there and at the same indices in both conditions. The two conditions are the two the user saw:
+   * nothing to restore (すべてのプロジェクトを表示 held, 破線枠 up) and something to restore (pressable,
+   * no frame). doc-11 §5 keeps drawing that frame; what must not move with it is this.
+   *
+   * **Two boundaries since 版の告知** (decision-44 §3): リリースページを開く is its own 群, so the marks
+   * fall on either side of it. The count is asserted with the indices rather than separately — it is
+   * the 群 partition below that says which 群 exist.
    */
-  it("draws one 区切り線, at the same place whether or not the すべて line is held", () => {
+  it("draws its 区切り線 at the same places whether or not the すべて line is held", () => {
     const shown = [project("atlas")];
     const hidden = [project("atlas", false)];
     expect(
-      headerMenu(shown).find((item) => item.kind === "showAllProjects")?.availability.state,
+      headerMenu(shown, null).find((item) => item.kind === "showAllProjects")?.availability.state,
     ).toBe("withheld");
     expect(
-      headerMenu(hidden).find((item) => item.kind === "showAllProjects")?.availability.state,
+      headerMenu(hidden, null).find((item) => item.kind === "showAllProjects")?.availability.state,
     ).toBe("ready");
 
-    expect(rules([])).toEqual([3]);
-    expect(rules(shown)).toEqual([3]);
-    expect(rules([project("atlas"), project("kanri", false)])).toEqual([3]);
+    expect(rules([])).toEqual([3, 4]);
+    expect(rules(shown)).toEqual([3, 4]);
+    expect(rules([project("atlas"), project("kanri", false)])).toEqual([3, 4]);
   });
 
   /**
@@ -222,19 +237,76 @@ describe("区切り線 (doc-7 §2.1)", () => {
    * line added to either 群 keeps the boundary meaningful.
    */
   it("puts every 被せ層 line in one 群 and every プロジェクト一覧 line in the other", () => {
-    const items = headerMenu([project("atlas")]);
+    const items = headerMenu([project("atlas")], null);
     const groups = Object.fromEntries(items.map((item) => [item.key, item.group]));
     expect(groups).toEqual({
       "entry:register": "layer",
       "entry:settings": "layer",
       shortcutHelp: "layer",
+      releasePage: "external",
       showAllProjects: "rows",
       "project:atlas": "rows",
     });
   });
 
   it("draws no 区切り線 above the first line", () => {
-    expect(startsGroup(headerMenu([]), 0)).toBe(false);
+    expect(startsGroup(headerMenu([], null), 0)).toBe(false);
+  });
+});
+
+describe("版の告知 (decision-44 §3)", () => {
+  const notice = { version: "0.2.0" };
+
+  /**
+   * AC #1 の一部: the line is on the menu whether or not a 新しい版 exists, so the user reaches
+   * リリースページ either way and the menu is the same length at every start. What changes with the
+   * 照会's answer is the line's own 語, not the set of lines.
+   */
+  it("keeps the リリースページ line on the menu, with or without a 新しい版", () => {
+    for (const answer of [null, notice]) {
+      const line = headerMenu([project("atlas")], answer)?.find(
+        (item) => item.kind === "releasePage",
+      );
+      expect(line?.label).toBe(releasePageLabel());
+      expect(line?.availability).toEqual({ state: "ready" });
+    }
+    expect(kinds(headerMenu([], null))).toEqual(kinds(headerMenu([], notice)));
+  });
+
+  /** AC #1: 新しい版 があることは、その行の可視の語が述べる。 */
+  it("states the 版 on the line when one is published, and nothing when none is", () => {
+    const withNotice = headerMenu([], notice).find((item) => item.kind === "releasePage");
+    expect(withNotice?.kind === "releasePage" && withNotice.notice).toContain("0.2.0");
+    const without = headerMenu([], null).find((item) => item.kind === "releasePage");
+    expect(without?.kind === "releasePage" && without.notice).toBeNull();
+  });
+
+  /**
+   * AC #5 の一部: 照会の縮退 と「公開されている版 が利用中の版と同じ」は同じ `null` で来るので、
+   * 画面はどちらでも同じものを出す。**この 1 本が主張するのは、`null` に分岐が無いこと**である。
+   */
+  it("says nothing at all for the answer that covers 照会の縮退", () => {
+    expect(releaseNoticeText(null)).toBeNull();
+    expect(releaseNoticeText(notice)).not.toBeNull();
+  });
+
+  /**
+   * doc-11 §2.4: アイコンのみのボタンが持続する状態の印を持つとき、同じことを `aria-label` にも語で
+   * 足す。The ☰ carries the mark as a fill, which reaches the eye alone — so the name has to say it
+   * too, and has to stop saying it when the 版 is no longer new.
+   */
+  it("puts the state in the ☰'s own name, and takes it out again", () => {
+    expect(menuName("メニュー", true)).toContain("メニュー");
+    expect(menuName("メニュー", true)).not.toBe("メニュー");
+    expect(menuName("メニュー", false)).toBe("メニュー");
+  });
+
+  /**
+   * decision-44 §3: which 版 it is belongs to the line and not to the ☰ — the button's name answers
+   * only whether to open the menu, and a version in it would be read out on every focus.
+   */
+  it("keeps the 版 out of the ☰'s name", () => {
+    expect(menuName("メニュー", true)).not.toContain("0.2.0");
   });
 });
 
@@ -248,6 +320,15 @@ describe("画面に出る語", () => {
   it("names the 一覧 line and the すべて line in the user's words", () => {
     expect(shortcutHelpLabel()).toBe("キーボード操作一覧");
     expect(showAllProjectsLabel()).toBe("すべてのプロジェクトを表示");
+  });
+
+  /**
+   * decision-44 §3: the リリースページ line is named for where it goes, not for what it might
+   * announce. Recorded by equality like the two above, because a name about 更新の確認 would describe
+   * a 照会 that has already happened by the time the line is on screen.
+   */
+  it("names the リリースページ line for the page it opens", () => {
+    expect(releasePageLabel()).toBe("リリースページを開く");
   });
 
   /**
