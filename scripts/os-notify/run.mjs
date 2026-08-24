@@ -1,10 +1,8 @@
-// 実 OS 通知の配送検査 (TASK-108, decision-43) — the one entry point, called by CI's three places
-// and by hand on a machine whose delivery has not been recorded yet.
+// 実 OS 通知の配送検査 (TASK-108, decision-43).
 //
-// The work is one `cargo test` of one `#[ignore]`d test, plus the check that it actually ran:
-// **a libtest filter matching nothing exits 0** (measured on cargo 1.96.0 — "0 passed" is a green
-// run), so a renamed test would leave this reporting success for a check that never happened.
-// Cargo has no `--no-tests=fail`, so the summary line is what says a test ran.
+// It checks that a test ran, not only that cargo succeeded: **a libtest filter matching nothing
+// exits 0** (measured on cargo 1.96.0 — "0 passed" is a green run) and cargo has no
+// `--no-tests=fail`, so the summary line is what says a test ran.
 
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
@@ -32,7 +30,10 @@ function runCargo() {
       });
     }
     child.on("error", fail);
-    child.on("exit", (code) => {
+    // `close`, not `exit`: exit fires when the process ends, while the stdio streams may still be
+    // open, so the summary line this run is classified by can still be unread at that point — and a
+    // passing test would then be reported as one that never ran.
+    child.on("close", (code) => {
       done({ code, output });
     });
   });

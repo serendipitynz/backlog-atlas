@@ -1424,13 +1424,8 @@ task_prefix: \"TASK\"\n";
     // --- AC #1/#5: the real watcher delivers a debounced batch, read-only -----------------------
 
     /// The one check that a real OS file-change notification reaches the debounced batch channel
-    /// (decision-43). Everything that is Atlas's own logic — the managed-path filter, the
-    /// debounce/rescan rules, the index, conflict detection and reload — is covered by the
-    /// deterministic tests above, which need no real watcher.
-    ///
-    /// `#[ignore]` because what it asserts on is a property of the environment rather than of this
-    /// crate: an environment that withholds notifications would make `cargo test` red for something
-    /// no code change can fix. `pnpm run os-notify` is what runs it.
+    /// (decision-43). `#[ignore]` because what it asserts on is a property of the environment rather
+    /// than of this crate; `pnpm run os-notify` runs it.
     #[test]
     #[ignore = "OS notification delivery; run by `pnpm run os-notify` (decision-43)"]
     fn the_watch_session_delivers_a_batch_for_an_external_change() {

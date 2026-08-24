@@ -172,26 +172,17 @@ jobs:
       - run: xvfb-run -a pnpm run e2e
 
       # 実 OS 通知の配送検査, the Linux one of its three places (TASK-108, decision-43). It rides this
-      # job rather than the `os-notify` one below because `cargo test` cannot link the crate there
-      # until the WebView development packages are installed, and that apt list is copied per job —
-      # a Linux `os-notify` would be a **fourth** copy, which decision-33 §3 refused and decision-40
-      # refused again. This job has already paid for the third.
-      #
-      # It runs last so the E2E's verdict is reached first: both are in one job now, so a red job has
-      # two possible causes and the failing step is what names which.
+      # job because `cargo test` cannot link the crate on Linux until the WebView apt list above is
+      # installed, and a Linux `os-notify` job would be that list's fourth copy (decision-33 §3,
+      # decision-40). Last, so the E2E's verdict is reached first — a red job now has two causes, and
+      # the failing step is what names which.
       - run: pnpm run os-notify
 
-  # 実 OS 通知の配送検査 (TASK-108, decision-43) — whether the OS actually delivers a file-change
-  # notification to Atlas's watcher. What it asserts on is a property of the platform, not of this
-  # crate, which is why the test is `#[ignore]`d out of `cargo test` and named here instead.
+  # 実 OS 通知の配送検査 (TASK-108, decision-43) — whether the OS delivers a file-change notification
+  # to Atlas's watcher, which is a property of the platform rather than of this crate.
   #
-  # **Not a merge requirement**, for decision-40 §5's reason: FSEvents or a runner image can change
-  # under a pull request that did not cause it. The cost is the same one — a check nothing enforces
-  # is a check someone has to read.
-  #
-  # **Linux is deliberately absent from this matrix** and runs in the `e2e` job above instead; the
-  # comment on that step carries why. **Not folded into the `rust` job** either: that job is a merge
-  # requirement, and this is exactly the kind of check that must be able to go red without blocking.
+  # **Not a merge requirement, not folded into `rust`, and no Linux entry in this matrix**
+  # (decision-43 §4, §5). Linux runs as the `e2e` job's last step, and the comment there says why.
   os-notify:
     name: os-notify (${{ matrix.platform }})
     strategy:
