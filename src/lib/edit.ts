@@ -841,8 +841,8 @@ export function commandErrorDetail(error: CommandError): string {
     // 外部エディタ経路 (doc-8 §7). Stated here because this is the one place a `CommandError` becomes
     // the panel's sentence; `external-editor.ts` re-words these three for the launch controls,
     // where "the path is not in the read result" has a specific next step (open the task again).
-    case "unknownTaskFile":
-      return text.unknownTaskFile(error.path);
+    case "unknownManagedFile":
+      return text.unknownManagedFile(error.path);
     case "editorUnavailable":
       return text.editorUnavailable(msg().failure.editorUnavailable);
     case "editorLaunchFailed":
