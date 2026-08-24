@@ -149,7 +149,7 @@ pub fn run() {
             commands::settings_location_open,
             // 外部エディタ経路 (doc-8 §7): neither path — Atlas starts an editor and writes nothing.
             commands::editor_probe,
-            commands::task_file_open,
+            commands::managed_file_open,
             // 本文リンク (doc-8 §9.3): the same association launcher, with a URL from a 本文.
             commands::body_link_open,
             // 版の告知 (decision-44): whether a newer release is out, and its page.
