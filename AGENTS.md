@@ -465,6 +465,37 @@ that reopen the judgment it records. A copy of a measurement goes stale the mome
 changes, and nothing in this file would notice — and the conditions are not a fixed count either,
 since a fourth was added the moment one turned out to be missing.
 
+### 実 OS 通知の配送検査, which runs in CI and not in a session
+
+**A third run path outside `pnpm test`** — `pnpm run os-notify`, in `scripts/os-notify/`
+(decision-43). It runs the one `#[ignore]`d test in `sync.rs` that asserts a real OS file-change
+notification reaches a watch session's batch channel, on whichever platform it is invoked on.
+Everything else about the watch — the managed-path filter, the debounce and rescan rules, the
+degradation to a whole-root re-read — is held by the deterministic tests, which need no watcher.
+
+**A session's checks are therefore still `pnpm test`, `pnpm run check` and `pnpm run lint`** — three,
+for the reason the two paths above are not a fourth.
+
+**Skip in the default run, fail in this one.** `cargo test` skips it, because an environment that
+withholds notifications would go red for something no code change can fix. This path fails when no
+batch arrives **and when the batch that arrives is a `Rescan`** — a rescan says the stream was lossy,
+so it says nothing about delivery, and the deterministic tests already hold that Atlas degrades
+correctly. **There is deliberately no automatic fall-back to skip**: stating that an environment does
+not deliver is this path's outcome, not its failure to run.
+
+**The entry point also checks that a test ran at all.** A libtest filter matching nothing exits 0
+(measured on cargo 1.96.0) and cargo has no option to make that a failure, so a renamed test would
+leave a green run stating nothing. **Changing the test's name means changing the constant in
+`scripts/os-notify/run.mjs`** — the guard is what makes that impossible to miss.
+
+**CI runs it in three places and none of them is a merge requirement**: `os-notify (macos-latest)`,
+`os-notify (windows-latest)`, and the last step of `e2e (ubuntu-24.04)`. **Linux rides the `e2e` job**
+because `cargo test` cannot link the crate there until the WebView apt list is installed, and a Linux
+`os-notify` would be that list's fourth copy.
+
+**Which platforms have been measured is in decision-43, and is not restated here.** A copy of a
+measurement goes stale the moment the runner image changes.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and on `main` after one lands
@@ -483,6 +514,10 @@ and checks no code.
   against**: it writes the WebView apt list a third time because it cannot run anywhere else at
   all, where a Linux `rust` job would buy the compilation of one `return` for a fourth copy. Pinned
   to `ubuntu-24.04` for `release.yml`'s reason, not following `ubuntu-latest`.
+- **`os-notify`** on macOS and Windows — 実 OS 通知の配送検査 above (decision-43). **Linux is
+  deliberately absent from this matrix and runs as the `e2e` job's last step**, so that the WebView
+  apt list is not written a fourth time. **Not folded into `rust`** either: that job is a merge
+  requirement, and this is a check whose value is that it can go red without blocking.
 
 **Three checks are required before a pull request can merge** — `frontend`,
 `rust (macos-latest)` and `rust (windows-latest)` — through the repository ruleset named `main`.
@@ -493,6 +528,12 @@ change the two together.
 driver update that reddens it must not block a pull request that did not cause it. The cost is
 that a check nothing enforces is a check someone has to read; making it required later means adding
 that exact string to the ruleset.
+
+**`os-notify (macos-latest)` and `os-notify (windows-latest)` are not either**, for the same reason
+in its own terms (decision-43 §5): what reddens them is a platform's notification behaviour, and a
+pull request that did not touch the watcher must not be held by it. **The set that has to be read is
+therefore no longer one name**, and nothing enforces the reading — which is the whole cost of this
+choice and of decision-40's.
 
 **Repository admins can bypass those checks**, on purpose. It is what keeps `main` writable for
 the `Done` commits Task state describes, and it is what makes a broken workflow fixable — without
