@@ -564,6 +564,16 @@
         <p class="hint">{watchOffNote()}</p>
       </section>
 
+      <!-- 注意の抑止 (decision-45 §6, doc-11 §15 ②)。**戻せることがこの控えの用件である** — 層の刻み 1 つ
+           で与えた指定を戻す場所が無ければ、それは戻せない指定になる。区画の説明は 1 文（doc-11 §8）。 -->
+      <section>
+        <h3>{t().settings.noticeHeading}</h3>
+        <label class="choice">
+          <input type="checkbox" bind:checked={draft.suppress_frontmatter_notice} />
+          {t().settings.suppressFrontmatterNotice}
+        </label>
+      </section>
+
       <!-- 外部コマンド (decision-29, TASK-156). One row per command: 状態の印, label, field, `?`.
            The 印 and the label's colour carry the answer the user came for — did Atlas find this
            tool — so there is no separate 解決結果 区画 restating it, and no paragraph under each

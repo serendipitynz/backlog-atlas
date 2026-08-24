@@ -436,6 +436,13 @@ export function mergeDraft(
     ),
     folded_rows: pick(draft.folded_rows, baseline.folded_rows, next.folded_rows),
     hidden_rows: pick(draft.hidden_rows, baseline.hidden_rows, next.hidden_rows),
+    // 注意の抑止 (decision-45 §6). Here for the same reason as the three above *and* one of its own:
+    // the form has a control for it, and the 注意 layer's tick writes it from outside the form.
+    suppress_frontmatter_notice: pick(
+      draft.suppress_frontmatter_notice,
+      baseline.suppress_frontmatter_notice,
+      next.suppress_frontmatter_notice,
+    ),
   };
   // Every optional field is carried the same way, and each has to be: the form save serializes this
   // return value as the *whole* file, so a field left out here is deleted from disk. The three
@@ -491,6 +498,7 @@ function normalize(settings: AppSettings): unknown {
     settings.collapsed_columns,
     settings.folded_rows,
     settings.hidden_rows,
+    settings.suppress_frontmatter_notice,
     settings.backlog_cli ?? null,
     settings.git_cli ?? null,
     settings.gh_cli ?? null,

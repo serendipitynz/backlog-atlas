@@ -117,6 +117,81 @@ export const ja = {
    * here whichever file happens to draw it.
    */
   shell: {
+    /**
+     * 外部で開く (doc-7 §2.1, doc-8 §7, decision-45). Moved here from `taskDetail.editor` on
+     * 2026-08-25: the group left タスク詳細 for the ☰'s menu, and the menu is the shell's.
+     *
+     * **どの行の語も製品名を綴らない** — 製品名は識別子なので `MethodOffer.product` が運び
+     * (decision-35 §5)、ここは受け取った語の周りを組むだけである。
+     */
+    externalOpen: {
+      label: "外部で開く",
+      noTarget:
+        "開く管理ファイルが選ばれていません（タスク・文書・マイルストーン・決定事項のどれかを選ぶと開けます）",
+      fileMissing:
+        "選んでいるファイルが現在の読み取り結果にありません（外部での移動・削除の可能性）。" +
+        "開く対象を特定できないため、外部のプログラムでも開けません",
+      probePending: "外部で開く手段の確認中です",
+      /** 開く前の注意表示 (doc-8 §7 難点と受け方). The two facts that make this the exception route. */
+      frontmatterNotice:
+        "外部のプログラムでは frontmatter を含む管理ファイルの Markdown ファイルを開きます。" +
+        "編集時に id・status・labels などの構造化フィールドについて Backlog.md による検査は実施されません" +
+        "（壊れると不整合表示になります）。",
+      /** 注意の抑止 (decision-45 §6, doc-11 §15). */
+      suppressNotice: "今後表示しない",
+      /**
+       * 書き戻し when 継続検出 is stopped (doc-8 §7): the save will not arrive on its own. One text
+       * for both causes — doc-9 §3.1 keeps the state and its mark the same either way.
+       */
+      watchStoppedNote:
+        "このルートは継続検出が止まっているため、外部での保存は自動では反映されません。" +
+        "編集を終えたら「このルートを再読込」を押してください（開き直すだけでは読み直しません）。",
+      rereadRoot: "このルートを再読込",
+      /** doc-8 §6.4: an open 編集セッション plus an external edit is the double intake to avoid. */
+      unsavedInputWarning:
+        "GUI 側に未保存入力があります。このまま外部でも編集すると、同じファイルを二重に編集する" +
+        "ことになります。入力は破棄しませんが、外部の保存は外部変更として検出し、GUI の保存時は" +
+        "更新前競合検出で止めます。先に保存またはキャンセルすることを推奨します。",
+      /** A terminal editor started from a GUI process has no terminal to draw in. */
+      terminalCaveat:
+        "端末専用エディタ（vim・nano など）を指している場合、GUI から起動しても画面は出ません。" +
+        "その場合は OS の関連付けで開いてください。",
+      /**
+       * 起動指定の出所 (doc-8 §7 の解決順), keyed by `EditorSource` so a fourth cannot be added
+       * without the compiler asking what it is called. アプリ設定 is spelled as itself rather than as
+       * a variable name — it is the 指定手段 for users whose environment never reaches the process,
+       * and a `$…` would send them looking for a variable that does not exist. The other two *are*
+       * variables, so both catalogues carry the same spelling (decision-35 §5 の識別子).
+       */
+      source: {
+        appSettings: "アプリ設定の外部エディタ指定",
+        visual: "$VISUAL",
+        editor: "$EDITOR",
+      },
+      openWithProduct: (product: string) => `${product} で開く`,
+      revealIn: (product: string) => `${product} で表示`,
+      openTerminal: (product: string) => `${product} で開く`,
+      openWithConfigured: (source: string, program: string) => `${source} で開く（${program}）`,
+      openWithConfiguredAbsent: "$EDITOR で開く",
+      openWithAssociation: "OS の関連付けで開く",
+      noConfigured:
+        "アプリ設定の外部エディタ指定も VISUAL・EDITOR も設定されていないため、この方式は提供しません" +
+        "（設定画面で指定するか、環境変数を設定して Atlas を起動し直すか、OS の関連付けで開いてください）",
+      /** Stands for the file in the command shown to the user; the real argument is the full path. */
+      filePlaceholder: "<選んでいるファイル>",
+      /** The path the screen held is not in the current read — the screen is behind the root. */
+      unknownManagedFile: (path: string) =>
+        `${path} は現在の読み取り結果の管理ファイルではないため、起動しませんでした` +
+        "（外部での移動・削除の可能性）。読み直してから選び直してください。",
+      /** 「で開けませんでした」rather than 「を起動できませんでした」; the correction follows the method. */
+      launchFailed: (program: string, reason: string, fix: string) =>
+        `${program} で開けませんでした: ${reason}。${fix}`,
+      fixAssociation:
+        ".md に関連付けられたアプリケーションが OS に登録されているか確認してください" +
+        "（アプリ設定・$VISUAL・$EDITOR での起動は使えます）。",
+      fixConfigured:
+        "アプリ設定の外部エディタ指定・VISUAL・EDITOR の値（プログラム名とオプション）を確認してください。",
+    },
     titleCountFailed: (detail: string) => `ウィンドウのタイトルに総件数を出せません（${detail}）`,
     /** Why 継続検出 is stopped, for the 帯 (doc-9 §3.1). Three causes, one state and one mark. */
     watchOffAll: "設定で継続検出を切っているため、どの行も自動では更新されません",
@@ -573,72 +648,6 @@ export const ja = {
      * 区画 of the panel and its sentences are read together — the two notices before the launch, the
      * two controls, and what each failure means.
      */
-    editor: {
-      /** 開く前の注意表示 (doc-8 §7 難点と受け方). The two facts that make this the exception route. */
-      frontmatterNotice:
-        "外部エディタでは frontmatter を含むタスクの Markdown ファイルを開きます。" +
-        "編集時に id・status・labels などの構造化フィールドについて Backlog.md による検査は実施されません" +
-        "（壊れると不整合表示になります）。",
-      /**
-       * 書き戻し when 継続検出 is stopped (doc-8 §7): the save will not arrive on its own. One text
-       * for both causes — doc-9 §3.1 keeps the state and its mark the same either way.
-       */
-      watchStoppedNote:
-        "このルートは継続検出が止まっているため、外部エディタでの保存は自動では反映されません。" +
-        "編集を終えたら、下の「このルートを再読込」を押してください（タスクを開き直すだけでは読み直しません）。",
-      rereadRoot: "このルートを再読込",
-      /** The press itself discovered the stop, so the notice appears at the same moment. */
-      watchStoppedBeforeLaunch:
-        "このルートの継続検出が止まっていることが分かったため、まだ開いていません。上の注意を読んでから、" +
-        "もう一度押すと開きます。",
-      /** doc-8 §6.4: an open 編集セッション plus an external edit is the double intake to avoid. */
-      unsavedInputWarning:
-        "GUI 側に未保存入力があります。このまま外部エディタでも編集すると、同じタスクを二重に編集する" +
-        "ことになります。入力は破棄しませんが、外部エディタの保存は外部変更として検出し、GUI の保存時は" +
-        "更新前競合検出で止めます。先に保存またはキャンセルすることを推奨します。",
-      /** A terminal editor started from a GUI process has no terminal to draw in. */
-      terminalCaveat:
-        "端末専用エディタ（vim・nano など）を指している場合、GUI から起動しても画面は出ません。" +
-        "その場合は OS の関連付けで開いてください。",
-      /**
-       * 起動指定の出所 (doc-8 §7 の解決順), keyed by `EditorSource` so a fourth cannot be added
-       * without the compiler asking what it is called. アプリ設定 is spelled as itself rather than as
-       * a variable name — it is the 指定手段 for users whose environment never reaches the process,
-       * and a `$…` would send them looking for a variable that does not exist. The other two *are*
-       * variables, so both catalogues carry the same spelling (decision-35 §5 の識別子).
-       */
-      source: {
-        appSettings: "アプリ設定の外部エディタ指定",
-        visual: "$VISUAL",
-        editor: "$EDITOR",
-      },
-      openWithConfigured: (source: string, program: string) => `${source} で開く（${program}）`,
-      openWithConfiguredAbsent: "$EDITOR で開く",
-      openWithAssociation: "OS の関連付けで開く",
-      associationMethod: "OS の関連付け",
-      noConfigured:
-        "アプリ設定の外部エディタ指定も VISUAL・EDITOR も設定されていないため、この方式は提供しません" +
-        "（設定画面で指定するか、環境変数を設定して Atlas を起動し直すか、OS の関連付けで開いてください）",
-      probePending: "外部エディタの確認中です",
-      fileMissing:
-        "このタスクのファイルが現在の読み取り結果にありません（外部での移動・削除の可能性）。" +
-        "開く対象を特定できないため、外部エディタでも開けません",
-      /** Stands for the file in the command shown to the user; the real argument is the full path. */
-      filePlaceholder: "<このタスクのファイル>",
-      launched: (how: string, command: string) => `${how} で起動しました: ${command}`,
-      /** The path the panel held is not in the current read — the screen is behind the root. */
-      unknownTaskFile: (path: string) =>
-        `${path} は現在の読み取り結果のタスクファイルではないため、起動しませんでした` +
-        "（外部での移動・削除の可能性）。タスクを開き直してください。",
-      /** 「で開けませんでした」rather than 「を起動できませんでした」; the correction follows the method. */
-      launchFailed: (program: string, reason: string, fix: string) =>
-        `${program} で開けませんでした: ${reason}。${fix}`,
-      fixAssociation:
-        ".md に関連付けられたアプリケーションが OS に登録されているか確認してください" +
-        "（アプリ設定・$VISUAL・$EDITOR での起動は使えます）。",
-      fixConfigured:
-        "アプリ設定の外部エディタ指定・VISUAL・EDITOR の値（プログラム名とオプション）を確認してください。",
-    },
     gitHistoryHeading: "Git 履歴欄",
     /**
      * Why Type is not editable, without naming which 導出元 the value came from: decision-20 gives
@@ -725,7 +734,7 @@ export const ja = {
       projectNotOpen: (slug: string) => `プロジェクト ${slug} が開かれていません`,
       unknownProject: (slug: string) => `プロジェクト ${slug} は登録されていません`,
       rootUnreadable: (detail: string) => `ルートを読めません: ${detail}`,
-      unknownTaskFile: (path: string) =>
+      unknownManagedFile: (path: string) =>
         `${path} は現在の読み取り結果のタスクファイルではありません（移動・削除の可能性）`,
       editorUnavailable: (reason: string) => `外部エディタを起動できません: ${reason}`,
       editorLaunchFailed: (program: string, reason: string) =>
@@ -1305,6 +1314,9 @@ export const ja = {
     defaultStorageHeading: "既定の保存区分（フィルタの初期値）",
     defaultPlacementHeading: "既定の詳細配置",
     defaultOrderHeading: "既定の並び順",
+    /** 注意の抑止 (decision-45 §6). 区画の説明は持たない — 控えの語で足りる (doc-11 §8)。 */
+    noticeHeading: "外部で開くときの注意",
+    suppressFrontmatterNotice: "frontmatter の注意を今後表示しない",
     watchHeading: "ファイル監視で外部変更を取り込む（継続検出）",
     watchToggle: "継続検出を使う",
     externalCommandsHeading: "外部コマンド",

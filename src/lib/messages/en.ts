@@ -76,6 +76,56 @@ export const EN: Catalog = {
     issueConfirmCancel: "Cancel",
   },
   shell: {
+    externalOpen: {
+      label: "Open externally",
+      noTarget:
+        "No managed file is selected (select a task, document, milestone or decision to open one)",
+      fileMissing:
+        "The selected file is not in the current read result (it may have been moved or deleted outside " +
+        "Atlas). There is nothing to name as the target, so no external program can open it",
+      probePending: "The ways to open externally are being checked",
+      frontmatterNotice:
+        "An external program opens the managed file's Markdown file whole, frontmatter included. " +
+        "Backlog.md does not check the structured fields — id, status, labels and the rest — while you edit " +
+        "(breaking one shows as inconsistent).",
+      suppressNotice: "Do not show this again",
+      watchStoppedNote:
+        "Continuous detection is stopped for this root, so an external save does not arrive on its own. " +
+        'When you are done, press "Re-read this root" (reopening does not read it again).',
+      rereadRoot: "Re-read this root",
+      unsavedInputWarning:
+        "There is unsaved input in Atlas. Editing the same file externally as well means editing it twice over. " +
+        "The input is kept, but an external save is detected as an external change and Atlas's own save then " +
+        "stops at pre-update conflict detection. Saving or cancelling first is recommended.",
+      terminalCaveat:
+        "A terminal-only editor (vim, nano and the like) draws nothing when started from a GUI. " +
+        "Use the OS file association for those.",
+      source: {
+        appSettings: "the external editor set in the app settings",
+        visual: "$VISUAL",
+        editor: "$EDITOR",
+      },
+      openWithProduct: (product: string) => `Open in ${product}`,
+      revealIn: (product: string) => `Reveal in ${product}`,
+      openTerminal: (product: string) => `Open in ${product}`,
+      openWithConfigured: (source: string, program: string) => `Open with ${source} (${program})`,
+      openWithConfiguredAbsent: "Open with $EDITOR",
+      openWithAssociation: "Open with the OS file association",
+      noConfigured:
+        "Neither the app settings' external editor nor VISUAL nor EDITOR is set, so this method is not offered " +
+        "(set one on the settings screen, set the environment variable and restart Atlas, or use the OS file association)",
+      filePlaceholder: "<the selected file>",
+      unknownManagedFile: (path: string) =>
+        `${path} is not a managed file in the current read result, so nothing was started ` +
+        "(it may have been moved or deleted outside Atlas). Read it again and select it again.",
+      launchFailed: (program: string, reason: string, fix: string) =>
+        `${program} could not open it: ${reason}. ${fix}`,
+      fixAssociation:
+        "Check that the OS has an application registered for .md " +
+        "(the app settings, $VISUAL and $EDITOR routes still work).",
+      fixConfigured:
+        "Check the app settings' external editor, VISUAL and EDITOR values (the program name and its options).",
+    },
     titleCountFailed: (detail: string) =>
       `The window title cannot show the total count (${detail})`,
     watchOffAll: "Continuous detection is off in the settings, so no row updates on its own",
@@ -430,54 +480,6 @@ export const EN: Catalog = {
     referenceMissing: "Reference missing",
     transitionsHeading: "Transitions",
     externalEditorHeading: "Open in an external editor",
-    editor: {
-      frontmatterNotice:
-        "An external editor opens the task's Markdown file whole, frontmatter included. " +
-        "Backlog.md does not check the structured fields — id, status, labels and the rest — while you edit " +
-        "(breaking one shows as inconsistent).",
-      watchStoppedNote:
-        "Continuous detection is stopped for this root, so a save from an external editor does not arrive on " +
-        'its own. When you are done, press "Re-read this root" below (reopening the task does not read it again).',
-      rereadRoot: "Re-read this root",
-      watchStoppedBeforeLaunch:
-        "Nothing has been opened: this root turned out to have continuous detection stopped. " +
-        "Read the notice above, then press again to open.",
-      unsavedInputWarning:
-        "There is unsaved input in Atlas. Editing the same task externally as well means editing it twice over. " +
-        "The input is kept, but a save from the external editor is detected as an external change and Atlas's own " +
-        "save then stops at pre-update conflict detection. Saving or cancelling first is recommended.",
-      terminalCaveat:
-        "A terminal-only editor (vim, nano and the like) draws nothing when started from a GUI. " +
-        "Use the OS file association for those.",
-      source: {
-        appSettings: "the external editor set in the app settings",
-        visual: "$VISUAL",
-        editor: "$EDITOR",
-      },
-      openWithConfigured: (source: string, program: string) => `Open with ${source} (${program})`,
-      openWithConfiguredAbsent: "Open with $EDITOR",
-      openWithAssociation: "Open with the OS file association",
-      associationMethod: "The OS file association",
-      noConfigured:
-        "Neither the app settings' external editor nor VISUAL nor EDITOR is set, so this method is not offered " +
-        "(set one on the settings screen, set the environment variable and restart Atlas, or use the OS file association)",
-      probePending: "The external editor is being checked",
-      fileMissing:
-        "This task's file is not in the current read result (it may have been moved or deleted outside Atlas). " +
-        "There is nothing to name as the target, so no external editor can open it",
-      filePlaceholder: "<this task's file>",
-      launched: (how: string, command: string) => `${how} started it: ${command}`,
-      unknownTaskFile: (path: string) =>
-        `${path} is not a task file in the current read result, so nothing was started ` +
-        "(it may have been moved or deleted outside Atlas). Open the task again.",
-      launchFailed: (program: string, reason: string, fix: string) =>
-        `${program} could not open it: ${reason}. ${fix}`,
-      fixAssociation:
-        "Check that the OS has an application registered for .md " +
-        "(the app settings, $VISUAL and $EDITOR routes still work).",
-      fixConfigured:
-        "Check the app settings' external editor, VISUAL and EDITOR values (the program name and its options).",
-    },
     gitHistoryHeading: "Git history",
     typeNotEditable: "Type cannot be edited in Atlas.",
     emptyTitle:
@@ -538,7 +540,7 @@ export const EN: Catalog = {
       projectNotOpen: (slug: string) => `Project ${slug} is not open`,
       unknownProject: (slug: string) => `Project ${slug} is not registered`,
       rootUnreadable: (detail: string) => `The root cannot be read: ${detail}`,
-      unknownTaskFile: (path: string) =>
+      unknownManagedFile: (path: string) =>
         `${path} is not a task file in the current read result (it may have been moved or deleted)`,
       editorUnavailable: (reason: string) => `The external editor cannot be started: ${reason}`,
       editorLaunchFailed: (program: string, reason: string) =>
@@ -993,6 +995,8 @@ export const EN: Catalog = {
     defaultStorageHeading: "Default storage divisions (the filter's starting value)",
     defaultPlacementHeading: "Default detail placement",
     defaultOrderHeading: "Default order",
+    noticeHeading: "The notice before opening externally",
+    suppressFrontmatterNotice: "Do not show the frontmatter notice again",
     watchHeading: "Take external changes in by watching files (continuous detection)",
     watchToggle: "Use continuous detection",
     externalCommandsHeading: "External commands",
