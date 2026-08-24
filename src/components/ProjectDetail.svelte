@@ -41,6 +41,7 @@
   import NewTaskSection from "./project-detail/NewTaskSection.svelte";
   import OverviewSection from "./project-detail/OverviewSection.svelte";
   import { fileInconsistencyReasons } from "../lib/mark";
+  import { rereadRootLabel } from "../lib/external-editor";
   import type { DiscardAnswers } from "../lib/edit";
   import { messages } from "../lib/messages-context";
   import {
@@ -174,6 +175,19 @@
     onback: () => void;
     ontoLane: () => void;
     /**
+     * 選択中の管理ファイル (decision-45 §1): which of 文書・マイルストーン・決定事項 is selected here, or
+     * `null` while none is. Reported up because the ☰'s 外部で開く lives on the shell and only this
+     * screen knows which 区画 is open — the shell cannot derive it from a read.
+     */
+    onselectManaged: (target: { slug: string; sourcePath: string } | null) => void;
+    /**
+     * 当該ルートの再読込 (doc-10 §3, decision-45 §8). doc-8 §7 requires the re-read to be reachable from
+     * the screen holding the selection, and this screen had none until 2026-08-25.
+     */
+    onreread: () => void;
+    /** 継続検出 が止まっている for this root (doc-9 §3.1) — the re-read is offered only while it is. */
+    watchStopped: boolean;
+    /**
      * The ☰ and its menu (decision-31), drawn by the shell and placed at the right end of this
      * screen's ヘッダ行 (doc-10 §3). Since the 固定ヘッダ went it is the only visible way to 設定・
      * プロジェクトを登録・キーボード操作一覧 while this screen is up — doc-10 §2 records why an entry
@@ -199,6 +213,9 @@
     onoverlay,
     onback,
     ontoLane,
+    onselectManaged,
+    onreread,
+    watchStopped,
     menu,
   }: Props = $props();
 
@@ -1159,6 +1176,27 @@
   );
 
   /** 表示パス (doc-10 §5's term, §10's instance) for the selected decision. */
+  /**
+   * 選択中の管理ファイル (decision-45 §1) as this screen holds it: whichever of the three is selected.
+   * **At most one is**, because the three 区画 are not open at once — so this reads as a chain rather
+   * than needing a rule for which wins.
+   *
+   * Reported through an `$effect` rather than by calling the callback from each selection handler: the
+   * three selections also *drop* on a read that no longer holds the file (doc-10 §5), and those paths
+   * touch no handler. An effect over the derived value catches every one of them.
+   */
+  let managedSelection = $derived(
+    selectedDocument !== null
+      ? { slug: entry.slug, sourcePath: selectedDocument.sourcePath }
+      : selectedMilestone !== null
+        ? { slug: entry.slug, sourcePath: selectedMilestone.sourcePath }
+        : selectedDecision !== null
+          ? { slug: entry.slug, sourcePath: selectedDecision.sourcePath }
+          : null,
+  );
+  $effect(() => {
+    onselectManaged(managedSelection);
+  });
   let selectedDecisionPath = $derived(
     selectedDecision === null ? null : displayPath(selectedDecision.sourcePath, entry.project_root),
   );
@@ -1464,6 +1502,12 @@
         {t().state.loading}
       {/if}
     </span>
+    {#if watchStopped}
+      <!-- 当該ルートの再読込 (doc-10 §3, decision-45 §8)。**継続検出 が止まっている間だけ出す** —
+           動いている間は外部での保存が自動で届くので、押す理由が無い。置き場がヘッダ行なのは、ここが
+           この画面のルート全体に効く操作の場所だからである。 -->
+      <button type="button" class="reread" onclick={onreread}>{rereadRootLabel()}</button>
+    {/if}
     <button type="button" class="to-lane" onclick={ontoLane}>{t().projectDetail.toLane}</button>
     <!-- 帯の右端 (decision-31). After 出口 rather than before it: the two exits are what this screen
          offers, and the ☰ opens things that have nothing to do with this project. -->
