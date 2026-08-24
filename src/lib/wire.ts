@@ -638,6 +638,20 @@ export interface EditorLaunch {
   args: string[];
 }
 
+// --- 版の告知 (decision-44) ------------------------------------------------------------------
+
+/**
+ * 新しい版 (decision-44): the published release is above the one running, and this is its version —
+ * a version value, without the tag's leading `v`.
+ *
+ * The 照会 answers with `null` for both 照会の縮退 and "the published release is already the one
+ * running", and the difference is deliberately absent: the screen draws the same nothing either way,
+ * so a field saying which it was could only be a field nobody may read (decision-44 §5).
+ */
+export interface ReleaseNotice {
+  version: string;
+}
+
 // --- 更新操作 (doc-5 §3, TASK-31) ------------------------------------------------------------
 
 /**

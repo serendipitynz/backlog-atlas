@@ -29,6 +29,7 @@ import type {
   ProjectSnapshot,
   RegisterRequest,
   RegisterResponse,
+  ReleaseNotice,
   ReloadEvent,
   TaskHistory,
   UpdateOperation,
@@ -284,6 +285,27 @@ export function taskFileOpen(
  */
 export function bodyLinkOpen(url: string): Promise<void> {
   return invoke<void>("body_link_open", { url });
+}
+
+/**
+ * 版照会 (decision-44 §1): whether a 新しい版 is published. Called once at startup and not again —
+ * there is no record of when it last ran, so a start is the whole of its schedule (decision-44 §2).
+ *
+ * Never rejects, and answers `null` for a 照会の縮退 as well as for a build that is already the
+ * published one: both mean 版の告知 が出ない, which is the only thing the screen does with either.
+ */
+export function releaseNoticeRead(): Promise<ReleaseNotice | null> {
+  return invoke<ReleaseNotice | null>("release_notice_read");
+}
+
+/**
+ * Open リリースページ in the default browser (decision-44 §4).
+ *
+ * Takes no URL, unlike `bodyLinkOpen`: the address is this build's release 置き場, so the boundary
+ * holds it and nothing that arrived over the network is handed to a launcher.
+ */
+export function releasePageOpen(): Promise<void> {
+  return invoke<void>("release_page_open");
 }
 
 /**

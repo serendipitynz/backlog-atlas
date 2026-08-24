@@ -182,6 +182,22 @@ export const ja = {
      * its `Modal label` and its `<h2>`, which is how the two 共通入口 already work.
      */
     shortcutHelpLabel: "キーボード操作一覧",
+    /**
+     * 版の告知 (decision-44 §3). The line is there whether or not a 新しい版 exists, so it is named
+     * for where it goes and not for what it might announce.
+     */
+    releasePageLabel: "リリースページを開く",
+    /**
+     * What that line adds when there is a 新しい版 — visible, because the line has a label of its own
+     * and a figure beside one would be a second name for it (doc-11 §2.4).
+     */
+    releaseNoticeAvailable: (version: string) => `新しい版 ${version}`,
+    /**
+     * The ☰'s own name while a 新しい版 stands. アイコンのみのボタン carry their state in the name as
+     * well as in the mark, because neither a fill nor a stroke reaches a screen reader (doc-11 §2.4) —
+     * the same shape 3 配置切替 の既定印 takes.
+     */
+    menuHasReleaseNotice: (label: string) => `${label}（新しい版があります）`,
     /** The line that puts every project row back on screen (doc-7 §2.1), in the user's own words. */
     showAllProjectsLabel: "すべてのプロジェクトを表示",
     /**

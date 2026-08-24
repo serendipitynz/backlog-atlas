@@ -128,6 +128,11 @@
                  cannot advertise a chord the matcher does not answer. Hidden from the accessible name
                  because `aria-keyshortcuts` above already carries it as data. -->
             <span class="hint" aria-hidden="true">{shortcutHint(item.entry.action, MAC_KEYBOARD)}</span>
+          {:else if item.kind === "releasePage" && item.notice !== null}
+            <!-- 新しい版 (decision-44 §3). **Not `aria-hidden`**, unlike the chord above: no attribute
+                 on this line carries the same fact as data, and the ☰'s own name says only that a
+                 版 is out — which one is here and nowhere else. -->
+            <span class="notice">{item.notice}</span>
           {/if}
         </button>
         {#if item.availability.state === "withheld"}
@@ -259,6 +264,15 @@
     color: var(--muted);
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
+  }
+
+  // 新しい版 (decision-44 §3), in the slot the chord uses — the two never appear on the same line, and
+  // the column they share is what keeps either from moving the label. Not `--muted`: this is the one
+  // thing in the menu the user did not come looking for, so it takes the body colour while the chord,
+  // a reminder beside an operation, stays quiet.
+  .notice {
+    flex: none;
+    font-size: var(--text-sm);
   }
 
   // 無効化の理由 (doc-11 §5) is a secondary sentence, so `--muted` (doc-11 §2.1). Kept for the day a
