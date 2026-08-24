@@ -550,6 +550,17 @@ match the runner rather than to pin it: `rustc --version` against the version th
 and `rustup toolchain install <it>` then `cargo +<it> clippy` when they differ. Updating your
 default works too; the `+` form is what checks CI's answer without moving your default.
 
+**A second cause of the same asymmetry is the platform's own `cfg` set, and it has a local check.**
+A `#[cfg(unix)]` test is dropped on Windows, and anything only that test used — a helper struct, an
+`impl`, an import — becomes `dead_code` or `unused_imports` there, which `-D warnings` turns into a
+failed `rust (windows-latest)`: a merge requirement. **macOS cannot see it**, because on macOS the
+gate is true and the helper is used. TASK-157 hit this with a temp-dir helper beside two unix-only
+tests. **Check it by making the gates false rather than by reasoning about them** — flip every
+`#[cfg(unix)]` in the file to `#[cfg(any())]`, run `cargo clippy --all-targets -- -D warnings`, and
+put them back; that drops exactly what the other platform drops, and it reproduced the runner's two
+errors verbatim. **The reverse case needs the same treatment**: a `#[cfg(windows)]` helper is
+invisible from here whichever way you run clippy, so `rust (macos-latest)` is the job that finds it.
+
 ## Release
 
 **A release session reads `backlog/docs/doc-13` first.** That doc is this layer's source —
