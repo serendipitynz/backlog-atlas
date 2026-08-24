@@ -790,8 +790,12 @@
     // `App.component.test.ts` reads this list to hold it.
     await settingsCtl.probeEditor();
     // 版照会 (decision-44 §1). **Not awaited**, for `refreshDirectory`'s reason — nothing in startup
-    // reads the answer, so awaiting it would only put a `gh` launch in front of the first draw. Placed
-    // last because it is the one step no other step depends on, in either direction.
+    // reads the answer, so awaiting it would only put a `gh` launch in front of the first draw.
+    //
+    // **Issued before the read rather than after it, and it therefore overlaps the read.** Both
+    // orders are correct — no step depends on this one in either direction — and this one is the
+    // cheaper of the two: after an awaited `load` the `gh` launch would not start until the whole
+    // first read had finished.
     void readReleaseNotice();
     await workspace.load();
   });
