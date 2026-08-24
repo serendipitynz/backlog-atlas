@@ -44,11 +44,20 @@ console.log(`機械: ${process.platform}/${process.arch}, node ${process.version
 const { code, output } = await runCargo();
 console.log("");
 
+// A non-zero exit is two different outcomes, and saying only "it failed" would report a build error
+// as a platform that does not deliver. The summary line is what separates them.
 if (code !== 0) {
-  console.error(
-    `届かなかった (cargo test exited with ${code})。この環境の OS 通知が配送されていないか、` +
-      "束が Rescan へ倒れている。どちらもこの環境の性質であって、コードの欠陥とは限らない。",
-  );
+  if (/test result: FAILED/.test(output)) {
+    console.error(
+      `届かなかった。この環境の OS 通知が束の受け口まで配送されていないか、束が Rescan へ倒れている — ` +
+        "どちらもこの環境の性質であって、コードの欠陥とは限らない。",
+    );
+  } else {
+    console.error(
+      `検査が走る前に終わった (cargo test exited with ${code})。上の出力を読む — ` +
+        "配送については何も述べていない。",
+    );
+  }
   process.exit(1);
 }
 
