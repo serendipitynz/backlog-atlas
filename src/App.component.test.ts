@@ -2134,7 +2134,14 @@ describe("外部で開く (doc-7 §2.1, decision-45)", () => {
 
     const held = parentLine(host);
     expect(held.getAttribute("aria-disabled")).toBe("true");
-    expect(only(host, MENU).textContent).toContain("選ばれていません");
+    // **理由は読み上げに残るが、目には出さない** (doc-11 §8 の licence ②、`omitsSentence`)。
+    // オーナーが実機で「不活性なのだけで十分」と判断した (2026-08-25)。
+    // 結ばれている要素を `aria-describedby` からたどる — 規則が述べているのはその結びつきである。
+    const reasonId = held.getAttribute("aria-describedby");
+    expect(reasonId).not.toBeNull();
+    const reason = only(host, `#${reasonId}`);
+    expect(reason.textContent).toContain("選ばれていません");
+    expect(reason.className).toContain("unseen");
     // 保留されている行はサブメニューを開かない — 開いた 7 行が全部同じ理由で押せないのは、同じことを
     // 7 度述べるだけである。
     click(held);
@@ -2144,6 +2151,32 @@ describe("外部で開く (doc-7 §2.1, decision-45)", () => {
     click(only(host, "button.card"));
     await settled();
     expect(parentLine(host).getAttribute("aria-disabled")).toBe("false");
+  });
+
+  /**
+   * **サブメニューは、スクロールする一覧の中に入っていない。** これは見た目の話ではなく、`overflow` を
+   * 持つ容器は out-of-flow の子孫も両軸で切るという規則の話である — 実機ではサブメニューが**描かれて
+   * いるのに見えず、押しても何も起きなかった**（オーナーの `pnpm tauri dev` 目視。2026-08-25）。
+   *
+   * **切られうる形は 2 つあり、この試験が持つのは 1 つだけである。** ①サブメニューがスクロールする
+   * `ul` の中にあること（この試験が持つ。中へ戻すと赤くなる）。②`ul` ではなくパネル `.menu` の側が
+   * `overflow` を持つこと（**持てない**）。**jsdom は算出スタイルを持たないので、②を主張する手段が
+   * ここには無い。**
+   *
+   * **②は借り物 playwright で実測した**（2026-08-25、WebKit・Chromium）: `overflow-y: auto` を
+   * `.menu` へ戻すと、**矩形は同じまま `elementFromPoint` が届かなくなる。** つまり
+   * **矩形を測る試験でも捕まらない** — 見えるかどうかを押さえられるのは当たり判定だけである。
+   * 実機で起きたのは②のほうで、この試験が持っているのは①である。
+   */
+  it("サブメニューはスクロールする一覧の外にある", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    const submenu = openSubmenu(host);
+    const scroller = only(host, `${MENU} > ul`);
+    expect(scroller.contains(submenu)).toBe(false);
+    // それでもメニューの層の中にある — 外側の押下で両方が降りる規則がそれに依っている。
+    expect(only(host, MENU).contains(submenu)).toBe(true);
   });
 
   /**

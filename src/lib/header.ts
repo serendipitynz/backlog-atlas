@@ -51,6 +51,7 @@ import {
   externalOpenAvailability,
   externalOpenLabel,
   externalOpenRows,
+  noTargetReason,
   watchStoppedNote,
   type ExternalOpenContext,
   type ExternalOpenRow,
@@ -201,13 +202,22 @@ export function showAllProjectsAvailability(
  * `omitsSentence`. Enumerated rather than ruled over every reason, and for that module's stated
  * reason: which licence a reason has is a fact about its 区画, so adding one means opening that 区画.
  *
- * The one entry is on **licence ①** — the 区画 states the reason itself. The プロジェクト一覧 sits
+ * The first entry is on **licence ①** — the 区画 states the reason itself. The プロジェクト一覧 sits
  * directly under this line with a 表示中の印 on every row it draws, so a menu in which すべての
- * プロジェクトを表示 is held is a menu the user is looking at all-ticked. What is omitted is the visible
- * sentence and nothing else: doc-7 §2.1 keeps the reason in the accessibility tree.
+ * プロジェクトを表示 is held is a menu the user is looking at all-ticked.
+ *
+ * The second — 対象未選択 on 外部で開く — is on **licence ②**: it says only 「まだ選んでいない」, and what
+ * to select is the screen the menu is drawn over. **The owner asked for it on the real machine**
+ * (2026-08-25): the inactive line is enough, and the sentence was the longest thing in the menu.
+ * **`fileMissingReason` is deliberately not here** — a file moved or deleted outside Atlas is a cause
+ * *outside the screen*, which doc-11 §8 says must always be visible.
+ *
+ * What is omitted is the visible sentence and nothing else: doc-7 §2.1 keeps the reason in the
+ * accessibility tree, and licence ② asks for the §5 second form (`aria-disabled` plus
+ * `aria-describedby` to an element that stays in the DOM), which is what `HeaderMenu.svelte` draws.
  */
 export function omitsSentence(reason: string): boolean {
-  return reason === showAllProjectsHeldReason();
+  return reason === showAllProjectsHeldReason() || reason === noTargetReason();
 }
 
 /**

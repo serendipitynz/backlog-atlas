@@ -55,6 +55,11 @@
    * pressing the parent line again lowers only this.
    */
   let submenuOpen = $state(false);
+  /**
+   * The 外部で開く line, for the サブメニュー drawn outside the scrolling list. Derived rather than read
+   * inside the `{#each}` because the submenu cannot live in the `ul` that scrolls — see its markup.
+   */
+  let external = $derived(items.find((item) => item.kind === "externalOpen") ?? null);
 
   // Opened by a press, so the first line takes focus: the menu exists to be walked with the keyboard
   // when the 帯 is too narrow to show its entries, and focus left behind on the ☰ would put the
@@ -171,42 +176,6 @@
             <span class="notice">{item.notice}</span>
           {/if}
         </button>
-        {#if item.kind === "externalOpen" && submenuOpen && item.availability.state === "ready"}
-          <!-- 外部で開く のサブメニュー (doc-7 §2.1, decision-45)。行の集合は crate が答えたもので、
-               この file はプラットフォームも製品名も綴らない。 -->
-          <div class="submenu" role="group" aria-label={item.label}>
-            {#if item.note !== null}
-              <!-- 継続検出停止の註 (doc-8 §7)。**層ではなくここに出す** — 層は抑止できるので、
-                   抑止した利用者には doc-8 §7 の要件が満たされなくなる (decision-45 §9)。 -->
-              <p class="note">{item.note}</p>
-            {/if}
-            <ul>
-              {#each item.rows as row (row.method)}
-                <li class:group-start={!row.edits && item.rows.some((other) => other.edits)}>
-                  <button
-                    type="button"
-                    aria-disabled={row.availability.state === "withheld"}
-                    aria-describedby={row.availability.state === "ready"
-                      ? undefined
-                      : `${reasonId(index)}-${row.method}`}
-                    title={row.availability.state === "withheld"
-                      ? row.availability.reason
-                      : (row.caveat ?? row.command)}
-                    onclick={() => row.availability.state === "ready" && onchooseRow(row)}
-                  >
-                    <!-- 語尾の … は問いが立つときだけ付く (doc-11 §12 ②)。 -->
-                    {asksFirst(row) ? confirmMarkedLabel(row.label) : row.label}
-                  </button>
-                  {#if row.availability.state === "withheld"}
-                    <p class="held" id={`${reasonId(index)}-${row.method}`}>
-                      {row.availability.reason}
-                    </p>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
         {#if item.availability.state === "withheld"}
           <!-- Drawn or not by which 保留理由 this is (doc-7 §2.1 の 2 項). All rows shown is omitted:
                the 一覧 below states it — every line the grid draws carries a tick — which is doc-11 §8's
@@ -225,6 +194,45 @@
       </li>
     {/each}
   </ul>
+  {#if external !== null && submenuOpen && external.availability.state === "ready"}
+    <!-- 外部で開く のサブメニュー (doc-7 §2.1, decision-45)。行の集合は crate が答えたもので、この
+         file はプラットフォームも製品名も綴らない。
+         **`ul` の外に置く。** あちらは長いプロジェクト一覧のために `overflow-y: auto` を持ち、
+         スクロール容器はその外へ出た子孫を**両軸で**切る — 実機ではサブメニューが描かれているのに
+         見えず、押しても何も起きないように見えた (オーナーの `pnpm tauri dev` 目視。2026-08-25)。
+         **jsdom はレイアウトを行わないので、DOM の有無を見る試験はこれを捕まえない。**
+         親の行は一覧の先頭なので (decision-45 §2)、`top: 0` がその行の高さに一致する。 -->
+    <div class="submenu" role="group" aria-label={external.label}>
+      {#if external.note !== null}
+        <!-- 継続検出停止の註 (doc-8 §7)。**層ではなくここに出す** — 層は抑止できるので、抑止した
+             利用者には doc-8 §7 の要件が満たされなくなる (decision-45 §9)。 -->
+        <p class="note">{external.note}</p>
+      {/if}
+      <ul class="rows">
+        {#each external.rows as row (row.method)}
+          <li class:group-start={!row.edits && external.rows.some((other) => other.edits)}>
+            <button
+              type="button"
+              aria-disabled={row.availability.state === "withheld"}
+              aria-describedby={row.availability.state === "ready"
+                ? undefined
+                : `header-menu-row-${row.method}`}
+              title={row.availability.state === "withheld"
+                ? row.availability.reason
+                : (row.caveat ?? row.command)}
+              onclick={() => row.availability.state === "ready" && onchooseRow(row)}
+            >
+              <!-- 語尾の … は問いが立つときだけ付く (doc-11 §12 ②)。 -->
+              {asksFirst(row) ? confirmMarkedLabel(row.label) : row.label}
+            </button>
+            {#if row.availability.state === "withheld"}
+              <p class="held" id={`header-menu-row-${row.method}`}>{row.availability.reason}</p>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
 </div>
 
 <style lang="scss">
@@ -232,10 +240,13 @@
     // 親の行の横に開く（オーナーの図）。行に係留されているので `position: absolute` の基準は行であり、
     // パネルの外へ出る幅は親と同じ上限に掛からない — サブメニューの中身はプログラム名と製品名なので、
     // 折り返す語を持たない。
+    // 親の行の横。**基準はパネル（`.menu`）で、行そのものではない** — 行は `ul` の中にあり、あちらは
+    // スクロールするので、そこを基準にすると開いた位置が一覧のスクロール位置で動く。親の行は一覧の
+    // 先頭に固定されているので（decision-45 §2）、パネルの上端がその行の位置である。
     position: absolute;
     z-index: 4;
-    top: 0;
-    right: 100%;
+    top: 0.35rem;
+    right: calc(100% - 0.35rem);
     width: max-content;
     max-width: min(24rem, 90vw);
     background: var(--panel);
@@ -278,7 +289,6 @@
     // for 111.38px); a 60-character name is, and it wraps at the cap with 0px of horizontal overflow.
     width: max-content;
     max-width: min(24rem, 90vw);
-    max-height: 70vh;
     padding: 0.35rem;
     border: 1px solid var(--line-strong);
     // パネル 6px (doc-11 §2.2).
@@ -286,13 +296,26 @@
     background: var(--panel);
     box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 18%, transparent);
     font-size: var(--text-md);
-    overflow-y: auto;
   }
 
   ul {
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  // **スクロールはこの一覧が持ち、パネルは持たない。** 一覧が伸びるのは登録済みプロジェクトの数だけで
+  // （doc-7 §2.1）、上限は 70vh。**パネルの側に置くと、パネルの外へ出したサブメニューが切られる** —
+  // スクロール容器は out-of-flow の子孫も両軸で切るためで、実機ではサブメニューが見えなかった。
+  // サブメニューはこの `ul` の外に置いてあるので切られない。
+  .menu > ul {
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .submenu ul.rows {
+    max-height: 70vh;
+    overflow-y: auto;
   }
 
   // 区切り線 (doc-7 §2.1): 罫線 は `--line` (doc-11 §2.1), 余白は .25rem 段 (doc-11 §2.2). Drawn on the
