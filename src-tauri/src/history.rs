@@ -28,7 +28,7 @@
 //! implementation of it: [`PrCommitSource`] takes the cancel handle, so a host kind added later
 //! cannot be plugged in without one.
 
-use crate::external::ExternalProgram;
+use crate::external::{self, ExternalProgram};
 use crate::ledger::ProjectEntry;
 use crate::subprocess::{self, Cancel, Stopped};
 use serde::Serialize;
@@ -1030,12 +1030,10 @@ fn github_pull_request_commits(
         format!("repos/{owner}/{repo}/pulls/{}/commits", target.number),
     ];
     let mut command = gh.command();
-    command
-        .args(&args)
-        // gh must never stop on a prompt here — there is no terminal to answer it — and its update
-        // notice would otherwise land in the stderr we report as the failure reason.
-        .env("GH_PROMPT_DISABLED", "1")
-        .env("GH_NO_UPDATE_NOTIFIER", "1");
+    command.args(&args);
+    // No terminal here to answer a prompt, and gh's update notice would otherwise land in the stderr
+    // we report as the failure reason. Shared with the 版照会 (`external::quiet_gh`).
+    external::quiet_gh(&mut command);
     let out = match subprocess::launch(&mut command, GH_DEADLINE, cancel) {
         Ok(completed) => completed,
         Err(Stopped::Spawn(e)) => return Err(RelationError::tool_missing(e.to_string())),
