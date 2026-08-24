@@ -175,11 +175,14 @@
     onback: () => void;
     ontoLane: () => void;
     /**
-     * 選択中の管理ファイル (decision-45 §1): which of 文書・マイルストーン・決定事項 is selected here, or
-     * `null` while none is. Reported up because the ☰'s 外部で開く lives on the shell and only this
-     * screen knows which 区画 is open — the shell cannot derive it from a read.
+     * 選択中の管理ファイル (decision-45 §1): the file the open 区画 has selected, or `null` while it has
+     * none. Reported up because the ☰'s 外部で開く lives on the shell and only this screen knows which
+     * 区画 is open — the shell cannot derive it from a read. `dirty` is that file's own 未保存入力; see
+     * `managedSelection` for why it is not this screen's `ondirty`.
      */
-    onselectManaged: (target: { slug: string; sourcePath: string } | null) => void;
+    onselectManaged: (
+      selection: { slug: string; sourcePath: string; dirty: boolean } | null,
+    ) => void;
     /**
      * 当該ルートの再読込 (doc-10 §3, decision-45 §8). doc-8 §7 requires the re-read to be reachable from
      * the screen holding the selection, and this screen had none until 2026-08-25.
@@ -1175,25 +1178,39 @@
     selectedDecision === null ? [] : fileInconsistencyReasons(selectedDecision.health, "decision"),
   );
 
-  /** 表示パス (doc-10 §5's term, §10's instance) for the selected decision. */
   /**
-   * 選択中の管理ファイル (decision-45 §1) as this screen holds it: whichever of the three is selected.
-   * **At most one is**, because the three 区画 are not open at once — so this reads as a chain rather
-   * than needing a rule for which wins.
+   * 選択中の管理ファイル (decision-45 §1) as this screen holds it: **the open 区画's own selection.**
    *
-   * Reported through an `$effect` rather than by calling the callback from each selection handler: the
-   * three selections also *drop* on a read that no longer holds the file (doc-10 §5), and those paths
-   * touch no handler. An effect over the derived value catches every one of them.
+   * **Read from `section`, not from whichever selection happens to be set** (PR #157 1R [P1]). The three
+   * selections outlive a 区画切替 — nothing clears them but a root move or an explicit drop — so a chain
+   * over them hands over the *document* to a user looking at a milestone they just selected. The comment
+   * this replaces claimed the three are never set at once; they are, and nothing had measured it.
+   *
+   * 概要 and 新規タスク select no file, so they report `null` rather than the last 区画's. Handing over a
+   * file whose 表示パス is not on screen would break doc-8 §7's 押す前に読めていなければならない.
+   *
+   * `dirty` is that file's own 未保存入力, which is **not** this screen's `ondirty`: that one aggregates
+   * every 区画 because leaving the screen loses all of it (doc-8 §6.3), while doc-8 §6.4's 二重取り込み is
+   * about editing the *same* file twice. 決定事項 has no session by construction (doc-10 §10 writes
+   * nothing), so it reports `false` rather than reading one it does not have.
+   *
+   * Reported through an `$effect` rather than from each selection handler: the selections also *drop* on
+   * a read that no longer holds the file (doc-10 §5), and 区画切替 touches no handler either.
    */
-  let managedSelection = $derived(
-    selectedDocument !== null
-      ? { slug: entry.slug, sourcePath: selectedDocument.sourcePath }
-      : selectedMilestone !== null
-        ? { slug: entry.slug, sourcePath: selectedMilestone.sourcePath }
-        : selectedDecision !== null
-          ? { slug: entry.slug, sourcePath: selectedDecision.sourcePath }
-          : null,
-  );
+  let managedSelection = $derived.by(() => {
+    const of = (file: { sourcePath: string } | null, fileDirty: boolean) =>
+      file === null ? null : { slug: entry.slug, sourcePath: file.sourcePath, dirty: fileDirty };
+    switch (section) {
+      case "documents":
+        return of(selectedDocument, docEditorDirty);
+      case "milestones":
+        return of(selectedMilestone, milestoneDirty);
+      case "decisions":
+        return of(selectedDecision, false);
+      default:
+        return null;
+    }
+  });
   $effect(() => {
     onselectManaged(managedSelection);
   });

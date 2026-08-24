@@ -2245,6 +2245,114 @@ describe("外部で開く (doc-7 §2.1, decision-45)", () => {
   });
 
   /**
+   * PR #157 1R [P1]. **対象は開いている区画のものである** (decision-45 §1)。3 つの選択は 区画切替 では
+   * 消えないので、「設定されている順」で選ぶと、マイルストーンを見ている利用者に文書が渡る。
+   */
+  it("区画を移ると対象も移る — 先に選んだ文書が残っていても渡すのは見えているほう", async () => {
+    const host = await startWith([
+      loaded("atlas", [TASK], undefined, [DOCUMENT], [MILESTONE]),
+    ]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+
+    click(sectionTab(host, "文書"));
+    click(only(host, "button.card"));
+    await settled();
+
+    // 文書 の選択はここで残ったままになる（区画切替は選択を落とさない）。
+    click(sectionTab(host, "マイルストーン"));
+    click(only(host, "button.card"));
+    await settled();
+
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "OS の関連付けで開く…"));
+    await settled();
+    click(
+      byText(
+        only(host, '[role="dialog"][aria-label="OS の関連付けで開く"]'),
+        ".answers button",
+        "OS の関連付けで開く",
+      ),
+    );
+    await settled();
+    const handed = String(madeTo("managed_file_open").at(-1)?.args[1]);
+    expect(handed).toContain("/milestones/");
+    expect(handed).not.toContain("/docs/");
+
+    // 何も選んでいない区画へ移ると 対象未選択 へ戻る — 表示パス が画面に無いものは渡さない。
+    click(sectionTab(host, "概要"));
+    await settled();
+    expect(parentLine(host).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  /**
+   * PR #157 1R [P2]. **未保存入力の問いは対象のものだけを読む** (doc-8 §6.4)。プロジェクト詳細は 4 区画の
+   * 入力を 1 つの旗で束ねているので（画面を離れるときはそれで正しい。doc-8 §6.3）、概要 に打った名前で
+   * 文書 の 二重取り込み を述べてはならない。
+   */
+  it("概要に打った入力は、文書を外部で開くときの二重取り込みの問いを立てない", async () => {
+    const host = await startWith([loaded("atlas", [TASK], undefined, [DOCUMENT])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+    // 登録解除の確認欄は 概要 の入力で、書き先は台帳ファイルである。
+    fill(only<HTMLInputElement>(host, 'input[placeholder="atlas"]'), "atl");
+    await settled();
+
+    click(sectionTab(host, "文書"));
+    click(only(host, "button.card"));
+    await settled();
+
+    // 層は立つ（frontmatter の注意 は抑止していない）が、二重取り込み の文は入らない。
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "OS の関連付けで開く…"));
+    await settled();
+    const dialog = only(host, '[role="dialog"][aria-label="OS の関連付けで開く"]');
+    expect(dialog.textContent).toContain("frontmatter");
+    expect(dialog.textContent).not.toContain("二重に編集する");
+    click(byText(dialog, ".answers button", "OS の関連付けで開く"));
+    await settled();
+    expect(madeTo("managed_file_open")).toHaveLength(1);
+    // 概要 の入力は失われない（この経路は何も破棄しない）。区画を戻して確かめる — 欄そのものは
+    // 概要 が開いている間だけ描かれるが、入力はこの画面の状態として残っている。
+    click(sectionTab(host, "概要"));
+    await settled();
+    expect(only<HTMLInputElement>(host, 'input[placeholder="atlas"]').value).toBe("atl");
+  });
+
+  /**
+   * PR #157 1R [P2]. **抑止が書けなかったら述べる。** アプリ設定ファイルは未知の上位 `schema_version` で
+   * 読み取り専用へ縮退する（decision-13）ので、この書き込みは拒否されうる。黙って落とすと、利用者が
+   * 刻んだ指定は効かないまま、次の押下で注意が立つときになって初めて食い違いが現れる。
+   */
+  it("抑止を書けなかったら ⑤ 通知 で述べ、それでもファイルは開く", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    answers.settingsSaveFails = true;
+
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "Visual Studio Code で開く…"));
+    await settled();
+    const dialog = only(host, '[role="dialog"][aria-label="Visual Studio Code で開く"]');
+    const tick = dialog.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (tick === null) {
+      throw new Error("expected the 今後表示しない tick");
+    }
+    tick.checked = true;
+    tick.dispatchEvent(new Event("change", { bubbles: true }));
+    click(byText(dialog, ".answers button", "Visual Studio Code で開く"));
+    await settled();
+
+    // 押した用事は通る — 記録できなかったのは併せて頼まれた指定のほうである。
+    expect(madeTo("managed_file_open")).toHaveLength(1);
+    const band = host.querySelector('.band[data-band="notice"]');
+    expect(band?.textContent ?? "").not.toBe("");
+
+    // 抑止は効いていないので、次の押下でも層は立つ。
+    answers.settingsSaveFails = false;
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "Visual Studio Code で開く…"));
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="Visual Studio Code で開く"]')).not.toBeNull();
+  });
+
+  /**
    * `external-editor.ts` の文も 表示言語 で入れ替わる。**この module の文はもうタスク詳細のパネルに
    * 出ない**（decision-45 §8）ので、あちらの描き直しの試験から外れたぶんをここで持つ。
    */

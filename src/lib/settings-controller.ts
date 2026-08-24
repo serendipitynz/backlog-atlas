@@ -212,8 +212,14 @@ export interface SettingsController {
    * the notice keeps standing** rather than the tick appearing to have worked. The screen value is set
    * from the write's answer for that reason, not before it: unlike 既定の詳細配置, nothing here is
    * visible until the *next* press, so there is no change the user can see to protect from a refusal.
+   *
+   * **Resolves with the failure's text rather than swallowing it** (PR #157 1R [P2]). The notice
+   * standing again is the only thing a caller could otherwise notice, and it does not stand until the
+   * *next* press — so a discarded failure leaves the user believing a tick took effect, with the
+   * contradiction arriving later and detached from the act. The caller reports it (doc-11 §5's ground:
+   * an unexplained outcome cannot be told from a broken one).
    */
-  suppressFrontmatterNotice: () => Promise<void>;
+  suppressFrontmatterNotice: () => Promise<(() => string) | null>;
   /**
    * Take another 詳細配置 and make it the 既定 (doc-8 §2.2 選んだ配置はアプリ設定に保存し、再起動後も保つ).
    * The screen changes first and the file follows: a write that fails — decision-13 refuses to overwrite
@@ -524,8 +530,8 @@ export function createSettingsController(
         default_card_order: next,
       }));
     },
-    async suppressFrontmatterNotice(): Promise<void> {
-      await write((current) => ({ ...current, suppress_frontmatter_notice: true }));
+    async suppressFrontmatterNotice(): Promise<(() => string) | null> {
+      return await write((current) => ({ ...current, suppress_frontmatter_notice: true }));
     },
     async applyPlacement(next: DetailPlacement): Promise<void> {
       state.placement = next;
