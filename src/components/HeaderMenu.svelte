@@ -21,6 +21,8 @@
   } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import { omitsSentence, startsGroup, type MenuItem } from "../lib/header";
+  import { asksBeforeOpening, type ExternalOpenRow } from "../lib/external-editor";
+  import { confirmMarkedLabel } from "../lib/edit";
   import { messages } from "../lib/messages-context";
   import Icon from "../lib/icons/Icon.svelte";
 
@@ -32,14 +34,27 @@
      */
     boundary: HTMLElement | null;
     onchoose: (item: MenuItem) => void;
+    /** A press on one row of the 外部で開く サブメニュー (decision-45). */
+    onchooseRow: (row: ExternalOpenRow) => void;
+    /** Whether a press on a row will raise the 注意 layer first — it decides the 語尾の … (doc-11 §12 ②). */
+    asksFirst: (row: ExternalOpenRow) => boolean;
     onclose: () => void;
   }
 
-  let { items, boundary, onchoose, onclose }: Props = $props();
+  let { items, boundary, onchoose, onchooseRow, asksFirst, onclose }: Props = $props();
 
   const t = messages();
 
   let root = $state<HTMLDivElement | null>(null);
+  /**
+   * The 外部で開く サブメニュー, open or not (decision-45 §3). **Not a second 被せ層**: it is moored to its
+   * parent line and goes down with it, which is why doc-7 §2.1 counts the pair as one.
+   *
+   * The 出口の梯子 is three rungs and this state is what makes them distinguishable: Escape lowers only
+   * this, a press outside lowers both (the handler above sees the press as outside the whole box), and
+   * pressing the parent line again lowers only this.
+   */
+  let submenuOpen = $state(false);
 
   // Opened by a press, so the first line takes focus: the menu exists to be walked with the keyboard
   // when the 帯 is too narrow to show its entries, and focus left behind on the ☰ would put the
@@ -75,7 +90,20 @@
     // Spent on this layer: it is the innermost thing open, so the window handler behind must not read
     // the same press as well.
     event.stopPropagation();
+    // 出口の梯子 の 1 段目 (doc-7 §2.1, decision-45 §3): one press lowers one thing, and the submenu is
+    // the innermost. Closing both here would make the ladder two rungs and cost the user the menu they
+    // were still walking.
+    if (submenuOpen) {
+      submenuOpen = false;
+      return;
+    }
     onclose();
+  }
+
+  /** The parent line's press: 3 段目 of the ladder — pressing it again lowers the submenu alone. */
+  function toggleSubmenu(item: MenuItem): void {
+    submenuOpen = !submenuOpen;
+    onchoose(item);
   }
 
   /** A line the user cannot take now says why (doc-11 §5), and the reason is an element, not a title. */
@@ -110,7 +138,10 @@
           aria-keyshortcuts={item.kind === "entry" ? ariaKeyShortcuts(item.entry.action, MAC_KEYBOARD) : undefined}
           aria-pressed={item.kind === "toggleProject" ? item.shown : undefined}
           title={item.kind === "entry" ? item.entry.note : undefined}
-          onclick={() => item.availability.state === "ready" && onchoose(item)}
+          aria-expanded={item.kind === "externalOpen" ? submenuOpen : undefined}
+          onclick={() =>
+            item.availability.state === "ready" &&
+            (item.kind === "externalOpen" ? toggleSubmenu(item) : onchoose(item))}
         >
           {#if item.kind === "toggleProject"}
             <!-- 表示中の印 (doc-7 §2.1). doc-11 §2.4's 可視の文言を持つ控えの中のアイコン: the row's
@@ -128,6 +159,11 @@
                  cannot advertise a chord the matcher does not answer. Hidden from the accessible name
                  because `aria-keyshortcuts` above already carries it as data. -->
             <span class="hint" aria-hidden="true">{shortcutHint(item.entry.action, MAC_KEYBOARD)}</span>
+          {:else if item.kind === "externalOpen"}
+            <!-- サブメニューがあることを図形で述べる。doc-11 §2.4 の 可視の文言を持つ控えの中のアイコン:
+                 行の名前が控えの名前なので図形は語を足さず、開いているかどうかは上の `aria-expanded`
+                 がデータとして運ぶ。 -->
+            <span class="submark" aria-hidden="true"><Icon name="chevron-right" /></span>
           {:else if item.kind === "releasePage" && item.notice !== null}
             <!-- 新しい版 (decision-44 §3). **Not `aria-hidden`**, unlike the chord above: no attribute
                  on this line carries the same fact as data, and the ☰'s own name says only that a
@@ -135,6 +171,42 @@
             <span class="notice">{item.notice}</span>
           {/if}
         </button>
+        {#if item.kind === "externalOpen" && submenuOpen && item.availability.state === "ready"}
+          <!-- 外部で開く のサブメニュー (doc-7 §2.1, decision-45)。行の集合は crate が答えたもので、
+               この file はプラットフォームも製品名も綴らない。 -->
+          <div class="submenu" role="group" aria-label={item.label}>
+            {#if item.note !== null}
+              <!-- 継続検出停止の註 (doc-8 §7)。**層ではなくここに出す** — 層は抑止できるので、
+                   抑止した利用者には doc-8 §7 の要件が満たされなくなる (decision-45 §9)。 -->
+              <p class="note">{item.note}</p>
+            {/if}
+            <ul>
+              {#each item.rows as row (row.method)}
+                <li class:group-start={!row.edits && item.rows.some((other) => other.edits)}>
+                  <button
+                    type="button"
+                    aria-disabled={row.availability.state === "withheld"}
+                    aria-describedby={row.availability.state === "ready"
+                      ? undefined
+                      : `${reasonId(index)}-${row.method}`}
+                    title={row.availability.state === "withheld"
+                      ? row.availability.reason
+                      : (row.caveat ?? row.command)}
+                    onclick={() => row.availability.state === "ready" && onchooseRow(row)}
+                  >
+                    <!-- 語尾の … は問いが立つときだけ付く (doc-11 §12 ②)。 -->
+                    {asksFirst(row) ? confirmMarkedLabel(row.label) : row.label}
+                  </button>
+                  {#if row.availability.state === "withheld"}
+                    <p class="held" id={`${reasonId(index)}-${row.method}`}>
+                      {row.availability.reason}
+                    </p>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
         {#if item.availability.state === "withheld"}
           <!-- Drawn or not by which 保留理由 this is (doc-7 §2.1 の 2 項). All rows shown is omitted:
                the 一覧 below states it — every line the grid draws carries a tick — which is doc-11 §8's
@@ -156,6 +228,35 @@
 </div>
 
 <style lang="scss">
+  .submenu {
+    // 親の行の横に開く（オーナーの図）。行に係留されているので `position: absolute` の基準は行であり、
+    // パネルの外へ出る幅は親と同じ上限に掛からない — サブメニューの中身はプログラム名と製品名なので、
+    // 折り返す語を持たない。
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    right: 100%;
+    width: max-content;
+    max-width: min(24rem, 90vw);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    padding: 0.25rem 0;
+
+    .note {
+      margin: 0.25rem 0.75rem 0.5rem;
+      max-width: 20rem;
+      font-size: 0.85em;
+      color: var(--warn);
+    }
+  }
+
+  .submark {
+    display: inline-flex;
+    margin-left: auto;
+    padding-left: 0.5rem;
+  }
+
   .menu {
     position: absolute;
     z-index: 3;

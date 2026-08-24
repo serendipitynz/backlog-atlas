@@ -16,6 +16,7 @@
  *
  * | term | here | is |
  * |---|---|---|
+ * | doc-7 §2.1 外部で開く | [`externalOpenEntry`] + the `externalOpen` item | the group that hands 選択中の管理ファイル to a program outside Atlas — its rows are `external-editor.ts`'s |
  * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the ☰'s メニュー offers — 登録 and 設定 |
  * | doc-7 §2.1 メニュー | [`MenuItem`] + [`headerMenu`] | メニュー項目: one line of the menu, and the whole list in order |
  * | doc-7 §2.1 キーボード操作一覧（メニュー内） | [`shortcutHelpLabel`] + the `shortcutHelp` item | the menu line that opens the 一覧モーダル, where the 割り当て一覧's 画面に出す列 are drawn. The 一覧 itself is `shortcuts.ts`, which §2.1 holds apart from that table |
@@ -26,7 +27,7 @@
  * | doc-7 §2.1 表示切替行 | one `toggleProject` item | 一覧の 1 行。押すとそのプロジェクト行の表示・非表示が入れ替わる |
  * | doc-7 §2.1 表示中の印 | `MenuItem.shown` on a `toggleProject` item | whether that project's row is on screen — the figure `HeaderMenu.svelte` draws from it |
  * | doc-7 §2.1 すべてのプロジェクトを表示 | [`showAllProjectsLabel`] + the `showAllProjects` item | 一覧の先頭に置く、全行を表示へ戻す行 |
- * | doc-7 §2.1 群（項目の並びの単位） | [`MenuGroup`] + each item's `group` | which of the two 群 a line is in: `layer` raises a 被せ層, `rows` changes which rows the grid draws |
+ * | doc-7 §2.1 群（項目の並びの単位） | [`MenuGroup`] + each item's `group` | which 群 a line is in: `externalOpen` hands a file out of Atlas, `layer` raises a 被せ層, `rows` changes which rows the grid draws, `external` leaves for a fixed destination |
  * | doc-7 §2.1 区切り線 | [`startsGroup`] | メニューの群と群の境目に置く水平の線を指す。Where one is drawn — read from 群 alone, never from `availability` |
  * | doc-11 §5 無効化提示 | [`showAllProjectsAvailability`] | 保留判定 と 保留理由 as one value: whether すべてのプロジェクトを表示 may be pressed, and — when it may not — [`showAllProjectsHeldReason`] if every row is shown, [`noProjectsReason`] if the ledger is empty |
  * | doc-11 §8 可視の文を省いてよい理由 | [`omitsSentence`] | which 保留理由 is drawn without a visible sentence, because the 区画 states it (licence ①) |
@@ -46,9 +47,17 @@
 
 import type { Availability } from "./availability";
 import { AVAILABLE, withheld } from "./availability";
+import {
+  externalOpenAvailability,
+  externalOpenLabel,
+  externalOpenRows,
+  watchStoppedNote,
+  type ExternalOpenContext,
+  type ExternalOpenRow,
+} from "./external-editor";
 import { msg } from "./messages";
 import type { ShortcutAction } from "./shortcuts";
-import type { ReleaseNotice } from "./wire";
+import type { EditorReadiness, ReleaseNotice } from "./wire";
 
 // --- 共通入口 (doc-7 §2.1) ---------------------------------------------------------------------
 
@@ -209,9 +218,39 @@ export function omitsSentence(reason: string): boolean {
  * with how the menu happens to be laid out.
  *
  * `external` arrived with 版の告知 (decision-44 §3), which is neither of the first two: pressing it
- * raises no layer and moves no row.
+ * raises no layer and moves no row. `externalOpen` arrived with 外部で開く (decision-45 §2), which is
+ * not `external` either — that one always goes to the same place, while this one cannot be pressed
+ * without a 選択中の管理ファイル (doc-7 §2.1 の 群).
  */
-export type MenuGroup = "layer" | "rows" | "external";
+export type MenuGroup = "externalOpen" | "layer" | "rows" | "external";
+
+/**
+ * 外部で開く as one menu entry (doc-7 §2.1, decision-45). Assembled here rather than in the markup so
+ * the submenu's rows, the note above them and the parent's 保留判定 are one value the menu can be
+ * tested for — and so `header.ts` stays the only place that says what the menu holds.
+ *
+ * **The note is the submenu's, not the layer's** (decision-45 §9): frontmatter の注意 can be
+ * suppressed and this must not be, so it hangs above the rows that edit rather than inside the layer.
+ */
+export interface ExternalOpenEntry {
+  label: string;
+  availability: Availability;
+  rows: readonly ExternalOpenRow[];
+  /** 継続検出 が止まっている, as the line above the rows — `null` while it is running. */
+  note: string | null;
+}
+
+export function externalOpenEntry(
+  readiness: EditorReadiness | null,
+  context: ExternalOpenContext,
+): ExternalOpenEntry {
+  return {
+    label: externalOpenLabel(),
+    availability: externalOpenAvailability(context),
+    rows: externalOpenRows(readiness, context),
+    note: context.watchStopped ? watchStoppedNote() : null,
+  };
+}
 
 /**
  * One line of the menu. `availability` carries both halves of doc-11 §5's 無効化提示 — whether the line
@@ -224,6 +263,16 @@ export type MenuGroup = "layer" | "rows" | "external";
  * menu did. Keeping the key in the data makes uniqueness a property this module can be tested for.
  */
 export type MenuItem =
+  | {
+      kind: "externalOpen";
+      key: string;
+      group: MenuGroup;
+      label: string;
+      /** The submenu this row opens (decision-45 §3). Drawn only while the row may be pressed. */
+      rows: readonly ExternalOpenRow[];
+      note: string | null;
+      availability: Availability;
+    }
   | { kind: "entry"; key: string; group: MenuGroup; entry: HeaderEntryView; availability: Availability }
   | { kind: "shortcutHelp"; key: string; group: MenuGroup; label: string; availability: Availability }
   | {
@@ -296,7 +345,8 @@ export function startsGroup(items: readonly MenuItem[], index: number): boolean 
 }
 
 /**
- * The menu in order: the 共通入口 first (they are what this list is about), then the line to the
+ * The menu in order: 外部で開く first (decision-45 §2 — the owner's own figure puts it there), then the
+ * 共通入口, then the line to the
  * 一覧モーダル, then リリースページを開く, then the プロジェクト一覧 — すべてのプロジェクトを表示, then one
  * line per registered project in ledger order (doc-3 §2.2, which is the order the grid draws its rows
  * in).
@@ -313,9 +363,19 @@ export function startsGroup(items: readonly MenuItem[], index: number): boolean 
 export function headerMenu(
   projects: readonly MenuProject[],
   releaseNotice: ReleaseNotice | null,
+  externalOpen: ExternalOpenEntry,
 ): MenuItem[] {
   const hiddenCount = projects.filter((project) => !project.shown).length;
   return [
+    {
+      kind: "externalOpen",
+      key: "externalOpen",
+      group: "externalOpen",
+      label: externalOpen.label,
+      rows: externalOpen.rows,
+      note: externalOpen.note,
+      availability: externalOpen.availability,
+    },
     ...HEADER_ENTRIES.map(
       (entry): MenuItem => ({
         kind: "entry",
