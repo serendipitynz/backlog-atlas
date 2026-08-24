@@ -171,6 +171,57 @@ jobs:
       # window are all started below this process and all need the same DISPLAY.
       - run: xvfb-run -a pnpm run e2e
 
+      # 実 OS 通知の配送検査, Linux's third of it (TASK-108, decision-43). It rides this job rather
+      # than the `os-notify` one below because `cargo test` cannot link the crate on Linux until the
+      # WebView development packages are installed, and that apt list is copied per job — a Linux
+      # `os-notify` would be a **fourth** copy, which decision-33 §3 refused and decision-40 refused
+      # again. This job has already paid for the third.
+      #
+      # It runs last so the E2E's verdict is reached first: both are in one job now, so a red job has
+      # two possible causes and the failing step is what names which.
+      - run: pnpm run os-notify
+
+
+  # 実 OS 通知の配送検査 (TASK-108, decision-43) — whether the OS actually delivers a file-change
+  # notification to Atlas's watcher. What it asserts on is a property of the platform, not of this
+  # crate, which is why the test is `#[ignore]`d out of `cargo test` and named here instead.
+  #
+  # **Not a merge requirement**, for decision-40 §5's reason: FSEvents or a runner image can change
+  # under a pull request that did not cause it. The cost is the same one — a check nothing enforces
+  # is a check someone has to read.
+  #
+  # **Linux is deliberately absent from this matrix** and runs in the `e2e` job above instead; the
+  # comment on that step carries why. **Not folded into the `rust` job** either: that job is a merge
+  # requirement, and this is exactly the kind of check that must be able to go red without blocking.
+  os-notify:
+    name: os-notify (${{ matrix.platform }})
+    strategy:
+      # Each platform has its own notification API (FSEvents, ReadDirectoryChangesW), so the one that
+      # has not failed yet is the one worth still hearing from.
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      # No `pnpm install`, and no `cache: pnpm` above to key it on: `scripts/os-notify/run.mjs`
+      # imports node builtins only. `pnpm run` is still the entry point, because it is the one a
+      # reader is told to use and a second spelling of the command is a second place to drift.
+      - run: pnpm run os-notify
+
 
 # Why the `rust` job is macOS and Windows, and deliberately not Linux.
 #
