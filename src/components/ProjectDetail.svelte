@@ -1182,9 +1182,11 @@
    * 選択中の管理ファイル (decision-45 §1) as this screen holds it: **the open 区画's own selection.**
    *
    * **Read from `section`, not from whichever selection happens to be set** (PR #157 1R [P1]). The three
-   * selections outlive a 区画切替 — nothing clears them but a root move or an explicit drop — so a chain
-   * over them hands over the *document* to a user looking at a milestone they just selected. The comment
-   * this replaces claimed the three are never set at once; they are, and nothing had measured it.
+   * selections **outlive a 区画切替**, so a chain over them hands over the *document* to a user looking at
+   * a milestone they just selected. The comment this replaces claimed the three are never set at once;
+   * they are, and nothing had measured it. **What does clear a selection is not enumerated here** — the
+   * rule needs only the one fact above, and the version of this note that listed the clearing events got
+   * them wrong in turn (PR #157 2R [P3]).
    *
    * 概要 and 新規タスク select no file, so they report `null` rather than the last 区画's. Handing over a
    * file whose 表示パス is not on screen would break doc-8 §7's 押す前に読めていなければならない.
