@@ -152,6 +152,9 @@ fn plain_version(text: &str) -> Option<Version> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `fs` is reached only from the unix-only helper below, so on Windows an ungated import is itself
+    // an `unused_imports` failure — the same `-D warnings` that `TempDir` runs into.
+    #[cfg(unix)]
     use std::fs;
     use std::path::PathBuf;
 
@@ -311,10 +314,17 @@ mod tests {
 
     /// Minimal self-cleaning temp directory so tests need no `tempfile` dependency, as
     /// `body_image.rs` and `commands.rs` each hold one.
+    ///
+    /// **`#[cfg(unix)]` like its only caller**, and that is not tidiness: the tests that construct it
+    /// are unix-only, so on Windows it is a struct nobody builds, and `-D warnings` turns `dead_code`
+    /// into a failed `rust (windows-latest)` — a merge-required job (decision-33). The two modules
+    /// above need no gate because their tests are not platform-conditional.
+    #[cfg(unix)]
     struct TempDir {
         path: PathBuf,
     }
 
+    #[cfg(unix)]
     impl TempDir {
         fn new() -> Self {
             static CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -332,6 +342,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     impl Drop for TempDir {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.path);
