@@ -111,6 +111,21 @@ jobs:
           set -eu
           expected="${RELEASE_TAG#v}"
           fail=0
+          # The tag has to be a plain MAJOR.MINOR.PATCH, and this is the only place that can
+          # require it. Atlas's own 版の告知 (decision-44) compares the published tag with the
+          # version this build carries, and it announces nothing for a tag it cannot read as three
+          # numbers — so a release tagged `v0.1.1+build.1` would be a real newer release that no
+          # running Atlas ever mentions. Failing here is what keeps that unreachable rather than
+          # merely deliberate; doc-13 §3.1 carries the reasoning.
+          case "$expected" in
+            *[!0-9.]* | *..* | .* | *. )
+              echo "::error::The tag is '$RELEASE_TAG'. A release tag must be a plain vMAJOR.MINOR.PATCH — build metadata and prerelease suffixes are not supported, because Atlas's in-app version notice cannot compare them and would stay silent for this release." >&2
+              exit 1 ;;
+          esac
+          if [ "$(printf '%s' "$expected" | tr -cd . | wc -c | tr -d ' ')" != "2" ]; then
+            echo "::error::The tag is '$RELEASE_TAG'. A release tag must have exactly three components (vMAJOR.MINOR.PATCH)." >&2
+            exit 1
+          fi
           check() {
             if [ "$2" != "$expected" ]; then
               echo "::error::$1 declares version '$2' but the tag is '$RELEASE_TAG'." >&2

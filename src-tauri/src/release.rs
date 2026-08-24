@@ -125,8 +125,12 @@ fn notice_for(tag: &str) -> Option<ReleaseNotice> {
 ///
 /// **Not a change to [`Version::parse`]**: that one answers `backlog --version`, whose output is a
 /// version embedded in a sentence, and tightening it would move the CLI floor comparison
-/// (decision-7). This is the release tag's own shape, which doc-13 §3.1 already pins to the four
-/// files a tag is checked against.
+/// (decision-7). This is the release tag's own shape.
+///
+/// **The other half of this rule is in the release workflow**, which refuses to build a tag that is
+/// not this form (doc-13 §3.1). Both halves are needed: refusing to compare an unreadable tag is
+/// what stops a wrong answer, and refusing to *publish* one is what stops a real newer release from
+/// going unmentioned — a silence this side cannot tell from being up to date.
 fn plain_version(text: &str) -> Option<Version> {
     let mut parts = text.trim().trim_start_matches('v').split('.');
     let numeric = |part: Option<&str>| -> Option<u32> {
