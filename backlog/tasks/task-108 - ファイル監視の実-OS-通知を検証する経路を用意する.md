@@ -1,10 +1,10 @@
 ---
 id: TASK-108
 title: ファイル監視の実 OS 通知を検証する経路を用意する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-01 00:44'
-updated_date: '2026-08-24 01:05'
+updated_date: '2026-08-24 02:49'
 labels:
   - test
   - rust
