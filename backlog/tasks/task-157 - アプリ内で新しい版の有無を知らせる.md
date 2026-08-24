@@ -1,10 +1,10 @@
 ---
 id: TASK-157
 title: アプリ内で新しい版の有無を知らせる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-13 02:22'
-updated_date: '2026-08-24 10:46'
+updated_date: '2026-08-24 12:16'
 labels:
   - release
   - 'kind:feature'
