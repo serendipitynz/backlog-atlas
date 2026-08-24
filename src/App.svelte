@@ -53,6 +53,8 @@
     settingsSave,
     bodyImageRead,
     bodyLinkOpen,
+    releaseNoticeRead,
+    releasePageOpen,
     taskFileOpen,
     taskHistoryRead,
     taskHistoryCancel,
@@ -63,8 +65,9 @@
   import type { ImageReader } from "./lib/markdown-image";
   import { registeringReason } from "./lib/ledger";
   import type { RemoteLine } from "./lib/git-remote-read";
+  import type { ReleaseNotice } from "./lib/wire";
   import { topBands } from "./lib/band";
-  import { shortcutHelpLabel, headerMenu, type MenuItem } from "./lib/header";
+  import { shortcutHelpLabel, headerMenu, menuName, type MenuItem } from "./lib/header";
   import {
     ariaKeyShortcuts,
     continuesHeldPress,
@@ -295,6 +298,16 @@
    * the band follows the language like everything else. `null` is 通知なし.
    */
   let notice = $state<(() => string) | null>(null);
+
+  /**
+   * 新しい版 (decision-44), or `null` — which is both 照会の縮退 and a build that is already the
+   * published one. The 照会 runs once at startup and nothing re-runs it, so this holds its answer for
+   * the life of the process.
+   *
+   * Kept in the shell rather than in a controller: it is one value with no operation of its own, and
+   * the two places that read it — the ☰'s name and the menu's リリースページ line — are both here.
+   */
+  let releaseNotice = $state<ReleaseNotice | null>(null);
   /**
    * The open task, held as (slug, file path) rather than as the `TaskView` itself: a reload
    * replaces every view object, and a captured one would keep the detail panel showing the
@@ -579,7 +592,7 @@
    * The メニュー's lines (doc-7 §2.1): the 共通入口, then the line that opens the 一覧モーダル, then the
    * プロジェクト一覧 — すべてのプロジェクトを表示 and one 表示切替行 per registered project.
    */
-  let menuItems = $derived(headerMenu(menuProjects));
+  let menuItems = $derived(headerMenu(menuProjects, releaseNotice));
   /**
    * Whether a モーダル is up. While one is, the shell answers no chord at all: doc-7 §2.1 keeps a modal's
    * focus inside itself, and the modal is what answers Escape and Tab there (`Modal.svelte`).
@@ -776,6 +789,14 @@
     // order is stated here rather than inside the controller because the order *is* the contract, and
     // `App.component.test.ts` reads this list to hold it.
     await settingsCtl.probeEditor();
+    // 版照会 (decision-44 §1). **Not awaited**, for `refreshDirectory`'s reason — nothing in startup
+    // reads the answer, so awaiting it would only put a `gh` launch in front of the first draw.
+    //
+    // **Issued before the read rather than after it, and it therefore overlaps the read.** Both
+    // orders are correct — no step depends on this one in either direction — and this one is the
+    // cheaper of the two: after an awaited `load` the `gh` launch would not start until the whole
+    // first read had finished.
+    void readReleaseNotice();
     await workspace.load();
   });
 
@@ -1312,6 +1333,38 @@
     }
   }
 
+  /**
+   * 版照会 (decision-44 §1), whose answer is the 版の告知.
+   *
+   * **A rejection is swallowed and nothing is drawn** — not even ⑤ 通知 (decision-44 §5). The command
+   * itself never rejects; what can is the IPC around it, and outside a Tauri window every boundary call
+   * does. Either way the outcome is the one 照会の縮退 already has.
+   */
+  async function readReleaseNotice(): Promise<void> {
+    try {
+      releaseNotice = await releaseNoticeRead();
+    } catch {
+      releaseNotice = null;
+    }
+  }
+
+  /**
+   * Open リリースページ (decision-44 §4).
+   *
+   * **The failure goes to ⑤ 通知** (doc-11 §4), unlike the 照会's: this one was pressed, and the menu
+   * that held the line closes before the browser answers — 押した層が結果より先に閉じるもの is what ⑤ is
+   * for. A success says nothing, as 本文リンク's does.
+   */
+  async function openReleasePage(): Promise<void> {
+    notice = null;
+    try {
+      await releasePageOpen();
+    } catch (error) {
+      const detail = commandErrorDetail(asCommandError(error));
+      notice = () => detail;
+    }
+  }
+
   /** One reader per registered project, so the prop `Body` receives keeps its identity (below). */
   const imageReaders = new Map<string, ImageReader>();
 
@@ -1430,6 +1483,14 @@
         break;
       case "shortcutHelp":
         overlay.openShortcutHelp();
+        break;
+      case "releasePage":
+        // **Closed before the launch** (doc-7 §2.1 の 群 ごとの閉じる規則). Nothing rises to displace it —
+        // the destination is outside Atlas — so it has to be closed here; the browser comes forward over
+        // a window whose menu would otherwise still be up when the user comes back. Closing it is also
+        // what puts the failure on ⑤ 通知 rather than beside the line (doc-11 §4).
+        overlay.closeMenu();
+        void openReleasePage();
         break;
       case "showAllProjects":
         showAllProjects();
@@ -1572,7 +1633,8 @@
       type="button"
       class="header-entry"
       bind:this={menuButton}
-      aria-label={t().action.menu}
+      class:has-notice={releaseNotice !== null}
+      aria-label={menuName(t().action.menu, releaseNotice !== null)}
       aria-expanded={overlayState.menuOpen}
       aria-haspopup="dialog"
       aria-keyshortcuts={ariaKeyShortcuts("toggleMenu", MAC_KEYBOARD)}
@@ -2031,6 +2093,40 @@
     color: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
+  }
+
+  // 版の告知 の印 (decision-44 §3): the ☰ carries a filled dot while a 新しい版 stands.
+  //
+  // **図形の外側の塗り** (doc-11 §2.4) — an アイコンのみのボタン may not say a persistent state in words,
+  // and the same fact is in the button's `aria-label` because neither a fill nor a stroke reaches a
+  // screen reader. Drawn as a pseudo-element rather than a second `Icon`: doc-11 §2.4's 同じ図形を別の
+  // 操作へ与えない is about figures, and a mark is not one — this dot names no operation.
+  //
+  // `--info` because the family colours are decision-6's three degradations (不整合・読取不能・
+  // 継続検出停止) and this is none of them; the 上部帯 ① and ⑤ take the same value for the same reason.
+  .header-entry.has-notice {
+    position: relative;
+
+    // **Placed off the figure, not over it** — §2.4 asks for a mark outside it, and the corner the
+    // figure leaves is the whole of the room there is. Measured on the real shell: the control is
+    // 24.625px and the figure 11.953px centred in it, so the corner is 6.33px; offsets resolve against
+    // the padding box, so a 5px dot at 0 spans 1–6px and clears the figure by 0.33px. **5px is
+    // therefore the largest that clears it** — and both numbers move with the 地の 1rem (doc-11's note
+    // on its px values), so a base change is a re-measurement rather than an arithmetic adjustment.
+    //
+    // **Kept inside the control** rather than half outside it: `main.screen` clips, and the ☰ stands at
+    // the right edge of whichever 帯 is topmost — a negative offset would be a mark that disappears at
+    // some window widths and not at others.
+    &::after {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--info);
+      content: "";
+    }
   }
 
   // The menu hangs off this box, so its own absolute position is against the ☰ and not the window — and

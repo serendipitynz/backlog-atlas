@@ -179,6 +179,22 @@ pub enum ProbeFailure {
     NoResponse,
 }
 
+/// The environment decision-14 requires of a `gh` 照会: no interactive prompt to stop on, and no
+/// update notice mixed into the output.
+///
+/// One implementation for the two 照会 that exist ([`crate::history`]'s PR commits and
+/// [`crate::release`]'s 版照会), for decision-19's reason for putting the bounded wait in one module:
+/// a second copy can silently omit one of the two, and neither omission shows up until a `gh` on some
+/// other machine writes into the output being parsed.
+///
+/// [`probe_program`] below sets the same two without calling this. That launch is a `--version` on any
+/// 外部コマンド rather than a 照会, and its reason is its own — it keeps `gh`'s notice out of the panel
+/// it fills.
+pub fn quiet_gh(command: &mut Command) {
+    command.env("GH_PROMPT_DISABLED", "1");
+    command.env("GH_NO_UPDATE_NOTIFIER", "1");
+}
+
 /// How long one 解決結果の表示 probe may take. Far below doc-5 §5's 30-second CLI 終了期限, because
 /// this one is not an operation the user asked for — it fills a panel, and three of them run when the
 /// 設定画面 opens. A `--version` that has not answered in five seconds has already told the user what

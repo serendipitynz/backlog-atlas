@@ -520,6 +520,17 @@ stable を追い、`rust-toolchain.toml` も無い）ので、対処は固定で
 `rustup toolchain install <その版>` して `cargo +<その版> clippy` を走らせる。既定を更新しても
 よいが、`+` の形は既定を動かさずに CI の答えを確かめられる。
 
+**同じ非対称のもう 1 つの原因はプラットフォーム自身の `cfg` の集合で、こちらは手元で確かめられる。**
+`#[cfg(unix)]` のテストは Windows で落ちるので、そのテストだけが使っていたもの — 補助の struct・
+`impl`・import — はあちらで `dead_code` や `unused_imports` になり、`-D warnings` がそれを
+`rust (windows-latest)` の失敗に変える。あれはマージ要件である。**macOS からは見えない** —
+あちらでは gate が真で、補助は使われているからである。TASK-157 が unix 限定のテスト 2 本に添えた
+一時ディレクトリの補助でこれを踏んだ。**推論ではなく gate を偽にして確かめる** — そのファイルの
+`#[cfg(unix)]` を全部 `#[cfg(any())]` へ書き換え、`cargo clippy --all-targets -- -D warnings` を
+走らせ、戻す。落ちるものが別プラットフォームで落ちるものと同じになり、現にランナーの 2 件の error を
+そのまま再現した。**逆向きも同じ扱いが要る** — `#[cfg(windows)]` の補助はこちらからどう走らせても
+見えないので、見つけるのは `rust (macos-latest)` の側である。
+
 ## リリース
 
 **リリースの回は、このファイルより先に `backlog/docs/doc-13` を読む。** あの doc がこの層の正本で

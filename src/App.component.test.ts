@@ -192,6 +192,26 @@ describe("起動時の設定・workspace・監視の順序", () => {
     expect(at("workspace_open")).toBeLessThan(at("project_watch_start"));
   });
 
+  /**
+   * 版照会 は起動を待たせない (decision-44 §1). Held open for the whole of startup: the grid still
+   * draws, and the read still happens. An `await` on that step would make this test hang instead — the
+   * one shape a pairwise ordering assertion cannot catch, because a call that never answers has no
+   * position to compare.
+   */
+  it("版照会 が答えなくても起動は進む", async () => {
+    answers.releaseNoticeHold = deferred<void>();
+    await startWith([loaded("atlas", [TASK])]);
+
+    expect(madeTo("release_notice_read")).toHaveLength(1);
+    expect(madeTo("workspace_open")).toHaveLength(1);
+    expect(madeTo("project_watch_start").map((call) => call.args[0])).toEqual(["atlas"]);
+
+    // Ended here rather than left pending: a promise still outstanding at teardown belongs to a
+    // component that has been unmounted.
+    answers.releaseNoticeHold.resolve();
+    await settled();
+  });
+
   it("読み取れなかったルートにも監視を張る", async () => {
     await startWith([loaded("atlas", [TASK]), unreadable("gone")]);
 

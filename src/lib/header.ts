@@ -19,6 +19,9 @@
  * | doc-7 §2.1 全プロジェクトに効く入口 | [`HEADER_ENTRIES`] | 共通入口: the entries the ☰'s メニュー offers — 登録 and 設定 |
  * | doc-7 §2.1 メニュー | [`MenuItem`] + [`headerMenu`] | メニュー項目: one line of the menu, and the whole list in order |
  * | doc-7 §2.1 キーボード操作一覧（メニュー内） | [`shortcutHelpLabel`] + the `shortcutHelp` item | the menu line that opens the 一覧モーダル, where the 割り当て一覧's 画面に出す列 are drawn. The 一覧 itself is `shortcuts.ts`, which §2.1 holds apart from that table |
+ * | decision-44 告知の出し先（メニューの行） | [`releasePageLabel`] + the `releasePage` item | the line that opens リリースページ, there whether or not a 新しい版 exists |
+ * | decision-44 告知の出し先（☰ の印） | [`menuName`] | the ☰'s own name while a 新しい版 stands — the word beside the mark |
+ * | decision-44 新しい版 | [`releaseNoticeText`] | what the line adds when one is published |
  * | doc-7 §2.1 プロジェクト一覧（メニュー内） | [`MenuProject`] + the `toggleProject` items | 登録済みプロジェクトを台帳の並び順に 1 行ずつ並べた群 |
  * | doc-7 §2.1 表示切替行 | one `toggleProject` item | 一覧の 1 行。押すとそのプロジェクト行の表示・非表示が入れ替わる |
  * | doc-7 §2.1 表示中の印 | `MenuItem.shown` on a `toggleProject` item | whether that project's row is on screen — the figure `HeaderMenu.svelte` draws from it |
@@ -45,6 +48,7 @@ import type { Availability } from "./availability";
 import { AVAILABLE, withheld } from "./availability";
 import { msg } from "./messages";
 import type { ShortcutAction } from "./shortcuts";
+import type { ReleaseNotice } from "./wire";
 
 // --- 共通入口 (doc-7 §2.1) ---------------------------------------------------------------------
 
@@ -99,6 +103,41 @@ export function headerEntryView(entry: HeaderEntry): HeaderEntryView {
  */
 export function shortcutHelpLabel(): string {
   return msg().shell.shortcutHelpLabel;
+}
+
+/**
+ * 告知の出し先 の行 (decision-44 §3): the line that opens リリースページ.
+ *
+ * **Named for where it goes, not for what it announces.** It is on the menu whether or not a
+ * 新しい版 exists — a line that appeared and vanished would make the menu a different length at
+ * different starts — so a name like 更新を確認 would also be wrong about what pressing it does
+ * (it opens a page; the 照会 already happened at startup).
+ */
+export function releasePageLabel(): string {
+  return msg().shell.releasePageLabel;
+}
+
+/**
+ * What the リリースページ line adds while a 新しい版 stands (decision-44 §3), and `null` when none
+ * does — 照会の縮退 included, which is why one absent value covers both.
+ *
+ * Visible rather than a figure: the line has a label of its own, so an icon stating the state beside
+ * it would be a second name for the same control (doc-11 §2.4 可視の文言を持つ控えの中のアイコン).
+ */
+export function releaseNoticeText(notice: ReleaseNotice | null): string | null {
+  return notice === null ? null : msg().shell.releaseNoticeAvailable(notice.version);
+}
+
+/**
+ * The name the ☰ announces (decision-44 §3, doc-11 §2.4).
+ *
+ * The ☰ is an アイコンのみのボタン, so its 印 is a fill and reaches the eye alone; §2.4 asks for the
+ * same state in the name, which is the shape `placementSwitchName` takes for the 既定印. The version
+ * is not in it — the line inside the menu carries which one, and this answers only whether to open the
+ * menu at all.
+ */
+export function menuName(label: string, hasNotice: boolean): string {
+  return hasNotice ? msg().shell.menuHasReleaseNotice(label) : label;
 }
 
 /**
@@ -164,11 +203,15 @@ export function omitsSentence(reason: string): boolean {
 
 /**
  * Which 群 a line belongs to (doc-7 §2.1). `layer` lines raise a 被せ層 and leave the grid as it is;
- * `rows` lines change which rows the grid draws and raise nothing. That is the axis, not the position:
- * a line's 群 is a property of what pressing it does, so it is decided here and cannot drift with how
- * the menu happens to be laid out.
+ * `rows` lines change which rows the grid draws and raise nothing; `external` lines leave Atlas
+ * altogether — they hand a URL to the OS and change nothing on screen. That is the axis, not the
+ * position: a line's 群 is a property of what pressing it does, so it is decided here and cannot drift
+ * with how the menu happens to be laid out.
+ *
+ * `external` arrived with 版の告知 (decision-44 §3), which is neither of the first two: pressing it
+ * raises no layer and moves no row.
  */
-export type MenuGroup = "layer" | "rows";
+export type MenuGroup = "layer" | "rows" | "external";
 
 /**
  * One line of the menu. `availability` carries both halves of doc-11 §5's 無効化提示 — whether the line
@@ -183,6 +226,15 @@ export type MenuGroup = "layer" | "rows";
 export type MenuItem =
   | { kind: "entry"; key: string; group: MenuGroup; entry: HeaderEntryView; availability: Availability }
   | { kind: "shortcutHelp"; key: string; group: MenuGroup; label: string; availability: Availability }
+  | {
+      kind: "releasePage";
+      key: string;
+      group: MenuGroup;
+      label: string;
+      /** 新しい版, as the line states it — `null` while none is published (decision-44 §5). */
+      notice: string | null;
+      availability: Availability;
+    }
   | {
       kind: "showAllProjects";
       key: string;
@@ -245,19 +297,23 @@ export function startsGroup(items: readonly MenuItem[], index: number): boolean 
 
 /**
  * The menu in order: the 共通入口 first (they are what this list is about), then the line to the
- * 一覧モーダル, then the プロジェクト一覧 — すべてのプロジェクトを表示, then one line per registered project
- * in ledger order (doc-3 §2.2, which is the order the grid draws its rows in).
+ * 一覧モーダル, then リリースページを開く, then the プロジェクト一覧 — すべてのプロジェクトを表示, then one
+ * line per registered project in ledger order (doc-3 §2.2, which is the order the grid draws its rows
+ * in).
  *
- * The 割り当て一覧 line sits above the プロジェクト一覧 rather than at the end, because the group below it
- * is as long as the ledger: a fixed line placed after a variable list moves whenever a project is
- * registered, and the menu is walked with the keyboard.
+ * The 割り当て一覧 and リリースページ lines sit above the プロジェクト一覧 rather than at the end, because
+ * the group below them is as long as the ledger: a fixed line placed after a variable list moves
+ * whenever a project is registered, and the menu is walked with the keyboard.
  *
  * The list is offered on both screens rather than only on the swimlane. A row hidden earlier is found
  * again here, and making the list appear only after returning to the grid would be a control that hides
  * when it is needed. With nothing hidden the すべて line is present and held, which is the shape
  * doc-11 §5 asks for everywhere.
  */
-export function headerMenu(projects: readonly MenuProject[]): MenuItem[] {
+export function headerMenu(
+  projects: readonly MenuProject[],
+  releaseNotice: ReleaseNotice | null,
+): MenuItem[] {
   const hiddenCount = projects.filter((project) => !project.shown).length;
   return [
     ...HEADER_ENTRIES.map(
@@ -274,6 +330,16 @@ export function headerMenu(projects: readonly MenuProject[]): MenuItem[] {
       key: "shortcutHelp",
       group: "layer",
       label: shortcutHelpLabel(),
+      availability: AVAILABLE,
+    },
+    {
+      kind: "releasePage",
+      key: "releasePage",
+      group: "external",
+      label: releasePageLabel(),
+      notice: releaseNoticeText(releaseNotice),
+      // Pressable whether or not a 新しい版 exists: what it opens is a page, and that page is there
+      // either way. A held line would be doc-11 §5's shape for an operation Atlas cannot perform.
       availability: AVAILABLE,
     },
     {
