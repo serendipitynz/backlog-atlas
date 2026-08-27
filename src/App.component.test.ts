@@ -2154,6 +2154,46 @@ describe("外部で開く (doc-7 §2.1, decision-45)", () => {
   });
 
   /**
+   * 起動指定 が無いときの 保留理由 も、可視の文は省く（doc-11 §8 の licence ②、`omitsSentence`）。
+   * **2026-08-28 にオーナーが実機で判断した** — 非活性な `$EDITOR で開く…` の行だけで足りる。
+   * **省くのは可視の文だけで、理由は読み上げに残る。**
+   */
+  it("起動指定 が無い行は、非活性なだけで理由文を刷らない", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    // 偽の境界は `configured: null` を返すので、この行は保留される（`fake-boundary.ts`）。
+    const row = byText<HTMLButtonElement>(openSubmenu(host), "button", "$EDITOR で開く");
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    const reasonId = row.getAttribute("aria-describedby");
+    expect(reasonId).not.toBeNull();
+    const reason = only(host, `#${reasonId}`);
+    expect(reason.textContent).toContain("設定画面");
+    expect(reason.className).toContain("unseen");
+  });
+
+  /**
+   * 対になる側: 原因が画面の外にある理由は省かない（doc-11 §8）。選んでいるファイルが読み取り結果から
+   * 消えたのは外部での移動・削除であり、利用者が取るべき行動はメニューから読めない。
+   */
+  it("選んでいるファイルが消えた理由は可視のまま残る", async () => {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
+    await settled();
+    // 未保存入力があるあいだ、パネルは消えたファイルを描き続ける（`shown.missing`）。
+    click(byText(host, "button.primary", "編集"));
+    fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
+    emitReload({ slug: "atlas", load: loaded("atlas", [NEIGHBOUR]) });
+    await settled();
+
+    const held = parentLine(host);
+    expect(held.getAttribute("aria-disabled")).toBe("true");
+    const reason = only(host, `#${held.getAttribute("aria-describedby")}`);
+    expect(reason.textContent).toContain("読み取り結果にありません");
+    expect(reason.className).not.toContain("unseen");
+  });
+
+  /**
    * **サブメニューは、スクロールする一覧の中に入っていない。** これは見た目の話ではなく、`overflow` を
    * 持つ容器は out-of-flow の子孫も両軸で切るという規則の話である — 実機ではサブメニューが**描かれて
    * いるのに見えず、押しても何も起きなかった**（オーナーの `pnpm tauri dev` 目視。2026-08-25）。

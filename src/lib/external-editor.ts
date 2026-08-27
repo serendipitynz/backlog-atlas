@@ -298,10 +298,15 @@ export function openNotice(
 
 /**
  * Whether the row's own label takes the trailing `…` (doc-11 §12 ②): it predicts that a press does not
- * reach the action, so it is present exactly when [`openNotice`] is.
+ * reach the action, so it is present exactly when a press would raise [`openNotice`].
+ *
+ * **A withheld row never takes it** (doc-11 §12 ②: 付けたまま問わない控えがあると、記号が予告する相手を
+ * 失う). The row cannot be pressed, so no question will ever be raised from it — the mark would be
+ * predicting something that cannot happen. **Found on the owner's Windows machine on 2026-08-28**,
+ * where the held `$EDITOR で開く` row was printing it.
  */
 export function asksBeforeOpening(row: ExternalOpenRow, context: ExternalOpenContext): boolean {
-  return openNotice(row, context) !== null;
+  return row.availability.state === "ready" && openNotice(row, context) !== null;
 }
 
 /**

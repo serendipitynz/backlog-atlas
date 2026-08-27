@@ -226,7 +226,15 @@
               {asksFirst(row) ? confirmMarkedLabel(row.label) : row.label}
             </button>
             {#if row.availability.state === "withheld"}
-              <p class="held" id={`header-menu-row-${row.method}`}>{row.availability.reason}</p>
+              <!-- 可視の文を省くかどうかは `omitsSentence` が決める (doc-11 §8)。省いても理由は
+                   読み上げに残る（上の `aria-describedby` が指す先がこの要素である）。 -->
+              <p
+                class="held"
+                class:unseen={omitsSentence(row.availability.reason)}
+                id={`header-menu-row-${row.method}`}
+              >
+                {row.availability.reason}
+              </p>
             {/if}
           </li>
         {/each}

@@ -237,6 +237,16 @@ describe("開く前の表示 (decision-45 §6, doc-11 §15)", () => {
     }
   });
 
+  it("keeps the 語尾の … off a row that cannot be pressed (doc-11 §12 ②)", () => {
+    // 記号が予告するのは「押しても動作に届かない」ことなので、押せない控えに付けると予告する相手が
+    // 無くなる。オーナーの Windows 実機で、保留された 起動指定 の行がこれを刷っていた (2026-08-28)。
+    const held = pick(WITHOUT_EDITOR, "configured");
+    expect(held.availability.state).toBe("withheld");
+    expect(asksBeforeOpening(held, context())).toBe(false);
+    // 押せる行では変わらず付く。
+    expect(asksBeforeOpening(pick(ON_MACOS, "configured"), context())).toBe(true);
+  });
+
   it("stops standing once 注意の抑止 is recorded, and the press becomes the launch", () => {
     expect(openNotice(pick(ON_MACOS, "vscode"), context({ noticeSuppressed: true }))).toBe(null);
     expect(asksBeforeOpening(pick(ON_MACOS, "vscode"), context({ noticeSuppressed: true }))).toBe(

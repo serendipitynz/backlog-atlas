@@ -51,6 +51,7 @@ import {
   externalOpenAvailability,
   externalOpenLabel,
   externalOpenRows,
+  noConfiguredEditorReason,
   noTargetReason,
   watchStoppedNote,
   type ExternalOpenContext,
@@ -206,18 +207,31 @@ export function showAllProjectsAvailability(
  * directly under this line with a 表示中の印 on every row it draws, so a menu in which すべての
  * プロジェクトを表示 is held is a menu the user is looking at all-ticked.
  *
- * The second — 対象未選択 on 外部で開く — is on **licence ②**: it says only 「まだ選んでいない」, and what
- * to select is the screen the menu is drawn over. **The owner asked for it on the real machine**
- * (2026-08-25): the inactive line is enough, and the sentence was the longest thing in the menu.
- * **`fileMissingReason` is deliberately not here** — a file moved or deleted outside Atlas is a cause
- * *outside the screen*, which doc-11 §8 says must always be visible.
+ * The second and third are on **licence ②**, both asked for by the owner on the real machine, and both
+ * for the same reason: the inactive line is enough, and the sentence was the longest thing in the menu.
+ *
+ * - **対象未選択 on 外部で開く** (2026-08-25) — it says only 「まだ選んでいない」, and what to select is the
+ *   screen the menu is drawn over.
+ * - **起動指定 が無い on that submenu row** (2026-08-28) — it says only 「まだ設定していない」, and where to
+ *   set it is 設定, a line in this same menu. **②'s ground reads as 同じメニュー here rather than
+ *   フォーム自身**, because a menu is a list of controls and what the reader needs next is one of them
+ *   (doc-11 §8 carries that reading).
+ *
+ * **Two reasons in this group are deliberately not here.** `fileMissingReason` — a file moved or
+ * deleted outside Atlas is a cause *outside the screen*, which doc-11 §8 says must always be visible.
+ * And `editorProbePendingReason`, which says to wait rather than to do something: neither licence
+ * covers it, and the owner named only the two above.
  *
  * What is omitted is the visible sentence and nothing else: doc-7 §2.1 keeps the reason in the
  * accessibility tree, and licence ② asks for the §5 second form (`aria-disabled` plus
  * `aria-describedby` to an element that stays in the DOM), which is what `HeaderMenu.svelte` draws.
  */
 export function omitsSentence(reason: string): boolean {
-  return reason === showAllProjectsHeldReason() || reason === noTargetReason();
+  return (
+    reason === showAllProjectsHeldReason() ||
+    reason === noTargetReason() ||
+    reason === noConfiguredEditorReason()
+  );
 }
 
 /**
