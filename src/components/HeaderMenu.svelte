@@ -249,16 +249,27 @@
     right: calc(100% - 0.35rem);
     width: max-content;
     max-width: min(24rem, 90vw);
+    // **パネルと同じ地・枠・角・影・字。** サブメニューは別の層ではなく同じ 被せ層 の一部なので
+    // (decision-45 §3)、値を新しく選ばずパネルのものを取る。**2026-08-25 の実機で影が無いのを
+    // オーナーが指摘した** — 影が無いと、手前に浮いた面ではなくパネルの地の続きに見える。
+    //
+    // **初版は `--border` と `--warn` を書いていて、どちらも存在しないトークンだった** — 無効値なので
+    // `border` の宣言ごと落ち、枠が 1 本も出ていなかった。**同じ実機目視で見つかった 2 つ目である。**
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 0.25rem;
-    padding: 0.25rem 0;
+    border: 1px solid var(--line-strong);
+    // パネル 6px (doc-11 §2.2).
+    border-radius: 6px;
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 18%, transparent);
+    font-size: var(--text-md);
+    padding: 0.35rem;
 
     .note {
-      margin: 0.25rem 0.75rem 0.5rem;
+      margin: 0.25rem 0.5rem 0.5rem;
       max-width: 20rem;
-      font-size: 0.85em;
-      color: var(--warn);
+      font-size: var(--text-sm);
+      // 継続検出停止 の註。**族の色ではなく `--info`** — 通知・確認の色で、不整合の族ではない
+      // (doc-11 §2.1 の「青い確認は不整合ではない」)。区画の `.warn` が同じ色を借りている。
+      color: var(--info);
     }
   }
 
