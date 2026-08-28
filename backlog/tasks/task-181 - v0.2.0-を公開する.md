@@ -4,7 +4,7 @@ title: v0.2.0 を公開する
 status: In Review
 assignee: []
 created_date: '2026-08-15 12:34'
-updated_date: '2026-08-28 03:17'
+updated_date: '2026-08-28 05:55'
 labels:
   - release
   - 'kind:chore'
@@ -32,10 +32,10 @@ m-3 の最後。m-3 の残りが片付いた時点で v0.2.0 のタグを打ち�
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 README.md と README.ja.md を出荷するビルドと突き合わせてある (doc-13 §2。読者が行動の根拠にする記述 — 動作環境と Linux の下限・対応アーキテクチャ・Backlog CLI の最低バージョン要件・更新の届き方・できることの一覧)
-- [ ] #2 タグと package.json・src-tauri/tauri.conf.json・src-tauri/Cargo.toml・src-tauri/Cargo.lock の 4 ファイルの版が一致している
-- [ ] #3 リリースワークフローの 5 ジョブ (macOS・Linux x86_64・Linux arm64・Windows・下書き作成) がすべて success で終わっている
-- [ ] #4 ドラフトの資産に Linux arm64 の .deb・.rpm・.AppImage が載っており、x86_64 のものと名前で区別できる
-- [ ] #5 TASK-172 の AC #1・#2 をチェックし、TASK-172 を Done にした
+- [x] #2 タグと package.json・src-tauri/tauri.conf.json・src-tauri/Cargo.toml・src-tauri/Cargo.lock の 4 ファイルの版が一致している
+- [x] #3 リリースワークフローの 5 ジョブ (macOS・Linux x86_64・Linux arm64・Windows・下書き作成) がすべて success で終わっている
+- [x] #4 ドラフトの資産に Linux arm64 の .deb・.rpm・.AppImage が載っており、x86_64 のものと名前で区別できる
+- [x] #5 TASK-172 の AC #1・#2 をチェックし、TASK-172 を Done にした
 - [ ] #6 ドラフトのリリースノートを読んだうえで、手で公開した
 <!-- AC:END -->
 

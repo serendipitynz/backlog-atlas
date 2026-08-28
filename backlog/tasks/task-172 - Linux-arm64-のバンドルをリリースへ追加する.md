@@ -1,10 +1,10 @@
 ---
 id: TASK-172
 title: Linux arm64 のバンドルをリリースへ追加する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-14 03:56'
-updated_date: '2026-08-15 12:13'
+updated_date: '2026-08-28 05:55'
 labels:
   - release
   - 'kind:improvement'
@@ -26,8 +26,8 @@ README 和英の導入節は TASK-170 で「Windows と Linux は x64/x86_64 の
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 リリースワークフローが Linux arm64 の .deb・.rpm・.AppImage をドラフトへ載せる
-- [ ] #2 README 和英の導入節が Linux の対応アーキテクチャを実資産どおりに述べている
+- [x] #1 リリースワークフローが Linux arm64 の .deb・.rpm・.AppImage をドラフトへ載せる
+- [x] #2 README 和英の導入節が Linux の対応アーキテクチャを実資産どおりに述べている
 - [x] #3 arm64 実機 (オーナーの VM) で起動を確認した
 <!-- AC:END -->
 
