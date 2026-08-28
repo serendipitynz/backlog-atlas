@@ -27,6 +27,7 @@ const DEFAULTS: AppSettings = {
   collapsed_columns: [],
   folded_rows: [],
   hidden_rows: [],
+  suppress_frontmatter_notice: false,
 };
 
 function file(overrides: Partial<AppSettings> = {}): LoadedSettings {
@@ -144,7 +145,10 @@ function harness(
 }
 
 const READY: CliReadiness = { state: "ready", version: "1.50.1" };
-const EDITOR: EditorReadiness = { configured: null, association: "vi" };
+const EDITOR: EditorReadiness = {
+  configured: null,
+  methods: [{ method: "association", program: "vi", product: "", edits: true }],
+};
 
 describe("読取の適用", () => {
   /**

@@ -265,14 +265,14 @@ export function editorProbe(): Promise<EditorReadiness> {
  * Open one task's management file in the user's editor (doc-8 §7). Atlas starts a process and writes
  * nothing; the editor's save arrives through the ordinary file watch, so there is nothing to await
  * beyond the launch. `sourcePath` must be one the boundary's own read produced — it is checked against
- * the open model, and anything else is refused with `unknownTaskFile`.
+ * the open model, and anything else is refused with `unknownManagedFile`.
  */
-export function taskFileOpen(
+export function managedFileOpen(
   slug: string,
   sourcePath: string,
   method: LaunchMethod,
 ): Promise<EditorLaunch> {
-  return invoke<EditorLaunch>("task_file_open", { slug, sourcePath, method });
+  return invoke<EditorLaunch>("managed_file_open", { slug, sourcePath, method });
 }
 
 /**

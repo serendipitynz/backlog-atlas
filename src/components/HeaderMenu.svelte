@@ -21,6 +21,8 @@
   } from "../lib/shortcuts";
   import { MAC_KEYBOARD } from "../lib/platform";
   import { omitsSentence, startsGroup, type MenuItem } from "../lib/header";
+  import { asksBeforeOpening, type ExternalOpenRow } from "../lib/external-editor";
+  import { confirmMarkedLabel } from "../lib/edit";
   import { messages } from "../lib/messages-context";
   import Icon from "../lib/icons/Icon.svelte";
 
@@ -32,14 +34,32 @@
      */
     boundary: HTMLElement | null;
     onchoose: (item: MenuItem) => void;
+    /** A press on one row of the 外部で開く サブメニュー (decision-45). */
+    onchooseRow: (row: ExternalOpenRow) => void;
+    /** Whether a press on a row will raise the 注意 layer first — it decides the 語尾の … (doc-11 §12 ②). */
+    asksFirst: (row: ExternalOpenRow) => boolean;
     onclose: () => void;
   }
 
-  let { items, boundary, onchoose, onclose }: Props = $props();
+  let { items, boundary, onchoose, onchooseRow, asksFirst, onclose }: Props = $props();
 
   const t = messages();
 
   let root = $state<HTMLDivElement | null>(null);
+  /**
+   * The 外部で開く サブメニュー, open or not (decision-45 §3). **Not a second 被せ層**: it is moored to its
+   * parent line and goes down with it, which is why doc-7 §2.1 counts the pair as one.
+   *
+   * The 出口の梯子 is three rungs and this state is what makes them distinguishable: Escape lowers only
+   * this, a press outside lowers both (the handler above sees the press as outside the whole box), and
+   * pressing the parent line again lowers only this.
+   */
+  let submenuOpen = $state(false);
+  /**
+   * The 外部で開く line, for the サブメニュー drawn outside the scrolling list. Derived rather than read
+   * inside the `{#each}` because the submenu cannot live in the `ul` that scrolls — see its markup.
+   */
+  let external = $derived(items.find((item) => item.kind === "externalOpen") ?? null);
 
   // Opened by a press, so the first line takes focus: the menu exists to be walked with the keyboard
   // when the 帯 is too narrow to show its entries, and focus left behind on the ☰ would put the
@@ -75,7 +95,20 @@
     // Spent on this layer: it is the innermost thing open, so the window handler behind must not read
     // the same press as well.
     event.stopPropagation();
+    // 出口の梯子 の 1 段目 (doc-7 §2.1, decision-45 §3): one press lowers one thing, and the submenu is
+    // the innermost. Closing both here would make the ladder two rungs and cost the user the menu they
+    // were still walking.
+    if (submenuOpen) {
+      submenuOpen = false;
+      return;
+    }
     onclose();
+  }
+
+  /** The parent line's press: 3 段目 of the ladder — pressing it again lowers the submenu alone. */
+  function toggleSubmenu(item: MenuItem): void {
+    submenuOpen = !submenuOpen;
+    onchoose(item);
   }
 
   /** A line the user cannot take now says why (doc-11 §5), and the reason is an element, not a title. */
@@ -110,7 +143,10 @@
           aria-keyshortcuts={item.kind === "entry" ? ariaKeyShortcuts(item.entry.action, MAC_KEYBOARD) : undefined}
           aria-pressed={item.kind === "toggleProject" ? item.shown : undefined}
           title={item.kind === "entry" ? item.entry.note : undefined}
-          onclick={() => item.availability.state === "ready" && onchoose(item)}
+          aria-expanded={item.kind === "externalOpen" ? submenuOpen : undefined}
+          onclick={() =>
+            item.availability.state === "ready" &&
+            (item.kind === "externalOpen" ? toggleSubmenu(item) : onchoose(item))}
         >
           {#if item.kind === "toggleProject"}
             <!-- 表示中の印 (doc-7 §2.1). doc-11 §2.4's 可視の文言を持つ控えの中のアイコン: the row's
@@ -128,6 +164,11 @@
                  cannot advertise a chord the matcher does not answer. Hidden from the accessible name
                  because `aria-keyshortcuts` above already carries it as data. -->
             <span class="hint" aria-hidden="true">{shortcutHint(item.entry.action, MAC_KEYBOARD)}</span>
+          {:else if item.kind === "externalOpen"}
+            <!-- サブメニューがあることを図形で述べる。doc-11 §2.4 の 可視の文言を持つ控えの中のアイコン:
+                 行の名前が控えの名前なので図形は語を足さず、開いているかどうかは上の `aria-expanded`
+                 がデータとして運ぶ。 -->
+            <span class="submark" aria-hidden="true"><Icon name="chevron-right" /></span>
           {:else if item.kind === "releasePage" && item.notice !== null}
             <!-- 新しい版 (decision-44 §3). **Not `aria-hidden`**, unlike the chord above: no attribute
                  on this line carries the same fact as data, and the ☰'s own name says only that a
@@ -153,9 +194,99 @@
       </li>
     {/each}
   </ul>
+  {#if external !== null && submenuOpen && external.availability.state === "ready"}
+    <!-- 外部で開く のサブメニュー (doc-7 §2.1, decision-45)。行の集合は crate が答えたもので、この
+         file はプラットフォームも製品名も綴らない。
+         **`ul` の外に置く。** あちらは長いプロジェクト一覧のために `overflow-y: auto` を持ち、
+         スクロール容器はその外へ出た子孫を**両軸で**切る — 実機ではサブメニューが描かれているのに
+         見えず、押しても何も起きないように見えた (オーナーの `pnpm tauri dev` 目視。2026-08-25)。
+         **jsdom はレイアウトを行わないので、DOM の有無を見る試験はこれを捕まえない。**
+         親の行は一覧の先頭なので (decision-45 §2)、`top: 0` がその行の高さに一致する。 -->
+    <div class="submenu" role="group" aria-label={external.label}>
+      {#if external.note !== null}
+        <!-- 継続検出停止の註 (doc-8 §7)。**層ではなくここに出す** — 層は抑止できるので、抑止した
+             利用者には doc-8 §7 の要件が満たされなくなる (decision-45 §9)。 -->
+        <p class="note">{external.note}</p>
+      {/if}
+      <ul class="rows">
+        {#each external.rows as row (row.method)}
+          <li class:group-start={!row.edits && external.rows.some((other) => other.edits)}>
+            <button
+              type="button"
+              aria-disabled={row.availability.state === "withheld"}
+              aria-describedby={row.availability.state === "ready"
+                ? undefined
+                : `header-menu-row-${row.method}`}
+              title={row.availability.state === "withheld"
+                ? row.availability.reason
+                : (row.caveat ?? row.command)}
+              onclick={() => row.availability.state === "ready" && onchooseRow(row)}
+            >
+              <!-- 語尾の … は問いが立つときだけ付く (doc-11 §12 ②)。 -->
+              {asksFirst(row) ? confirmMarkedLabel(row.label) : row.label}
+            </button>
+            {#if row.availability.state === "withheld"}
+              <!-- 可視の文を省くかどうかは `omitsSentence` が決める (doc-11 §8)。省いても理由は
+                   読み上げに残る（上の `aria-describedby` が指す先がこの要素である）。 -->
+              <p
+                class="held"
+                class:unseen={omitsSentence(row.availability.reason)}
+                id={`header-menu-row-${row.method}`}
+              >
+                {row.availability.reason}
+              </p>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
 </div>
 
 <style lang="scss">
+  .submenu {
+    // 親の行の横に開く（オーナーの図）。行に係留されているので `position: absolute` の基準は行であり、
+    // パネルの外へ出る幅は親と同じ上限に掛からない — サブメニューの中身はプログラム名と製品名なので、
+    // 折り返す語を持たない。
+    // 親の行の横。**基準はパネル（`.menu`）で、行そのものではない** — 行は `ul` の中にあり、あちらは
+    // スクロールするので、そこを基準にすると開いた位置が一覧のスクロール位置で動く。親の行は一覧の
+    // 先頭に固定されているので（decision-45 §2）、パネルの上端がその行の位置である。
+    position: absolute;
+    z-index: 4;
+    top: 0.35rem;
+    right: calc(100% - 0.35rem);
+    width: max-content;
+    max-width: min(24rem, 90vw);
+    // **パネルと同じ地・枠・角・影・字。** サブメニューは別の層ではなく同じ 被せ層 の一部なので
+    // (decision-45 §3)、値を新しく選ばずパネルのものを取る。**2026-08-25 の実機で影が無いのを
+    // オーナーが指摘した** — 影が無いと、手前に浮いた面ではなくパネルの地の続きに見える。
+    //
+    // **初版は `--border` と `--warn` を書いていて、どちらも存在しないトークンだった** — 無効値なので
+    // `border` の宣言ごと落ち、枠が 1 本も出ていなかった。**同じ実機目視で見つかった 2 つ目である。**
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    // パネル 6px (doc-11 §2.2).
+    border-radius: 6px;
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 18%, transparent);
+    font-size: var(--text-md);
+    padding: 0.35rem;
+
+    .note {
+      margin: 0.25rem 0.5rem 0.5rem;
+      max-width: 20rem;
+      font-size: var(--text-sm);
+      // 継続検出停止 の註。**族の色ではなく `--info`** — 通知・確認の色で、不整合の族ではない
+      // (doc-11 §2.1 の「青い確認は不整合ではない」)。区画の `.warn` が同じ色を借りている。
+      color: var(--info);
+    }
+  }
+
+  .submark {
+    display: inline-flex;
+    margin-left: auto;
+    padding-left: 0.5rem;
+  }
+
   .menu {
     position: absolute;
     z-index: 3;
@@ -177,7 +308,6 @@
     // for 111.38px); a 60-character name is, and it wraps at the cap with 0px of horizontal overflow.
     width: max-content;
     max-width: min(24rem, 90vw);
-    max-height: 70vh;
     padding: 0.35rem;
     border: 1px solid var(--line-strong);
     // パネル 6px (doc-11 §2.2).
@@ -185,13 +315,26 @@
     background: var(--panel);
     box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 18%, transparent);
     font-size: var(--text-md);
-    overflow-y: auto;
   }
 
   ul {
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  // **スクロールはこの一覧が持ち、パネルは持たない。** 一覧が伸びるのは登録済みプロジェクトの数だけで
+  // （doc-7 §2.1）、上限は 70vh。**パネルの側に置くと、パネルの外へ出したサブメニューが切られる** —
+  // スクロール容器は out-of-flow の子孫も両軸で切るためで、実機ではサブメニューが見えなかった。
+  // サブメニューはこの `ul` の外に置いてあるので切られない。
+  .menu > ul {
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .submenu ul.rows {
+    max-height: 70vh;
+    overflow-y: auto;
   }
 
   // 区切り線 (doc-7 §2.1): 罫線 は `--line` (doc-11 §2.1), 余白は .25rem 段 (doc-11 §2.2). Drawn on the

@@ -15,6 +15,7 @@ const DEFAULTS: AppSettings = {
   collapsed_columns: [],
   folded_rows: [],
   hidden_rows: [],
+  suppress_frontmatter_notice: false,
 };
 
 /** A writer over a fake file, recording what each save was handed. */

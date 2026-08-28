@@ -60,14 +60,15 @@ use std::path::{Path, PathBuf};
 ///
 /// Raised to 2 when `backlog_cli` was added (TASK-60, decision-16), to 3 when `default_card_order`
 /// was (TASK-132), to 4 when `git_cli` and `gh_cli` joined them (TASK-156, decision-29), to 5
-/// when `language` did (TASK-103, decision-35), and to 6 when `collapsed_columns`, `folded_rows` and
-/// `hidden_rows` did (TASK-148, decision-13 の 再起動をまたぐ保持の改訂).
+/// when `language` did (TASK-103, decision-35), to 6 when `collapsed_columns`, `folded_rows` and
+/// `hidden_rows` did (TASK-148, decision-13 の 再起動をまたぐ保持の改訂), and to 7 when
+/// `suppress_frontmatter_notice` did (TASK-83, decision-45 §6).
 /// decision-13 puts 項目の追加 under this version's management, and the read-only
 /// degrade is what the raise buys: left where it was, a build predating the field would read the newer
 /// file as its own version, let serde drop the key it does not know, and delete the value on its next
 /// save. Older files are unaffected — a *lower* version loads with the missing keys defaulted, and the
 /// next save writes this version.
-pub const KNOWN_SCHEMA_VERSION: u32 = 6;
+pub const KNOWN_SCHEMA_VERSION: u32 = 7;
 
 /// カード情報量 (doc-7 §3): which column of the card assignment table is in force.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -244,6 +245,12 @@ pub struct AppSettings {
     /// one after a sub-table. Skipped when unset, like the editor override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backlog_cli: Option<PathBuf>,
+    /// 注意の抑止 (decision-45 §6, doc-11 §15): whether the frontmatter notice has been turned off for
+    /// good. A setting rather than a session flag, because a suppression that came back on the next
+    /// start would not be one — and it is here rather than counted, since what decides whether the
+    /// layer stands is this value and never a number of times it has stood.
+    #[serde(default)]
+    pub suppress_frontmatter_notice: bool,
     /// 外部コマンド指定 for `git` (decision-29): the executable doc-6 §3 コミット検索, doc-6 §5
     /// remote ホスト種別の判別 and doc-3 §3.2 Git remote 有無属性判定 all launch. Same rule as
     /// `backlog_cli` — used as written, no existence check, no fallback.
@@ -288,6 +295,7 @@ impl Default for AppSettings {
             collapsed_columns: Vec::new(),
             folded_rows: Vec::new(),
             hidden_rows: Vec::new(),
+            suppress_frontmatter_notice: false,
             backlog_cli: None,
             git_cli: None,
             gh_cli: None,
@@ -518,6 +526,7 @@ mod tests {
             default_detail_placement: DetailPlacement::Full,
             default_card_order: CardOrder::MilestoneAsc,
             watch_external_changes: false,
+            suppress_frontmatter_notice: true,
             // 未分類列 among them, because it is the one member of `GridColumn` that is not a
             // 正準ステータス列 and the only one whose token this struct cannot borrow from
             // `StatusColumn` (doc-7 §2.2).
@@ -569,6 +578,7 @@ mod tests {
             default_detail_placement: DetailPlacement::Full,
             default_card_order: CardOrder::MilestoneAsc,
             watch_external_changes: false,
+            suppress_frontmatter_notice: true,
             collapsed_columns: vec![GridColumn::ToDo, GridColumn::Unmapped],
             folded_rows: vec!["atlas".into()],
             hidden_rows: vec!["kanri".into()],
@@ -782,6 +792,7 @@ mod tests {
                 "collapsed_columns",
                 "folded_rows",
                 "hidden_rows",
+                "suppress_frontmatter_notice",
             ],
             "settings.toml holds decision-13's items and nothing else"
         );

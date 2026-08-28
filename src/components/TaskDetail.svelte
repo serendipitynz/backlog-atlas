@@ -84,12 +84,6 @@
     type TransitionOffer,
   } from "../lib/edit";
   import {
-    editorOffers,
-    launchConfirmation,
-    launchSummary,
-    needsConfirmation,
-    type EditorOffer,
-    type OpenOutcome,
   } from "../lib/external-editor";
   import {
     inconsistencyReasons,
@@ -193,11 +187,6 @@
     onconflict: (conflict: VersionConflict | null, target: ConflictTarget) => void;
     /** Issue one 更新操作 through the boundary. The shell owns the call and the re-read. */
     onapply: (action: UpdateOperation[]) => Promise<ApplyOutcome>;
-    /**
-     * Start the user's editor on this task's management file (doc-8 §7). The shell owns the call for
-     * the same reason as `onapply` — it holds the (slug, path) the boundary resolves against.
-     */
-    onopenExternally: (method: LaunchMethod) => Promise<OpenOutcome>;
     /** Follow a dependency to its task (doc-8 §3 解決先タスクへ辿れる), or move to a neighbour. */
     onselect: (view: TaskView) => void;
     onreloadHistory: () => void;
@@ -238,7 +227,6 @@
     conflict,
     onconflict,
     onapply,
-    onopenExternally,
     onselect,
     onreloadHistory,
     ondirty,
@@ -299,9 +287,6 @@
   let externalChange = $derived(
     !missing && session !== null && externallyChanged(session, view),
   );
-  /** The 外部エディタ経路 controls (doc-8 §7). Offered for every 保存区分 — this is the route doc-8
-   * §6.5 sends draft・completed・archive to — so it depends on neither `availability` nor the CLI. */
-  let editorOfferList = $derived(editorOffers(editorReadiness, { fileMissing: missing }));
   let plan = $derived(session === null ? null : buildSave(session));
   /** One decision for the save control's enabled state and its reason (doc-5 §5). */
   let saveGate = $derived(saveAvailability(plan, { fileMissing: missing, busy }));
@@ -570,55 +555,6 @@
     } finally {
       busy = false;
     }
-  }
-
-  /**
-   * The last launch, or the reason there was none — and which file it was for. Kept apart from
-   * `saveState` because an editor launch is not a CLI update, and *keyed by path* for the reason the
-   * Git 履歴 read is (TASK-35): a notice held by identity would state "起動しました" over the next task
-   * the panel is pointed at, and every reload replaces the view objects.
-   */
-  let openState = $state<
-    | { state: "idle" }
-    | { state: "launched"; path: string; summary: string }
-    // Nothing was started: the press found 継続検出 stopped, and the notice it produced has to be read
-    // before the editor opens (doc-8 §7). Kept apart from `failed` — nothing went wrong.
-    | { state: "deferred"; path: string; detail: string }
-    | { state: "failed"; path: string; detail: string }
-  >({ state: "idle" });
-  /** The notice belonging to the *open* task; anything else counts as no launch on this task. */
-  let openNotice = $derived(
-    openState.state !== "idle" && openState.path === task.sourcePath ? openState : null,
-  );
-
-  /**
-   * 外部エディタ経路 (doc-8 §7). Deliberately leaves the 編集セッション alone: doc-8 §6.4 does not let
-   * an external edit take the 未保存入力, so opening the file neither saves nor discards the draft. The
-   * two are reconciled where they already are — the 継続検出 notice above, and the save's 更新前競合検出.
-   */
-  function openExternally(offer: EditorOffer, control: HTMLButtonElement): void {
-    if (offer.availability.state === "withheld") {
-      return;
-    }
-    // The path is captured before anything can be awaited: the launch is for the task that was on
-    // screen when it was asked for, and the answer is filed under that file rather than under whatever
-    // is shown when it arrives (the shell resolves the same (slug, path) pair).
-    const path = task.sourcePath;
-    if (needsConfirmation(dirty)) {
-      focusForReturn(control);
-      onconfirmIssue(launchConfirmation(offer), () => void launch(offer, path));
-      return;
-    }
-    void launch(offer, path);
-  }
-
-  /** Start the editor, and say what became of it against the file it was asked for (doc-8 §7). */
-  async function launch(offer: EditorOffer, path: string): Promise<void> {
-    const outcome = await onopenExternally(offer.method);
-    openState =
-      outcome.state === "launched"
-        ? { state: "launched", path, summary: launchSummary(outcome.launch) }
-        : { state: outcome.state, path, detail: outcome.detail };
   }
 
   // --- 見出しの操作群 (doc-8 §2.2) ----------------------------------------------------------
@@ -917,16 +853,7 @@
      その行を 1 つの区画として扱えなければならないので、ここでまとめておく。 -->
 {#snippet transitionsRow()}
   <TransitionsSection {transitions} {busy} onrun={runTransition} {layout} />
-  <ExternalEditorSection
-    sourcePath={task.sourcePath}
-    offers={editorOfferList}
-    {watchStopped}
-    {dirty}
-    notice={openNotice}
-    {onreread}
-    onopen={openExternally}
-    {layout}
-  />
+  <ExternalEditorSection sourcePath={task.sourcePath} {watchStopped} {onreread} {layout} />
 {/snippet}
 
 {#snippet column(order: readonly SectionKey[])}

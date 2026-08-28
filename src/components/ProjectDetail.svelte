@@ -41,6 +41,7 @@
   import NewTaskSection from "./project-detail/NewTaskSection.svelte";
   import OverviewSection from "./project-detail/OverviewSection.svelte";
   import { fileInconsistencyReasons } from "../lib/mark";
+  import { rereadRootLabel } from "../lib/external-editor";
   import type { DiscardAnswers } from "../lib/edit";
   import { messages } from "../lib/messages-context";
   import {
@@ -174,6 +175,22 @@
     onback: () => void;
     ontoLane: () => void;
     /**
+     * 選択中の管理ファイル (decision-45 §1): the file the open 区画 has selected, or `null` while it has
+     * none. Reported up because the ☰'s 外部で開く lives on the shell and only this screen knows which
+     * 区画 is open — the shell cannot derive it from a read. `dirty` is that file's own 未保存入力; see
+     * `managedSelection` for why it is not this screen's `ondirty`.
+     */
+    onselectManaged: (
+      selection: { slug: string; sourcePath: string; dirty: boolean } | null,
+    ) => void;
+    /**
+     * 当該ルートの再読込 (doc-10 §3, decision-45 §8). doc-8 §7 requires the re-read to be reachable from
+     * the screen holding the selection, and this screen had none until 2026-08-25.
+     */
+    onreread: () => void;
+    /** 継続検出 が止まっている for this root (doc-9 §3.1) — the re-read is offered only while it is. */
+    watchStopped: boolean;
+    /**
      * The ☰ and its menu (decision-31), drawn by the shell and placed at the right end of this
      * screen's ヘッダ行 (doc-10 §3). Since the 固定ヘッダ went it is the only visible way to 設定・
      * プロジェクトを登録・キーボード操作一覧 while this screen is up — doc-10 §2 records why an entry
@@ -199,6 +216,9 @@
     onoverlay,
     onback,
     ontoLane,
+    onselectManaged,
+    onreread,
+    watchStopped,
     menu,
   }: Props = $props();
 
@@ -1158,7 +1178,44 @@
     selectedDecision === null ? [] : fileInconsistencyReasons(selectedDecision.health, "decision"),
   );
 
-  /** 表示パス (doc-10 §5's term, §10's instance) for the selected decision. */
+  /**
+   * 選択中の管理ファイル (decision-45 §1) as this screen holds it: **the open 区画's own selection.**
+   *
+   * **Read from `section`, not from whichever selection happens to be set** (PR #157 1R [P1]). The three
+   * selections **outlive a 区画切替**, so a chain over them hands over the *document* to a user looking at
+   * a milestone they just selected. The comment this replaces claimed the three are never set at once;
+   * they are, and nothing had measured it. **What does clear a selection is not enumerated here** — the
+   * rule needs only the one fact above, and the version of this note that listed the clearing events got
+   * them wrong in turn (PR #157 2R [P3]).
+   *
+   * 概要 and 新規タスク select no file, so they report `null` rather than the last 区画's. Handing over a
+   * file whose 表示パス is not on screen would break doc-8 §7's 押す前に読めていなければならない.
+   *
+   * `dirty` is that file's own 未保存入力, which is **not** this screen's `ondirty`: that one aggregates
+   * every 区画 because leaving the screen loses all of it (doc-8 §6.3), while doc-8 §6.4's 二重取り込み is
+   * about editing the *same* file twice. 決定事項 has no session by construction (doc-10 §10 writes
+   * nothing), so it reports `false` rather than reading one it does not have.
+   *
+   * Reported through an `$effect` rather than from each selection handler: the selections also *drop* on
+   * a read that no longer holds the file (doc-10 §5), and 区画切替 touches no handler either.
+   */
+  let managedSelection = $derived.by(() => {
+    const of = (file: { sourcePath: string } | null, fileDirty: boolean) =>
+      file === null ? null : { slug: entry.slug, sourcePath: file.sourcePath, dirty: fileDirty };
+    switch (section) {
+      case "documents":
+        return of(selectedDocument, docEditorDirty);
+      case "milestones":
+        return of(selectedMilestone, milestoneDirty);
+      case "decisions":
+        return of(selectedDecision, false);
+      default:
+        return null;
+    }
+  });
+  $effect(() => {
+    onselectManaged(managedSelection);
+  });
   let selectedDecisionPath = $derived(
     selectedDecision === null ? null : displayPath(selectedDecision.sourcePath, entry.project_root),
   );
@@ -1464,6 +1521,12 @@
         {t().state.loading}
       {/if}
     </span>
+    {#if watchStopped}
+      <!-- 当該ルートの再読込 (doc-10 §3, decision-45 §8)。**継続検出 が止まっている間だけ出す** —
+           動いている間は外部での保存が自動で届くので、押す理由が無い。置き場がヘッダ行なのは、ここが
+           この画面のルート全体に効く操作の場所だからである。 -->
+      <button type="button" class="reread" onclick={onreread}>{rereadRootLabel()}</button>
+    {/if}
     <button type="button" class="to-lane" onclick={ontoLane}>{t().projectDetail.toLane}</button>
     <!-- 帯の右端 (decision-31). After 出口 rather than before it: the two exits are what this screen
          offers, and the ☰ opens things that have nothing to do with this project. -->

@@ -40,7 +40,7 @@
     "reloadFailed",
     "versionProbeFailed",
     "watchFailed",
-    "unknownTaskFile",
+    "unknownManagedFile",
     "editorUnavailable",
     "editorLaunchFailed",
     "historyCancelled",
@@ -102,7 +102,13 @@
   ],
   "LaunchMethod": [
     "configured",
-    "association"
+    "association",
+    "vscode",
+    "zed",
+    "cotEditor",
+    "notepadPlusPlus",
+    "reveal",
+    "terminal"
   ],
   "LaunchRefusal": [
     "osRefused",

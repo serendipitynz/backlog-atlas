@@ -524,10 +524,10 @@ export type CommandError =
   | { kind: "reloadFailed"; detail: string; applied: unknown }
   | { kind: "versionProbeFailed"; detail: string }
   | { kind: "watchFailed"; slug: string; detail: string }
-  // 外部エディタ経路 (doc-8 §7). `unknownTaskFile` is a path that is not one of the open model's task
+  // 外部エディタ経路 (doc-8 §7). `unknownManagedFile` is a path that is not one of the open model's task
   // files: nothing was started. The other two separate "this environment has no launcher for the
   // method you chose" from "the launcher existed and the OS refused it".
-  | { kind: "unknownTaskFile"; slug: string; path: string }
+  | { kind: "unknownManagedFile"; slug: string; path: string }
   // Carries nothing: 起動指定の解決順 has one way of coming up empty, so the token is the whole reason.
   | { kind: "editorUnavailable" }
   | {
@@ -594,8 +594,21 @@ export type ImageRefusal =
 
 // --- 外部エディタ経路 (doc-8 §7, TASK-37) ----------------------------------------------------
 
-/** Which of doc-8 §7's two launch methods to use: `$VISUAL`/`$EDITOR`, or the OS association. */
-export type LaunchMethod = "configured" | "association";
+/**
+ * Which row of 外部で開く to perform (doc-8 §7, decision-45 §4). Widened from two to eight on
+ * 2026-08-25: 名前付きエディタ name a product, and the last two hand over the containing folder rather
+ * than the file. Which rows a platform offers is `EditorReadiness.methods`, never this union — a
+ * member here is a row that *exists*, not one that is drawn.
+ */
+export type LaunchMethod =
+  | "configured"
+  | "association"
+  | "vscode"
+  | "zed"
+  | "cotEditor"
+  | "notepadPlusPlus"
+  | "reveal"
+  | "terminal";
 
 /**
  * 起動指定 (doc-8 §7): the program to start and the arguments preceding the file path. Also the shape
@@ -617,15 +630,37 @@ export interface ConfiguredEditor {
   args: string[];
 }
 
+/** One row of 外部で開く as the screen needs it (decision-45 §4). */
+export interface MethodOffer {
+  method: LaunchMethod;
+  /**
+   * What this row invokes, for the screen to state: a program name (`open`, `code.cmd`), or
+   * `ShellExecuteW` where the platform's association launcher is a Win32 call. **Empty for
+   * `configured`**, whose program is whatever the resolution order found — that row reads
+   * `EditorReadiness.configured` instead, and states the 保留理由 when nothing resolved.
+   */
+  program: string;
+  /**
+   * The product name the row names on screen (`Visual Studio Code`, `Finder`), or empty for the two
+   * rows named by what they do. A product name is an identifier, so it is not translated
+   * (decision-35 §5): the 文言表 receives it and words the row around it.
+   */
+  product: string;
+  /** Whether this row hands over something to edit — the rows that carry frontmatter の注意
+   * (decision-45 §6). False for 所在に効く 2 操作, neither of which offers a way to write the file. */
+  edits: boolean;
+}
+
 /**
- * Which launch methods the environment has. `association` is what that method invokes: a program name
- * where the platform's launcher is a program (`open`, `xdg-open`), or `ShellExecuteW` where it is a
- * Win32 call (Windows — `editor::association_launcher_of`). Never `null`: every platform this project
- * builds for has a launcher. Whether a named *program* is installed is only learned by running it.
+ * Which rows of 外部で開く this environment offers, in the order the submenu draws them
+ * (decision-45 §4). **Presence is decided by the platform alone**: whether a named editor is
+ * installed is not probed, because the three platforms have no common way to ask and a row that
+ * appeared with an install would make the row set state something the user cannot read. A missing
+ * program surfaces as a launch failure.
  */
 export interface EditorReadiness {
   configured: ConfiguredEditor | null;
-  association: string;
+  methods: MethodOffer[];
 }
 
 /** What one launch did. Shown, because a terminal-only editor started from a GUI process is the
@@ -889,6 +924,12 @@ export interface AppSettings {
   collapsed_columns: GridColumn[];
   folded_rows: string[];
   hidden_rows: string[];
+  /**
+   * 注意の抑止 (decision-45 §6, doc-11 §15): whether frontmatter の注意 has been turned off for good.
+   * Present rather than optional — the crate writes it on every save, and a missing key loads as
+   * `false`, which is "the notice still stands".
+   */
+  suppress_frontmatter_notice: boolean;
   /**
    * 実行ファイル解決の順序 の 1 段目 (doc-5 §4, decision-16): the Backlog CLI executable to run, as an
    * absolute path. Absent — not `null` — when unset, like `external_editor`, and unset is the normal

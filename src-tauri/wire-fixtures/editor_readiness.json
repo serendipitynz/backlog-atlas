@@ -6,5 +6,24 @@
       "-w"
     ]
   },
-  "association": "open"
+  "methods": [
+    {
+      "method": "vscode",
+      "program": "open",
+      "product": "Visual Studio Code",
+      "edits": true
+    },
+    {
+      "method": "configured",
+      "program": "",
+      "product": "",
+      "edits": true
+    },
+    {
+      "method": "reveal",
+      "program": "open",
+      "product": "Finder",
+      "edits": false
+    }
+  ]
 }

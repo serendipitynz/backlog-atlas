@@ -60,10 +60,14 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Which of doc-8 §7's two launch methods to use. Deserialized from the frontend: the UI offers the
-/// methods [`EditorReadiness`] reports and names the one it is asking for, so the choice is the
-/// user's rather than a fallback chain guessing on their behalf — a terminal-only `EDITOR` and an
+/// Which row of 外部で開く to perform (doc-8 §7, decision-45 §4). Deserialized from the frontend: the
+/// UI offers the rows [`EditorReadiness`] reports and names the one it is asking for, so the choice is
+/// the user's rather than a fallback chain guessing on their behalf — a terminal-only `EDITOR` and an
 /// association-launched GUI editor are not interchangeable, and only the user knows which they meant.
+///
+/// **Widened from two to eight on 2026-08-25** (decision-45). The name still fits: every row starts a
+/// program the OS owns, including the two that hand over a directory rather than a file. Which rows
+/// this platform offers is [`rows_of`]; what each one invokes is [`spec_of`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LaunchMethod {
@@ -71,6 +75,49 @@ pub enum LaunchMethod {
     Configured,
     /// The platform's file-association launcher (doc-8 §7 OS の関連付け起動).
     Association,
+    /// 名前付きエディタ: Visual Studio Code.
+    Vscode,
+    /// 名前付きエディタ: Zed.
+    Zed,
+    /// 名前付きエディタ: CotEditor (macOS only).
+    CotEditor,
+    /// 名前付きエディタ: Notepad++ (Windows only).
+    NotepadPlusPlus,
+    /// ファイルマネージャで示す: the containing folder, with the file selected in it.
+    Reveal,
+    /// 端末で開く: a terminal whose working directory is the containing folder.
+    Terminal,
+}
+
+impl LaunchMethod {
+    /// Every row, for the tests that assert the platform tables as a whole. An exhaustive `match` on
+    /// the way out of [`spec_of`] is what makes adding a row force a decision per platform; this makes
+    /// adding one force the invariants to be re-checked too.
+    #[cfg(test)]
+    const ALL: [LaunchMethod; 8] = [
+        LaunchMethod::Configured,
+        LaunchMethod::Association,
+        LaunchMethod::Vscode,
+        LaunchMethod::Zed,
+        LaunchMethod::CotEditor,
+        LaunchMethod::NotepadPlusPlus,
+        LaunchMethod::Reveal,
+        LaunchMethod::Terminal,
+    ];
+
+    /// Whether this row hands over something to edit (decision-45 §6). The rows that do carry
+    /// frontmatter の注意; the 所在に効く 2 操作 do not, because neither offers a way to write the file.
+    const fn edits(self) -> bool {
+        match self {
+            LaunchMethod::Configured
+            | LaunchMethod::Association
+            | LaunchMethod::Vscode
+            | LaunchMethod::Zed
+            | LaunchMethod::CotEditor
+            | LaunchMethod::NotepadPlusPlus => true,
+            LaunchMethod::Reveal | LaunchMethod::Terminal => false,
+        }
+    }
 }
 
 /// 起動指定 (doc-8 §7): the program to start and the arguments that precede the file path. Held as a
@@ -126,20 +173,20 @@ pub struct ConfiguredEditor {
     pub args: Vec<String>,
 }
 
-/// Which launch methods this environment has (doc-8 §7). The two are independent: a machine with no
-/// `EDITOR` still has the association launcher, which is why the UI draws a control per method and
-/// states the reason for the one it cannot offer instead of collapsing both into one button.
+/// Which rows of 外部で開く this environment offers, in the order the submenu draws them (doc-8 §7,
+/// decision-45 §4). The rows are independent: a machine with no `EDITOR` still has the association
+/// launcher and the named editors, which is why the UI draws a control per row and states the reason for
+/// the one it cannot offer instead of collapsing them into one button.
+///
+/// **Which rows are present is decided by the platform alone** ([`rows_of`]). Whether a named editor is
+/// *installed* is not probed (decision-45 §4): the three platforms have no common way to ask, and a row
+/// that appeared and vanished with an install would make the row set state something the user cannot
+/// read. A missing program surfaces as a launch failure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorReadiness {
     pub configured: Option<ConfiguredEditor>,
-    /// What the association method invokes, for the UI to state: a program name where the platform's
-    /// launcher is a program (`open`, `xdg-open`), or `ShellExecuteW` where it is a Win32 call. Not an
-    /// `Option`: every platform this project builds for has a launcher (see
-    /// [`association_launcher_of`]), so an absent one is no longer a state to report. Whether a *named
-    /// program* is installed is still only learned by running it, and a missing one surfaces as a
-    /// launch failure.
-    pub association: String,
+    pub methods: Vec<MethodOffer>,
 }
 
 /// What one launch did (doc-8 §7). Returned rather than discarded because a launch that "did
@@ -469,7 +516,7 @@ const fn com_init(hr: i32) -> ComInit {
 ///
 /// A guard rather than a bare call, because **the initialization has to be given back.** Every
 /// `CoInitializeEx` that succeeds — `S_OK` on a fresh thread, `S_FALSE` on one already initialized —
-/// raises a per-thread count that only `CoUninitialize` lowers, and `commands::task_file_open` is
+/// raises a per-thread count that only `CoUninitialize` lowers, and `commands::managed_file_open` is
 /// `#[tauri::command(async)]`: it runs on a *shared* runtime worker, so an unbalanced call would leave
 /// that thread's count one higher after every launch and never let its apartment be torn down.
 ///
@@ -563,9 +610,31 @@ fn probe_on(
     settings: Option<&EditorCommand>,
     env: &dyn Environment,
 ) -> EditorReadiness {
+    let configured = resolve(settings, env);
+    let methods = rows_of(platform)
+        .iter()
+        .map(|&method| MethodOffer {
+            method,
+            program: match method {
+                // Whatever `resolve` found; the screen reads `configured` for this row's own label and
+                // states the 保留理由 when nothing did.
+                LaunchMethod::Configured => String::new(),
+                LaunchMethod::Association => association_launcher_of(platform).name().to_string(),
+                // `expect` rather than a fallback: `rows_of` and `spec_of` are two halves of
+                // decision-45 §4's table, and a row this platform offers with no spec is a table that
+                // disagrees with itself — reported by a test, not papered over at run time.
+                _ => spec_of(platform, method)
+                    .expect("a row this platform offers has a spec")
+                    .program
+                    .to_string(),
+            },
+            product: product_of(platform, method).unwrap_or_default().to_string(),
+            edits: method.edits(),
+        })
+        .collect();
     EditorReadiness {
-        configured: resolve(settings, env),
-        association: association_launcher_of(platform).name().to_string(),
+        configured,
+        methods,
     }
 }
 
@@ -644,6 +713,197 @@ impl Platform {
     const ALL: [Platform; 3] = [Platform::MacOs, Platform::Windows, Platform::Freedesktop];
 }
 
+/// What one row of 外部で開く hands over: the file itself, or the folder it sits in (decision-45).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TargetKind {
+    File,
+    /// The containing directory. `端末で開く` hands over a working directory, not a file to open.
+    Directory,
+}
+
+/// How one row reaches the OS on one platform (decision-45 §4). A table entry rather than a branch at
+/// the call site, so every platform's answer is a value this host can read (m-1 TASK-44: プラットフォーム
+/// 分岐は `cfg` ではなく値にする).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MethodSpec {
+    program: &'static str,
+    /// Arguments preceding the target, each its own argv element.
+    before: &'static [&'static str],
+    /// Text glued to the front of the target *inside one argv element* (`explorer.exe /select,<path>`),
+    /// or `""` when the target stands alone. **Not a shell string** — the glued element is still one
+    /// argv element, which is what keeps AGENTS' no-shell rule intact for a path containing `&` or `%`.
+    glue: &'static str,
+    target: TargetKind,
+    /// Whether this program's exit status says anything (decision-45 §5). True only for helpers that
+    /// hand the target on and exit; an editor that keeps running has nothing to report in the window,
+    /// and `explorer.exe` exits 1 even when it succeeded.
+    observed: bool,
+}
+
+/// The product name this row names on screen, or `None` for the two rows named by what they do
+/// (起動指定・OS の関連付け). Product names are identifiers rather than 画面文, so they are not
+/// translated (decision-35 §5) — the 文言表 receives this string and words the row around it.
+const fn product_of(platform: Platform, method: LaunchMethod) -> Option<&'static str> {
+    match method {
+        LaunchMethod::Configured | LaunchMethod::Association => None,
+        LaunchMethod::Vscode => Some("Visual Studio Code"),
+        LaunchMethod::Zed => Some("Zed"),
+        LaunchMethod::CotEditor => Some("CotEditor"),
+        LaunchMethod::NotepadPlusPlus => Some("Notepad++"),
+        // The file manager and the terminal are named by the platform's own product, which is why
+        // these two read the platform where the editors above do not.
+        LaunchMethod::Reveal => match platform {
+            Platform::MacOs => Some("Finder"),
+            Platform::Windows => Some("Explorer"),
+            Platform::Freedesktop => None,
+        },
+        LaunchMethod::Terminal => match platform {
+            Platform::MacOs => Some("Terminal"),
+            Platform::Windows => Some("Windows Terminal"),
+            Platform::Freedesktop => None,
+        },
+    }
+}
+
+/// Which rows this platform offers, in the order the submenu draws them (decision-45 §4). The table in
+/// that decision is the source; this is its transcription, and [`tests::the_rows_match_the_decisions_table`]
+/// is what keeps the two in step.
+const fn rows_of(platform: Platform) -> &'static [LaunchMethod] {
+    match platform {
+        Platform::MacOs => &[
+            LaunchMethod::Vscode,
+            LaunchMethod::Zed,
+            LaunchMethod::CotEditor,
+            LaunchMethod::Configured,
+            LaunchMethod::Association,
+            LaunchMethod::Reveal,
+            LaunchMethod::Terminal,
+        ],
+        Platform::Windows => &[
+            LaunchMethod::Vscode,
+            LaunchMethod::Zed,
+            LaunchMethod::NotepadPlusPlus,
+            LaunchMethod::Configured,
+            LaunchMethod::Association,
+            LaunchMethod::Reveal,
+            LaunchMethod::Terminal,
+        ],
+        // No 所在に効く 2 操作 here: the file manager and the terminal differ per desktop environment,
+        // so no single call is decidable (decision-45 §4). Atlas says nothing about their absence.
+        Platform::Freedesktop => &[
+            LaunchMethod::Vscode,
+            LaunchMethod::Zed,
+            LaunchMethod::Configured,
+            LaunchMethod::Association,
+        ],
+    }
+}
+
+/// What one row invokes on one platform, or `None` for the two rows that resolve at run time
+/// ([`LaunchMethod::Configured`] through [`resolve`], [`LaunchMethod::Association`] through
+/// [`association_call`]) and for a row this platform does not offer.
+///
+/// **macOS goes through `open -a` rather than a program on PATH.** LaunchServices finds the app by name,
+/// so a user who never installed VS Code's `code` shell command still reaches it — and `open` exits as
+/// soon as it has handed over, which is what makes the launch observable (decision-45 §5). Windows and
+/// Linux have no equivalent, so those rows name a program and depend on PATH.
+fn spec_of(platform: Platform, method: LaunchMethod) -> Option<MethodSpec> {
+    const fn helper(before: &'static [&'static str], target: TargetKind) -> MethodSpec {
+        MethodSpec {
+            program: "open",
+            before,
+            glue: "",
+            target,
+            observed: true,
+        }
+    }
+    const fn program(
+        program: &'static str,
+        before: &'static [&'static str],
+        glue: &'static str,
+        target: TargetKind,
+    ) -> MethodSpec {
+        MethodSpec {
+            program,
+            before,
+            glue,
+            target,
+            observed: false,
+        }
+    }
+    // Not `rows_of(platform).contains(&method)` plus a table: the `match` below is exhaustive over both
+    // axes, so a new platform or a new row cannot compile without an answer here.
+    match (platform, method) {
+        (_, LaunchMethod::Configured | LaunchMethod::Association) => None,
+
+        (Platform::MacOs, LaunchMethod::Vscode) => {
+            Some(helper(&["-a", "Visual Studio Code"], TargetKind::File))
+        }
+        (Platform::MacOs, LaunchMethod::Zed) => Some(helper(&["-a", "Zed"], TargetKind::File)),
+        (Platform::MacOs, LaunchMethod::CotEditor) => {
+            Some(helper(&["-a", "CotEditor"], TargetKind::File))
+        }
+        (Platform::MacOs, LaunchMethod::Reveal) => Some(helper(&["-R"], TargetKind::File)),
+        (Platform::MacOs, LaunchMethod::Terminal) => {
+            Some(helper(&["-a", "Terminal"], TargetKind::Directory))
+        }
+        (Platform::MacOs, LaunchMethod::NotepadPlusPlus) => None,
+
+        // `code.cmd` rather than `code`: `CreateProcessW` appends `.exe` and nothing else, and what
+        // VS Code puts on PATH on Windows is the batch shim. Rust escapes arguments to a batch file
+        // (the CVE-2024-24576 fix), so the path is still not re-parsed as syntax.
+        (Platform::Windows, LaunchMethod::Vscode) => {
+            Some(program("code.cmd", &[], "", TargetKind::File))
+        }
+        (Platform::Windows, LaunchMethod::Zed) => {
+            Some(program("zed.exe", &[], "", TargetKind::File))
+        }
+        (Platform::Windows, LaunchMethod::NotepadPlusPlus) => {
+            Some(program("notepad++.exe", &[], "", TargetKind::File))
+        }
+        // `/select,<path>` is one argv element: the comma is explorer's own separator, not a shell's.
+        (Platform::Windows, LaunchMethod::Reveal) => {
+            Some(program("explorer.exe", &[], "/select,", TargetKind::File))
+        }
+        (Platform::Windows, LaunchMethod::Terminal) => {
+            Some(program("wt.exe", &["-d"], "", TargetKind::Directory))
+        }
+        (Platform::Windows, LaunchMethod::CotEditor) => None,
+
+        (Platform::Freedesktop, LaunchMethod::Vscode) => {
+            Some(program("code", &[], "", TargetKind::File))
+        }
+        (Platform::Freedesktop, LaunchMethod::Zed) => {
+            Some(program("zed", &[], "", TargetKind::File))
+        }
+        (
+            Platform::Freedesktop,
+            LaunchMethod::CotEditor
+            | LaunchMethod::NotepadPlusPlus
+            | LaunchMethod::Reveal
+            | LaunchMethod::Terminal,
+        ) => None,
+    }
+}
+
+/// One row of 外部で開く as the screen needs it (decision-45 §4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MethodOffer {
+    pub method: LaunchMethod,
+    /// What this row invokes, for the screen to state. **Empty for
+    /// [`LaunchMethod::Configured`]**, whose program is whatever [`resolve`] found — the screen reads
+    /// [`EditorReadiness::configured`] for that row and states the reason when nothing resolved.
+    pub program: String,
+    /// The product name the row names on screen, or empty for the rows named by what they do.
+    /// Empty rather than `null` so the screen has one shape to word, and because a row with no product
+    /// name is not a row with a missing one.
+    pub product: String,
+    /// Whether this row hands over something to edit — the rows that carry frontmatter の注意
+    /// (decision-45 §6).
+    pub edits: bool,
+}
+
 /// The association launcher (doc-8 §7 OS の関連付け起動): how a platform hands a file to whatever it
 /// associates with the extension. Two shapes, because they are not two flavours of the same call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -707,6 +967,9 @@ const fn association_launcher_of(platform: Platform) -> AssociationLauncher {
 enum OsCall {
     /// Spawn [`Planned::launch`]'s program with its arguments.
     Spawn,
+    /// Spawn it and watch it for a moment (decision-45 §5): the program hands the target on and exits,
+    /// so its exit status is the only thing that distinguishes "handed over" from "no such app".
+    SpawnObserved,
     /// `ShellExecuteW` on the file. Here `launch.program`/`args` *describe* the call for the UI rather
     /// than being an argv — which is the point of the variant: there is no argv.
     ShellExecute,
@@ -836,8 +1099,11 @@ fn open_url_on(platform: Platform, launcher: &dyn Launcher, url: &str) -> Result
     // The spawn side is *observed* rather than fired and forgotten (see [`Launcher::spawn_observed`]):
     // this is the one launch whose helper exits, so its exit code is available and is the only report
     // there is. `ShellExecuteW` already answers — above 32 means the launch started (decision-15).
+    // Both spawn arms observe: this route always does, so `association_call`'s answer only has to say
+    // whether the call is a spawn at all. (It never yields `SpawnObserved` — that variant is
+    // `spec_of`'s — and folding the two here is what keeps this from having an unreachable arm.)
     let observed = match call {
-        OsCall::Spawn => launcher
+        OsCall::Spawn | OsCall::SpawnObserved => launcher
             .spawn_observed(&program, &args)
             .map_err(LaunchFailure::os),
         OsCall::ShellExecute => launcher.shell_execute(OsStr::new(url)).map(|()| None),
@@ -915,6 +1181,37 @@ fn planned(
                 call,
             })
         }
+        // 名前付きエディタ and 所在に効く 2 操作 (decision-45 §4). `Unavailable` for a row this
+        // platform does not offer: the frontend draws only `rows_of`'s rows, so reaching here means a
+        // request naming a row that was never on screen — refused rather than substituted.
+        _ => {
+            let spec = spec_of(platform, method).ok_or(EditorError::Unavailable)?;
+            let target = match spec.target {
+                TargetKind::File => file.to_path_buf(),
+                // The parent of an absolute path from the read layer. `Unavailable` rather than a
+                // guess when there is none: a root-level path has no folder to hand over, and
+                // handing over the file instead would open it in a terminal.
+                TargetKind::Directory => {
+                    file.parent().ok_or(EditorError::Unavailable)?.to_path_buf()
+                }
+            };
+            let mut args: Vec<String> = spec.before.iter().map(|&arg| arg.to_string()).collect();
+            // One argv element even when glued: the glue is the receiving program's own syntax, not a
+            // shell's, so a path holding `&` or `%` still arrives as characters of a file name.
+            args.push(format!("{}{}", spec.glue, target.to_string_lossy()));
+            Ok(Planned {
+                launch: EditorLaunch {
+                    method,
+                    program: spec.program.to_string(),
+                    args,
+                },
+                call: if spec.observed {
+                    OsCall::SpawnObserved
+                } else {
+                    OsCall::Spawn
+                },
+            })
+        }
     }
 }
 
@@ -978,6 +1275,14 @@ fn open_on(
         OsCall::Spawn => launcher
             .spawn(&launch.program, &launch.args)
             .map_err(LaunchFailure::os),
+        OsCall::SpawnObserved => match launcher.spawn_observed(&launch.program, &launch.args) {
+            Ok(None) => Ok(()),
+            Ok(Some(detail)) => Err(LaunchFailure {
+                reason: LaunchRefusal::Exited,
+                detail,
+            }),
+            Err(error) => Err(LaunchFailure::os(error)),
+        },
         OsCall::ShellExecute => launcher.shell_execute(file.as_os_str()),
     }
     .map_err(|failure| EditorError::LaunchFailed {
@@ -1019,6 +1324,10 @@ mod tests {
         /// The targets handed to `ShellExecuteW`. Recorded apart from `spawns` because the distinction is
         /// the whole of TASK-44: a path that reached a *spawn* on Windows reached a command line.
         shell_executes: RefCell<Vec<std::ffi::OsString>>,
+        /// The launches that went through `spawn_observed`, recorded *in addition* to `spawns` so the
+        /// existing assertions about which program received what still read one list, while
+        /// decision-45 §5 — which rows are watched — can be asserted on its own.
+        observed: RefCell<Vec<String>>,
         fail: Option<std::io::ErrorKind>,
         /// What a `spawn_observed` launch reports: `None` is "launched" (still running or exited 0),
         /// `Some(detail)` is a helper that ran and failed — `xdg-open` finding no handler, say.
@@ -1056,6 +1365,7 @@ mod tests {
             self.spawns
                 .borrow_mut()
                 .push((program.to_string(), args.to_vec()));
+            self.observed.borrow_mut().push(program.to_string());
             match self.fail {
                 Some(kind) => Err(std::io::Error::new(kind, "no such file")),
                 None => Ok(self.exited.clone()),
@@ -1207,11 +1517,293 @@ mod tests {
                 Some("/roots/a.md"),
                 "{platform:?}: the file is the last argument, after the launcher's own"
             );
+            let readiness = probe_on(platform, None, &env);
+            let row = readiness
+                .methods
+                .iter()
+                .find(|offer| offer.method == LaunchMethod::Association)
+                .expect("every platform offers the association row");
             assert_eq!(
-                probe_on(platform, None, &env).association,
-                launch.program,
+                row.program, launch.program,
                 "{platform:?}: the panel must name the launcher a launch would use"
             );
+        }
+    }
+
+    /// decision-45 §4's table, transcribed once here and once in [`rows_of`]. Written out rather than
+    /// derived, because a derivation would agree with whatever the table says — including a row that
+    /// reached the wrong platform. **The counts are asserted too**: a row silently dropped from one
+    /// platform is exactly the failure a `contains` check cannot see.
+    #[test]
+    fn the_rows_match_the_decisions_table() {
+        use LaunchMethod::*;
+        let expected: [(Platform, &[LaunchMethod]); 3] = [
+            (
+                Platform::MacOs,
+                &[
+                    Vscode,
+                    Zed,
+                    CotEditor,
+                    Configured,
+                    Association,
+                    Reveal,
+                    Terminal,
+                ],
+            ),
+            (
+                Platform::Windows,
+                &[
+                    Vscode,
+                    Zed,
+                    NotepadPlusPlus,
+                    Configured,
+                    Association,
+                    Reveal,
+                    Terminal,
+                ],
+            ),
+            (
+                Platform::Freedesktop,
+                &[Vscode, Zed, Configured, Association],
+            ),
+        ];
+        for (platform, rows) in expected {
+            assert_eq!(rows_of(platform), rows, "{platform:?}: decision-45 §4");
+        }
+        // CotEditor is macOS's alone and Notepad++ is Windows'; neither may appear anywhere else.
+        for platform in Platform::ALL {
+            for (method, only_on) in [
+                (CotEditor, Platform::MacOs),
+                (NotepadPlusPlus, Platform::Windows),
+            ] {
+                assert_eq!(
+                    rows_of(platform).contains(&method),
+                    platform == only_on,
+                    "{platform:?}: {method:?} belongs to {only_on:?} alone"
+                );
+            }
+        }
+    }
+
+    /// [`rows_of`] and [`spec_of`] are two halves of the same table, and [`probe_on`] `expect`s the
+    /// second to answer for every row the first offers. Asserted rather than left to that `expect`,
+    /// because the panic would only happen on the platform whose half is missing.
+    #[test]
+    fn every_offered_row_has_a_spec_and_every_unoffered_row_has_none() {
+        for platform in Platform::ALL {
+            for method in LaunchMethod::ALL {
+                let offered = rows_of(platform).contains(&method);
+                let resolved =
+                    matches!(method, LaunchMethod::Configured | LaunchMethod::Association);
+                assert_eq!(
+                    spec_of(platform, method).is_some(),
+                    offered && !resolved,
+                    "{platform:?}/{method:?}: rows_of and spec_of disagree"
+                );
+            }
+        }
+    }
+
+    /// Only helpers that hand the target on and exit are watched (decision-45 §5). Asserted over the
+    /// whole table rather than on macOS alone: `explorer.exe` exits 1 *on success*, so watching it
+    /// would report every reveal as a failure — and that arm cannot be compiled here.
+    #[test]
+    fn only_the_hand_off_helpers_are_watched() {
+        for platform in Platform::ALL {
+            for method in rows_of(platform) {
+                let Some(spec) = spec_of(platform, *method) else {
+                    continue;
+                };
+                assert_eq!(
+                    spec.observed,
+                    platform == Platform::MacOs,
+                    "{platform:?}/{method:?}: only `open` hands over and exits"
+                );
+                assert_eq!(
+                    spec.observed,
+                    spec.program == "open",
+                    "{platform:?}/{method:?}: what is watched is the helper, not the platform"
+                );
+            }
+        }
+    }
+
+    /// 端末で開く hands over the containing folder and every other row hands over the file
+    /// (decision-45). A terminal opened on the file itself would try to *edit* it, and a reveal given
+    /// the folder would select nothing — the two failures this asserts apart.
+    #[test]
+    fn the_directory_rows_hand_over_the_parent_and_the_rest_the_file() {
+        let file = Path::new("/roots/atlas/backlog/decisions/decision-45 - a.md");
+        for platform in Platform::ALL {
+            for method in rows_of(platform) {
+                let Some(spec) = spec_of(platform, *method) else {
+                    continue;
+                };
+                let launch = plan_on(platform, None, &FakeEnv::default(), *method, file)
+                    .expect("an offered row plans");
+                let last = launch.args.last().expect("a target");
+                let expected = match spec.target {
+                    TargetKind::File => format!("{}{}", spec.glue, file.display()),
+                    TargetKind::Directory => {
+                        format!("{}{}", spec.glue, file.parent().unwrap().display())
+                    }
+                };
+                assert_eq!(last, &expected, "{platform:?}/{method:?}");
+                assert_eq!(
+                    matches!(spec.target, TargetKind::Directory),
+                    *method == LaunchMethod::Terminal,
+                    "{platform:?}/{method:?}: only 端末で開く takes a folder"
+                );
+            }
+        }
+    }
+
+    /// The glued target is **one** argv element (decision-45 §4). `explorer.exe /select,<path>` is the
+    /// only row with glue, and splitting it would either lose the flag or hand the shell two tokens —
+    /// the same hole `no_association_launch_passes_an_option_shaped_argument` guards on the other route.
+    #[test]
+    fn a_glued_target_stays_one_argv_element() {
+        let file = Path::new("/roots/a&b/task-1 - x.md");
+        let mut glued = 0;
+        for platform in Platform::ALL {
+            for method in rows_of(platform) {
+                let Some(spec) = spec_of(platform, *method) else {
+                    continue;
+                };
+                if spec.glue.is_empty() {
+                    continue;
+                }
+                glued += 1;
+                let launch = plan_on(platform, None, &FakeEnv::default(), *method, file)
+                    .expect("an offered row plans");
+                let last = launch.args.last().expect("a target");
+                assert!(
+                    last.starts_with(spec.glue) && last.ends_with("task-1 - x.md"),
+                    "{platform:?}/{method:?}: the flag and the path share one element, got {last:?}"
+                );
+                assert_eq!(
+                    launch.args.len(),
+                    spec.before.len() + 1,
+                    "{platform:?}/{method:?}: gluing must not add an element"
+                );
+            }
+        }
+        assert_eq!(
+            glued, 1,
+            "only 所在を示す on Windows glues; add a case if that changes"
+        );
+    }
+
+    /// A row this platform does not offer is refused rather than substituted. The frontend draws only
+    /// [`rows_of`]'s rows, so reaching here means a request naming a row that was never on screen —
+    /// and a fallback would open *something* the user did not ask for.
+    #[test]
+    fn a_row_this_platform_does_not_offer_is_refused() {
+        let launcher = FakeLauncher::default();
+        let error = open_on(
+            Platform::Freedesktop,
+            None,
+            &FakeEnv::default(),
+            &launcher,
+            LaunchMethod::Reveal,
+            Path::new("/roots/a.md"),
+        )
+        .unwrap_err();
+        assert!(matches!(error, EditorError::Unavailable));
+        assert!(
+            launcher.spawns.borrow().is_empty(),
+            "nothing may be started for a row that is not offered"
+        );
+    }
+
+    /// A watched row that reports a failing exit becomes `Exited` with the status as its detail
+    /// (decision-45 §5) — the case that makes "探索せず常設し、失敗を述べる" true on macOS, where an
+    /// absent app is exactly what `open -a` exits non-zero for.
+    #[test]
+    fn a_watched_row_reports_the_helpers_failing_exit() {
+        let launcher = FakeLauncher {
+            exited: Some("exit status: 1".to_string()),
+            ..FakeLauncher::default()
+        };
+        let error = open_on(
+            Platform::MacOs,
+            None,
+            &FakeEnv::default(),
+            &launcher,
+            LaunchMethod::Zed,
+            Path::new("/roots/a.md"),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            EditorError::LaunchFailed {
+                reason: LaunchRefusal::Exited,
+                ref detail,
+                ..
+            } if detail == "exit status: 1"
+        ));
+        assert_eq!(
+            launcher.observed.borrow().as_slice(),
+            ["open"],
+            "the row went through the watch, not a bare spawn"
+        );
+    }
+
+    /// The 起動指定 row is not watched, even though it is a spawn (decision-45 §5): `vim` keeps
+    /// running, so a watch would spend its window on every launch and report nothing.
+    #[test]
+    fn the_configured_row_is_not_watched() {
+        let launcher = FakeLauncher::default();
+        open_on(
+            Platform::MacOs,
+            None,
+            &FakeEnv::with(&[("EDITOR", "vim")]),
+            &launcher,
+            LaunchMethod::Configured,
+            Path::new("/roots/a.md"),
+        )
+        .expect("launched");
+        assert!(
+            launcher.observed.borrow().is_empty(),
+            "the editor itself must not be waited on"
+        );
+    }
+
+    /// Every row a platform offers is reported by [`probe`] with the four values the screen words it
+    /// from, and only the 起動指定 row leaves `program` empty (the screen reads `configured` there).
+    #[test]
+    fn the_probe_reports_every_row_with_what_the_screen_needs() {
+        for platform in Platform::ALL {
+            let readiness = probe_on(platform, None, &FakeEnv::default());
+            assert_eq!(
+                readiness
+                    .methods
+                    .iter()
+                    .map(|offer| offer.method)
+                    .collect::<Vec<_>>(),
+                rows_of(platform),
+                "{platform:?}: the probe reports the table's rows in order"
+            );
+            for offer in &readiness.methods {
+                assert_eq!(
+                    offer.program.is_empty(),
+                    offer.method == LaunchMethod::Configured,
+                    "{platform:?}/{:?}: only the 起動指定 row has no program of its own",
+                    offer.method
+                );
+                assert_eq!(
+                    offer.edits,
+                    !matches!(offer.method, LaunchMethod::Reveal | LaunchMethod::Terminal),
+                    "{platform:?}/{:?}: 所在に効く 2 操作 hand over nothing to edit",
+                    offer.method
+                );
+                assert_eq!(
+                    offer.product.is_empty(),
+                    product_of(platform, offer.method).is_none(),
+                    "{platform:?}/{:?}: an empty product means the row is named by what it does",
+                    offer.method
+                );
+            }
         }
     }
 

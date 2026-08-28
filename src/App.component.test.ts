@@ -470,8 +470,12 @@ describe("起動時の設定・workspace・監視の順序", () => {
     click(only(host, "button.card"));
     await settled();
 
-    // 外部エディタ区画の注意 (`external-editor.ts`)、状態遷移の控え (`edit.ts`)、
-    // 前後移動の群の名 (`swimlane.ts` の `laneGroupLabel`)。
+    // 状態遷移の控え (`edit.ts`)、状態遷移の 保留理由 (`edit.ts`)、前後移動の群の名
+    // (`swimlane.ts` の `laneGroupLabel`)。
+    //
+    // **`external-editor.ts` はもうこのパネルに文を出さない** (decision-45 §8): 起動の控えと注意は
+    // ☰ の 外部で開く へ移り、区画に残ったのはパスと、継続検出 が止まっている間だけ出る再読込である。
+    // あの module の言語切替は下の 「外部で開く のサブメニューも 表示言語 で入れ替わる」 が持つ。
     //
     // **3 つ目は `title` から読む。** 群の名が本文へ出る場所は無く（doc-8 §2.2 が 位置表示 から
     // 名前を落としている）、本文で読める `1 / 1 件` は同じ字を `visibleCount` も刷る — あちらは
@@ -480,17 +484,17 @@ describe("起動時の設定・workspace・監視の順序", () => {
     const stepTitles = () =>
       [...host.querySelectorAll<HTMLButtonElement>("button.step")].map((b) => b.title).join(" | ");
 
-    expect(host.textContent).toContain("外部エディタでは frontmatter");
     expect(host.textContent).toContain("draft へ差し戻す");
+    expect(host.textContent).toContain("id は採番し直されます");
     expect(stepTitles()).toContain("In Progress セル");
 
     await switchToEnglish(host);
 
-    expect(host.textContent).toContain("An external editor opens the task's Markdown file whole");
     expect(host.textContent).toContain("Move back to drafts");
+    expect(host.textContent).toContain("the id is assigned afresh");
     expect(stepTitles()).toContain("the In Progress cell");
-    expect(host.textContent).not.toContain("外部エディタでは frontmatter");
     expect(host.textContent).not.toContain("draft へ差し戻す");
+    expect(host.textContent).not.toContain("id は採番し直されます");
     expect(stepTitles()).not.toContain("セル");
   });
 
@@ -1199,6 +1203,21 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     return host;
   }
 
+  /**
+   * Reach one row of the 外部で開く サブメニュー the way the screen offers it (doc-7 §2.1,
+   * decision-45 §3): the ☰, then the parent line, then the row. **Three presses, not one** — and the
+   * parent line does not unmount, because the submenu is moored to it rather than raised over it.
+   */
+  function openExternalSubmenu(host: HTMLElement): HTMLElement {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "外部で開く"));
+    const submenu = host.querySelector<HTMLElement>('[role="group"][aria-label="外部で開く"]');
+    if (submenu === null) {
+      throw new Error("expected the 外部で開く submenu");
+    }
+    return submenu;
+  }
+
   /** The layer the question is drawn in, or `null` while nothing is being asked. */
   function layer(host: HTMLElement, title: string): HTMLElement | null {
     return host.querySelector<HTMLElement>(`[role="dialog"][aria-label="${title}"]`);
@@ -1297,16 +1316,18 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
 
   it("問いの対象がファイルごと読み取り結果から消えたら、未保存入力があっても失効する", async () => {
     // 未保存入力があるあいだ、パネルはファイルが消えても保持した読みを描き続ける (`shown.missing`) ので、
-    // パスは同じままである。**それでも問いは失効しなければならない** — その状態では控えが 3 つとも
-    // 「読み取り結果にありません」で無効化されており、層だけが、画面が断っている動作を差し出すことに
-    // なる (PR #93 1R [P2])。
+    // パスは同じままである。**それでも問いは失効しなければならない** — その状態では 外部で開く 自身が
+    // 「読み取り結果にありません」で保留されており (decision-45 §1)、層だけが、画面が断っている動作を
+    // 差し出すことになる (PR #93 1R [P2])。
     const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
     click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
     await settled();
     click(byText(host, "button.primary", "編集"));
     fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
-    openSection(host, "外部エディタで開く");
-    click(byText<HTMLButtonElement>(host, ".editor-list button", "OS の関連付けで開く…"));
+    click(
+      byText<HTMLButtonElement>(openExternalSubmenu(host), "button", "OS の関連付けで開く…"),
+    );
+    await settled();
     expect(layer(host, "OS の関連付けで開く")).not.toBeNull();
 
     emitReload({ slug: "atlas", load: loaded("atlas", [NEIGHBOUR]) });
@@ -1315,7 +1336,7 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     // パネルは残る (未保存入力を守るため)。問いは残らない。
     expect(host.querySelector('[aria-label="タスク詳細"]')).not.toBeNull();
     expect(layer(host, "OS の関連付けで開く")).toBeNull();
-    expect(madeTo("task_file_open")).toHaveLength(0);
+    expect(madeTo("managed_file_open")).toHaveLength(0);
     expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
   });
 
@@ -1323,40 +1344,79 @@ describe("実行前確認が上げる被せ層 (doc-11 §12)", () => {
     const host = await startWith([loaded("atlas", [TASK])]);
     click(only(host, "button.card"));
     await settled();
-    openSection(host, "外部エディタで開く");
+
+    // 抑止できる注意 (doc-11 §15) はここでは邪魔なので、先に抑止しておく — この試験が見ているのは
+    // 抑止できない側の問い (doc-8 §6.4) である。抑止は 設定 の刻みで行う: 層の刻みで行うと、
+    // その 1 回だけ層が立つ経路をこの試験自身が通ってしまう。
+    await suppressOpenNotice(host);
 
     // 未保存入力が無いあいだは問わない (doc-8 §7): 毎回問うと 2 打目が反射になる。語尾に … も付かない。
-    pressControl(byText<HTMLButtonElement>(host, ".editor-list button", "OS の関連付けで開く"));
+    click(byText<HTMLButtonElement>(openExternalSubmenu(host), "button", "OS の関連付けで開く"));
     await settled();
-    expect(madeTo("task_file_open")).toHaveLength(1);
+    expect(madeTo("managed_file_open")).toHaveLength(1);
 
     click(byText(host, "button.primary", "編集"));
     fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
-    openSection(host, "外部エディタで開く");
 
-    // 未保存入力があるあいだは問う (doc-8 §6.4): 同じ控えが … を持ち、押下は起動に届かない。
-    const asking = byText<HTMLButtonElement>(host, ".editor-list button", "OS の関連付けで開く…");
-    pressControl(asking);
+    // 未保存入力があるあいだは問う (doc-8 §6.4): 同じ行が … を持ち、押下は起動に届かない。
+    click(byText<HTMLButtonElement>(openExternalSubmenu(host), "button", "OS の関連付けで開く…"));
+    await settled();
     const dialog = layer(host, "OS の関連付けで開く");
     if (dialog === null) {
       throw new Error("expected the question");
     }
-    // 問いの文は区画が出している注意文そのもの (doc-11 §12): 層がその区画を覆うので、同じことを
-    // 2 通りに述べない。
+    // 抑止されていても 実行前確認 は立つ (doc-11 §15 ③): 抑止できる注意 と抑止できない問いは別物で、
+    // 抑止できる問いにすると、その問いが要る 1 回だけ立たないという状態を作れてしまう。
     expect(dialog.textContent).toContain("二重に編集する");
+    expect(dialog.textContent).not.toContain("frontmatter");
+    // 刻みも消える — 抑止する相手が層に無いので (decision-45 §6)。
+    expect(dialog.querySelector('input[type="checkbox"]')).toBeNull();
     click(byText(dialog, ".answers button", "やめる"));
     await settled();
-    expect(madeTo("task_file_open")).toHaveLength(1);
+    expect(madeTo("managed_file_open")).toHaveLength(1);
 
     // 未保存入力はどちらの答えでも失われない (doc-8 §6.4)。
     expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
 
-    pressControl(asking);
-    click(byText(only(host, '[role="dialog"][aria-label="OS の関連付けで開く"]'), ".answers button", "OS の関連付けで開く"));
+    click(byText<HTMLButtonElement>(openExternalSubmenu(host), "button", "OS の関連付けで開く…"));
     await settled();
-    expect(madeTo("task_file_open")).toHaveLength(2);
+    click(
+      byText(
+        only(host, '[role="dialog"][aria-label="OS の関連付けで開く"]'),
+        ".answers button",
+        "OS の関連付けで開く",
+      ),
+    );
+    await settled();
+    expect(madeTo("managed_file_open")).toHaveLength(2);
     expect(only<HTMLInputElement>(host, '.field input[type="text"]').value).toBe("書きかけの題");
   });
+
+  /**
+   * 注意の抑止 (decision-45 §6): the 設定画面's own control, so a test that needs the notice out of the
+   * way does not have to take the layer's tick — which is the one route this test must not exercise on
+   * its own behalf.
+   */
+  async function suppressOpenNotice(host: HTMLElement): Promise<void> {
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(byLabel(host, '[role="dialog"][aria-label="メニュー"] button', "設定"));
+    await settled();
+    const tick = byText<HTMLLabelElement>(
+      host,
+      "label.choice",
+      "frontmatter の注意を今後表示しない",
+    ).querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (tick === null) {
+      throw new Error("expected the 注意の抑止 tick");
+    }
+    tick.checked = true;
+    tick.dispatchEvent(new Event("change", { bubbles: true }));
+    // 保存 closes the modal by itself (`settings-controller.ts`), so nothing has to close it here —
+    // and the setting has to reach アプリ設定 rather than a draft, because that is what the next press
+    // reads (decision-45 §6).
+    click(byText(host, "footer button", "保存する"));
+    await settled();
+  }
 
   it("層が上がっている間はシェルの和音が届かない（被せ層 は 1 枚だけ）", async () => {
     const host = await withTransitions();
@@ -2024,6 +2084,367 @@ function drawnRows(host: HTMLElement): string[] {
  * is where the value lives while the app runs. doc-7 §5.1 keeps both, and the second did not make the
  * first redundant — a value the grid held would still be lost on every screen change.
  */
+// -------------------------------------------------------------------------------------------------
+
+/**
+ * 外部で開く (doc-7 §2.1, decision-45). **画面横断契約 だけを持つ** — 行の集合・語・保留理由 は
+ * `external-editor.test.ts` の純関数の側にあり、ここが持つのは 2 画面をまたぐ 3 つである: 対象が
+ * どの画面から来るか、サブメニューの出口の梯子、そして刻みがアプリ設定へ届くこと。
+ */
+describe("外部で開く (doc-7 §2.1, decision-45)", () => {
+  const MENU = '[role="dialog"][aria-label="メニュー"]';
+  const SUBMENU = '[role="group"][aria-label="外部で開く"]';
+
+  /** The ☰ is an アイコンのみのボタン, so it is found by its name — which the 表示言語 also translates. */
+  function openMenu(host: HTMLElement, menuName = "メニュー"): void {
+    if (host.querySelector(`[role="dialog"][aria-label="${menuName}"]`) === null) {
+      click(byLabel(host, "button.header-entry", menuName));
+    }
+  }
+
+  function parentLine(host: HTMLElement, names = { menu: "メニュー", line: "外部で開く" }) {
+    openMenu(host, names.menu);
+    return byText<HTMLButtonElement>(
+      host,
+      `[role="dialog"][aria-label="${names.menu}"] button`,
+      names.line,
+    );
+  }
+
+  function openSubmenu(
+    host: HTMLElement,
+    names = { menu: "メニュー", line: "外部で開く" },
+  ): HTMLElement {
+    click(parentLine(host, names));
+    const submenu = host.querySelector<HTMLElement>(
+      `[role="group"][aria-label="${names.line}"]`,
+    );
+    if (submenu === null) {
+      throw new Error(`expected the ${names.line} submenu`);
+    }
+    return submenu;
+  }
+
+  /**
+   * 対象未選択 では理由付きで保留する (decision-45 §1, doc-11 §5). **行は消えない** — 行の有無が状態を
+   * 述べる形にすると、メニューの項目数が状況ごとに違う値になる。
+   */
+  it("対象を選んでいないあいだは理由付きで保留し、選ぶと押せるようになる", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+
+    const held = parentLine(host);
+    expect(held.getAttribute("aria-disabled")).toBe("true");
+    // **理由は読み上げに残るが、目には出さない** (doc-11 §8 の licence ②、`omitsSentence`)。
+    // オーナーが実機で「不活性なのだけで十分」と判断した (2026-08-25)。
+    // 結ばれている要素を `aria-describedby` からたどる — 規則が述べているのはその結びつきである。
+    const reasonId = held.getAttribute("aria-describedby");
+    expect(reasonId).not.toBeNull();
+    const reason = only(host, `#${reasonId}`);
+    expect(reason.textContent).toContain("選ばれていません");
+    expect(reason.className).toContain("unseen");
+    // 保留されている行はサブメニューを開かない — 開いた 7 行が全部同じ理由で押せないのは、同じことを
+    // 7 度述べるだけである。
+    click(held);
+    expect(host.querySelector(SUBMENU)).toBeNull();
+
+    click(byLabel(host, "button.header-entry", "メニュー"));
+    click(only(host, "button.card"));
+    await settled();
+    expect(parentLine(host).getAttribute("aria-disabled")).toBe("false");
+  });
+
+  /**
+   * 起動指定 が無いときの 保留理由 も、可視の文は省く（doc-11 §8 の licence ②、`omitsSentence`）。
+   * **2026-08-28 にオーナーが実機で判断した** — 非活性な `$EDITOR で開く…` の行だけで足りる。
+   * **省くのは可視の文だけで、理由は読み上げに残る。**
+   */
+  it("起動指定 が無い行は、非活性なだけで理由文を刷らない", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    // 偽の境界は `configured: null` を返すので、この行は保留される（`fake-boundary.ts`）。
+    const row = byText<HTMLButtonElement>(openSubmenu(host), "button", "$EDITOR で開く");
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    const reasonId = row.getAttribute("aria-describedby");
+    expect(reasonId).not.toBeNull();
+    const reason = only(host, `#${reasonId}`);
+    expect(reason.textContent).toContain("設定画面");
+    expect(reason.className).toContain("unseen");
+  });
+
+  /**
+   * 対になる側: 原因が画面の外にある理由は省かない（doc-11 §8）。選んでいるファイルが読み取り結果から
+   * 消えたのは外部での移動・削除であり、利用者が取るべき行動はメニューから読めない。
+   */
+  it("選んでいるファイルが消えた理由は可視のまま残る", async () => {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
+    await settled();
+    // 未保存入力があるあいだ、パネルは消えたファイルを描き続ける（`shown.missing`）。
+    click(byText(host, "button.primary", "編集"));
+    fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
+    emitReload({ slug: "atlas", load: loaded("atlas", [NEIGHBOUR]) });
+    await settled();
+
+    const held = parentLine(host);
+    expect(held.getAttribute("aria-disabled")).toBe("true");
+    const reason = only(host, `#${held.getAttribute("aria-describedby")}`);
+    expect(reason.textContent).toContain("読み取り結果にありません");
+    expect(reason.className).not.toContain("unseen");
+  });
+
+  /**
+   * **サブメニューは、スクロールする一覧の中に入っていない。** これは見た目の話ではなく、`overflow` を
+   * 持つ容器は out-of-flow の子孫も両軸で切るという規則の話である — 実機ではサブメニューが**描かれて
+   * いるのに見えず、押しても何も起きなかった**（オーナーの `pnpm tauri dev` 目視。2026-08-25）。
+   *
+   * **切られうる形は 2 つあり、この試験が持つのは 1 つだけである。** ①サブメニューがスクロールする
+   * `ul` の中にあること（この試験が持つ。中へ戻すと赤くなる）。②`ul` ではなくパネル `.menu` の側が
+   * `overflow` を持つこと（**持てない**）。**jsdom は算出スタイルを持たないので、②を主張する手段が
+   * ここには無い。**
+   *
+   * **②は借り物 playwright で実測した**（2026-08-25、WebKit・Chromium）: `overflow-y: auto` を
+   * `.menu` へ戻すと、**矩形は同じまま `elementFromPoint` が届かなくなる。** つまり
+   * **矩形を測る試験でも捕まらない** — 見えるかどうかを押さえられるのは当たり判定だけである。
+   * 実機で起きたのは②のほうで、この試験が持っているのは①である。
+   */
+  it("サブメニューはスクロールする一覧の外にある", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    const submenu = openSubmenu(host);
+    const scroller = only(host, `${MENU} > ul`);
+    expect(scroller.contains(submenu)).toBe(false);
+    // それでもメニューの層の中にある — 外側の押下で両方が降りる規則がそれに依っている。
+    expect(only(host, MENU).contains(submenu)).toBe(true);
+  });
+
+  /**
+   * 対象は画面ではなく対象で定まる (decision-45 §1). **プロジェクト詳細画面 の 3 つの選択も対象になる** —
+   * それがこのタスクの中心で、それまで外部へ出せたのはタスクだけだった。
+   */
+  it("プロジェクト詳細で文書を選んでも同じ行が押せるようになる", async () => {
+    const host = await startWith([loaded("atlas", [TASK], undefined, [DOCUMENT])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+
+    // 区画を開いただけでは 対象未選択 である (decision-45 §1)。
+    click(sectionTab(host, "文書"));
+    await settled();
+    expect(parentLine(host).getAttribute("aria-disabled")).toBe("true");
+    click(byLabel(host, "button.header-entry", "メニュー"));
+
+    click(only(host, "button.card"));
+    await settled();
+    expect(parentLine(host).getAttribute("aria-disabled")).toBe("false");
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "OS の関連付けで開く…"));
+    await settled();
+    click(
+      byText(
+        only(host, '[role="dialog"][aria-label="OS の関連付けで開く"]'),
+        ".answers button",
+        "OS の関連付けで開く",
+      ),
+    );
+    await settled();
+    // 渡ったのは選んだ文書のパスである — タスクのものではない。
+    const call = madeTo("managed_file_open").at(-1);
+    expect(String(call?.args[1])).toContain("/docs/");
+  });
+
+  /**
+   * 出口の梯子は 3 段 (decision-45 §3). Escape はサブメニューだけを降ろす — 1 回の押下が降ろすのは
+   * 常に 1 つで、それが 被せ層 を 1 枚と数えられる根拠そのものである。
+   */
+  it("Escape はサブメニューだけを降ろし、もう一度でメニューが降りる", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    openSubmenu(host);
+
+    press(only(host, MENU), "Escape");
+    await settled();
+    expect(host.querySelector(SUBMENU)).toBeNull();
+    expect(host.querySelector(MENU)).not.toBeNull();
+
+    press(only(host, MENU), "Escape");
+    await settled();
+    expect(host.querySelector(MENU)).toBeNull();
+  });
+
+  /** 親の行の再押下もサブメニューだけを降ろす (梯子の 3 段目)。 */
+  it("親の行をもう一度押すとサブメニューだけが降りる", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    openSubmenu(host);
+    click(parentLine(host));
+    expect(host.querySelector(SUBMENU)).toBeNull();
+    expect(host.querySelector(MENU)).not.toBeNull();
+  });
+
+  /**
+   * 注意の抑止 (decision-45 §6, doc-11 §15 ②). **刻みはアプリ設定へ届く** — セッション内だけで覚える形に
+   * すると「今後」が次の起動で嘘になる。届いた先が読み取り専用なら記録できず、注意は立ち続ける
+   * （記録の経路が 設定 の保存と同じ 1 つだからそうなる）。
+   */
+  it("今後表示しない を刻んで進むと、アプリ設定へ書かれ、次の押下では層が立たない", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "Visual Studio Code で開く…"));
+    await settled();
+    const dialog = only(host, '[role="dialog"][aria-label="Visual Studio Code で開く"]');
+    expect(dialog.textContent).toContain("frontmatter");
+    const tick = dialog.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (tick === null) {
+      throw new Error("expected the 今後表示しない tick");
+    }
+    tick.checked = true;
+    tick.dispatchEvent(new Event("change", { bubbles: true }));
+    click(byText(dialog, ".answers button", "Visual Studio Code で開く"));
+    await settled();
+
+    expect(madeTo("managed_file_open")).toHaveLength(1);
+    const saved = madeTo("settings_save").at(-1);
+    expect(saved).not.toBeUndefined();
+    expect(JSON.stringify(saved?.args)).toContain('"suppress_frontmatter_notice":true');
+
+    // 2 度目は層が立たず、押下がそのまま起動になる。
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "Visual Studio Code で開く"));
+    await settled();
+    expect(madeTo("managed_file_open")).toHaveLength(2);
+  });
+
+  /**
+   * PR #157 1R [P1]. **対象は開いている区画のものである** (decision-45 §1)。3 つの選択は 区画切替 では
+   * 消えないので、「設定されている順」で選ぶと、マイルストーンを見ている利用者に文書が渡る。
+   */
+  it("区画を移ると対象も移る — 先に選んだ文書が残っていても渡すのは見えているほう", async () => {
+    const host = await startWith([
+      loaded("atlas", [TASK], undefined, [DOCUMENT], [MILESTONE]),
+    ]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+
+    click(sectionTab(host, "文書"));
+    click(only(host, "button.card"));
+    await settled();
+
+    // 文書 の選択はここで残ったままになる（区画切替は選択を落とさない）。
+    click(sectionTab(host, "マイルストーン"));
+    click(only(host, "button.card"));
+    await settled();
+
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "OS の関連付けで開く…"));
+    await settled();
+    click(
+      byText(
+        only(host, '[role="dialog"][aria-label="OS の関連付けで開く"]'),
+        ".answers button",
+        "OS の関連付けで開く",
+      ),
+    );
+    await settled();
+    const handed = String(madeTo("managed_file_open").at(-1)?.args[1]);
+    expect(handed).toContain("/milestones/");
+    expect(handed).not.toContain("/docs/");
+
+    // 何も選んでいない区画へ移ると 対象未選択 へ戻る — 表示パス が画面に無いものは渡さない。
+    click(sectionTab(host, "概要"));
+    await settled();
+    expect(parentLine(host).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  /**
+   * PR #157 1R [P2]. **未保存入力の問いは対象のものだけを読む** (doc-8 §6.4)。プロジェクト詳細は 4 区画の
+   * 入力を 1 つの旗で束ねているので（画面を離れるときはそれで正しい。doc-8 §6.3）、概要 に打った名前で
+   * 文書 の 二重取り込み を述べてはならない。
+   */
+  it("概要に打った入力は、文書を外部で開くときの二重取り込みの問いを立てない", async () => {
+    const host = await startWith([loaded("atlas", [TASK], undefined, [DOCUMENT])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+    // 登録解除の確認欄は 概要 の入力で、書き先は台帳ファイルである。
+    fill(only<HTMLInputElement>(host, 'input[placeholder="atlas"]'), "atl");
+    await settled();
+
+    click(sectionTab(host, "文書"));
+    click(only(host, "button.card"));
+    await settled();
+
+    // 層は立つ（frontmatter の注意 は抑止していない）が、二重取り込み の文は入らない。
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "OS の関連付けで開く…"));
+    await settled();
+    const dialog = only(host, '[role="dialog"][aria-label="OS の関連付けで開く"]');
+    expect(dialog.textContent).toContain("frontmatter");
+    expect(dialog.textContent).not.toContain("二重に編集する");
+    click(byText(dialog, ".answers button", "OS の関連付けで開く"));
+    await settled();
+    expect(madeTo("managed_file_open")).toHaveLength(1);
+    // 概要 の入力は失われない（この経路は何も破棄しない）。区画を戻して確かめる — 欄そのものは
+    // 概要 が開いている間だけ描かれるが、入力はこの画面の状態として残っている。
+    click(sectionTab(host, "概要"));
+    await settled();
+    expect(only<HTMLInputElement>(host, 'input[placeholder="atlas"]').value).toBe("atl");
+  });
+
+  /**
+   * PR #157 1R [P2]. **抑止が書けなかったら述べる。** アプリ設定ファイルは未知の上位 `schema_version` で
+   * 読み取り専用へ縮退する（decision-13）ので、この書き込みは拒否されうる。黙って落とすと、利用者が
+   * 刻んだ指定は効かないまま、次の押下で注意が立つときになって初めて食い違いが現れる。
+   */
+  it("抑止を書けなかったら ⑤ 通知 で述べ、それでもファイルは開く", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    answers.settingsSaveFails = true;
+
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "Visual Studio Code で開く…"));
+    await settled();
+    const dialog = only(host, '[role="dialog"][aria-label="Visual Studio Code で開く"]');
+    const tick = dialog.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (tick === null) {
+      throw new Error("expected the 今後表示しない tick");
+    }
+    tick.checked = true;
+    tick.dispatchEvent(new Event("change", { bubbles: true }));
+    click(byText(dialog, ".answers button", "Visual Studio Code で開く"));
+    await settled();
+
+    // 押した用事は通る — 記録できなかったのは併せて頼まれた指定のほうである。
+    expect(madeTo("managed_file_open")).toHaveLength(1);
+    const band = host.querySelector('.band[data-band="notice"]');
+    expect(band?.textContent ?? "").not.toBe("");
+
+    // 抑止は効いていないので、次の押下でも層は立つ。
+    answers.settingsSaveFails = false;
+    click(byText<HTMLButtonElement>(openSubmenu(host), "button", "Visual Studio Code で開く…"));
+    await settled();
+    expect(host.querySelector('[role="dialog"][aria-label="Visual Studio Code で開く"]')).not.toBeNull();
+  });
+
+  /**
+   * `external-editor.ts` の文も 表示言語 で入れ替わる。**この module の文はもうタスク詳細のパネルに
+   * 出ない**（decision-45 §8）ので、あちらの描き直しの試験から外れたぶんをここで持つ。
+   */
+  it("外部で開く のサブメニューも 表示言語 で入れ替わる", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+    click(only(host, "button.card"));
+    await settled();
+    expect(openSubmenu(host).textContent).toContain("Finder で表示");
+
+    press(only(host, MENU), "Escape");
+    press(only(host, MENU), "Escape");
+    await switchToEnglish(host);
+
+    const english = openSubmenu(host, { menu: "Menu", line: "Open externally" });
+    expect(english.textContent).toContain("Reveal in Finder");
+    expect(english.textContent).not.toContain("Finder で表示");
+  });
+});
+
 describe("折畳み 2 種は画面を移っても効いたまま", () => {
   /**
    * 別ルートのタスク: a second loaded row, so a fold of one row is not a fold of every row — and the

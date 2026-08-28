@@ -55,7 +55,7 @@
     bodyLinkOpen,
     releaseNoticeRead,
     releasePageOpen,
-    taskFileOpen,
+    managedFileOpen,
     taskHistoryRead,
     taskHistoryCancel,
     updateApply,
@@ -67,7 +67,13 @@
   import type { RemoteLine } from "./lib/git-remote-read";
   import type { ReleaseNotice } from "./lib/wire";
   import { topBands } from "./lib/band";
-  import { shortcutHelpLabel, headerMenu, menuName, type MenuItem } from "./lib/header";
+  import {
+    shortcutHelpLabel,
+    headerMenu,
+    externalOpenEntry,
+    menuName,
+    type MenuItem,
+  } from "./lib/header";
   import {
     ariaKeyShortcuts,
     continuesHeldPress,
@@ -102,9 +108,12 @@
     type DragSource,
   } from "./lib/lane-drop";
   import {
-    watchStoppedBeforeLaunch,
+    asksBeforeOpening,
+    externalOpenAvailability,
     launchFailureDetail,
-    type OpenOutcome,
+    openNotice as openNoticeFor,
+    type ExternalOpenRow,
+    type OpenTarget,
   } from "./lib/external-editor";
   import {
     conflictKeyOf,
@@ -540,6 +549,17 @@
         : t().shell.someRowsUnwatched,
   );
   /** Whether the open task's root is one of those (AC #7: the 外部エディタ経路 states it before opening). */
+  /**
+   * 選択中の管理ファイル (decision-45 §1) as プロジェクト詳細画面 holds it: the file its **open 区画** has
+   * selected, or `null`. Reported up rather than derived here, because the three selections are that
+   * screen's own state (doc-10 §5・§6・§10) and only it knows which 区画 is open — a chain over the
+   * three would hand over a document to a user looking at a milestone (PR #157 1R [P1]).
+   *
+   * The 未保存入力 flag comes with it, and it is that file's own rather than the screen's: doc-8 §6.4's
+   * 二重取り込み is about editing the *same* file twice, and `overlayState.projectDirty` aggregates
+   * every 区画 including 概要, whose input goes to `projects.toml` (PR #157 1R [P2]).
+   */
+  let projectSelection = $state<{ target: OpenTarget; dirty: boolean } | null>(null);
   let selectedWatchStopped = $derived(
     selectedRef !== null && unwatchedRows.includes(selectedRef.slug),
   );
@@ -588,11 +608,6 @@
       shown: !hidden.includes(slug),
     })),
   );
-  /**
-   * The メニュー's lines (doc-7 §2.1): the 共通入口, then the line that opens the 一覧モーダル, then the
-   * プロジェクト一覧 — すべてのプロジェクトを表示 and one 表示切替行 per registered project.
-   */
-  let menuItems = $derived(headerMenu(menuProjects, releaseNotice));
   /**
    * Whether a モーダル is up. While one is, the shell answers no chord at all: doc-7 §2.1 keeps a modal's
    * focus inside itself, and the modal is what answers Escape and Tab there (`Modal.svelte`).
@@ -754,6 +769,87 @@
       ? { view: retained.view, snapshot: retained.snapshot, missing: true }
       : null;
   });
+
+  /**
+   * 選択中の管理ファイル (decision-45 §1): the one file 外部で開く hands over. Read off the screen that
+   * is up — the two never stand together, so at most one of the four routes answers, and gating on the
+   * screen is what makes a task left selected behind プロジェクト詳細 stop being the target.
+   *
+   * Declared after `shown` because it reads it: the panel's own value is what says whether a task is
+   * being drawn at all, and `selectedRef` alone outlives the read that resolved it.
+   */
+  let openTarget = $derived<OpenTarget | null>(
+    screen === "project"
+      ? (projectSelection?.target ?? null)
+      : shown === null
+        ? null
+        : selectedRef,
+  );
+  /**
+   * The selected file has left the read result (doc-8 §7 の 保留理由). Only the task side can be in this
+   * state: プロジェクト詳細's three selections are derived from the current read and drop when the file
+   * goes (doc-10 §5), so there is no retained value there to be stale.
+   */
+  let openFileMissing = $derived(screen !== "project" && shown !== null && shown.missing);
+  /**
+   * What 外部で開く reads (decision-45). Assembled once here because the submenu and the layer have to
+   * agree: the layer decides whether to stand from the same 未保存入力 and 抑止 the rows were drawn with.
+   */
+  let externalOpenContext = $derived({
+    target: openTarget,
+    fileMissing: openFileMissing,
+    watchStopped: openTarget !== null && unwatchedRows.includes(openTarget.slug),
+    // **The target's own 未保存入力, not the screen's** (doc-8 §6.4, PR #157 1R [P2]). On the swimlane the
+    // two coincide — the panel's dirty flag is the open task's — but プロジェクト詳細 holds four 区画's
+    // input in one flag, and a name typed in 概要 has nothing to do with a 文書 opened externally.
+    hasUnsavedInput:
+      screen === "project" ? (projectSelection?.dirty ?? false) : overlayState.detailDirty,
+    noticeSuppressed: settingsState.noticeSuppressed,
+  });
+  /**
+   * The 抑止できる注意 layer standing over a press, with what the press was for (doc-11 §15). Held as
+   * one value so the 進む answer cannot be answered against a different row than the one that raised it.
+   */
+  /**
+   * Whether 今後表示しない is ticked on the layer that is up. Reset when the layer rises rather than when
+   * it falls: a tick left set from a previous press would suppress the notice on a press that never
+   * ticked it, which is the one mistake this value must not make.
+   */
+  let suppressTicked = $state(false);
+  let openNoticeLayer = $state<{
+    notice: NonNullable<ReturnType<typeof openNoticeFor>>;
+    row: ExternalOpenRow;
+    target: OpenTarget;
+  } | null>(null);
+  /**
+   * 問いは、それを立てた対象が替わったら失効する (doc-11 §12 ③, §15). The same rule as 実行前確認's, and it
+   * has to be here too: while 未保存入力 stands the panel keeps drawing a file that has left the read
+   * (`shown.missing`), so the path does *not* change — and the group itself is what turns 保留 in that
+   * state. A layer left standing would offer the very act the screen behind it is refusing.
+   */
+  $effect(() => {
+    const pending = openNoticeLayer;
+    if (pending === null) {
+      return;
+    }
+    if (
+      externalOpenContext.target?.sourcePath !== pending.target.sourcePath ||
+      externalOpenAvailability(externalOpenContext).state === "withheld"
+    ) {
+      openNoticeLayer = null;
+    }
+  });
+  /**
+   * The メニュー's lines (doc-7 §2.1): the 共通入口, then the line that opens the 一覧モーダル, then the
+   * プロジェクト一覧 — すべてのプロジェクトを表示 and one 表示切替行 per registered project.
+   */
+  let menuItems = $derived(
+    headerMenu(
+      menuProjects,
+      releaseNotice,
+      externalOpenEntry(settingsState.editor, externalOpenContext),
+    ),
+  );
   let historyInputs = $derived(historyReads.inputsOf(selectedView, selectedEntry));
   let historyKey = $derived(historyReads.keyOf(selectedView, historyInputs));
   let history = $derived(historyReads.shown(selectedView, historyKey));
@@ -1273,9 +1369,9 @@
   }
 
   /**
-   * Open the selected task's management file in the user's editor (doc-8 §7). The shell owns this for
-   * the same reason as `apply`: the boundary resolves the file from the (slug, path) the selection is
-   * held as, and nothing else knows both.
+   * 外部で開く の 1 行を行う (doc-8 §7, decision-45). The shell owns the call because it holds the
+   * (slug, path) the boundary resolves against, and because the layer this may raise first is the
+   * shell's (doc-11 §15 ①).
    *
    * The watch is (re)started before the launch, when 継続検出 is on. It is the whole of the 書き戻し
    * path — the editor's save reaches Atlas only because doc-9's 継続検出 picks it up — so a root whose
@@ -1283,33 +1379,89 @@
    * idempotent, so this costs nothing when the watch is already running, and `startWatch` declines by
    * itself while the setting is off.
    *
-   * Nothing is *reported* here. doc-8 §7 requires the user to be told 開く前に, not after the editor is
-   * already up, so the panel states it beside the launch controls (`watchStopped` below) and offers
-   * the re-read there — a notice from this point would arrive too late to be the warning doc-8 asks
-   * for, and would repeat what the panel already says.
+   * **Nothing is reported on success** (decision-45 §7): what comes forward is the program that was
+   * started, and doc-11 §4 keeps a success the screen already shows off the 上部帯. **The failure is
+   * ⑤ 通知**, because the menu closed itself before the answer arrived.
+   *
+   * **There is no 差し控え here any more** (decision-45 §9). The submenu draws the 継続検出停止 note from
+   * the state it was opened with, so the note is on screen before the press rather than produced by it.
    */
-  async function openExternally(method: LaunchMethod): Promise<OpenOutcome> {
-    const ref = selectedRef;
-    if (ref === null) {
-      return { state: "failed", detail: t().shell.taskUnidentified };
+  async function launchExternally(
+    row: ExternalOpenRow,
+    target: OpenTarget,
+  ): Promise<string | null> {
+    if (row.availability.state === "withheld") {
+      return null;
     }
-    // Read before the await: whether the panel had already told the user that nothing will bring the
-    // save back. It is the difference between a warning they have read and one that appears with the
-    // editor (doc-8 §7 エディタを開いてから初めて知る形にしない).
-    const warned = selectedWatchStopped;
-    const watching = await workspace.startWatch(ref.slug);
-    if (!watching && !warned) {
-      // The press is what discovered the stop — the watch had not failed yet when the panel was drawn,
-      // or the startup watch had not answered. `startWatch` has now put the root in `unwatched`, so the
-      // panel draws the notice and the re-read; the launch waits for the next press.
-      return { state: "deferred", detail: watchStoppedBeforeLaunch() };
-    }
+    await workspace.startWatch(target.slug);
     try {
-      return { state: "launched", launch: await taskFileOpen(ref.slug, ref.sourcePath, method) };
+      await managedFileOpen(target.slug, target.sourcePath, row.method);
+      return null;
     } catch (error) {
-      return { state: "failed", detail: launchFailureDetail(asCommandError(error)) };
+      // Returned rather than written to the 帯 here, so one press produces one 帯 even when both halves
+      // of it failed — the caller is the only place that knows whether a suppression write failed too.
+      return launchFailureDetail(asCommandError(error));
     }
   }
+
+  /**
+   * Put one press's failures on the ⑤ 通知 as one line, or clear it when the press succeeded.
+   *
+   * One 帯 per press even when both halves failed (PR #157 1R [P2]): each half is a whole sentence from
+   * the 文言表, so a space is all that goes between them and no separator needs wording — unlike the
+   * lists `taskDetail.postCheckMismatch` joins, where the 中黒 differs by language.
+   */
+  function reportOpen(failures: readonly string[]): void {
+    const said = failures.filter((text) => text.length > 0);
+    const joined = said.join(" ");
+    notice = joined === "" ? null : () => joined;
+  }
+
+  /**
+   * A press on one submenu row (doc-7 §2.1, decision-45 §6). The layer comes first when there is one to
+   * raise — the row's own label names it, so the 進む answer says what will happen — and the tick it
+   * carries writes 注意の抑止 before the launch, not after: a user who ticked it and then saw the notice
+   * again on the next press would have no way to tell whether the tick took.
+   */
+  function chooseExternalRow(row: ExternalOpenRow): void {
+    const target = openTarget;
+    if (target === null || row.availability.state === "withheld") {
+      return;
+    }
+    // Captured before anything can be awaited, like every other issue on this shell: the launch is for
+    // the file that was selected when it was asked for.
+    const notice = openNoticeFor(row, externalOpenContext);
+    overlay.closeMenu();
+    if (notice === null) {
+      void launchExternally(row, target).then((failure) => reportOpen(failure === null ? [] : [failure]));
+      return;
+    }
+    suppressTicked = false;
+    openNoticeLayer = { notice, row, target };
+  }
+
+  /**
+   * 進む on the 注意 layer: the tick is honoured first, then the launch runs (decision-45 §6).
+   *
+   * **Awaited, and its failure reported** (PR #157 1R [P2]). The settings file degrades to read-only on
+   * an unknown higher `schema_version` (decision-13), so the write can be refused — and the only thing
+   * that would otherwise reveal it is the notice standing again on the *next* press, long after the tick.
+   * The report goes to ⑤ 通知 for the reason the launch's does: the layer closed before the answer.
+   *
+   * **The launch still runs.** 進む is what the user pressed; the tick is a request beside it, and
+   * failing to record a preference is no reason to withhold the file they asked to open.
+   */
+  async function proceedWithOpen(suppress: boolean): Promise<void> {
+    const pending = openNoticeLayer;
+    openNoticeLayer = null;
+    if (pending === null) {
+      return;
+    }
+    const suppressFailure = suppress ? await settingsCtl.suppressFrontmatterNotice() : null;
+    const launchFailure = await launchExternally(pending.row, pending.target);
+    reportOpen([suppressFailure?.() ?? "", launchFailure ?? ""]);
+  }
+
 
   /**
    * Open one 本文リンク (doc-8 §9.3 既定ブラウザ起動).
@@ -1478,6 +1630,11 @@
    */
   function chooseMenuItem(item: MenuItem): void {
     switch (item.kind) {
+      case "externalOpen":
+        // Nothing happens on the parent row: it opens the サブメニュー, which `HeaderMenu.svelte` owns
+        // (decision-45 §3 — the submenu is a 係留された part of this same 被せ層, so raising it is not a
+        // press this shell carries out). The rows inside arrive through `chooseExternalRow`.
+        break;
       case "entry":
         overlay.openEntry(item.entry.id);
         break;
@@ -1648,6 +1805,8 @@
         items={menuItems}
         boundary={menuAnchor}
         onchoose={chooseMenuItem}
+        onchooseRow={chooseExternalRow}
+        asksFirst={(row) => asksBeforeOpening(row, externalOpenContext)}
         onclose={overlay.closeMenu}
       />
     {/if}
@@ -1811,6 +1970,41 @@
     </Modal>
   {/if}
 
+  {#if openNoticeLayer !== null}
+    <!-- 抑止できる注意 (doc-11 §15, decision-45 §6). A layer of its own for §15 ①'s reason — the same one
+         §12 gives — and **one layer for both halves** (§15 ③): the two sentences are different facts, and
+         two layers for one press would make the second answer a reflex.
+         **The tick reaches only the suppressible half**, which is why it is absent when only 実行前確認
+         stands: a tick beside that question would read as turning that question off. -->
+    <Modal label={openNoticeLayer.notice.title} onclose={() => (openNoticeLayer = null)}>
+      <section class="issue-confirm">
+        <h2>{openNoticeLayer.notice.title}</h2>
+        {#if openNoticeLayer.notice.frontmatter !== null}
+          <p>{openNoticeLayer.notice.frontmatter}</p>
+        {/if}
+        {#if openNoticeLayer.notice.unsavedInput !== null}
+          <p>{openNoticeLayer.notice.unsavedInput}</p>
+        {/if}
+        {#if openNoticeLayer.notice.suppress !== null}
+          <p class="suppress">
+            <label>
+              <input type="checkbox" bind:checked={suppressTicked} />
+              {openNoticeLayer.notice.suppress}
+            </label>
+          </p>
+        {/if}
+        <!-- 進む → 戻る, as every other layer that asks (doc-11 §12). The 進む answer names the act, so
+             it is the row's own label. -->
+        <div class="answers">
+          <button type="button" onclick={() => void proceedWithOpen(suppressTicked)}>
+            {openNoticeLayer.notice.proceed}
+          </button>
+          <button type="button" onclick={() => (openNoticeLayer = null)}>{issueConfirmCancel()}</button>
+        </div>
+      </section>
+    </Modal>
+  {/if}
+
   {#if screen === "swimlane"}
     <FilterBar
       {filter}
@@ -1906,6 +2100,13 @@
           onoverlay={overlay.detailOverlay}
           onback={() => leaveProject(false)}
           ontoLane={() => leaveProject(true)}
+          onselectManaged={(selection) =>
+            (projectSelection =
+              selection === null
+                ? null
+                : { target: { slug: selection.slug, sourcePath: selection.sourcePath }, dirty: selection.dirty })}
+          onreread={() => void workspace.reread(detailEntry.slug)}
+          watchStopped={unwatchedRows.includes(detailEntry.slug)}
           menu={menuControl}
         />
       {/key}
@@ -2010,7 +2211,6 @@
       conflict={selectedConflict}
       onconflict={noteConflict}
       onapply={apply}
-      onopenExternally={openExternally}
       onselect={open}
       onreloadHistory={() => historyReads.reread(view, historyInputs)}
       ondirty={(dirty) => (overlayState.detailDirty = dirty)}

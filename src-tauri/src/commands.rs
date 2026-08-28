@@ -17,7 +17,7 @@
 //! | doc-9 §4/§5 更新の結末 | [`UpdateResult`] | 更新前競合 (CLI never launched) vs. the CLI ran and returned a verdict |
 //! | doc-5 §5 / decision-7 縮退 | [`CliReadiness`] | whether a supported `backlog` exists, i.e. whether the UI may offer edits at all |
 //! | doc-6 §3/§6 コミット検索の結果・Git 対象不在 | [`CommitSearch`] | one task's commit search outcome: searched (possibly 該当なし) / 対象不在 / 読取不能 |
-//! | doc-8 §7 外部エディタ経路 | [`task_file_open`] / [`ProjectState::open_in_editor`] | starting the user's editor on one task's management file, with the file resolved from this boundary's own model |
+//! | doc-8 §7 外部エディタ経路 | [`managed_file_open`] / [`ProjectState::open_in_editor`] | starting the user's editor on one task's management file, with the file resolved from this boundary's own model |
 //! | doc-3 §4.1 登録を拒否し理由を示す | [`LedgerRefusal`] | which refusal a 登録・削除・更新 hit, as a value the screen branches on instead of a sentence it parses |
 //! | doc-3 §2.1 台帳ファイル | [`ledger_location`] | the one file Atlas reads and writes, named so the screen can show where the registration lives |
 //! | doc-3 §3.1 slug の既定値 | [`ledger_default_slug`] | the derivation from a project root, exposed so the screen previews the default instead of re-deriving it |
@@ -363,7 +363,7 @@ pub enum CommandError {
     /// program is started. The frontend echoes back a `sourcePath` it received from a read, so this is
     /// a stale screen (the file moved or the root was re-read) — or a path that never came from one,
     /// which is exactly what must not reach a process.
-    UnknownTaskFile { slug: String, path: PathBuf },
+    UnknownManagedFile { slug: String, path: PathBuf },
     /// The chosen launch method has no launcher here (doc-8 §7): `VISUAL`/`EDITOR` are unset. Not a
     /// failure of the file or the project — the other method may still work.
     ///
@@ -634,7 +634,7 @@ impl ProjectState {
         }
     }
 
-    /// 外部エディタ経路 (doc-8 §7): start the user's editor on one task's management file.
+    /// 外部エディタ経路 (doc-8 §7): perform one row of 外部で開く on one 管理ファイル.
     ///
     /// Three properties this method is shaped by:
     ///
@@ -643,9 +643,12 @@ impl ProjectState {
     ///   doc-8 §7 names — the bytes the editor writes never pass the CLI's schema checking, and a
     ///   broken frontmatter is received by doc-4's 縮退表示 on the next read.
     /// - **The path is resolved, not accepted.** Only a `source_path` the open model already holds can
-    ///   be launched; anything else is [`CommandError::UnknownTaskFile`]. The frontend gets these
+    ///   be launched; anything else is [`CommandError::UnknownManagedFile`]. The frontend gets these
     ///   paths from its own read, so this is the same rule [`SyncState::guarded_update`] applies to
     ///   update targets: the boundary names the file from its model rather than trusting a caller.
+    ///   **The set it is resolved against is all four 管理ファイル kinds** (decision-45 §1): tasks,
+    ///   documents, milestones and decisions. 写せなかったファイル are deliberately not in it — they
+    ///   have no id for a screen to have selected them by, so no 選択中の管理ファイル can be one.
     /// - **The 起動指定 is passed in, not read here.** `configured` is アプリ設定's 外部エディタ指定
     ///   (decision-13); the command reads it per launch so a setting changed in this session takes
     ///   effect without a restart, and [`editor::resolve`] is the one place doc-8 §7's order
@@ -667,13 +670,27 @@ impl ProjectState {
         // Compared as read, not canonicalized: these paths come from the model the frontend was drawn
         // from, so equality is the whole check — and a canonicalize here would resolve a path that has
         // not been shown to be a managed file yet, which is the wrong order.
-        if !session
-            .model
+        let model = &session.model;
+        let known = model
             .tasks
             .iter()
-            .any(|task| task.source_path == source_path)
-        {
-            return Err(CommandError::UnknownTaskFile {
+            .map(|task| task.source_path.as_path())
+            .chain(model.documents.iter().map(|doc| doc.source_path.as_path()))
+            .chain(
+                model
+                    .milestones
+                    .iter()
+                    .map(|milestone| milestone.source_path.as_path()),
+            )
+            .chain(
+                model
+                    .decisions
+                    .iter()
+                    .map(|decision| decision.source_path.as_path()),
+            )
+            .any(|path| path == source_path);
+        if !known {
+            return Err(CommandError::UnknownManagedFile {
                 slug: entry.slug.clone(),
                 path: source_path.to_path_buf(),
             });
@@ -1783,7 +1800,7 @@ pub fn editor_probe(app: AppHandle) -> EditorReadiness {
 /// used as given (see [`ProjectState::open_in_editor`]), and it reaches the process as one element of an
 /// argument array, never as part of a string (AGENTS).
 #[tauri::command(async)]
-pub fn task_file_open(
+pub fn managed_file_open(
     app: AppHandle,
     state: State<'_, AtlasState>,
     slug: String,
@@ -2510,7 +2527,7 @@ ordinal: 1000\n\
             )
             .unwrap_err();
 
-        assert!(matches!(error, CommandError::UnknownTaskFile { .. }));
+        assert!(matches!(error, CommandError::UnknownManagedFile { .. }));
         assert!(launcher.spawns.borrow().is_empty(), "nothing was launched");
     }
 
@@ -2584,12 +2601,26 @@ ordinal: 1000\n\
         assert_eq!(json["configured"]["source"], "editor");
         assert_eq!(json["configured"]["program"], "code");
         assert_eq!(json["configured"]["args"][0], "-w");
-        // Always a string, never `null`: every platform has an association launcher (TASK-44), and the
-        // frontend's `association: string` would read a `null` as the launcher's *name*.
+        // Every row carries all four keys as the frontend's `MethodOffer` declares them, and `program`
+        // is a string on every one — including the 起動指定 row, where it is empty rather than `null`
+        // (a `null` would be read as the launcher's *name*).
+        let rows = json["methods"].as_array().expect("methods is an array");
+        assert!(!rows.is_empty(), "every platform offers rows");
+        for row in rows {
+            assert!(row["method"].is_string(), "method token: {row}");
+            assert!(row["program"].is_string(), "program is a string: {row}");
+            assert!(row["product"].is_string(), "product is a string: {row}");
+            assert!(row["edits"].is_boolean(), "edits is a boolean: {row}");
+        }
+        // The association row names the platform's launcher, which is what TASK-44 put on screen.
+        let association = rows
+            .iter()
+            .find(|row| row["method"] == "association")
+            .expect("every platform offers the association row");
         assert!(
-            json["association"].is_string(),
+            !association["program"].as_str().unwrap().is_empty(),
             "expected a launcher name, got {}",
-            json["association"]
+            association["program"]
         );
 
         let launch = editor::plan(

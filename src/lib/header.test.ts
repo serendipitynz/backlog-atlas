@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  externalOpenEntry,
   HEADER_ENTRIES,
   headerEntryView,
   noProjectsReason,
@@ -18,6 +19,22 @@ import {
   type MenuProject,
 } from "./header";
 import { shortcuts } from "./shortcuts";
+
+/**
+ * 外部で開く as one entry, with a target selected — the ordinary case. Built once here because every
+ * assertion below is about the *rest* of the menu: the group's own rules are `external-editor.test.ts`'s.
+ */
+const EXTERNAL_OPEN = externalOpenEntry(
+  { configured: null, methods: [{ method: "association", program: "open", product: "", edits: true }] },
+  {
+    target: { slug: "atlas", sourcePath: "/repos/atlas/backlog/tasks/task-1 - a.md" },
+    fileMissing: false,
+    watchStopped: false,
+    hasUnsavedInput: false,
+    noticeSuppressed: false,
+  },
+);
+
 
 function kinds(items: MenuItem[]): string[] {
   return items.map((item) => item.kind);
@@ -48,7 +65,7 @@ describe("共通入口 (doc-7 §2.1)", () => {
 describe("メニュー項目 (doc-7 §2.1)", () => {
   /** doc-7 §2.1: メニューが 共通入口 を全部持つ — since TASK-66 it is the only place they are drawn. */
   it("carries every 共通入口, in the order 共通入口 are listed", () => {
-    const entries = headerMenu([], null).flatMap((item) =>
+    const entries = headerMenu([], null, EXTERNAL_OPEN).flatMap((item) =>
       item.kind === "entry" ? [item.entry] : [],
     );
     expect(entries).toEqual(HEADER_ENTRIES.map((entry) => headerEntryView(entry)));
@@ -69,10 +86,10 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
    */
   it("puts the 割り当て一覧 line above the プロジェクト一覧, whatever its length", () => {
     for (const projects of [[], [project("atlas")], [project("atlas"), project("kanri")]]) {
-      const order = kinds(headerMenu(projects, null));
+      const order = kinds(headerMenu(projects, null, EXTERNAL_OPEN));
       expect(order.indexOf("shortcutHelp")).toBeLessThan(order.indexOf("showAllProjects"));
     }
-    expect(headerMenu([], null).find((item) => item.kind === "shortcutHelp")?.label).toBe(
+    expect(headerMenu([], null, EXTERNAL_OPEN).find((item) => item.kind === "shortcutHelp")?.label).toBe(
       shortcutHelpLabel(),
     );
   });
@@ -83,8 +100,9 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
    * the grid — and the order is the ledger's, which is the order the grid draws its rows in.
    */
   it("lists every registered project in ledger order, marking the shown ones (AC #1)", () => {
-    const items = headerMenu([project("atlas"), project("kanri", false), project("mallow")], null);
+    const items = headerMenu([project("atlas"), project("kanri", false), project("mallow")], null, EXTERNAL_OPEN);
     expect(kinds(items)).toEqual([
+      "externalOpen",
       "entry",
       "entry",
       "shortcutHelp",
@@ -105,8 +123,8 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
    * than from a separate count, so the line cannot disagree with the ticks below it.
    */
   it("holds すべてのプロジェクトを表示 exactly while every row is shown (AC #3)", () => {
-    const allShown = headerMenu([project("atlas"), project("kanri")], null);
-    const some = headerMenu([project("atlas"), project("kanri", false)], null);
+    const allShown = headerMenu([project("atlas"), project("kanri")], null, EXTERNAL_OPEN);
+    const some = headerMenu([project("atlas"), project("kanri", false)], null, EXTERNAL_OPEN);
     const held = allShown.find((item) => item.kind === "showAllProjects");
     const free = some.find((item) => item.kind === "showAllProjects");
     expect(held?.label).toBe(showAllProjectsLabel());
@@ -127,6 +145,7 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
     const items = headerMenu(
       [project("atlas", true, "Backlog Atlas"), project("kanri", true, null)],
       null,
+      EXTERNAL_OPEN,
     );
     const labels = items.flatMap((item) => (item.kind === "toggleProject" ? [item.label] : []));
     expect(labels).toEqual(["Backlog Atlas", "kanri"]);
@@ -143,6 +162,7 @@ describe("メニュー項目 (doc-7 §2.1)", () => {
     const keys = headerMenu(
       [project("atlas", true, "同じ名前"), project("kanri", false, "同じ名前")],
       null,
+      EXTERNAL_OPEN,
     ).map((item) => item.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -171,7 +191,7 @@ describe("保留理由 (doc-11 §5)", () => {
     expect(omitsSentence(noProjectsReason())).toBe(false);
     expect(omitsSentence(showAllProjectsHeldReason())).toBe(true);
     expect(
-      headerMenu([], null).find((item) => item.kind === "showAllProjects")?.availability,
+      headerMenu([], null, EXTERNAL_OPEN).find((item) => item.kind === "showAllProjects")?.availability,
     ).toEqual({
       state: "withheld",
       reason: noProjectsReason(),
@@ -201,7 +221,7 @@ describe("保留理由 (doc-11 §5)", () => {
 describe("区切り線 (doc-7 §2.1)", () => {
   /** Every index a 区切り線 is drawn above, for a given project list. */
   function rules(projects: readonly MenuProject[]): number[] {
-    const items = headerMenu(projects, null);
+    const items = headerMenu(projects, null, EXTERNAL_OPEN);
     return items.flatMap((_, index) => (startsGroup(items, index) ? [index] : []));
   }
 
@@ -220,26 +240,29 @@ describe("区切り線 (doc-7 §2.1)", () => {
     const shown = [project("atlas")];
     const hidden = [project("atlas", false)];
     expect(
-      headerMenu(shown, null).find((item) => item.kind === "showAllProjects")?.availability.state,
+      headerMenu(shown, null, EXTERNAL_OPEN).find((item) => item.kind === "showAllProjects")?.availability.state,
     ).toBe("withheld");
     expect(
-      headerMenu(hidden, null).find((item) => item.kind === "showAllProjects")?.availability.state,
+      headerMenu(hidden, null, EXTERNAL_OPEN).find((item) => item.kind === "showAllProjects")?.availability.state,
     ).toBe("ready");
 
-    expect(rules([])).toEqual([3, 4]);
-    expect(rules(shown)).toEqual([3, 4]);
-    expect(rules([project("atlas"), project("kanri", false)])).toEqual([3, 4]);
+    // 4 群 since 2026-08-25 (decision-45 §2): 外部で開く | 被せ層 | Atlas の外 | グリッドの行.
+    expect(rules([])).toEqual([1, 4, 5]);
+    expect(rules(shown)).toEqual([1, 4, 5]);
+    expect(rules([project("atlas"), project("kanri", false)])).toEqual([1, 4, 5]);
   });
 
   /**
-   * The 群 is what pressing the line does, not where the line sits: `layer` lines raise a 被せ層 and
-   * `rows` lines change which rows the grid draws. Checked as a partition rather than at indices, so a
-   * line added to either 群 keeps the boundary meaningful.
+   * The 群 is what pressing the line does, not where the line sits: `externalOpen` hands a file out of
+   * Atlas, `layer` lines raise a 被せ層, `rows` lines change which rows the grid draws, and `external`
+   * leaves for a fixed destination. Checked as a partition rather than at indices, so a line added to
+   * any 群 keeps the boundaries meaningful.
    */
   it("puts every 被せ層 line in one 群 and every プロジェクト一覧 line in the other", () => {
-    const items = headerMenu([project("atlas")], null);
+    const items = headerMenu([project("atlas")], null, EXTERNAL_OPEN);
     const groups = Object.fromEntries(items.map((item) => [item.key, item.group]));
     expect(groups).toEqual({
+      externalOpen: "externalOpen",
       "entry:register": "layer",
       "entry:settings": "layer",
       shortcutHelp: "layer",
@@ -250,7 +273,7 @@ describe("区切り線 (doc-7 §2.1)", () => {
   });
 
   it("draws no 区切り線 above the first line", () => {
-    expect(startsGroup(headerMenu([], null), 0)).toBe(false);
+    expect(startsGroup(headerMenu([], null, EXTERNAL_OPEN), 0)).toBe(false);
   });
 });
 
@@ -264,20 +287,20 @@ describe("版の告知 (decision-44 §3)", () => {
    */
   it("keeps the リリースページ line on the menu, with or without a 新しい版", () => {
     for (const answer of [null, notice]) {
-      const line = headerMenu([project("atlas")], answer)?.find(
+      const line = headerMenu([project("atlas")], answer, EXTERNAL_OPEN)?.find(
         (item) => item.kind === "releasePage",
       );
       expect(line?.label).toBe(releasePageLabel());
       expect(line?.availability).toEqual({ state: "ready" });
     }
-    expect(kinds(headerMenu([], null))).toEqual(kinds(headerMenu([], notice)));
+    expect(kinds(headerMenu([], null, EXTERNAL_OPEN))).toEqual(kinds(headerMenu([], notice, EXTERNAL_OPEN)));
   });
 
   /** AC #1: 新しい版 があることは、その行の可視の語が述べる。 */
   it("states the 版 on the line when one is published, and nothing when none is", () => {
-    const withNotice = headerMenu([], notice).find((item) => item.kind === "releasePage");
+    const withNotice = headerMenu([], notice, EXTERNAL_OPEN).find((item) => item.kind === "releasePage");
     expect(withNotice?.kind === "releasePage" && withNotice.notice).toContain("0.2.0");
-    const without = headerMenu([], null).find((item) => item.kind === "releasePage");
+    const without = headerMenu([], null, EXTERNAL_OPEN).find((item) => item.kind === "releasePage");
     expect(without?.kind === "releasePage" && without.notice).toBeNull();
   });
 
