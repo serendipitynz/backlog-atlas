@@ -21,7 +21,8 @@ Ubuntu 24.04 or newer).
 ## What it does
 
 - Register several projects and work with them together.
-- See every project's tasks in a swimlane: a row per project, a column per status.
+- See every project's tasks in a swimlane: a row per project, a column per status, with a card
+  dragged between columns to change its status.
 - View and edit task detail, with the body rendered as Markdown and diagram fences drawn
   by mermaid.
 - Extract Pull Request URLs from a task's References, and look up its Git commits and Pull
@@ -29,7 +30,10 @@ Ubuntu 24.04 or newer).
 - Derive Type from `kind:*` labels and the frontmatter, shown apart from ordinary labels.
 - List and edit documents and milestones.
 - List and read decisions (`backlog/decisions/`).
-- Keep your display and filtering preferences in settings, carried over to the next start.
+- Open the file behind what you are looking at — a task, a document, a milestone, or a
+  decision — in an external editor.
+- Carry your display and filtering preferences, the folds and hidden rows, and the window
+  size over to the next start.
 
 ## What Atlas does not change
 
@@ -91,9 +95,15 @@ Get-ChildItem "$(npm prefix -g)\node_modules\backlog.md\node_modules\backlog.md-
 
 ## Updating
 
-v0.1.0 does not update itself. New versions are published on the
+v0.2.0 does not update itself. New versions are published on the
 [Releases page](https://github.com/serendipitynz/backlog-atlas/releases); download a build and
-replace your copy (watch Releases to be notified when one appears).
+replace your copy.
+
+Atlas asks GitHub once at each start whether a newer version is out. If one is, the ☰ button
+carries a mark and the menu's **Open the releases page** line names the version. The query runs
+`gh`, which has to be installed and signed in — `gh api` asks for a token even on a public
+repository — and when it cannot answer, Atlas says nothing rather than guessing. Watching
+Releases notifies you either way.
 
 ## Building from source
 
