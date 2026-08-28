@@ -1,10 +1,10 @@
 ---
 id: TASK-181
 title: v0.2.0 を公開する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-15 12:34'
-updated_date: '2026-08-28 05:55'
+updated_date: '2026-08-28 09:16'
 labels:
   - release
   - 'kind:chore'
@@ -36,7 +36,7 @@ m-3 の最後。m-3 の残りが片付いた時点で v0.2.0 のタグを打ち�
 - [x] #3 リリースワークフローの 5 ジョブ (macOS・Linux x86_64・Linux arm64・Windows・下書き作成) がすべて success で終わっている
 - [x] #4 ドラフトの資産に Linux arm64 の .deb・.rpm・.AppImage が載っており、x86_64 のものと名前で区別できる
 - [x] #5 TASK-172 の AC #1・#2 をチェックし、TASK-172 を Done にした
-- [ ] #6 ドラフトのリリースノートを読んだうえで、手で公開した
+- [x] #6 ドラフトのリリースノートを読んだうえで、手で公開した
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -87,9 +87,39 @@ README 和英に最後に手が入ったのは 2026-08-20 (TASK-195) で、**TAS
 `cargo +1.98.0 fmt --check` を別に走らせた — どちらも緑である。**TASK-178 がこの非対称で赤になった実績が
 あるため。**
 
-## 残る AC
+## タグからの後半 (2026-08-28)
 
-**AC #2〜#6 はタグとドラフトが要るので、このコミットでは 1 件も達成していない。** AC #2 (4 ファイルと
-タグの一致) はリリースワークフロー自身が検査する段を持つので、タグを打った実行がそれを答える。
-**TASK-172 の AC #1・#2 (AC #5) も同じドラフト待ちである。**
+**タグは `v0.2.0`、指す先は PR #158 のマージコミット `da7d212`。** オーナーが push した。
+
+**AC #2** はリリースワークフローの `create-release` が答えた — あのジョブが 4 マニフェストとタグを
+突き合わせる段と、第三者通知の古さ検査を持つ。
+
+**AC #3: 5 ジョブすべて success** (run 33145763773)。**`ubuntu-24.04-arm` はこれが初通しで、通った** —
+doc-13 §3.5 が名指ししていたこの層の唯一の未実測がこれで閉じた。**apt の依存導入も落ちなかった。**
+
+**AC #4: 資産は 10 件で、arm64 の 3 形式は x86_64 と名前で区別できる。** 出た綴りは doc-13 §3.5 が
+bundler のソースから導いた予想とそのまま一致した。
+
+| 形式 | x86_64 | arm64 |
+|---|---|---|
+| `.deb` | `Backlog.Atlas_0.2.0_amd64.deb` | `Backlog.Atlas_0.2.0_arm64.deb` |
+| `.rpm` | `Backlog.Atlas-0.2.0-1.x86_64.rpm` | `Backlog.Atlas-0.2.0-1.aarch64.rpm` |
+| `.AppImage` | `Backlog.Atlas_0.2.0_amd64.AppImage` | `Backlog.Atlas_0.2.0_aarch64.AppImage` |
+
+**`.app.tar.gz` は載っていない** — doc-13 §3.5 の削除段が効いている。macOS は
+`Backlog.Atlas_0.2.0_universal.dmg` 1 つ、Windows は `_x64_en-US.msi` と `_x64-setup.exe`、
+`THIRD-PARTY-LICENSES.txt` が単独の資産としても添付されている。
+
+**AC #5: TASK-172 を Done にした。** AC #1 は上の 3 資産が、AC #2 は README 和英が既に
+「`amd64` か `x86_64` / `arm64` か `aarch64`」と述べていたことが満たす。
+
+**AC #6: オーナーが手で公開した** (2026-08-28 09:15 UTC)。`draft=false`・`prerelease=false` で、
+`releases/latest` は `v0.2.0` を答える。
+
+**リリースノートは PR #117〜#158 の 42 件で、全件が `Other Changes` に入った。** これは想定どおりで、
+`.github/release.yml` の註自身が「この repo の PR はラベルを 1 つも持たないので catch-all は飾りではない」と
+記録している。**欠陥として起票しない。**
+
+**版の告知 が本物のデータで出るのはここからである** — decision-44 の 公開されている版 は
+`releases/latest` の tag なので、走っている v0.1.0 のビルドが初めて印を出す状態になった。
 <!-- SECTION:NOTES:END -->
