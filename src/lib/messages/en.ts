@@ -479,7 +479,7 @@ export const EN: Catalog = {
       "Pull Requests are extracted from References. Add the Pull Request URL to the References field.",
     referenceMissing: "Reference missing",
     transitionsHeading: "Transitions",
-    externalEditorHeading: "Open in an external editor",
+    filePathHeading: "File path",
     gitHistoryHeading: "Git history",
     typeNotEditable: "Type cannot be edited in Atlas.",
     emptyTitle:

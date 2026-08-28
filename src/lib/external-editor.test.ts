@@ -303,14 +303,18 @@ describe("継続検出停止の註 (decision-45 §9)", () => {
 
 describe("CLI で不能な操作の理由 (doc-11 §8)", () => {
   it("names Atlas's own boundary, and does not send the reader to this route", () => {
-    // TASK-192: the route is one 区画 of this same panel and the same destination for every 不可, so
-    // each reason naming it said one thing five times without widening what the reader could do. The
-    // referent guarded here is the 区画 itself — its 見出し — rather than any phrasing of the advice.
+    // TASK-192: the route is the same destination for every 不可, so each reason naming it said one
+    // thing five times without widening what the reader could do.
     // **Three of those five reasons are gone rather than reworded** (TASK-153): the 最後の 1 件 の
     // 差し控え that References・dependencies・assignee each carried does not exist on v1.50.1, so what
     // is left to hold is the 保存区分 side.
-    const heading = (catalog: (typeof CATALOGS)[keyof typeof CATALOGS]) =>
-      catalog.taskDetail.externalEditorHeading;
+    //
+    // **The referent guarded here moved on 2026-08-25** (decision-45). It was the 区画's 見出し, because
+    // the route *was* a 区画 of this panel; the route is now the ☰'s 外部で開く, and that line's own name
+    // is what a reason must not send the reader to. **Guarding the old heading would now guard
+    // 「ファイルパス」, which no reason would name anyway** — the check would pass while holding nothing.
+    const entry = (catalog: (typeof CATALOGS)[keyof typeof CATALOGS]) =>
+      catalog.shell.externalOpen.label;
     const reasons: string[] = [];
     for (const storageState of ["draft", "completed", "archive"] as const) {
       const availability = editAvailability(taskView({ storageState }), {
@@ -325,10 +329,10 @@ describe("CLI で不能な操作の理由 (doc-11 §8)", () => {
     }
     expect(reasons).toHaveLength(3);
     for (const reason of reasons) {
-      expect(reason).not.toContain(heading(CATALOGS.ja));
+      expect(reason).not.toContain(entry(CATALOGS.ja));
     }
     for (const closed of [CATALOGS.en.taskDetail.draftReadOnly, CATALOGS.en.taskDetail.closedReadOnly]) {
-      expect(closed).not.toContain(heading(CATALOGS.en));
+      expect(closed).not.toContain(entry(CATALOGS.en));
     }
   });
 

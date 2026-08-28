@@ -642,7 +642,12 @@ export const ja = {
       "追加してください。",
     referenceMissing: "参照欠損",
     transitionsHeading: "状態遷移",
-    externalEditorHeading: "外部エディタで開く",
+    /**
+     * ファイルパス 区画 の見出し (doc-8 §3・§7)。**2026-08-28 に「外部エディタで開く」から改めた**
+     * （TASK-83、オーナーの実機目視）— decision-45 が起動の控えをこの区画からメニューへ移したので、
+     * 見出しがこの区画に無い操作を名乗っていた。**経路の名（外部エディタ経路）は動いていない。**
+     */
+    filePathHeading: "ファイルパス",
     /**
      * 外部エディタ経路 (doc-8 §7). Its own group inside this screen's, because the whole route is one
      * 区画 of the panel and its sentences are read together — the two notices before the launch, the
