@@ -648,11 +648,6 @@ export const ja = {
      * 見出しがこの区画に無い操作を名乗っていた。**経路の名（外部エディタ経路）は動いていない。**
      */
     filePathHeading: "ファイルパス",
-    /**
-     * 外部エディタ経路 (doc-8 §7). Its own group inside this screen's, because the whole route is one
-     * 区画 of the panel and its sentences are read together — the two notices before the launch, the
-     * two controls, and what each failure means.
-     */
     gitHistoryHeading: "Git 履歴欄",
     /**
      * Why Type is not editable, without naming which 導出元 the value came from: decision-20 gives
@@ -669,8 +664,10 @@ export const ja = {
     noEditSession: "編集セッションを開いていません",
     /**
      * 保存区分別の可否 (doc-8 §6.5): why the two closed divisions and draft are read-only. **Neither
-     * names the 外部エディタ経路** (doc-11 §8, TASK-192): it is one 区画 of this same screen and the
-     * same one for every 不可, so naming it here adds no route the reader could not already take.
+     * names the 外部エディタ経路** (doc-11 §8, TASK-192): it is the same one for every 不可 and is
+     * reachable from the screen, so naming it here adds no route the reader could not already take.
+     * **It was 「one 区画 of this same screen」 until decision-45 moved it to the ☰'s 外部で開く** — the
+     * ground is now that the menu is one place on every screen, which holds more widely, not less.
      * draft keeps 昇格, which is a control in this panel rather than a general way out.
      */
     draftReadOnly:
