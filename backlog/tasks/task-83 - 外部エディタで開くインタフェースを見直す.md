@@ -1,10 +1,10 @@
 ---
 id: TASK-83
 title: 外部エディタで開くインタフェースを見直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-07-31 23:33'
-updated_date: '2026-08-27 23:32'
+updated_date: '2026-08-28 01:51'
 labels:
   - ui
   - task-detail
