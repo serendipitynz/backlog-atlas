@@ -598,11 +598,18 @@ doc-13 says, and doc-13's opening paragraph names the same four.
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.
-- **In Japanese Markdown, leave a half-width space after a closing `**` that is preceded by
-  punctuation and followed by neither whitespace nor punctuation.** A closing delimiter has to
-  be right-flanking, and one preceded by `。` is not unless what follows is a space or
-  punctuation — so `**…です。**Atlas` renders its asterisks literally rather than as bold, while
-  `**第一。**（補足）` bolds correctly and wants no space. **Both adjacent characters define the
+- **In Japanese Markdown, leave a half-width space after a closing emphasis whose asterisk run
+  is preceded by punctuation and followed by neither whitespace nor punctuation.** A closing
+  delimiter has to be right-flanking, and one preceded by `。` is not unless what follows is a
+  space or punctuation — so `**…です。**Atlas` renders its asterisks literally rather than as
+  bold, while `**第一。**（補足）` bolds correctly and wants no space. **Judge on the run, never
+  on the two asterisks alone**: CommonMark reads a maximal sequence of asterisks as one
+  delimiter run, and `*` is itself punctuation, so reading the character beside the `**` would
+  miss `**第一。****第二**とは` — a collision that does not render. **Put the space where the
+  closing delimiter you meant ends**, which is *inside* the run when a closer and the next
+  opener have fused (`**第一。** **第二**とは`). Not after the first two asterisks: in
+  `***第一。***次` that would leave `*<strong>第一。</strong> *次` and lose the italic, where
+  after the run gives `<em><strong>第一。</strong></em> 次`. **Both adjacent characters define the
   scope, not the preceding one alone**: dropping the second condition would ask for a space
   before `（`, which decision-46 measured as the wrong repair at every one of the 168 sites
   shaped that way. **CommonMark counts the end of a line and the end of the body as whitespace**,

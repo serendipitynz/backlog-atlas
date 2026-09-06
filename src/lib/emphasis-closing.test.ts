@@ -16,25 +16,29 @@
  * find. The tree carried exactly one (TASK-152's notes), and the span assertion below is what sees it —
  * which is why this file checks the spans and not only the asterisks.
  *
- * **What this holds contains the whole writing rule, and more than it.** «閉じる `**` の直前が句読点で、
- * 直後が空白でも約物でもないなら半角スペース» asked for the space after any closer with text after it
- * until 2026-09-06 — no condition on the preceding character, and no exception for punctuation
- * following — and that wider letter reached 3,872 further sites — `**Ubuntu なら 24.04 以降**で` among them — where the
+ * **What this holds contains the whole writing rule, and more than it.** Until 2026-09-06 the rule read
+ * «閉じる `**` の後に文が続くなら半角スペース» — it asked for the space after any closer with text after
+ * it, with no condition on the preceding character and no exception for punctuation following — and
+ * that wider letter reached 3,872 further sites, `**Ubuntu なら 24.04 以降**で` among them, where the
  * emphasis renders correctly and a space helps nothing: it splits a word from its particle at the 1,049
- * followed by a word, and sits before punctuation at the other 2,823. decision-46 narrowed the rule to
- * the first of the shapes above, which this file already checked, so **a clean run here is now proof
- * the rule is met** — where before it was explicitly not.
+ * followed by a word, and sits before punctuation at the other 2,823. **decision-46 narrowed it** to
+ * «閉じる強調の run の直前が句読点で、run の直後が空白でも約物でもないなら半角スペース», which is the
+ * first of the shapes above and what this file already checked — so **a clean run here is now proof the
+ * rule is met**, where before it was explicitly not.
  *
  * **The implication runs one way only, and the two are not the same kind of thing.** This file does not
  * enumerate input shapes; it asserts over the render — no asterisk markdown-it gave up on, and every
  * bold run bolding the span the author delimited. The rule prevents one input shape those assertions
- * catch, and the collision above is that same shape: `**第一。****第二**とは` is a closer preceded by
- * `。` with neither space nor punctuation after it, and `**第一。** **第二**とは` renders both spans
- * correctly. **The following character is half the condition** — `**第一。**（補足）` closes and bolds
- * as written, which is why the rule does not reach the 168 sites shaped that way. **A line ending and
- * the end of the body count as whitespace** for the same test, which `isWhitespace` below implements by
- * treating an absent character as whitespace: `**文です。**` at either boundary closes, so a sentence
- * ending inside emphasis trips the rule only when a word follows on the same line.
+ * catch, and the collision above is that same shape: the run of four in `**第一。****第二**とは` is
+ * preceded by `。` and followed by `第`, and `**第一。** **第二**とは` renders both spans correctly.
+ * **That reading only works on the run** — `*` is itself punctuation, so judging the character beside
+ * the intended `**` would exempt the collision and contradict this paragraph; `canClose` below is
+ * already written that way, on `runStart`/`runLength`. **The following character is half the
+ * condition** — `**第一。**（補足）` closes and bolds as written, which is why the rule does not reach
+ * the 168 sites shaped that way. **A line ending and the end of the body count as whitespace** for the
+ * same test, which `isWhitespace` below implements by treating an absent character as whitespace:
+ * `**文です。**` at either boundary closes, so a sentence ending inside emphasis trips the rule only
+ * when a word follows on the same line.
  *
  * **Do not list what only the check catches.** Such a list overlaps and leaks. The nested fixture
  * planted below is the overlap — it violates the rule *and* mismatches its spans — and the leak needs
