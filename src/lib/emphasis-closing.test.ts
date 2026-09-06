@@ -16,15 +16,14 @@
  * find. The tree carried exactly one (TASK-152's notes), and the span assertion below is what sees it —
  * which is why this file checks the spans and not only the asterisks.
  *
- * **What this holds is the rendering condition, and the rule's letter is wider.** «閉じる `**` の後に文が
- * 続くなら半角スペース» is written without a condition; the punctuation is the reason, not the scope. Held
- * to the letter, `**Ubuntu なら 24.04 以降**で` violates it while rendering correctly, and the tree has 3,454
- * such sites (measured 2026-08-19 over the three directories: 1,574 in tasks, 1,325 in docs, 555 in
- * decisions, plus 64 in the four prose files). Rewriting them is a different piece of work from this one,
- * so **a clean run here is not proof the rule's letter is met** — TASK-161's AC named the rendering count
- * and that is the boundary this file draws. Do not read the pass as covering the wider claim; TASK-194
- * decides whether those 3,454 count as defects, and until it does the letter still binds newly written
- * prose.
+ * **What this holds is the whole rule, which is not how it started.** «閉じる `**` の直前が句読点で後に文が
+ * 続くなら半角スペース» carried no condition on the preceding character until 2026-09-06, and that wider
+ * letter reached 3,872 further sites — `**Ubuntu なら 24.04 以降**で` among them — where the emphasis
+ * renders correctly and a space helps nothing, because the run ends inside a clause or before
+ * punctuation. decision-46 narrowed the rule to the shape this file already checked, so **a clean run
+ * here is now proof the rule is met.** The two cannot drift apart again by one of them moving alone:
+ * widening the rule means widening this file, and the sites that would come with it are the ones
+ * decision-46 measured and declined.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason
  * `third-party-licenses.test.ts` gives: `node:fs` would pull in `@types/node`, and the dependency budget
