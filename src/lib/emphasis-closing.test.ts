@@ -40,6 +40,13 @@
  * `**文です。**` at either boundary closes, so a sentence ending inside emphasis trips the rule only
  * when a word follows on the same line.
  *
+ * **All of that is about `**`, and so is this file.** A run contributes the `**` pairs it holds, so a
+ * lone `*` is never a delimiter here — and single-asterisk emphasis fails the same way, `*文です。*次`
+ * rendering literally. **The rule is scoped to `**` to match**, rather than this file widened to match a
+ * wider rule: an unpaired `*` is more often a wildcard than a failed delimiter, and the tree holds ten
+ * of those (`v*`, `kind:*`, `[a-z0-9-]*`) against fourteen rendered `*…*` spans and no broken one
+ * (measured 2026-09-07), so widening would report those ten and nothing else.
+ *
  * **Do not list what only the check catches.** Such a list overlaps and leaks. The nested fixture
  * planted below is the overlap — it violates the rule *and* mismatches its spans — and the leak needs
  * no fixture to see: `これは **強調` has a perfectly good opener, no closer at all, and leaves one

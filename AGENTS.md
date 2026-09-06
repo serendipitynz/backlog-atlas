@@ -598,8 +598,13 @@ doc-13 says, and doc-13's opening paragraph names the same four.
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.
-- **In Japanese Markdown, leave a half-width space after a closing emphasis whose asterisk run
-  is preceded by punctuation and followed by neither whitespace nor punctuation.** A closing
+- **In Japanese Markdown, leave a half-width space after a closing `**` whose asterisk run is
+  preceded by punctuation and followed by neither whitespace nor punctuation.** **This is about
+  `**` and not about `*`**: single-asterisk emphasis fails identically (`*文です。*次` renders
+  literally) and neither this rule nor the check reaches it. Widening the check is not free —
+  an unpaired `*` is more often a wildcard than a failed delimiter, and the tree holds ten of
+  those (`v*`, `kind:*`, `[a-z0-9-]*`) against fourteen rendered `*…*` spans and no broken one,
+  measured 2026-09-07. A closing
   delimiter has to be right-flanking, and one preceded by `。` is not unless what follows is a
   space or punctuation — so `**…です。**Atlas` renders its asterisks literally rather than as
   bold, while `**第一。**（補足）` bolds correctly and wants no space. **Judge on the run, never
