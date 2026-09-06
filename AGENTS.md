@@ -14,9 +14,14 @@ start implementing — resolve the contradiction first.
 ## Updates
 
 - Delegate updates to Backlog tasks, documents, and milestones to Backlog CLI
-  calls that run with the target project as their working directory. Do not edit
-  the managed Markdown files directly. This rule binds you as an agent without
-  exception; the product has one, immediately below.
+  calls that run with the target project as their working directory, and do not
+  edit the managed Markdown files directly **wherever the CLI has a sub-command
+  for the value.** Going through the CLI is what keeps a written file readable by
+  Backlog and by Atlas; a hand edit can leave one that neither reads. **Two values
+  have no such sub-command — a decision's body and a milestone's description — and
+  those are written by editing the file**, within the range the two bullets below
+  fix. **The owner decided the milestone half on 2026-09-06**; until then this rule
+  bound an agent without exception and only the product wrote that range.
 - **A decision is outside that list, because no CLI call can write one.**
   `backlog decision` has no `update`/`edit`, and `create`'s options are `<title>`,
   `-s/--status` and `--plain` — none of which carries a body, so a decision's body is
@@ -24,15 +29,19 @@ start implementing — resolve the contradiction first.
   `doc`, by contrast, has `update --content`). **`list` and `--plain` arrived in
   v1.50.x and changed nothing here** — both are read/output, which is why this bullet
   names what no option carries rather than counting the options. Every body in `backlog/decisions/` was therefore written by
-  editing the file, and that is how to write one. The three named kinds — tasks,
-  documents, milestones — keep the rule above without exception. **The owner
-  confirmed this reading on 2026-08-13** (TASK-162); it is recorded because the
-  enumeration's silence is not what establishes it, and a later session that
-  re-derives permission from an omission would be making the move the last bullet
-  here forbids.
-- **The product's one exception — a milestone's description** (decision-21).
-  v1.50.1's `milestone` has no `update`/`edit`, so a description can only be set
-  at creation, and re-creating the milestone changes its id. Atlas therefore
+  editing the file, and that is how to write one. **Tasks and documents keep the
+  rule above without exception**; a milestone's description is the other value the
+  CLI cannot write, and the bullet below fixes its range. **The owner confirmed
+  this reading on 2026-08-13** (TASK-162); it is recorded because the enumeration's
+  silence is not what establishes it. **Neither permission was derived from an
+  omission** — this one was confirmed, the milestone one was decided — and a later
+  session that re-derives a third from silence would be making the move the last
+  bullet here forbids.
+- **A milestone's description — the one range written by the product and by an
+  agent alike** (decision-21). `milestone` has no `update`/`edit` in v1.50.1 or in
+  v1.51.0 (the latter measured 2026-09-06, where `rename` gained `--due-date` and
+  still carries nothing for the description), so a description can only be set at
+  creation, and re-creating the milestone changes its id. Atlas therefore
   writes that one range itself: the bytes from the line after the
   `## Description` heading to the line before the next `##` heading (or the end
   of the file), and nothing else — the frontmatter and the file name are left as
@@ -42,6 +51,9 @@ start implementing — resolve the contradiction first.
   file format is invented; it touches neither frontmatter nor the file name; and
   the range written is the range the read layer reads. "The CLI has no
   sub-command for it" is not on its own a reason to write a managed file.
+  **An agent writes the same range on the same three conditions** (2026-09-06
+  owner). Only the mechanics differ: the product's write is a 一時ファイル置換 that
+  passes doc-9 §4's pre-update check, and an agent's is an ordinary file write.
 - Run Backlog CLI and Git with fixed subcommands and argument arrays. Never
   concatenate user input into a shell string and execute it.
 
