@@ -16,14 +16,20 @@
  * find. The tree carried exactly one (TASK-152's notes), and the span assertion below is what sees it —
  * which is why this file checks the spans and not only the asterisks.
  *
- * **What this holds is the whole rule, which is not how it started.** «閉じる `**` の直前が句読点で後に文が
- * 続くなら半角スペース» carried no condition on the preceding character until 2026-09-06, and that wider
- * letter reached 3,872 further sites — `**Ubuntu なら 24.04 以降**で` among them — where the emphasis
- * renders correctly and a space helps nothing, because the run ends inside a clause or before
- * punctuation. decision-46 narrowed the rule to the shape this file already checked, so **a clean run
- * here is now proof the rule is met.** The two cannot drift apart again by one of them moving alone:
- * widening the rule means widening this file, and the sites that would come with it are the ones
- * decision-46 measured and declined.
+ * **What this holds contains the whole writing rule, and more than it.** «閉じる `**` の直前が句読点で
+ * 後に文が続くなら半角スペース» carried no condition on the preceding character until 2026-09-06, and
+ * that wider letter reached 3,872 further sites — `**Ubuntu なら 24.04 以降**で` among them — where the
+ * emphasis renders correctly and a space helps nothing: it splits a word from its particle at the 1,049
+ * followed by a word, and sits before punctuation at the other 2,823. decision-46 narrowed the rule to
+ * the first of the shapes above, which this file already checked, so **a clean run here is now proof
+ * the rule is met** — where before it was explicitly not.
+ *
+ * **The implication runs one way only.** The other two shapes and the span assertion are outside the
+ * writing rule and stay inside this file: an opener that is not left-flanking and a four-asterisk
+ * collision are things an author cannot head off by placing one space, so a rule phrased as "leave a
+ * space" cannot reach them, while a check reading the render can. So a red run here is not necessarily
+ * that rule's doing — read which assertion failed. Widening the rule to close the gap would mean
+ * adopting the 3,872 sites decision-46 measured and declined.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason
  * `third-party-licenses.test.ts` gives: `node:fs` would pull in `@types/node`, and the dependency budget

@@ -612,10 +612,15 @@ doc-13 says, and doc-13's opening paragraph names the same four.
   across 44 files and found one of those.
   **The condition on the preceding character is the rule's scope, and decision-46 is why.**
   Until 2026-09-06 this bullet asked for the space unconditionally, which reached 3,872
-  further sites where the emphasis renders correctly — and a space helps at none of them,
-  because the run there ends inside a clause or before punctuation. `**Ubuntu なら 24.04
-  以降**で` is one of those and is correct as written. **So a green run here does mean the
-  rule is met**, which is what changed: the check and the rule now name the same set.
+  further sites where the emphasis renders correctly — and a space helps at none of them: it
+  splits a word from its particle at the 1,049 followed by a word, and sits before punctuation
+  at the other 2,823. `**Ubuntu なら 24.04 以降**で` is one of those and is correct as written.
+  **So a green run here does mean the rule is met**, which is what changed.
+  **The two are not the same set, though — the rule's shape is one of several the check holds.**
+  The check also catches an opener that is not left-flanking (`には**「〜」**と書いた`) and a
+  four-asterisk collision, neither of which a writing rule can head off with one space. So the
+  implication runs one way only: green proves the rule is met, and a red run is not necessarily
+  this rule's doing.
 - After implementation, run the relevant checks and report anything that cannot be run, with the
   reason. **The frontend has no formatter** — its checks are `pnpm test`, `pnpm run check` and
   `pnpm run lint`. The Rust side does have one: `cargo fmt`, alongside `cargo test` and
