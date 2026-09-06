@@ -24,21 +24,27 @@
  * the first of the shapes above, which this file already checked, so **a clean run here is now proof
  * the rule is met** — where before it was explicitly not.
  *
- * **The implication runs one way only, and the collision is not what separates them.** The collision
- * above *is* the rule's own case — `**第一。****第二**とは` is a closer preceded by `。` with text after
- * it, and `**第一。** **第二**とは` renders both spans correctly, so the missing space is the defect and
- * the rule prevents it. What lies outside are the third shape and the fourth: a non-left-flanking
- * opener, and a run covering a span other than the one delimited (which is a property of the render
- * that no placement rule states). So a red run here is not necessarily the rule's doing — read which
- * assertion failed.
+ * **The implication runs one way only, and the two are not the same kind of thing.** This file does not
+ * enumerate input shapes; it asserts over the render — no asterisk markdown-it gave up on, and every
+ * bold run bolding the span the author delimited. The rule prevents one input shape those assertions
+ * catch, and the collision above is that same shape: `**第一。****第二**とは` is a closer preceded by
+ * `。` with text after it, and `**第一。** **第二**とは` renders both spans correctly.
  *
- * **The opener's gap is closable without touching the 3,872, which is why this file does not claim
- * otherwise.** `には**「〜」**と書いた` needs a space **before the opener and after the closer, and
- * neither alone renders** (measured 2026-09-06). The second half is what the rule already asks for; the
- * missing half is a rule about the space before an opener, which says nothing about closers and so
- * would not re-adopt the sites decision-46 declined. Whether to add one is a separate question that
- * decision-46 deliberately leaves open — and it starts by counting how many such sites exist, which
- * nobody has.
+ * **Do not list what only the check catches.** Such a list overlaps and leaks. The nested fixture
+ * planted below is the overlap — it violates the rule *and* mismatches its spans — and the leak needs
+ * no fixture to see: `これは **強調` has a perfectly good opener, no closer at all, and leaves one
+ * asterisk behind, with the rule silent on it. **One witness settles the inclusion instead**:
+ * `には**「〜」** と書いた。`
+ * satisfies the rule, the space after the closer being there, and still renders no emphasis because the
+ * opener is not left-flanking, leaving two asterisks for the check to find. So a red run is not
+ * necessarily the rule's doing — read which assertion failed.
+ *
+ * **That witness's gap is closable without touching the 3,872, which is why this file does not claim
+ * otherwise.** It needs a space **before the opener as well as after the closer, and neither alone
+ * renders** (measured 2026-09-06). The second half is what the rule already asks for; the missing half
+ * is a rule about the space before an opener, which says nothing about closers and so would not
+ * re-adopt the sites decision-46 declined. Whether to add one is a separate question decision-46
+ * deliberately leaves open — and it starts by counting how many such sites exist, which nobody has.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason
  * `third-party-licenses.test.ts` gives: `node:fs` would pull in `@types/node`, and the dependency budget

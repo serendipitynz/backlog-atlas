@@ -616,14 +616,16 @@ doc-13 says, and doc-13's opening paragraph names the same four.
   splits a word from its particle at the 1,049 followed by a word, and sits before punctuation
   at the other 2,823. `**Ubuntu なら 24.04 以降**で` is one of those and is correct as written.
   **So a green run here does mean the rule is met**, which is what changed.
-  **The two are not the same set, though — the rule's shape is one of several the check holds.**
-  The four-asterisk collision `**第一。****第二**とは` *is* this rule's case, and the missing space
-  is the defect. What lies beyond it is an opener that is not left-flanking and any bold run
-  covering a span other than the one delimited. So the implication runs one way only: green proves
-  the rule is met, and a red run is not necessarily this rule's doing — read which assertion
-  failed. **The opener case wants a space before the opener as well as after the closer**
-  `には**「〜」**と書いた` renders with neither alone — and this bullet states only the closer half;
-  decision-46 leaves the other half open rather than deciding it.
+  **The two are not the same set, though, and they are not the same kind of thing.** The check does
+  not enumerate input shapes; it asserts over the render. This rule prevents one input shape those
+  assertions catch — the four-asterisk collision `**第一。****第二**とは` is that shape too, and the
+  missing space is its defect. **Do not try to list what only the check catches**: such a list both
+  overlaps and leaks. **One witness settles the inclusion**: `には**「〜」** と書いた。` satisfies
+  this rule — the space after the closer is there — and still renders no emphasis, because the
+  opener is not left-flanking. So the implication runs one way only: green proves the rule is met,
+  and a red run is not necessarily this rule's doing — read which assertion failed. **That witness
+  wants a space before the opener as well** (neither alone renders); this bullet states the closer
+  half, and decision-46 leaves the other half open rather than deciding it.
 - After implementation, run the relevant checks and report anything that cannot be run, with the
   reason. **The frontend has no formatter** — its checks are `pnpm test`, `pnpm run check` and
   `pnpm run lint`. The Rust side does have one: `cargo fmt`, alongside `cargo test` and
