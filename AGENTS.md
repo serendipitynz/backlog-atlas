@@ -604,7 +604,7 @@ doc-13 says, and doc-13's opening paragraph names the same four.
   asterisks literally rather than as bold. Every Japanese sentence that ends inside the
   emphasis hits this, which is most of them. It applies wherever the Markdown is rendered: the
   READMEs, and task and document bodies, which Atlas draws with `markdown-it` (decision-25).
-  **`src/lib/emphasis-closing.test.ts` holds exactly this** — over `backlog/` and the four
+  **`src/lib/emphasis-closing.test.ts` holds this rule and more** — over `backlog/` and the four
   prose files — and it holds two things rather than one: no asterisks markdown-it gave up on,
   and **every bold run bolding the span the author delimited.** The second is not the first
   said differently — where a closer fails, the next opener can absorb it and the emphasis
@@ -617,10 +617,12 @@ doc-13 says, and doc-13's opening paragraph names the same four.
   at the other 2,823. `**Ubuntu なら 24.04 以降**で` is one of those and is correct as written.
   **So a green run here does mean the rule is met**, which is what changed.
   **The two are not the same set, though — the rule's shape is one of several the check holds.**
-  The check also catches an opener that is not left-flanking (`には**「〜」**と書いた`) and a
-  four-asterisk collision, neither of which a writing rule can head off with one space. So the
-  implication runs one way only: green proves the rule is met, and a red run is not necessarily
-  this rule's doing.
+  The four-asterisk collision `**第一。****第二**とは` *is* this rule's case, and the missing space
+  is the defect. What lies beyond the rule is an opener that is not left-flanking
+  (`には**「〜」**と書いた`, where a space after the opener would only stop it opening too) and any
+  bold run that ends up covering a span other than the one delimited. So the implication runs one
+  way only: green proves the rule is met, and a red run is not necessarily this rule's doing —
+  read which assertion failed.
 - After implementation, run the relevant checks and report anything that cannot be run, with the
   reason. **The frontend has no formatter** — its checks are `pnpm test`, `pnpm run check` and
   `pnpm run lint`. The Rust side does have one: `cargo fmt`, alongside `cargo test` and

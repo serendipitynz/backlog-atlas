@@ -24,12 +24,15 @@
  * the first of the shapes above, which this file already checked, so **a clean run here is now proof
  * the rule is met** — where before it was explicitly not.
  *
- * **The implication runs one way only.** The other two shapes and the span assertion are outside the
- * writing rule and stay inside this file: an opener that is not left-flanking and a four-asterisk
- * collision are things an author cannot head off by placing one space, so a rule phrased as "leave a
- * space" cannot reach them, while a check reading the render can. So a red run here is not necessarily
- * that rule's doing — read which assertion failed. Widening the rule to close the gap would mean
- * adopting the 3,872 sites decision-46 measured and declined.
+ * **The implication runs one way only, and the collision is not what separates them.** The collision
+ * above *is* the rule's own case — `**第一。****第二**とは` is a closer preceded by `。` with text after
+ * it, and `**第一。** **第二**とは` renders both spans correctly, so the missing space is the defect and
+ * the rule prevents it. What lies outside the rule is the third shape and the fourth: an opener that is
+ * not left-flanking cannot be repaired by a space at all (one after the opener stops it opening too —
+ * the fix is to reword), and a run covering a span other than the one delimited is a property of the
+ * render that no placement rule states. So a red run here is not necessarily the rule's doing — read
+ * which assertion failed. Widening the rule to close the remaining gap would mean adopting the 3,872
+ * sites decision-46 measured and declined.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason
  * `third-party-licenses.test.ts` gives: `node:fs` would pull in `@types/node`, and the dependency budget
