@@ -618,11 +618,12 @@ doc-13 says, and doc-13's opening paragraph names the same four.
   **So a green run here does mean the rule is met**, which is what changed.
   **The two are not the same set, though — the rule's shape is one of several the check holds.**
   The four-asterisk collision `**第一。****第二**とは` *is* this rule's case, and the missing space
-  is the defect. What lies beyond the rule is an opener that is not left-flanking
-  (`には**「〜」**と書いた`, where a space after the opener would only stop it opening too) and any
-  bold run that ends up covering a span other than the one delimited. So the implication runs one
-  way only: green proves the rule is met, and a red run is not necessarily this rule's doing —
-  read which assertion failed.
+  is the defect. What lies beyond it is an opener that is not left-flanking and any bold run
+  covering a span other than the one delimited. So the implication runs one way only: green proves
+  the rule is met, and a red run is not necessarily this rule's doing — read which assertion
+  failed. **The opener case wants a space before the opener as well as after the closer**
+  `には**「〜」**と書いた` renders with neither alone — and this bullet states only the closer half;
+  decision-46 leaves the other half open rather than deciding it.
 - After implementation, run the relevant checks and report anything that cannot be run, with the
   reason. **The frontend has no formatter** — its checks are `pnpm test`, `pnpm run check` and
   `pnpm run lint`. The Rust side does have one: `cargo fmt`, alongside `cargo test` and

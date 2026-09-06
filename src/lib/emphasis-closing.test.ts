@@ -27,12 +27,18 @@
  * **The implication runs one way only, and the collision is not what separates them.** The collision
  * above *is* the rule's own case — `**第一。****第二**とは` is a closer preceded by `。` with text after
  * it, and `**第一。** **第二**とは` renders both spans correctly, so the missing space is the defect and
- * the rule prevents it. What lies outside the rule is the third shape and the fourth: an opener that is
- * not left-flanking cannot be repaired by a space at all (one after the opener stops it opening too —
- * the fix is to reword), and a run covering a span other than the one delimited is a property of the
- * render that no placement rule states. So a red run here is not necessarily the rule's doing — read
- * which assertion failed. Widening the rule to close the remaining gap would mean adopting the 3,872
- * sites decision-46 measured and declined.
+ * the rule prevents it. What lies outside are the third shape and the fourth: a non-left-flanking
+ * opener, and a run covering a span other than the one delimited (which is a property of the render
+ * that no placement rule states). So a red run here is not necessarily the rule's doing — read which
+ * assertion failed.
+ *
+ * **The opener's gap is closable without touching the 3,872, which is why this file does not claim
+ * otherwise.** `には**「〜」**と書いた` needs a space **before the opener and after the closer, and
+ * neither alone renders** (measured 2026-09-06). The second half is what the rule already asks for; the
+ * missing half is a rule about the space before an opener, which says nothing about closers and so
+ * would not re-adopt the sites decision-46 declined. Whether to add one is a separate question that
+ * decision-46 deliberately leaves open — and it starts by counting how many such sites exist, which
+ * nobody has.
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason
  * `third-party-licenses.test.ts` gives: `node:fs` would pull in `@types/node`, and the dependency budget
