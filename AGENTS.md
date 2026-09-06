@@ -599,9 +599,12 @@ doc-13 says, and doc-13's opening paragraph names the same four.
 
 - Code comments in English; user-facing explanations in Japanese by default.
 - **In Japanese Markdown, leave a half-width space after a closing `**` that is preceded by
-  punctuation and followed by text.** A closing delimiter has to be right-flanking, and one
-  preceded by `。` with a non-space after it is not — so `**…です。**Atlas` renders its
-  asterisks literally rather than as bold. Every Japanese sentence that ends inside the
+  punctuation and followed by neither whitespace nor punctuation.** A closing delimiter has to
+  be right-flanking, and one preceded by `。` is not unless what follows is a space or
+  punctuation — so `**…です。**Atlas` renders its asterisks literally rather than as bold, while
+  `**第一。**（補足）` bolds correctly and wants no space. **Both halves of the condition are
+  load-bearing**: dropping the second would ask for a space before `（`, which decision-46
+  measured as the wrong repair at every one of the 168 sites shaped that way. Every Japanese sentence that ends inside the
   emphasis hits this, which is most of them. It applies wherever the Markdown is rendered: the
   READMEs, and task and document bodies, which Atlas draws with `markdown-it` (decision-25).
   **`src/lib/emphasis-closing.test.ts` holds this rule and more** — over `backlog/` and the four

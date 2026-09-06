@@ -16,9 +16,10 @@
  * find. The tree carried exactly one (TASK-152's notes), and the span assertion below is what sees it —
  * which is why this file checks the spans and not only the asterisks.
  *
- * **What this holds contains the whole writing rule, and more than it.** «閉じる `**` の直前が句読点で
- * 後に文が続くなら半角スペース» carried no condition on the preceding character until 2026-09-06, and
- * that wider letter reached 3,872 further sites — `**Ubuntu なら 24.04 以降**で` among them — where the
+ * **What this holds contains the whole writing rule, and more than it.** «閉じる `**` の直前が句読点で、
+ * 直後が空白でも約物でもないなら半角スペース» asked for the space after any closer with text after it
+ * until 2026-09-06 — no condition on the preceding character, and no exception for punctuation
+ * following — and that wider letter reached 3,872 further sites — `**Ubuntu なら 24.04 以降**で` among them — where the
  * emphasis renders correctly and a space helps nothing: it splits a word from its particle at the 1,049
  * followed by a word, and sits before punctuation at the other 2,823. decision-46 narrowed the rule to
  * the first of the shapes above, which this file already checked, so **a clean run here is now proof
@@ -28,7 +29,9 @@
  * enumerate input shapes; it asserts over the render — no asterisk markdown-it gave up on, and every
  * bold run bolding the span the author delimited. The rule prevents one input shape those assertions
  * catch, and the collision above is that same shape: `**第一。****第二**とは` is a closer preceded by
- * `。` with text after it, and `**第一。** **第二**とは` renders both spans correctly.
+ * `。` with neither space nor punctuation after it, and `**第一。** **第二**とは` renders both spans
+ * correctly. **The following character is half the condition** — `**第一。**（補足）` closes and bolds
+ * as written, which is why the rule does not reach the 168 sites shaped that way.
  *
  * **Do not list what only the check catches.** Such a list overlaps and leaks. The nested fixture
  * planted below is the overlap — it violates the rule *and* mismatches its spans — and the leak needs
@@ -495,8 +498,10 @@ describe("AGENTS 作業上の規約 閉じない太字強調を残さない", ()
 
   /**
    * The boundary this file draws, stated as a test rather than left to the header comment. The closer is
-   * preceded by `降` rather than by punctuation, so it is right-flanking and the emphasis renders — and
-   * the rule's letter still asks for a space after it. Nothing here reports the site.
+   * preceded by `降` rather than by punctuation, so it is right-flanking and the emphasis renders.
+   * **Since decision-46 the rule does not ask for a space here either** — this was the example of the
+   * gap between the two, and it is now an example of them agreeing. Nothing reports the site, and
+   * nothing should.
    */
   it("leaves a closer alone when its preceding character is not punctuation", () => {
     const legal = "**Ubuntu なら 24.04 以降**でビルドできる。";
