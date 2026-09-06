@@ -602,18 +602,20 @@ doc-13 says, and doc-13's opening paragraph names the same four.
   punctuation and followed by neither whitespace nor punctuation.** A closing delimiter has to
   be right-flanking, and one preceded by `。` is not unless what follows is a space or
   punctuation — so `**…です。**Atlas` renders its asterisks literally rather than as bold, while
-  `**第一。**（補足）` bolds correctly and wants no space. **Both halves of the condition are
-  load-bearing**: dropping the second would ask for a space before `（`, which decision-46
-  measured as the wrong repair at every one of the 168 sites shaped that way. Every Japanese sentence that ends inside the
-  emphasis hits this, which is most of them. It applies wherever the Markdown is rendered: the
-  READMEs, and task and document bodies, which Atlas draws with `markdown-it` (decision-25).
+  `**第一。**（補足）` bolds correctly and wants no space. **Both adjacent characters define the
+  scope, not the preceding one alone**: dropping the second condition would ask for a space
+  before `（`, which decision-46 measured as the wrong repair at every one of the 168 sites
+  shaped that way. **CommonMark counts the end of a line and the end of the body as whitespace**,
+  so `**文です。**` closes and bolds at either — a sentence ending inside emphasis only trips the
+  rule when a word follows **on the same line**. It applies wherever the Markdown is rendered:
+  the READMEs, and task and document bodies, which Atlas draws with `markdown-it` (decision-25).
   **`src/lib/emphasis-closing.test.ts` holds this rule and more** — over `backlog/` and the four
   prose files — and it holds two things rather than one: no asterisks markdown-it gave up on,
   and **every bold run bolding the span the author delimited.** The second is not the first
   said differently — where a closer fails, the next opener can absorb it and the emphasis
   nests silently, leaving no asterisk for a count to find. TASK-161 rewrote 426 delimiters
   across 44 files and found one of those.
-  **The condition on the preceding character is the rule's scope, and decision-46 is why.**
+  **Both conditions together are the rule's scope, and decision-46 is why.**
   Until 2026-09-06 this bullet asked for the space unconditionally, which reached 3,872
   further sites where the emphasis renders correctly — and a space helps at none of them: it
   splits a word from its particle at the 1,049 followed by a word, and sits before punctuation

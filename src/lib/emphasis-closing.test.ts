@@ -31,7 +31,10 @@
  * catch, and the collision above is that same shape: `**第一。****第二**とは` is a closer preceded by
  * `。` with neither space nor punctuation after it, and `**第一。** **第二**とは` renders both spans
  * correctly. **The following character is half the condition** — `**第一。**（補足）` closes and bolds
- * as written, which is why the rule does not reach the 168 sites shaped that way.
+ * as written, which is why the rule does not reach the 168 sites shaped that way. **A line ending and
+ * the end of the body count as whitespace** for the same test, which `isWhitespace` below implements by
+ * treating an absent character as whitespace: `**文です。**` at either boundary closes, so a sentence
+ * ending inside emphasis trips the rule only when a word follows on the same line.
  *
  * **Do not list what only the check catches.** Such a list overlaps and leaks. The nested fixture
  * planted below is the overlap — it violates the rule *and* mismatches its spans — and the leak needs
