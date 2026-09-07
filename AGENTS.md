@@ -598,29 +598,51 @@ doc-13 says, and doc-13's opening paragraph names the same four.
 ## Working conventions
 
 - Code comments in English; user-facing explanations in Japanese by default.
-- **In Japanese Markdown, leave a half-width space after a closing `**` when text follows
-  it.** A closing delimiter has to be right-flanking, and one preceded by `。` with a
-  non-space after it is not — so `**…です。**Atlas` renders its asterisks literally rather
-  than as bold. Every Japanese sentence that ends inside the emphasis hits this, which is
-  most of them. It applies wherever the Markdown is rendered: the READMEs, and task and
-  document bodies, which Atlas draws with `markdown-it` (decision-25).
-  **`src/lib/emphasis-closing.test.ts` holds the part of this that renders wrong** — over
-  `backlog/` and the four prose files — and it holds two things rather than one: no asterisks
-  markdown-it gave up on, and **every bold run bolding the span the author delimited.** The
-  second is not the first said differently — where a closer fails, the next opener can absorb
-  it and the emphasis nests silently, leaving no asterisk for a count to find. TASK-161
-  rewrote 426 delimiters across 44 files and found one of those.
-  **The rule's letter is wider than what that check holds, and the difference is 3,454 sites**
-  (measured 2026-08-19). `**Ubuntu なら 24.04 以降**で` renders correctly because the closer is
-  preceded by `降` rather than by punctuation, and the sentence above still asks for a space
-  after it. **A clean `pnpm test` is therefore not proof the letter is met** — nothing holds
-  that, so **write new prose to the letter** — the sentence this bullet opens with binds what you
-  write, whether or not the check can see it. **What TASK-194 settles is only whether the 3,454
-  sites already in the tree count as defects** — leave those alone until it does, and do not read
-  a green run as licence to add another. **The letter is harder to follow than it looks** —
-  TASK-194's own body was written with it in mind and still broke it five times, once where the
-  following character was `:`; there the fix was to rewrite the sentence rather than wedge a space
-  in, because a space before `:` or `（` costs more than it buys.
+- **In Japanese Markdown, leave a half-width space after a closing `**` whose asterisk run is
+  preceded by punctuation and followed by neither whitespace nor punctuation.** **This is about
+  `**` and not about `*`**: single-asterisk emphasis fails identically (`*文です。*次` renders
+  literally) and neither this rule nor the check reaches it. Widening the check is not free —
+  an unpaired `*` is more often a wildcard than a failed delimiter, and the tree holds ten of
+  those (`v*`, `kind:*`, `[a-z0-9-]*`) against fourteen rendered `*…*` spans and no broken one,
+  measured 2026-09-07. A closing
+  delimiter has to be right-flanking, and one preceded by `。` is not unless what follows is a
+  space or punctuation — so `**…です。**Atlas` renders its asterisks literally rather than as
+  bold, while `**第一。**（補足）` bolds correctly and wants no space. **Judge on the run, never
+  on the two asterisks alone**: CommonMark reads a maximal sequence of asterisks as one
+  delimiter run, and `*` is itself punctuation, so reading the character beside the `**` would
+  miss `**第一。****第二**とは` — a collision that does not render. **Put the space where the
+  closing delimiter you meant ends**, which is *inside* the run when a closer and the next
+  opener have fused (`**第一。** **第二**とは`). Not after the first two asterisks: in
+  `***第一。***次` that would leave `*<strong>第一。</strong> *次` and lose the italic, where
+  after the run gives `<em><strong>第一。</strong></em> 次`. **Both adjacent characters define the
+  scope, not the preceding one alone**: dropping the second condition would ask for a space
+  before `（`, which decision-46 measured as the wrong repair at every one of the 168 sites
+  shaped that way. **CommonMark counts the end of a line and the end of the body as whitespace**,
+  so `**文です。**` closes and bolds at either — a sentence ending inside emphasis only trips the
+  rule when a word follows **on the same line**. It applies wherever the Markdown is rendered:
+  the READMEs, and task and document bodies, which Atlas draws with `markdown-it` (decision-25).
+  **`src/lib/emphasis-closing.test.ts` holds this rule and more** — over `backlog/` and the four
+  prose files — and it holds two things rather than one: no asterisks markdown-it gave up on,
+  and **every bold run bolding the span the author delimited.** The second is not the first
+  said differently — where a closer fails, the next opener can absorb it and the emphasis
+  nests silently, leaving no asterisk for a count to find. TASK-161 rewrote 426 delimiters
+  across 44 files and found one of those.
+  **Both conditions together are the rule's scope, and decision-46 is why.**
+  Until 2026-09-06 this bullet asked for the space unconditionally, which reached 3,872
+  further sites where the emphasis renders correctly — and a space helps at none of them: it
+  splits a word from its particle at the 1,049 followed by a word, and sits before punctuation
+  at the other 2,823. `**Ubuntu なら 24.04 以降**で` is one of those and is correct as written.
+  **So a green run here does mean the rule is met**, which is what changed.
+  **The two are not the same set, though, and they are not the same kind of thing.** The check does
+  not enumerate input shapes; it asserts over the render. This rule prevents one input shape those
+  assertions catch — the four-asterisk collision `**第一。****第二**とは` is that shape too, and the
+  missing space is its defect. **Do not try to list what only the check catches**: such a list both
+  overlaps and leaks. **One witness settles the inclusion**: `には**「〜」** と書いた。` satisfies
+  this rule — the space after the closer is there — and still renders no emphasis, because the
+  opener is not left-flanking. So the implication runs one way only: green proves the rule is met,
+  and a red run is not necessarily this rule's doing — read which assertion failed. **That witness
+  wants a space before the opener as well** (neither alone renders); this bullet states the closer
+  half, and decision-46 leaves the other half open rather than deciding it.
 - After implementation, run the relevant checks and report anything that cannot be run, with the
   reason. **The frontend has no formatter** — its checks are `pnpm test`, `pnpm run check` and
   `pnpm run lint`. The Rust side does have one: `cargo fmt`, alongside `cargo test` and
