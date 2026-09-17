@@ -1,10 +1,10 @@
 ---
 id: TASK-190
 title: 'Acceptance Criteria 一覧の鍵を #N から位置へ変える'
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-16 21:41'
-updated_date: '2026-09-17 03:12'
+updated_date: '2026-09-17 03:51'
 labels:
   - robustness
 milestone: m-4

@@ -1,10 +1,10 @@
 ---
 id: TASK-174
 title: 一覧列のカードの鍵を id から所在パスへ替え、同じ id の 2 件で例外が出るのを止める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-14 12:27'
-updated_date: '2026-09-17 00:21'
+updated_date: '2026-09-17 03:51'
 labels:
   - 'kind:bug'
 milestone: m-4
