@@ -124,7 +124,7 @@
           <!-- 選択肢は宣言済みの原文 status に限る (doc-10 §7): `-s` takes only what
                `config.yml` declares, and an undeclared value is refused with exit code 1.
                Canonical column names are deliberately not listed. -->
-          {#each statuses as status (status)}
+          {#each statuses as status, index (index)}
             <option value={status}>{status}</option>
           {/each}
         </select>
@@ -150,7 +150,7 @@
           onchange={(event) => (taskInput.milestone = event.currentTarget.value)}
         >
           <option value="">{t().projectDetail.unset}</option>
-          {#each milestones as milestone (milestone.id)}
+          {#each milestones as milestone (milestone.sourcePath)}
             <option value={milestone.id}>{milestone.id} {milestone.title}</option>
           {/each}
         </select>

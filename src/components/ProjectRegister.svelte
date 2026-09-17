@@ -227,7 +227,7 @@
       >
     </span>
   </label>
-  {#each problemsFor(issues, "projectRoot") as message (message)}
+  {#each problemsFor(issues, "projectRoot") as message, index (index)}
     <p class="problem">{message}</p>
   {/each}
 
@@ -262,7 +262,7 @@
       {t().projectRegister.backlogRootHint.tail}
     </p>
   {/if}
-  {#each problemsFor(issues, "backlogRoot") as message (message)}
+  {#each problemsFor(issues, "backlogRoot") as message, index (index)}
     <p class="problem">{message}</p>
   {/each}
 
@@ -290,7 +290,7 @@
       <p class="problem">{t().projectRegister.slugUnderivable}</p>
     {/if}
   {/if}
-  {#each problemsFor(issues, "slug") as message (message)}
+  {#each problemsFor(issues, "slug") as message, index (index)}
     <p class="problem">{message}</p>
   {/each}
 

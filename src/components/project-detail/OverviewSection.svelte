@@ -148,7 +148,7 @@
   {#if moveNote !== null}
     <p class="hint">{moveNote}</p>
   {/if}
-  {#each problemsFor(editIssues, "projectRoot") as text (text)}
+  {#each problemsFor(editIssues, "projectRoot") as text, index (index)}
     <p class="problem">{text}</p>
   {/each}
 
@@ -169,7 +169,7 @@
       </button>
     </span>
   </label>
-  {#each problemsFor(editIssues, "backlogRoot") as text (text)}
+  {#each problemsFor(editIssues, "backlogRoot") as text, index (index)}
     <p class="problem">{text}</p>
   {/each}
 
@@ -277,13 +277,13 @@
       <button type="button" disabled={ledgerReadOnly} onclick={onaddAliasRow}>{t().projectDetail.aliasAdd}</button>
       {#if declaredStatuses !== null}
         <datalist id={`declared-${entry.slug}`}>
-          {#each declaredStatuses as status (status)}
+          {#each declaredStatuses as status, index (index)}
             <option value={status}></option>
           {/each}
         </datalist>
       {/if}
     </div>
-    {#each problemsFor(editIssues, "aliases") as text (text)}
+    {#each problemsFor(editIssues, "aliases") as text, index (index)}
       <p class="problem">{text}</p>
     {/each}
   </fieldset>
