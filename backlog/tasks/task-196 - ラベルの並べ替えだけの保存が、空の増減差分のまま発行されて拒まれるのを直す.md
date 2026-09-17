@@ -1,10 +1,10 @@
 ---
 id: TASK-196
 title: ラベルの並べ替えだけの保存が、空の増減差分のまま発行されて拒まれるのを直す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-20 00:07'
-updated_date: '2026-09-17 04:29'
+updated_date: '2026-09-17 08:20'
 labels:
   - 'kind:bug'
 milestone: m-4
