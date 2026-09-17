@@ -191,7 +191,7 @@
             </p>
           {/if}
           <ul class="cards">
-            {#each milestones as milestone (milestone.id)}
+            {#each milestones as milestone (milestone.sourcePath)}
               {@const held = tasks.filter(
                 (view) => view.task.milestone === milestone.id,
               ).length}
@@ -422,7 +422,7 @@
                           (removeInput.reassignTo = event.currentTarget.value)}
                       >
                         <option value="">{t().projectDetail.chooseOne}</option>
-                        {#each milestones.filter((candidate) => candidate.id !== milestone.id) as candidate (candidate.id)}
+                        {#each milestones.filter((candidate) => candidate.id !== milestone.id) as candidate (candidate.sourcePath)}
                           <option value={candidate.id}>
                             {candidate.id}
                             {candidate.title}

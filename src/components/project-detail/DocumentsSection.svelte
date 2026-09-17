@@ -173,7 +173,7 @@
             </p>
           {/if}
           <ul class="cards">
-            {#each documents as document (document.id)}
+            {#each documents as document (document.sourcePath)}
               {@const current = selection === document.id}
               {@const editing = session?.baseline.id === document.id}
               {@const reasons = fileInconsistencyReasons(document.health, "document")}

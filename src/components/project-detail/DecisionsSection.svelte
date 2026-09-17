@@ -93,7 +93,7 @@
           <p class="neutral">{t().projectDetail.decisionsEmpty}</p>
         {:else}
           <ul class="cards">
-            {#each project.decisions as decision (decision.id)}
+            {#each project.decisions as decision (decision.sourcePath)}
               {@const current = selection === decision.id}
               {@const reasons = fileInconsistencyReasons(decision.health, "decision")}
               <li>

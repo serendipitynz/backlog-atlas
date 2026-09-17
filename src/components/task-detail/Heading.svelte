@@ -293,7 +293,7 @@
         value={session.draft.status}
         onchange={(event) => edit("status", event.currentTarget.value)}
       >
-        {#each optionsFor(task.status, snapshot.config.statuses) as option (option.value)}
+        {#each optionsFor(task.status, snapshot.config.statuses) as option, index (index)}
           <option value={option.value}>{option.label}</option>
         {/each}
       </select>
@@ -354,7 +354,7 @@
         value={session.draft.milestone}
         onchange={(event) => edit("milestone", event.currentTarget.value)}
       >
-        {#each milestoneOptions(snapshot, task.milestone) as option (option.value)}
+        {#each milestoneOptions(snapshot, task.milestone) as option, index (index)}
           <option value={option.value}>{option.label}</option>
         {/each}
       </select>

@@ -51,7 +51,7 @@
       <p class="neutral">{t().state.none}</p>
     {:else}
       <ul class="ac">
-        {#each items as item (item.number)}
+        {#each items as item, index (index)}
           <li class:checked={item.checked}>
             <!-- 族を持たない状態の印 (doc-11 §2.4): not pressable outside an 編集セッション, so the
                  name goes on the wrapper. `role="img"` is required, not decoration — with the figure
@@ -90,7 +90,7 @@
 
     {#if session.draft.ac.mode === "delta"}
       <ul class="ac">
-        {#each rows as row (row.number)}
+        {#each rows as row, index (index)}
           <li class:checked={row.checked} class:removed={row.removed}>
             <!-- 編集セッション中は同じ印がアイコンのみのボタンになる (doc-11 §2.4). The figure pair is
                  the one 閲覧 draws, so the項 does not change appearance when the session opens; what
