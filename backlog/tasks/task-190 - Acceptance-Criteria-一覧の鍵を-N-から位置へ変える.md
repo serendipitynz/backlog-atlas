@@ -4,7 +4,7 @@ title: 'Acceptance Criteria 一覧の鍵を #N から位置へ変える'
 status: In Review
 assignee: []
 created_date: '2026-08-16 21:41'
-updated_date: '2026-09-17 00:21'
+updated_date: '2026-09-17 03:12'
 labels:
   - robustness
 milestone: m-4
@@ -76,7 +76,7 @@ ordinal: 181700
 
 ## 検査
 
-`src/duplicate-key.component.test.ts`（画面横断契約、12 case）。入口 4 つで `describe` を分けてある。
+`src/duplicate-key.component.test.ts`（画面横断契約、12 case）。**規則の正本は decision-47 で、検査の頭註はそれを引く** — PR #160 の 2 巡目までレビューが規則の再記述を指摘し続けたのは、正本がどこにも無かったからである。入口 4 つで `describe` を分けてある。
 **12 か所を 1 か所ずつ壊して、どれも対応する case が赤くなることを確かめた**（修正前は 12 case 全部が
 `each_key_duplicate` で赤）。`src/lib/fixtures.ts` に `decisionView` を足した — 決定事項の払い出しが
 無く、`snapshot()` が `decisions: []` を直書きしていたため。
