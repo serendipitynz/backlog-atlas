@@ -12,6 +12,7 @@ import type {
   Commit,
   CommitSearch,
   Config,
+  Decision,
   Document,
   Milestone,
   ProjectEntry,
@@ -173,6 +174,23 @@ export function milestoneView(options: Partial<Milestone> = {}): Milestone {
     id,
     title: options.title ?? `Milestone ${id}`,
     description: options.description === undefined ? "この節目で出すもの" : options.description,
+    health: options.health ?? { state: "ok" },
+  };
+}
+
+/**
+ * One 決定事項 as the read layer hands it over. `status`, `date` and `body` take `=== undefined` for
+ * the reason [`documentView`] gives: doc-10 §10's 閲覧 draws a `null` body as its own sentence.
+ */
+export function decisionView(options: Partial<Decision> = {}): Decision {
+  const id = options.id ?? "decision-1";
+  return {
+    sourcePath: options.sourcePath ?? `/repos/atlas/backlog/decisions/${id}.md`,
+    id,
+    title: options.title ?? `Decision ${id}`,
+    status: options.status === undefined ? "accepted" : options.status,
+    date: options.date === undefined ? "2026-08-01" : options.date,
+    body: options.body === undefined ? "決めたこと\n\n理由" : options.body,
     health: options.health ?? { state: "ok" },
   };
 }
