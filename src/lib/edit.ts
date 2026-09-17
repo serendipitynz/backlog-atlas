@@ -18,6 +18,8 @@
  * | doc-5 §3.2/§3.3 状態遷移の入口 | [`TransitionOffer`] | one transition, its 能動化 and its 無効化理由 |
  * | doc-11 §12 実行前確認 | [`IssueConfirmation`] + [`transitionConfirmation`] | the question a press raises before the act |
  * | doc-11 §12 語尾の … | [`confirmMarkedLabel`] | the mark on a 控え whose press asks first |
+ * | doc-5 §3 ラベル増減 | [`labelDelta`] | the two sets `--add-label`/`--remove-label` send |
+ * | doc-5 §3.1 ラベルの並び | — | not sent at all, so not 触れた項目 either ([`changed`]) |
  * | doc-5 §3 assignee 全置換 | `EditDraft.assignee` | the whole set `-a` sends, empty included |
  * | doc-5 §3 References 全置換 | `EditDraft.references` | the whole set, empty included |
  * | doc-5 §3 AC 全体差し替え（複合） | [`AcDraft`] mode `replace` | remove-all ＋ add ＋ check in one `task edit` |
@@ -259,8 +261,14 @@ function changed(session: EditSession, field: DraftField): boolean {
       return draft.notesMode === "append"
         ? draft.notes !== ""
         : draft.notes !== (task.implementationNotes ?? "");
-    case "labels":
-      return !sameList(draft.labels, task.labels);
+    case "labels": {
+      // Asked of the delta, not of the two lists: a reorder has no expression in one `task edit`
+      // (doc-5 §3.1 ラベルの並び), so compared like the other three it would be 触れた項目 with
+      // nothing to send — a save the panel blocks while 破棄前確認 and 状態遷移 go on calling the
+      // session unsaved.
+      const { add, remove } = labelDelta(task.labels, draft.labels);
+      return add.length + remove.length > 0;
+    }
     case "dependencies":
       return !sameList(draft.dependencies, task.dependencies);
     case "references":
@@ -286,6 +294,20 @@ function acChanged(ac: AcDraft, baseline: TaskView): boolean {
 
 function sameList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+/**
+ * What one save would send for the ラベル増減 row (doc-5 §3). Read by [`changed`] as well, so that
+ * "this field has something to save" and "this is what it sends" cannot answer differently.
+ */
+function labelDelta(
+  before: readonly string[],
+  draft: readonly string[],
+): { add: string[]; remove: string[] } {
+  return {
+    add: draft.filter((label) => !before.includes(label)),
+    remove: before.filter((label) => !draft.includes(label)),
+  };
 }
 
 // --- 編集中の外部変更 (doc-8 §6.4) ---------------------------------------------------------
@@ -508,9 +530,10 @@ export function buildSave(session: EditSession): SavePlan {
         }
         break;
       case "labels": {
-        const before = session.baseline.task.labels;
-        const addLabels = draft.labels.filter((label) => !before.includes(label));
-        const removeLabels = before.filter((label) => !draft.labels.includes(label));
+        const { add: addLabels, remove: removeLabels } = labelDelta(
+          session.baseline.task.labels,
+          draft.labels,
+        );
         // Both deltas travel as one comma-separated value (doc-5 §3 ラベル増減), so the gate is on
         // the values actually sent rather than on the draft: a comma-bearing label the task already
         // has and keeps appears in neither delta, and refusing that save would refuse one the CLI

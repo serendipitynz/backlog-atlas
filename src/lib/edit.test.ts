@@ -8,6 +8,7 @@ import {
   buildSave,
   commandErrorDetail,
   confirmMarkedLabel,
+  dirtyFields,
   divergence,
   editAvailability,
   externallyChanged,
@@ -126,6 +127,63 @@ describe("ラベルの増減", () => {
     // 正しく行える保存 — 別のラベルを 1 件足すだけ — を拒まない。
     const session = setField(startSession(taskView({ labels: ["x,y"] })), "labels", ["x,y", "new"]);
     expect(editOf(ready(session).action)).toEqual({ addLabels: ["new"], removeLabels: [] });
+  });
+
+  it("並べ替えだけの保存は触れた項目にならない (doc-8 §6, TASK-196)", () => {
+    // 行を削除して同じ値を打ち直すと集合は元へ戻り、並びだけが変わる。その並びは doc-5 §3.1 が
+    // 数える「1 回の `task edit` で表せない操作」なので、送る値が 1 つも無い。
+    const view = taskView({ labels: ["a", "b"] });
+    let session = setField(startSession(view), "labels", ["b"]);
+    expect(isDirty(session)).toBe(true);
+    session = setField(session, "labels", ["b", "a"]);
+    expect(dirtyFields(session)).toEqual([]);
+    expect(buildSave(session)).toEqual({ state: "nothingToSave" });
+  });
+
+  it("並べ替えだけの下書きは、遷移も破棄前確認も未保存入力にしない (TASK-196)", () => {
+    // 保存の側だけで判定すると、保存は「変更はまだありません」と述べるのに遷移は未保存入力を理由に
+    // 無効化され、利用者には破棄しか残らない。触れた項目を一つの答えにすることがそれを閉じる。
+    const view = taskView({ labels: ["a", "b"], status: "Done" });
+    let session = setField(startSession(view), "labels", ["b"]);
+    session = setField(session, "labels", ["b", "a"]);
+    const offers = transitionOffers(view, { readiness: READY, hasUnsavedInput: isDirty(session) });
+    if (offers.state !== "offered") {
+      throw new Error("expected offers");
+    }
+    expect(offers.offers.every((offer) => offer.availability.state === "ready")).toBe(true);
+  });
+
+  it("集合が変わっていれば、並びも変わっている保存は発行する", () => {
+    // 上の 2 件が広すぎないことを押さえる: 1 件足したついでに並びが変わっただけの下書きは、
+    // 足した 1 件を送らなければならない。
+    const view = taskView({ labels: ["a", "b"] });
+    const session = setField(startSession(view), "labels", ["c", "b", "a"]);
+    expect(editOf(ready(session).action)).toEqual({ addLabels: ["c"], removeLabels: [] });
+  });
+
+  it("発行する task edit が増減を両方とも空で持つことは無い (AC #3)", () => {
+    // doc-5 §5 が拒む「何も設定しない `task edit`」へラベルから落ちる経路を塞ぐ。並べ替えの形を
+    // 並べるのは、入替・回転・逆順が別々に集合を保つためである。集合が変わる側も同じ表で回して、
+    // 主張が「ラベルは何も発行しない」へ広がっていないことを同時に押さえる。
+    const cases: { before: string[]; draft: string[]; sends: boolean }[] = [
+      { before: ["a", "b"], draft: ["b", "a"], sends: false },
+      { before: ["a", "b", "c"], draft: ["c", "a", "b"], sends: false },
+      { before: ["a", "b", "c"], draft: ["c", "b", "a"], sends: false },
+      { before: ["a"], draft: ["a"], sends: false },
+      { before: ["a", "b"], draft: ["b", "a", "c"], sends: true },
+      { before: ["a", "b"], draft: ["b"], sends: true },
+      { before: [], draft: ["a"], sends: true },
+    ];
+    for (const { before, draft, sends } of cases) {
+      const session = setField(startSession(taskView({ labels: before })), "labels", draft);
+      const plan = buildSave(session);
+      if (!sends) {
+        expect(plan).toEqual({ state: "nothingToSave" });
+        continue;
+      }
+      const edit = editOf(ready(session).action);
+      expect((edit.addLabels ?? []).length + (edit.removeLabels ?? []).length).toBeGreaterThan(0);
+    }
   });
 });
 
