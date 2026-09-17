@@ -332,7 +332,7 @@
         value={session.draft.priority}
         onchange={(event) => edit("priority", event.currentTarget.value)}
       >
-        {#each optionsFor(task.priority, PRIORITIES) as option (option.value)}
+        {#each optionsFor(task.priority, PRIORITIES) as option, index (index)}
           <option value={option.value}>{option.label}</option>
         {/each}
       </select>

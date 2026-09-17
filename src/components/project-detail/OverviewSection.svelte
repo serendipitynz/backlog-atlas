@@ -148,7 +148,7 @@
   {#if moveNote !== null}
     <p class="hint">{moveNote}</p>
   {/if}
-  {#each problemsFor(editIssues, "projectRoot") as text (text)}
+  {#each problemsFor(editIssues, "projectRoot") as text, index (index)}
     <p class="problem">{text}</p>
   {/each}
 
@@ -169,7 +169,7 @@
       </button>
     </span>
   </label>
-  {#each problemsFor(editIssues, "backlogRoot") as text (text)}
+  {#each problemsFor(editIssues, "backlogRoot") as text, index (index)}
     <p class="problem">{text}</p>
   {/each}
 
