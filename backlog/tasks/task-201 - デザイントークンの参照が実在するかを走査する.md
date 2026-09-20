@@ -1,10 +1,10 @@
 ---
 id: TASK-201
 title: デザイントークンの参照が実在するかを走査する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-08-27 23:43'
-updated_date: '2026-09-20 08:23'
+updated_date: '2026-09-20 09:55'
 labels:
   - test
   - ui
