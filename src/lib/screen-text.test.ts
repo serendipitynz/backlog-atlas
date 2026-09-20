@@ -3,9 +3,11 @@
  *
  * TASK-79 removed 89 設計文書参照 from the screen. Without something that fails, the next screen to
  * gain a sentence gains a `（doc-N §X）` with it — that is how all 89 arrived, one contract-writing
- * session at a time. §8's other three kinds (状態の言い換え・設計文の写し・発行手段の記述) need a
- * reader's judgment and stay in review; this one is decidable from the text alone, so it is the one
- * a test can hold.
+ * session at a time. **What a scan can hold of §8's other three kinds is a half of two of them**:
+ * the 動作確認済み版 spelled into a 設計文の写し, and the flag name spelled into a 発行手段の記述.
+ * Everything else — 状態の言い換え, a 写し carrying no version, and the subcommand-name and argument
+ * halves of a 発行手段の記述 — reads as ordinary screen text and stays in review. **A green run is
+ * therefore not a statement that §8 is met**; each section below says what its own scan reaches.
  *
  * **Scope is what a user reads.** Code comments are excluded deliberately: they cite doc sections on
  * purpose, and reducing *those* is TASK-107. That makes the comment stripping below part of the
@@ -150,6 +152,58 @@ describe("画面に置く文 (doc-11 §8)", () => {
     // A doc section number is not a version: two parts, and the dot-prefixed part must not match.
     const section = '<p title="doc-11 §2.4">アイコンのみ</p>\n';
     expect(screenText(section, true).some((line) => SPELLED_VERSION.test(line))).toBe(false);
+  });
+
+  // --- 発行手段の記述 (doc-11 §8) ---------------------------------------------------------------
+  //
+  // The third kind with a half that is decidable from the text alone. §8 forbids naming the サブコマンド名・
+  // フラグ名・引数 of an operation Atlas issues, with no exception since 2026-08-08, and TASK-191 removed
+  // six labels that had arrived carrying one. **Only the flag half is scannable.** A flag is spelled
+  // `--…` and nothing a user reads is; an argument is not — `clear`, `keep` and `reassign` are the values
+  // `--task-handling` takes *and* ordinary words, so three of TASK-191's six were found by reading the
+  // labels against the invocations `update.rs` builds, and the next one will be too. Stating that here is
+  // the point: a green run says no flag reached the screen, not that this kind is held.
+  //
+  // **Range is the frontend sources, not `CRATE`.** The crate is where the invocations are built, so every
+  // flag in the tree is spelled there legally; it builds no sentence a user reads (decision-35 §3, held by
+  // the 抽出漏れ scan below).
+
+  /**
+   * A CLI option as screen text. The one lookalike in this tree is the CSS custom property, which appears
+   * only as a declaration in an inline `style` attribute (`style="--modal-inset: …"`) — always followed by
+   * `:`, which the lookahead excludes. `var(--x)` would not be excluded, and there is none outside a
+   * `<style>` block, which `screenText` blanks. A future one reddens this scan and names its own line.
+   */
+  const ISSUING_FLAG = /(?<![\w-])--[a-z][a-z0-9-]*(?![\w:-])/;
+
+  it("names no CLI option anywhere a user reads", () => {
+    const found: string[] = [];
+    for (const path of scanned) {
+      screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
+        if (ISSUING_FLAG.test(line)) {
+          found.push(`${path}:${index + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("finds a flag planted in a screen string, and keeps the CSS custom property legal", () => {
+    // The three TASK-191 removed, in the shape they had.
+    for (const planted of [
+      'export const M = "置換（--notes）";\n',
+      'export const M = "追記（--append-notes）";\n',
+      'export const M = "参照するタスクも更新する（外すと --no-update-tasks）";\n',
+    ]) {
+      expect(screenText(planted, false).some((line) => ISSUING_FLAG.test(line))).toBe(true);
+    }
+    const markup = "<span>クリアすると --no-update-tasks を渡します</span>\n";
+    expect(screenText(markup, true).some((line) => ISSUING_FLAG.test(line))).toBe(true);
+    // The lookalike, in the two places it is written: an inline declaration and a `<style>` block.
+    const inline = '<div style="--modal-inset: {X / 2}rem; --prose-max-width: {P}rem"></div>\n';
+    expect(screenText(inline, true).some((line) => ISSUING_FLAG.test(line))).toBe(false);
+    const styled = "<style>\n  .a { color: var(--ink); }\n</style>\n";
+    expect(screenText(styled, true).some((line) => ISSUING_FLAG.test(line))).toBe(false);
   });
 
   // --- 設計語と画面語 (doc-1 追補, doc-10 §10) ---------------------------------------------------
