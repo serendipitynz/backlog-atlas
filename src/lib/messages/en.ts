@@ -470,8 +470,8 @@ export const EN: Catalog = {
     commentCount: (count: number) => (count === 1 ? "1 comment" : `${count} comments`),
     commentAuthorUnknown: "No author recorded",
     commentCreatedUnknown: "No date recorded",
-    notesReplace: "Replace (--notes)",
-    notesAppend: "Append (--append-notes)",
+    notesReplace: "Replace",
+    notesAppend: "Append",
     notesAppendLabel: "Implementation Notes (appended)",
     noPullRequests: "References carries no Pull Request URL",
     hostUnknown: "Host kind unknown",
@@ -674,7 +674,7 @@ export const EN: Catalog = {
     removeMovesTheFile:
       "Removing does not delete the milestone's file: it moves it into `archive/milestones/`",
     keepLeavesDangling:
-      'With "keep", the referencing tasks are left holding a milestone value that resolves to nothing',
+      'With "Keep it as it is", the referencing tasks are left holding a milestone value that resolves to nothing',
     descriptionHeading:
       "A line of the description cannot start with `##`. Anything written past that `##` is saved " +
       "and never shown",
@@ -804,14 +804,14 @@ export const EN: Catalog = {
     nameRequired: "Name (required)",
     rename: "Rename",
     renameNewName: "New name (required)",
-    renameUpdatesTasks: "Update the tasks that reference it (clearing this passes --no-update-tasks)",
+    renameUpdatesTasks: "Update the tasks that reference it",
     renameNote: (id: string) =>
       `A rename does not change the id (${id}), so the only tasks actually rewritten are those whose milestone value is not the id.`,
     remove: "Delete",
     removeTasksLegend: "What happens to the tasks that reference it (required)",
-    removeTasksClear: "Remove the milestone value (clear)",
-    removeTasksKeep: "Keep it as it is (keep)",
-    removeTasksReassign: "Reassign them to another milestone (reassign)",
+    removeTasksClear: "Remove the milestone value",
+    removeTasksKeep: "Keep it as it is",
+    removeTasksReassign: "Reassign them to another milestone",
     reassignTarget: "Reassign to (required)",
     chooseOne: "Please choose",
     archive: "Archive",
