@@ -1,10 +1,8 @@
 /**
- * doc-11 §2.5 as a check over the source: every `var(--…)` reference resolves to a declaration.
+ * doc-11 §2.5 as a check over the source.
  *
- * **解決しない参照は、画面にも検査にも何も出さない。** CSS は値が無効な宣言を宣言ごと捨てるので、
- * `border: 1px solid var(--border)` は枠を 1 本も描かない — 画面は「不自然」に見えるだけである。
- * `pnpm run check` は `<style>` の中の CSS を型検査せず、`pnpm run lint` は CSS を読まない
- * (decision-32)。TASK-83 はその 2 つを実際に残し、オーナーが実機を目で見るまで誰も気づかなかった。
+ * **この木には、ほかに参照を見るものが 1 つも無い。** 型検査も lint も CSS の中身へは届かないので
+ * (decision-32)、この走査が止まればその範囲は誰も見ていない状態へ戻る — TASK-83 がそこに 2 つ残した。
  *
  * Sources come through `import.meta.glob` rather than `node:fs`, for the reason `text-scale.test.ts`
  * and `third-party-licenses.test.ts` both give: `node:fs` would pull in `@types/node`, and the
@@ -86,14 +84,28 @@ const STYLE_ATTRIBUTE = /style=(?:"([^"]*)"|'([^']*)')/g;
 
 const namesIn = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].map((match) => match[1]);
 
+/**
+ * マークアップの `style` 属性の中身を、書いたファイルごとに 1 つへ繋いだもの。
+ *
+ * **属性は宣言の側であると同時に参照の側でもある。** `style="--title-lines: var(--missing)"` は
+ * `--title-lines` を与えながら `--missing` を引いており、宣言だけを集めていた初版は後者を見なかった
+ * (PR #163 のレビュー指摘)。属性 1 つの中身は宣言の並びなので、`<style>` の中身と同じ 2 つの正規表現が
+ * そのまま当たる — だから場所を 1 つ増やすのではなく、走査する文面を 1 つ増やす形で持つ。
+ */
+const INLINE: Scanned[] = Object.entries(SOURCES).flatMap(([path, source]) => {
+  const values = [...markup(source).matchAll(STYLE_ATTRIBUTE)].map(([, doubled, singled]) => doubled ?? singled);
+  return values.length === 0 ? [] : [{ path: `${path} (style 属性)`, css: values.join(";\n"), loaded: [] }];
+});
+
+/** 参照を探す文面ぜんぶ — 出荷される CSS と、マークアップの `style` 属性。 */
+const REFERENCED_IN: Scanned[] = [...SCANNED, ...INLINE];
+
 /** マークアップの `style` 属性が書く `--名前: 値` — doc-11 §2.5 の インライン宣言。 */
 function inlineDeclarations(): Map<string, string[]> {
   const found = new Map<string, string[]>();
-  for (const [path, source] of Object.entries(SOURCES)) {
-    for (const [, doubled, singled] of markup(source).matchAll(STYLE_ATTRIBUTE)) {
-      for (const name of namesIn(doubled ?? singled, DECLARATION)) {
-        found.set(name, [...(found.get(name) ?? []), path]);
-      }
+  for (const { path, css } of INLINE) {
+    for (const name of namesIn(css, DECLARATION)) {
+      found.set(name, [...(found.get(name) ?? []), path]);
     }
   }
   return found;
@@ -133,6 +145,10 @@ describe("走査する対象", () => {
     expect(COMPONENTS.length).toBeGreaterThan(15);
     expect(COMPONENTS.every(({ css }) => css.length > 0)).toBe(true);
     expect(new Set(SCANNED.flatMap(({ css }) => namesIn(css, REFERENCE))).size).toBeGreaterThan(40);
+    // **参照を探す文面には style 属性も入る。** 今そこに `var()` は 1 件も無いので、数では押さえられない
+    // — 属性を持つファイルのぶんだけ文面が増えていることで押さえる。
+    expect(INLINE.length).toBeGreaterThan(0);
+    expect(REFERENCED_IN.length).toBe(SCANNED.length + INLINE.length);
   });
 
   it("には、区画が分け合う SCSS の中身も入っている", () => {
@@ -158,23 +174,24 @@ describe("走査する対象", () => {
       const captured = [...markup(source).matchAll(STYLE_ATTRIBUTE)].length;
       expect(captured, `${path} の style 属性を取りこぼしている`).toBe(written);
     }
+    expect(INLINE.length, "style 属性を持つファイルが 1 つも集まっていない").toBe(
+      Object.values(SOURCES).filter((source) => /style=/.test(markup(source))).length,
+    );
     expect(inlineDeclarations().size).toBeGreaterThan(10);
   });
 
   it("に、名前そのものが実行時に決まる宣言・参照は 1 つも無い", () => {
     // `style="--{name}: 1"` も `var(--{name})` も静的には解決できず、**上の正規表現にも当たらないので
     // 黙って走査の外へ出る。** 今 0 件であることをここで押さえて、1 件でも書かれたら赤くする。
-    for (const [path, source] of Object.entries(SOURCES)) {
-      for (const [, doubled, singled] of markup(source).matchAll(STYLE_ATTRIBUTE)) {
-        expect(doubled ?? singled, `${path} が名前を実行時に組み立てている`).not.toMatch(/--\s*\{/);
-      }
+    for (const { path, css } of INLINE) {
+      expect(css, `${path} が名前を実行時に組み立てている`).not.toMatch(/--\s*\{/);
     }
   });
 });
 
 describe("デザイントークンの参照 (doc-11 §2.5)", () => {
   it("はどれも app.scss・コンポーネント・インライン宣言 のいずれかに解決する", () => {
-    expect(unresolved(SCANNED, declaredEverywhere())).toEqual([]);
+    expect(unresolved(REFERENCED_IN, declaredEverywhere())).toEqual([]);
   });
 
   // **受入条件 #2。** 実物の宣言集合に対して、TASK-83 が残していた 2 つを与える。実物のコンポーネントへ
@@ -188,27 +205,40 @@ describe("デザイントークンの参照 (doc-11 §2.5)", () => {
     expect(unresolved(token, declaredEverywhere())).toEqual([]);
   });
 
+  // **属性は宣言の側であると同時に参照の側でもある** (PR #163 のレビュー指摘)。宣言だけを集めていた
+  // 初版は、`style="--title-lines: var(--missing)"` の `--missing` も `style="color: var(--warn)"` も
+  // 見ずに 8 case とも緑のままだった。`INLINE` は属性の中身をそのまま繋いだ文面なので、同じ 1 つの
+  // 関数へ与えて確かめられる。
+  it("は、style 属性の中に書かれていても解決しなければ落ちる", () => {
+    const alias = [{ path: "合成した属性", css: "--title-lines: var(--missing-title-lines)" }];
+    expect(unresolved(alias, declaredEverywhere())).toEqual(["合成した属性: --missing-title-lines"]);
+    const direct = [{ path: "合成した属性", css: "color: var(--warn)" }];
+    expect(unresolved(direct, declaredEverywhere())).toEqual(["合成した属性: --warn"]);
+    // 属性が与えた名前を属性自身が引く形は通る — 宣言は宣言として数えられている。
+    const own = [{ path: "合成した属性", css: "--a: 1px; margin: var(--a)" }];
+    expect(unresolved(own, new Set([...declaredEverywhere(), "--a"]))).toEqual([]);
+  });
+
   // **受入条件 #3。** インライン宣言 を数えないと 13 個が偽陽性になることを、集合を外して確かめる。
   // 「今は全部解決する」だけでは、インライン宣言 を集める枝が痩せても緑のままになりうる。
   it("のうち インライン宣言 が与えている名前は、その宣言を数えなければ解決しない", () => {
     const inline = inlineDeclarations();
-    const withoutInline = unresolved(SCANNED, styleDeclarations());
+    const withoutInline = unresolved(REFERENCED_IN, styleDeclarations());
     const missed = new Set(withoutInline.map((offender) => offender.replace(/^.*: /, "")));
     expect(missed.size).toBeGreaterThan(10);
     // 外して出てきた名前は、すべて インライン宣言 が与えているものである — 別の穴が混ざっていない。
     expect([...missed].filter((name) => !inline.has(name))).toEqual([]);
   });
 
-  // **範囲は木全体である** (doc-11 §2.5)。カスタムプロパティは DOM を通って子へ継承されるので、
-  // 与える側と読む側が別ファイルに居るのが正しい形で、ファイル単位に絞るとそれが偽陽性になる。
-  // ここが 0 になったら、範囲を木全体に取る理由が無くなったということである。
+  // doc-11 §2.5 の 解決の範囲は木全体である。**ここが 0 になったら、その範囲を取る理由がこの木から
+  // 消えたということである** — 走査を狭めてよいかの判断がそこで要る。
   it("は、与える側と読む側が別のファイルに居る形を持っている", () => {
     const inline = inlineDeclarations();
     const crossing = SCANNED.filter(({ path, css }) => {
       const own = new Set(namesIn(css, DECLARATION));
       return namesIn(css, REFERENCE).some((name) => {
         const givenInline = inline.get(name) ?? [];
-        return !own.has(name) && givenInline.length > 0 && !givenInline.includes(path);
+        return !own.has(name) && givenInline.length > 0 && !givenInline.some((giver) => giver.startsWith(path));
       });
     });
     expect(crossing.length).toBeGreaterThan(0);
