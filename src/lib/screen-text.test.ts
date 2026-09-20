@@ -156,54 +156,63 @@ describe("画面に置く文 (doc-11 §8)", () => {
 
   // --- 発行手段の記述 (doc-11 §8) ---------------------------------------------------------------
   //
-  // The third kind with a half that is decidable from the text alone. §8 forbids naming the サブコマンド名・
-  // フラグ名・引数 of an operation Atlas issues, with no exception since 2026-08-08, and TASK-191 removed
-  // six labels that had arrived carrying one. **Only the flag half is scannable.** A flag is spelled
-  // `--…` and nothing a user reads is; an argument is not — `clear`, `keep` and `reassign` are the values
-  // `--task-handling` takes *and* ordinary words, so three of TASK-191's six were found by reading the
-  // labels against the invocations `update.rs` builds, and the next one will be too. Stating that here is
-  // the point: a green run says no flag reached the screen, not that this kind is held.
+  // **Only the flag half is scannable.** A flag is spelled `--…` and nothing a user reads is; an argument
+  // is not — `clear`, `keep` and `reassign` are the values `--task-handling` takes *and* ordinary words,
+  // so three of the six labels TASK-191 removed were found by reading them against the invocations
+  // `update.rs` builds, and the next one will be too. A green run here says no flag reached the screen.
   //
   // **Range is the frontend sources, not `CRATE`.** The crate is where the invocations are built, so every
   // flag in the tree is spelled there legally; it builds no sentence a user reads (decision-35 §3, held by
   // the 抽出漏れ scan below).
 
   /**
-   * A CLI option as screen text. The one lookalike in this tree is the CSS custom property, which appears
-   * only as a declaration in an inline `style` attribute (`style="--modal-inset: …"`) — always followed by
-   * `:`, which the lookahead excludes. `var(--x)` would not be excluded, and there is none outside a
-   * `<style>` block, which `screenText` blanks. A future one reddens this scan and names its own line.
+   * The CSS custom property, blanked so it cannot be mistaken for an option. It reaches `screenText` only
+   * from an inline `style` attribute — a `<style>` block is blanked there — so the attribute goes rather
+   * than the name being exempted by what follows it. **An exemption keyed on a trailing `:` would pass
+   * `--append-notes:` in a sentence**, which is the shape this scan is for (PR #162 review).
+   *
+   * Applied to the source, not to a line: `TaskDetail.svelte` carries one attribute across two lines.
    */
-  const ISSUING_FLAG = /(?<![\w-])--[a-z][a-z0-9-]*(?![\w:-])/;
+  const INLINE_STYLE = /style="[^"]*"/g;
+
+  const withoutInlineStyles = (source: string) =>
+    source.replace(INLINE_STYLE, (match) => "\n".repeat((match.match(/\n/g) ?? []).length));
+
+  const ISSUING_FLAG = /(?<![\w-])--[a-z][a-z0-9-]*(?![\w-])/;
 
   it("names no CLI option anywhere a user reads", () => {
     const found: string[] = [];
     for (const path of scanned) {
-      screenText(SOURCES[path], path.endsWith(".svelte")).forEach((line, index) => {
-        if (ISSUING_FLAG.test(line)) {
-          found.push(`${path}:${index + 1}: ${line.trim()}`);
-        }
-      });
+      screenText(withoutInlineStyles(SOURCES[path]), path.endsWith(".svelte")).forEach(
+        (line, index) => {
+          if (ISSUING_FLAG.test(line)) {
+            found.push(`${path}:${index + 1}: ${line.trim()}`);
+          }
+        },
+      );
     }
     expect(found).toEqual([]);
   });
 
   it("finds a flag planted in a screen string, and keeps the CSS custom property legal", () => {
+    const hits = (source: string, svelte: boolean) =>
+      screenText(withoutInlineStyles(source), svelte).some((line) => ISSUING_FLAG.test(line));
     // The three TASK-191 removed, in the shape they had.
     for (const planted of [
       'export const M = "置換（--notes）";\n',
       'export const M = "追記（--append-notes）";\n',
       'export const M = "参照するタスクも更新する（外すと --no-update-tasks）";\n',
     ]) {
-      expect(screenText(planted, false).some((line) => ISSUING_FLAG.test(line))).toBe(true);
+      expect(hits(planted, false)).toBe(true);
     }
-    const markup = "<span>クリアすると --no-update-tasks を渡します</span>\n";
-    expect(screenText(markup, true).some((line) => ISSUING_FLAG.test(line))).toBe(true);
-    // The lookalike, in the two places it is written: an inline declaration and a `<style>` block.
-    const inline = '<div style="--modal-inset: {X / 2}rem; --prose-max-width: {P}rem"></div>\n';
-    expect(screenText(inline, true).some((line) => ISSUING_FLAG.test(line))).toBe(false);
-    const styled = "<style>\n  .a { color: var(--ink); }\n</style>\n";
-    expect(screenText(styled, true).some((line) => ISSUING_FLAG.test(line))).toBe(false);
+    expect(hits("<span>クリアすると --no-update-tasks を渡します</span>\n", true)).toBe(true);
+    // A colon may follow an option in a sentence, so the blanking above is keyed on the attribute.
+    expect(hits('export const M = "追記 --append-notes: 末尾へ継ぎます";\n', false)).toBe(true);
+    // The lookalike, in all three shapes it is written: one line, two lines, and a `<style>` block.
+    expect(hits('<div style="--modal-inset: {X / 2}rem; --prose-max-width: {P}rem"></div>\n', true))
+      .toBe(false);
+    expect(hits('<div style="--a: {X /\n2}rem; --b: {P}rem"></div>\n', true)).toBe(false);
+    expect(hits("<style>\n  .a { color: var(--ink); }\n</style>\n", true)).toBe(false);
   });
 
   // --- 設計語と画面語 (doc-1 追補, doc-10 §10) ---------------------------------------------------
