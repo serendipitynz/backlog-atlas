@@ -202,7 +202,7 @@ describe("同じ id の管理ファイル 2 件", () => {
     await settled();
     click(byText(host, "button", "削除"));
     await settled();
-    click(byText(host, "span", "別マイルストーンへ付け替える（reassign）").closest("label")!
+    click(byText(host, "span", "別マイルストーンへ付け替える").closest("label")!
       .querySelector("input")!);
     await settled();
 
