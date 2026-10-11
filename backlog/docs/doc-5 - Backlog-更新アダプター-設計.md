@@ -3,7 +3,7 @@ id: doc-5
 title: Backlog 更新アダプター 設計
 type: specification
 created_date: '2026-07-21 10:05'
-updated_date: '2026-09-17 04:20'
+updated_date: '2026-10-11 19:32'
 ---
 # Backlog 更新アダプター 設計
 
@@ -112,7 +112,7 @@ draft（doc-4 の保存区分 draft。frontmatter の id は `DRAFT-N`）に対�
 | draft アーカイブ | `draft archive <DRAFT-N>` | draft ／ `DRAFT-N` ／ 任意 status → archive ／ `DRAFT-N`（保持） ／ status 保持 |
 
 - promote・demote は保存先だけでなく id を付け替える（`DRAFT-N` ↔ `TASK-M`、番号も採番し直す）。promote の status 変化は**条件付き**で、status が `Draft` の draft のみ `default_status` へ変わり、通常 status を持つ draft（`task demote` 由来）は status を保持する（実測）。archive は id・status を保持して `archive/drafts` へ移す。したがって draft の status は一律 `Draft` ではない（`draft create` 直後だけが `Draft`。doc-4 の 3.4）。
-- **内容編集は提供しない**: draft の title・description・AC・References 等の編集は GUI から提供しない。CLI には draft を対象にした `task edit` 相当が無いためで、decision-2 の CLI 委譲を保つ限り Atlas も提供できない。内容を編集したい場合は、`draft promote` で通常タスクにしてから `task edit` 系で編集するか、外部エディタ経路（doc-8）で直接編集する。
+- **内容編集は提供しない**: draft の title・description・AC・References 等の編集は GUI から提供しない。CLI には draft を対象にした `task edit` 相当が無いためで、decision-2 の CLI 委譲を保つ限り Atlas も提供できない。 **この理由は v1.51.0 の `draft edit` で上位版について成り立たなくなり、decision-48 は内容編集を提供すると決めた**（3.6）。最低バージョン要件を v1.51.0 へ上げたうえで提供するまでは（TASK-208・TASK-209）、本項は実測基準版について真の記述として残る。内容を編集したい場合は、`draft promote` で通常タスクにしてから `task edit` 系で編集するか、外部エディタ経路（doc-8）で直接編集する。
 - **id と横断タスクID**: draft の横断タスクID 右辺は `DRAFT-N`（doc-3 の 5.1）。対象 ID は `draft promote`／`draft archive` が `DRAFT-N`、`task demote` が `TASK-N`。アダプターは対象プロジェクトを作業ディレクトリに固定するため slug 前置は不要（doc-3 の 5.3）。
 - draft をスイムレーン／詳細に表示するか、既定でフィルタするかは doc-7（TASK-11）で扱う。本アダプターは表示可否に依らず、上記状態遷移だけを操作写像に載せる。
 
@@ -148,6 +148,22 @@ v1.50.1 が新たに受け取るオプションのうち、Atlas が使わない
 - **`task list --ready`・`decision list`**: 読み取りは管理ファイルの直接解析であり（decision-2）、本書の操作写像に読み取りサブコマンドは無い。
 
 **操作写像に現れないが利用者の画面に出る差**: 壊れた `config.yml` は、v1.49.3 が黙って既定値を当てていたのに対し v1.50.1 は `Backlog could not start because <file> has an invalid value for "<key>": …` を出して終了コード 1 で止まる。**起動時の版検査は影響を受けない** — `backlog --version` はプロジェクトを作業ディレクトリにせず走らせるので（3.2、4 章）、壊れた設定を持つルートでも終了コード 0 で版を返す（実測）。
+
+### 3.6 v1.50.1 から v1.53.0 で変わった挙動（TASK-202 実測）
+
+本書の実測基準版は冒頭が宣言している。下の各項は、実測基準版より新しい版で何が変わったかの記録である。基準版で書いた記述を、上位版の利用者について読み直すときに要る。2026-10-12 に、v1.50.1・v1.51.0・v1.52.0・v1.53.0 を使い捨てのディレクトリへ並べて導入し、全サブコマンドの help のオプション集合を比べた。あわせて、Atlas が発行する形の操作列を 4 版へ流し、管理ファイルを比べた。追随するかどうかの判断は decision-48 が持つ。
+
+- **Atlas が発行する 13 サブコマンド・36 オプションは 4 版すべてにあり、削除も改名も無い。** 操作列で書かれる管理ファイルは、日付と次項の 2 手を除いて 4 版でバイト単位まで一致した。
+- **予約マーカー行の扱いが変わった。** 予約マーカー行とは、本文の欄に渡す文字列のうち、行全体が管理ファイルの節境界コメントと一致する行を指す。v1.50.1 はそれを黙って書き、書かれたファイルは読み取り層で想定外スキーマになる。v1.51.0 以降は、その欄自身の節の境界行に限って、理由を stderr に出して終了コード 1 で拒む。拒否は呼び出し全体に掛かり、同じ呼び出しのほかの欄も書かれない。**他の節の境界行は v1.53.0 でも書かれる** — description・plan・notes の 3 欄に 7 種を入れた 21 通りのうち、拒まれたのは 3 通りだけだった。Atlas 側で発行前に拒むのは TASK-211 が行う（decision-48 §6）。
+- **id が見つからない `task edit`・`task demote` の stderr に 1 文が足された**（`Task lookups read only the local working copy; …`）。終了コードは 4 版とも 1 で、アダプターは終了コードで判定する（5 章）ので影響しない。
+
+v1.51.0 以降が新たに受け取るもののうち、Atlas が使わないものと理由（判断は decision-48）:
+
+- **`task edit` の複数 ID（v1.51.0）**: 共有できる欄だけを受け付け、途中の ID が失敗しても残りへ適用して終了コード 1 を返す。1 回の呼び出しの中で一部の ID だけ書かれる状態を、5 章の部分適用は写さない。
+- **`draft edit`（v1.51.0）**: 提供すると決まった。最低バージョン要件を v1.51.0 へ上げたうえで操作写像へ足す（TASK-208・TASK-209。3.3）。
+- **`--due-date`・`--clear-due-date`（v1.51.0）**: 書き込みは取り込まない。frontmatter の `due_date` を読んで表示することだけを取り込む（TASK-210）。
+- **`--project`（v1.51.0）**: `config.yml` に `projects:` の一覧が無いルートでは拒まれる。読み書きとも取り込まない。Atlas の「プロジェクト」とは別の対象である（doc-1）。
+- **`task list --watch`（v1.52.0）と、`--max-count`・`--skip`・`--count`（v1.53.0）**: 読み取りは管理ファイルの直接解析であり（decision-2）、本書の操作写像に読み取りサブコマンドは無い。
 
 ## 4. 作業ディレクトリと引数配列渡し
 
