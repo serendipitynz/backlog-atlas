@@ -3,7 +3,7 @@ id: doc-1
 title: Backlog Atlas 用語対応表
 type: specification
 created_date: '2026-07-20 23:22'
-updated_date: '2026-08-13 10:41'
+updated_date: '2026-10-11 19:33'
 tags:
   - planning
   - backlog-atlas
@@ -44,3 +44,11 @@ tags:
 **doc-3 の 3 語を改称しないと決めた** （2026-08-13。TASK-158。ユーザー判断）。台帳 は docs に 164・decisions に 75 出現し、doc-3 と decision-9・13・17 の 4 ファイルは題（＝ファイル名）に持つ。**改称の先は利用者が読まない語なので、動かして得るものが無い。** TASK-118 が doc-4 §1 の 意思決定 について下したのと同じ判断で、その 2 例目である。
 
 **分けを保つのは `src/lib/screen-text.test.ts` の 3 本目の走査である。** 画面文（コメント・`<style>`・テストを除いた源泉）に上表の設計語が出たら落ちる。**列挙を人手で維持しない** — 次に画面文を足す回が同じ語を持ち込むのを、その回に落とすためである。**正本 のように 利用者が読む語 を立てない行も、走査の対象に入れる。** 語を立てないことは、その語を画面へ出してよいことではない。
+
+## 追補 — Backlog CLI が同じ語で指す別の対象
+
+Backlog CLI の版が上がって、Atlas の語と同じ語で別の対象を指す値が現れたときに、ここへ加える。書式は最初の表と同じである。
+
+| 出典 | 具体対象 | 対象種別 | 工程での機能 | 前後関係 | 候補語 | 初出定義 |
+|---|---|---|---|---|---|---|
+| Backlog CLI v1.51.0 の `--project`（`task create`・`task edit`・`task list`・`search`）と、タスクの frontmatter `project:` | Backlog 側がモノレポ用に持つ、タスク 1 件の所属を表す値。`config.yml` の `projects:` 一覧の値だけを受け付け、一覧が無いルートでは指定そのものが拒まれる。Atlas の「プロジェクト」（台帳に登録した Backlog ルート、doc-3）とも、読み取り層が各タスクに持たせる台帳 slug とも別の対象である | 値 | Atlas は読まず、書かず、表示しない（decision-48 §4） | `--project` → frontmatter `project:` → Backlog CLI の絞り込み | Backlog の project 属性 | Backlog の project 属性とは、Backlog CLI がタスクの frontmatter `project:` に書く、`config.yml` の `projects:` 一覧から選ぶ値を指す。画面に出すことになっても「プロジェクト」とは呼ばない |
