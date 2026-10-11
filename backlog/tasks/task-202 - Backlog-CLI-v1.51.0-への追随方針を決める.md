@@ -1,10 +1,10 @@
 ---
 id: TASK-202
 title: Backlog CLI v1.51.0 以降への追随方針を決める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-09-05 23:40'
-updated_date: '2026-10-11 19:34'
+updated_date: '2026-10-11 21:11'
 labels:
   - 'kind:research'
 milestone: m-4
