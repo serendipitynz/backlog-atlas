@@ -4,7 +4,7 @@ title: '外部から渡された URL で 1 つのタスクを開けるように�
 status: In Review
 assignee: []
 created_date: '2026-09-18 23:01'
-updated_date: '2026-10-19 09:36'
+updated_date: '2026-10-19 23:31'
 labels:
   - 'kind:feature'
 milestone: m-5
@@ -69,4 +69,11 @@ URL の形（台帳をパスで指すか登録名で指すか、タスクを ID 
 ## 残り（AC #1〜#3 が未チェックの理由）
 
 - AC #1・#2・#3 は実機の目視待ち。macOS の目視と、Windows 実機・WSL Ubuntu 24 での確認をユーザーに依頼する（手順は doc-3 §8.5）。Linux の D-Bus 経路は CI の e2e（ubuntu-24.04、xvfb）で少なくとも起動が壊れないことが見える。
+
+## 実機確認（2026-10-20、ユーザー）
+
+- Windows（NSIS で導入）: AC #1・#2・#3 すべて OK。存在しない id では通知帯に「backlog-atlas has no TASK-9999」が出た。
+- WSL Ubuntu 24.04（.deb）: 初回は 3 つとも NG — Atlas は開くがタスクは開かず、理由も出ない。tauri-bundler 2.10.3 の既定 .desktop テンプレートが `Exec=backlog-atlas` に `%u` を付けないため、URL が渡っていなかった。自前テンプレート（src-tauri/linux/main.desktop）を .deb・.rpm に指定して修正し（decision-49 §4・doc-3 §8.5 に記録）、作り直した .deb を `apt install --reinstall` で入れ直して AC #1・#2・#3 すべて OK。D-Bus のセッションバスあり（`unix:path=/run/user/1000/bus`）。同じ版番号の .deb は `--reinstall` を付けないと置き換わらない。
+- macOS: プロセス数の確認（冷えた起動のあと 2 本送っても 1 プロセス）だけで、画面の目視は未了。
+- 確認の途中で、Windows ではタスクを選ぶたびにコンソール窓がちらつくことが分かった。git・gh の起動に CREATE_NO_WINDOW が無いためで、本タスクとは無関係（別タスクとして提案済み）。
 <!-- SECTION:NOTES:END -->
