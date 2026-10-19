@@ -68,6 +68,10 @@ pub mod subprocess;
 // change optimistically (best-effort, no cross-CLI lock). Driven by the command layer, which owns
 // the sessions that pair a model with its read-version index.
 pub mod sync;
+// Public: タスクリンク (doc-3 §8, decision-49). Not a layer — the URL's form and the one lookup it needs
+// from the ledger, held apart from the command boundary because "is this URL one Atlas reads" is worth
+// testing without a Tauri app around it.
+pub mod task_link;
 // Public: the Backlog 更新アダプター (TASK-31 / doc-5). The write-side counterpart to the read
 // layer — it maps 更新操作 to Backlog CLI invocations, runs them with the project root as the
 // working directory, and degrades to read-only when no supported CLI is present. Called by the
@@ -91,7 +95,17 @@ mod wire_fixtures;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // 起動の引継ぎ (decision-49 §3). First, because a second process has to hand over and exit before
+    // any other plugin sets anything up for a window that will never be shown. Not on macOS, where
+    // LaunchServices hands a URL to the running app itself: there the plugin would add nothing but a
+    // socket named after the identifier, which would make a development build exit whenever the
+    // installed Atlas is running.
+    #[cfg(any(windows, target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        commands::bring_to_front(app);
+    }));
+    builder
         // 窓の航行ゲート (decision-37). A plugin rather than `WebviewWindowBuilder::on_navigation`
         // because the window is declared in `tauri.conf.json`: tauri's own navigation gate calls every
         // plugin's hook whichever way the window was created, so closing the route here costs nothing
@@ -119,6 +133,14 @@ pub fn run() {
         // be honoured. Order-independent of the line above — it watches the resize rather than reading
         // the size once, which is the half of `window_state::plugin` worth reading before moving it.
         .plugin(window_state::plugin())
+        // タスクリンク (doc-3 §8). The plugin turns each OS hand-over into a URL; what Atlas does with
+        // one is `commands::receive_task_links`, wired in `setup` below.
+        .plugin(tauri_plugin_deep_link::init())
+        .manage(task_link::PendingTaskLink::default())
+        .setup(|app| {
+            commands::receive_task_links(app.handle());
+            Ok(())
+        })
         // The command boundary's own state: the open roots and their running file watches. Managed
         // here because a Tauri command reaches it through `State`, and it must outlive any one call.
         .manage(commands::AtlasState::default())
@@ -157,6 +179,8 @@ pub fn run() {
             commands::release_page_open,
             // 添付画像 (doc-8 §9.2): bytes for one `/assets/<name>` a 本文 named.
             commands::body_image_read,
+            // タスクリンク (doc-3 §8): the one URL the OS handed over and the screen has not taken.
+            commands::task_link_take,
             // 解決結果の表示 (decision-29): which `git`/`gh` the 設定画面's own panel is reporting on.
             commands::external_programs_probe,
             // Update path: guarded by the pre-update version check and a probed CLI capability.

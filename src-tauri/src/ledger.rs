@@ -486,6 +486,19 @@ impl Ledger {
         Ok(())
     }
 
+    /// 指すルート (doc-3 §8): the entry whose project_root or backlog_root is `root`, compared the
+    /// way [`Self::find_root_conflict`] compares, so a root the ledger would refuse to register twice
+    /// is also the root a タスクリンク names.
+    pub fn slug_for_root(&self, root: &Path) -> Option<String> {
+        let key = canonical_key(root);
+        self.projects
+            .iter()
+            .find(|p| {
+                canonical_key(&p.project_root) == key || canonical_key(&p.backlog_root) == key
+            })
+            .map(|p| p.slug.clone())
+    }
+
     /// Return the slug of an existing entry whose project_root or backlog_root matches the
     /// given roots (by canonical path), skipping `skip_slug`. Used to keep one entry per
     /// project root (doc-3 §3, §6) on register and on move.
@@ -954,6 +967,30 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, LedgerError::DuplicateRoot(_)));
         assert_eq!(ledger.projects.len(), 1);
+    }
+
+    #[test]
+    fn a_root_names_its_entry_by_either_role_and_through_a_symlink() {
+        let tmp = TempDir::new();
+        let backlog = tmp.make_backlog_root("proj");
+        let project_root = backlog.parent().unwrap().to_path_buf();
+        let mut ledger = Ledger::empty();
+        register(&mut ledger, project_root.clone(), Some("proj"));
+
+        assert_eq!(ledger.slug_for_root(&project_root).as_deref(), Some("proj"));
+        assert_eq!(ledger.slug_for_root(&backlog).as_deref(), Some("proj"));
+        assert_eq!(
+            ledger.slug_for_root(&project_root.join("backlog").join("tasks")),
+            None
+        );
+        assert_eq!(ledger.slug_for_root(&tmp.path.join("elsewhere")), None);
+
+        #[cfg(unix)]
+        {
+            let link = tmp.path.join("proj-link");
+            std::os::unix::fs::symlink(&project_root, &link).unwrap();
+            assert_eq!(ledger.slug_for_root(&link).as_deref(), Some("proj"));
+        }
     }
 
     // --- update (AC #4/#5/#6) --------------------------------------------------------------

@@ -21,6 +21,7 @@
 //! | doc-3 §4.1 登録を拒否し理由を示す | [`LedgerRefusal`] | which refusal a 登録・削除・更新 hit, as a value the screen branches on instead of a sentence it parses |
 //! | doc-3 §2.1 台帳ファイル | [`ledger_location`] | the one file Atlas reads and writes, named so the screen can show where the registration lives |
 //! | doc-3 §3.1 slug の既定値 | [`ledger_default_slug`] | the derivation from a project root, exposed so the screen previews the default instead of re-deriving it |
+//! | doc-3 §8 受け取り待ちのリンク | [`task_link_take`] / [`TASK_LINK_RECEIVED_EVENT`] | the screen's one way to collect a タスクリンク, and the nudge that one has arrived |
 //! | decision-13 アプリ設定 | [`settings_read`] / [`settings_save`] | the display defaults, read and written as one value with the state that says whether saving is allowed |
 //! | every layer's failure type | [`CommandError`] | one error type that keeps the core's distinctions (root unreadable / 縮退 / 拒否 / 照合不能) intact |
 //!
@@ -86,6 +87,7 @@ use crate::subprocess::Cancel;
 use crate::sync::{
     FileVersions, FsVersions, GuardError, GuardedUpdate, ReloadReason, SyncState, WatchSession,
 };
+use crate::task_link::{self, PendingTaskLink, TaskLinkResolution};
 use crate::update::{
     self, BacklogCli, CliCapability, CliProgram, CliStatus, SystemBacklog, UpdateOperation,
     UpdateOutcome,
@@ -97,6 +99,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 // --- wire types (AC #3/#5) ----------------------------------------------------------------------
 
@@ -1895,6 +1898,71 @@ pub fn body_image_read(
     body_image::read(&entry.backlog_root, &reference)
         .map(tauri::ipc::Response::new)
         .map_err(|(reason, detail)| CommandError::BodyImageRefused { reason, detail })
+}
+
+// --- commands: タスクリンク (doc-3 §8, decision-49) -------------------------------------------------
+
+/// Emitted when a タスクリンク arrives while the screen is up. It carries nothing: the screen answers
+/// with [`task_link_take`], which is also what it calls once at startup, so a link that arrived before
+/// anything listened and one that arrives later reach the screen by the same call.
+pub const TASK_LINK_RECEIVED_EVENT: &str = "task-link-received";
+
+/// 受け取り待ちのリンク, taken and resolved against the ledger as it is now. `None` when nothing is
+/// waiting — the event and the startup take can both reach one link, and the second finds it gone.
+#[tauri::command(async)]
+pub fn task_link_take(
+    app: AppHandle,
+    pending: State<'_, PendingTaskLink>,
+) -> Result<Option<TaskLinkResolution>, CommandError> {
+    let Some(url) = pending.take() else {
+        return Ok(None);
+    };
+    let ledger = load_ledger(&ConfigFiles::resolve(&app)?)?.ledger;
+    Ok(Some(task_link::resolve(url, &ledger)))
+}
+
+/// Where every OS hand-over of a タスクリンク lands (doc-3 §8): it becomes the 受け取り待ちのリンク, the
+/// window comes forward, and the screen is told.
+///
+/// **Both the current value and the listener are read**, because the platforms deliver a cold start's
+/// URL at different moments. On Windows and Linux it is the process's argument, which the plugin reads
+/// while it is being set up — before this listener exists. On macOS it arrives as an Apple Event after
+/// the event loop starts, which only the listener sees.
+pub fn receive_task_links(app: &AppHandle) {
+    let deep_link = app.deep_link();
+    if let Ok(Some(urls)) = deep_link.get_current() {
+        hold_task_link(app, urls);
+    }
+    // An AppImage has no installer to write the association, so it writes its own on each start; a
+    // .deb or .rpm got it from the package and must not be pointed at whatever binary ran last.
+    #[cfg(target_os = "linux")]
+    if app.env().appimage.is_some() {
+        let _ = deep_link.register_all();
+    }
+    let handle = app.clone();
+    deep_link.on_open_url(move |event| {
+        hold_task_link(&handle, event.urls());
+        let _ = handle.emit(TASK_LINK_RECEIVED_EVENT, ());
+    });
+}
+
+fn hold_task_link(app: &AppHandle, urls: Vec<tauri::Url>) {
+    // The OS hands over one URL per open; a list longer than that has no order this design reads.
+    let Some(url) = urls.into_iter().next_back() else {
+        return;
+    };
+    app.state::<PendingTaskLink>().put(url.to_string());
+    bring_to_front(app);
+}
+
+/// Bring the one window forward. Also what 起動の引継ぎ does for a second launch that carried no URL,
+/// which would otherwise exit without the user seeing anything happen.
+pub fn bring_to_front(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 // --- commands: update path (decision-2, doc-5, AC #2/#4) ----------------------------------------

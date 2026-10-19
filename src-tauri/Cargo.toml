@@ -76,6 +76,22 @@ tauri-plugin-dialog = "2"
 # reaches it. Approved as a new production dependency per the AGENTS.md introduction gate before
 # adding.
 tauri-plugin-window-state = "2"
+# tauri-plugin-deep-link carries a タスクリンク (doc-3 §8) from the OS to the running app: it hands the
+# bundlers the scheme to associate (Info.plist, the Windows installers' registry keys, the Linux
+# `.desktop` file) and turns each hand-over into a URL — the process argument on Windows and Linux, an
+# Apple Event on macOS. Official Tauri plugin, so no new vendor. Adds tracing (and, on Windows,
+# windows-registry; on Linux, rust-ini for the `.desktop` file) — measured with `cargo metadata
+# --filter-platform`, decision-49 has the per-platform counts.
+#
+# Scope is receiving: the plugin's four JS commands stay unused and no capability grants them, and its
+# runtime `register` is called only for an AppImage, which has no installer to write the association.
+# Approved as a new production dependency per the AGENTS.md introduction gate before adding (decision-49).
+tauri-plugin-deep-link = "2"
+# serde_json was a dev-dependency (the wire tests) until `plugins` entered `tauri.conf.json`:
+# `generate_context!` then expands to code that names `serde_json` from this crate's root, so the
+# crate has to name it too. Already in the tree through tauri, so the build gains nothing; the wire
+# tests keep using it as before.
+serde_json = "1"
 
 # windows-sys binds `ShellExecuteW` for OS 関連付け起動 on Windows (doc-8 §7, TASK-44). The method has
 # to reach the shell *API* without a command interpreter: `cmd /c start` re-parses its command tail, so
@@ -103,8 +119,16 @@ windows-sys = { version = "0.61", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 
-[dev-dependencies]
-# Test-only: asserts the domain model's JSON wire contract (doc-4 §3.1 camelCase field
-# names, enum tokens). Already present transitively via tauri, so it adds no new build;
-# scope is limited to unit tests and it is not a production dependency.
-serde_json = "1"
+# tauri-plugin-single-instance is 起動の引継ぎ (decision-49 §3): on Windows and Linux an association
+# starts a second process, which hands its argument to the running Atlas and exits. The `deep-link`
+# feature routes that argument through tauri-plugin-deep-link, so a URL reaches the running app the same
+# way whichever process received it. macOS is left out on purpose — LaunchServices already delivers to
+# the running app — so it is a dependency of these two targets only.
+#
+# On Linux the hand-over is a D-Bus call, which brings zbus and its async stack: about 50 crates, the
+# largest cost decision-49 weighed. With no session bus the connection fails and Atlas starts as it did
+# before, without the hand-over. Approved as a new production dependency per the AGENTS.md introduction
+# gate before adding (decision-49).
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
