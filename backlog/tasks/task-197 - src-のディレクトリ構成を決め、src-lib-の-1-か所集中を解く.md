@@ -4,10 +4,11 @@ title: src/ のディレクトリ構成を決め、src/lib の 1 か所集中を
 status: To Do
 assignee: []
 created_date: '2026-08-22 10:31'
-updated_date: '2026-08-22 10:31'
+updated_date: '2026-10-18 22:53'
 labels:
   - maintainability
   - 'kind:refactor'
+  - 決定先行
 milestone: m-4
 dependencies:
   - TASK-106

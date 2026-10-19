@@ -4,9 +4,10 @@ title: 期限到達のときに、利用者が次に何をすればよいかを�
 status: To Do
 assignee: []
 created_date: '2026-08-15 03:56'
-updated_date: '2026-08-18 21:11'
+updated_date: '2026-10-18 22:53'
 labels:
   - 'kind:enhancement'
+  - 着手時選択
 milestone: m-4
 dependencies: []
 priority: low

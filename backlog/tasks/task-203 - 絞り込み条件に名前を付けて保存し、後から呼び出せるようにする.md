@@ -4,10 +4,12 @@ title: 絞り込み条件に名前を付けて保存し、後から呼び出せ�
 status: To Do
 assignee: []
 created_date: '2026-09-05 23:59'
+updated_date: '2026-10-18 22:53'
 labels:
   - ui
   - swimlane
   - 'kind:feature'
+  - 決定先行
 milestone: m-4
 dependencies: []
 priority: medium

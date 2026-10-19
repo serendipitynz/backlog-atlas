@@ -4,9 +4,10 @@ title: decision-18 の CLI 終了期限の実測基準を測り直し、Windows 
 status: To Do
 assignee: []
 created_date: '2026-08-15 03:56'
-updated_date: '2026-08-18 21:10'
+updated_date: '2026-10-18 22:53'
 labels:
   - 'kind:chore'
+  - 実機
 milestone: m-4
 dependencies: []
 priority: low
