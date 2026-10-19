@@ -47,6 +47,7 @@ use crate::settings::{
     AppSettings, CardDensity, CardOrder, DetailPlacement, GridColumn, LoadedSettings,
     SettingsStatus, StorageSelection, KNOWN_SCHEMA_VERSION,
 };
+use crate::task_link::TaskLinkResolution;
 use crate::update::{FailureKind, UpdateFailure, UpdateOutcome};
 
 /// Where the recorded payloads live, relative to `src-tauri/`.
@@ -611,6 +612,20 @@ fn release_notice_is_recorded() {
         "release_notice.json",
         &ReleaseNotice {
             version: "9.9.9".to_string(),
+        },
+    );
+}
+
+/// タスクリンク (doc-3 §8) as the screen takes it. The resolved form is the sample because it is the
+/// one carrying a renamed field (`taskId`); the other two are anchored by their tokens below.
+#[test]
+fn task_link_resolution_is_recorded() {
+    recorded(
+        "task_link_resolution.json",
+        &TaskLinkResolution::Resolved {
+            url: "backlog-atlas://task?root=%2Fwork%2Fatlas&id=TASK-206".to_string(),
+            slug: "atlas".to_string(),
+            task_id: "TASK-206".to_string(),
         },
     );
 }
@@ -1513,6 +1528,29 @@ fn every_command_error() -> Vec<CommandError> {
     all
 }
 
+fn every_task_link_resolution() -> Vec<TaskLinkResolution> {
+    let all = vec![
+        TaskLinkResolution::Resolved {
+            url: String::new(),
+            slug: String::new(),
+            task_id: String::new(),
+        },
+        TaskLinkResolution::Malformed { url: String::new() },
+        TaskLinkResolution::Unregistered {
+            url: String::new(),
+            root: PathBuf::new(),
+        },
+    ];
+    for value in &all {
+        match value {
+            TaskLinkResolution::Resolved { .. }
+            | TaskLinkResolution::Malformed { .. }
+            | TaskLinkResolution::Unregistered { .. } => {}
+        }
+    }
+    all
+}
+
 #[test]
 fn every_union_token_is_recorded() {
     // Keyed by the `wire.ts` type the tokens belong to, so `src/lib/wire-fixture.test.ts` can compare
@@ -1591,6 +1629,11 @@ fn every_union_token_is_recorded() {
     tokens.insert(
         "RemoteReadFailure",
         tag_tokens(&every_remote_read_failure(), "reason"),
+    );
+
+    tokens.insert(
+        "TaskLinkResolution",
+        tag_tokens(&every_task_link_resolution(), "state"),
     );
 
     recorded("wire_tokens.json", &tokens);

@@ -687,6 +687,17 @@ export interface ReleaseNotice {
   version: string;
 }
 
+// --- タスクリンク (doc-3 §8, decision-49) ---------------------------------------------------------
+
+/**
+ * How far a タスクリンク resolved on the Rust side: the ledger's half. Finding the task is the screen's,
+ * from the read it already draws. Every variant carries the URL as received.
+ */
+export type TaskLinkResolution =
+  | { state: "resolved"; url: string; slug: string; taskId: string }
+  | { state: "malformed"; url: string }
+  | { state: "unregistered"; url: string; root: string };
+
 // --- 更新操作 (doc-5 §3, TASK-31) ------------------------------------------------------------
 
 /**

@@ -30,6 +30,7 @@ import { inconsistencyReasons, isInconsistent } from "./mark";
 import { gitRemoteLine } from "./project-detail";
 import { probeFailureText } from "./failure";
 import { releaseNoticeText } from "./header";
+import { taskLinkStep } from "./task-link";
 import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import type {
   AcceptanceCriterion,
@@ -93,6 +94,7 @@ import type {
   Task,
   TaskHistory,
   TaskInterpretation,
+  TaskLinkResolution,
   TaskView,
   TypeValue,
   UnknownSection,
@@ -398,6 +400,11 @@ const RELATION_STATES = unionValues<RelationOutcome["state"]>()(
   "lookupFailed",
 );
 const UPDATE_STATES = unionValues<UpdateResult["state"]>()("conflict", "ran");
+const TASK_LINK_STATES = unionValues<TaskLinkResolution["state"]>()(
+  "resolved",
+  "malformed",
+  "unregistered",
+);
 const OUTCOME_STATES = unionValues<UpdateOutcome["state"]>()("succeeded", "failed");
 const FAILURE_KINDS = unionValues<FailureKind["kind"]>()(
   "spawn",
@@ -669,6 +676,7 @@ describe("Rust が記録した payload の項目が wire.ts と一致する", ()
       "release_notice.json",
       "reload_event.json",
       "task_history.json",
+      "task_link_resolution.json",
       "update_result_conflict.json",
       "update_result_ran_failed.json",
       "update_result_ran_timed_out.json",
@@ -1078,6 +1086,30 @@ describe("記録した payload の値の型が wire.ts の宣言と一致する"
     }
   });
 
+  it("TaskLinkResolution — タスクリンク", () => {
+    const resolution = fixture<TaskLinkResolution>("task_link_resolution.json");
+    expect(keysOf(resolution)).toEqual(
+      keysOfType<Extract<TaskLinkResolution, { state: "resolved" }>>()(
+        "state",
+        "url",
+        "slug",
+        "taskId",
+      ),
+    );
+    sameValueTypes("task_link_resolution", resolution, {
+      state: "resolved",
+      url: "backlog-atlas://task?root=%2Fa&id=TASK-1",
+      slug: "a",
+      taskId: "TASK-1",
+    } satisfies TaskLinkResolution);
+    // The frontend's own function over the recording: the recorded slug is read as a project and the
+    // recorded id is what the refusal names, so a renamed `taskId` would reach the sentence as nothing.
+    const step = taskLinkStep(resolution, () => undefined);
+    expect(step.state === "refused" && step.reason()).toContain(
+      resolution.state === "resolved" ? resolution.taskId : "",
+    );
+  });
+
   it("ReleaseNotice — 版の告知", () => {
     const notice = fixture<ReleaseNotice>("release_notice.json");
     expect(keysOf(notice)).toEqual(keysOfType<ReleaseNotice>()("version"));
@@ -1188,6 +1220,7 @@ describe("wire.ts の union メンバーが Rust の直列化と一致する", (
     GitRemoteRead: GIT_REMOTE_STATES,
     RelationOutcome: RELATION_STATES,
     UpdateResult: UPDATE_STATES,
+    TaskLinkResolution: TASK_LINK_STATES,
     UpdateOutcome: OUTCOME_STATES,
     FailureKind: FAILURE_KINDS,
     CliReadiness: CLI_STATES,
