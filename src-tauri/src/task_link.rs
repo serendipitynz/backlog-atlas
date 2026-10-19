@@ -202,4 +202,25 @@ mod tests {
             serde_json::json!([SCHEME]),
         );
     }
+
+    /// The bundler's own `.desktop` template writes `Exec=<bin>` with no field code, so a Linux
+    /// package associated the scheme and then launched Atlas without the URL (measured on WSL Ubuntu
+    /// 24.04 on 2026-10-20, tauri-bundler 2.10.3). The `.deb` and the `.rpm` each name a template, and
+    /// a package left on the default would lose the URL again with nothing else to say so.
+    #[test]
+    fn both_linux_packages_hand_the_url_to_the_binary() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let template = include_str!("../linux/main.desktop");
+        assert!(
+            template.lines().any(|line| line == "Exec={{exec}} %u"),
+            "{template}"
+        );
+        for package in ["deb", "rpm"] {
+            assert_eq!(
+                config["bundle"]["linux"][package]["desktopTemplate"], "linux/main.desktop",
+                "{package}",
+            );
+        }
+    }
 }

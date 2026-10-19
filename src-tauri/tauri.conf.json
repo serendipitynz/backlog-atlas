@@ -37,6 +37,14 @@
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/main.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "linux/main.desktop"
+      }
+    },
     "copyright": "Copyright (c) 2026 Takuya Otani / SerendipityNZ Ltd.",
     "resources": {
       "../LICENSE": "LICENSE",
