@@ -113,7 +113,12 @@ mutex、Linux は D-Bus のバス名 `<identifier>.SingleInstance`）、配布�
   知られた時点で関連付けが成り立つ。
 - **Windows** … NSIS と MSI のインストーラが `Software\Classes\backlog-atlas` を書く。
 - **Linux** … `.deb` と `.rpm` は `.desktop` ファイルの `MimeType` に `x-scheme-handler/backlog-atlas` を
-  持つ。**AppImage にはインストーラが無いので、Atlas が起動のたびに自分で関連付けを書く**
+  持つ。**その `.desktop` はバンドラの既定ではなく Atlas のテンプレート（`src-tauri/linux/main.desktop`）から
+  作る。** バンドラ既定のテンプレートは `Exec=` に URL を渡す `%u` を付けないので（tauri-bundler 2.10.3 を
+  読んで確かめた）、関連付けは Atlas を起動するのに URL を渡さない — 2026-10-20 に WSL Ubuntu 24.04 の
+  `.deb` で実測し、Atlas は開くがタスクは開かず、理由も出なかった。テンプレートは既定との差を `%u` の
+  1 か所に留め、`tauri.conf.json` の `bundle.linux.deb` と `bundle.linux.rpm` の両方から指す（AppImage は
+  `.deb` のものを使う）。**AppImage にはインストーラが無いので、Atlas が起動のたびに自分で関連付けを書く**
   （`register_all`。`~/.local/share/applications/` の `.desktop` と `xdg-mime default`）。
   `.deb`・`.rpm` から入れた Atlas がこれを呼ばないのは、パッケージが書いた関連付けを、最後に走った
   バイナリへ向け直さないためである。
@@ -151,7 +156,9 @@ mutex、Linux は D-Bus のバス名 `<identifier>.SingleInstance`）、配布�
     macOS の URL が `RunEvent::Opened` で届くこと、Windows・Linux の冷えた起動の URL がプラグインの初期化中に
     引数から読まれること（だから `get_current` を読む）、single-instance の `deep-link` feature が
     2 つ目のプロセスの引数を deep-link の経路へ流すこと、Windows の引継ぎが引数を `|` で連結して運ぶこと
-    （だから doc-3 §8 は `|` の符号化を求める）。
+    （だから doc-3 §8 は `|` の符号化を求める）。**tauri-bundler の版を上げる回は、既定の `.desktop`
+    テンプレートとの差を見直す** — 既定が `%u` を付けるようになったら §4 の自前テンプレートは要らなくなり、
+    既定が他の行を足したら自前のほうに写す。
 - 後続への影響
   - work-report のダッシュボードが候補行を `<a href>` にできる。生成側は doc-3 §8 を契約として読む。
   - **単一プロセスの前提はこれまでどおり保たれる。** 起動の引継ぎは前提を変えるのではなく、Windows・

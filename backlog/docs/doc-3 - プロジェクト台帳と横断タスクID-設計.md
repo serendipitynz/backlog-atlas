@@ -3,7 +3,7 @@ id: doc-3
 title: プロジェクト台帳と横断タスクID 設計
 type: specification
 created_date: '2026-07-21 09:36'
-updated_date: '2026-10-19 09:34'
+updated_date: '2026-10-19 23:22'
 ---
 # プロジェクト台帳と横断タスクID 設計
 
@@ -285,7 +285,7 @@ backlog-atlas://task?root=<指すルート>&id=<タスク ID>
 
 **Linux**
 
-- 配布版: `.deb`・`.rpm` は `.desktop` ファイルの `MimeType` に `x-scheme-handler/backlog-atlas` を持ち、パッケージを入れれば関連付けが成り立つ。**AppImage はインストーラを持たないので、Atlas が起動のたびに自分で書く** — `~/.local/share/applications/` に `<実行ファイル名>-handler.desktop` を置き、`xdg-mime default` で既定にする（`xdg-mime` と `update-desktop-database` が要る）。
+- 配布版: `.deb`・`.rpm` は `.desktop` ファイルの `MimeType` に `x-scheme-handler/backlog-atlas` を持ち、パッケージを入れれば関連付けが成り立つ。**その `.desktop` の `Exec=` は `%u` で URL を受け取る** — バンドラ既定のテンプレートは `%u` を付けないので、Atlas は `src-tauri/linux/main.desktop` を `.deb` と `.rpm` の両方のテンプレートに指定している（decision-49 §4）。**AppImage はインストーラを持たないので、Atlas が起動のたびに自分で書く** — `~/.local/share/applications/` に `<実行ファイル名>-handler.desktop` を置き、`xdg-mime default` で既定にする（`xdg-mime` と `update-desktop-database` が要る）。
 - 開発ビルド: `.desktop` ファイルを手で置いて既定にする。
 
   ```sh
