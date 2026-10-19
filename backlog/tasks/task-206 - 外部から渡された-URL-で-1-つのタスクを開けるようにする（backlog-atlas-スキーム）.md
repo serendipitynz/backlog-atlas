@@ -4,7 +4,7 @@ title: '外部から渡された URL で 1 つのタスクを開けるように�
 status: In Review
 assignee: []
 created_date: '2026-09-18 23:01'
-updated_date: '2026-10-19 23:31'
+updated_date: '2026-10-19 23:50'
 labels:
   - 'kind:feature'
 milestone: m-5
@@ -28,9 +28,9 @@ URL の形（台帳をパスで指すか登録名で指すか、タスクを ID 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Atlas を起動していない状態でその URL を開くと、Atlas が起動し、指定した台帳の指定したタスクの詳細が前面に出る
-- [ ] #2 Atlas が起動中にその URL を開くと、2 つ目のプロセスを立てずに既存のウィンドウがそのタスクへ移る
-- [ ] #3 登録されていない台帳・存在しないタスクを指す URL は、何も起きないのではなく理由が画面に出る
+- [x] #1 Atlas を起動していない状態でその URL を開くと、Atlas が起動し、指定した台帳の指定したタスクの詳細が前面に出る
+- [x] #2 Atlas が起動中にその URL を開くと、2 つ目のプロセスを立てずに既存のウィンドウがそのタスクへ移る
+- [x] #3 登録されていない台帳・存在しないタスクを指す URL は、何も起きないのではなく理由が画面に出る
 - [x] #4 URL の形と、3 OS それぞれでの登録手順（開発ビルドを含む）が doc に書かれている
 <!-- AC:END -->
 
@@ -76,4 +76,6 @@ URL の形（台帳をパスで指すか登録名で指すか、タスクを ID 
 - WSL Ubuntu 24.04（.deb）: 初回は 3 つとも NG — Atlas は開くがタスクは開かず、理由も出ない。tauri-bundler 2.10.3 の既定 .desktop テンプレートが `Exec=backlog-atlas` に `%u` を付けないため、URL が渡っていなかった。自前テンプレート（src-tauri/linux/main.desktop）を .deb・.rpm に指定して修正し（decision-49 §4・doc-3 §8.5 に記録）、作り直した .deb を `apt install --reinstall` で入れ直して AC #1・#2・#3 すべて OK。D-Bus のセッションバスあり（`unix:path=/run/user/1000/bus`）。同じ版番号の .deb は `--reinstall` を付けないと置き換わらない。
 - macOS: プロセス数の確認（冷えた起動のあと 2 本送っても 1 プロセス）だけで、画面の目視は未了。
 - 確認の途中で、Windows ではタスクを選ぶたびにコンソール窓がちらつくことが分かった。git・gh の起動に CREATE_NO_WINDOW が無いためで、本タスクとは無関係（別タスクとして提案済み）。
+
+- macOS（ブランチの release .app）: 2026-10-20 にユーザーが目視し、AC #1・#2・#3 すべて OK。3 OS がそろったので AC #1〜#3 をチェックした。
 <!-- SECTION:NOTES:END -->
