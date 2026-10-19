@@ -228,6 +228,12 @@ export const answers = {
    * arrived while it ran.
    */
   taskLink: null as TaskLinkResolution | null,
+  /**
+   * Holds handed to successive `task_link_take` calls, one each. The real take empties the slot at
+   * once and resolves against the ledger afterwards, so the fake captures the link before the wait —
+   * which is what lets two overlapping takes answer out of order.
+   */
+  taskLinkHolds: [] as Deferred<void>[],
 };
 
 /** The `project-reloaded` subscribers currently registered, in subscription order. */
@@ -333,6 +339,7 @@ export function reset(): void {
   answers.settingsSaveFails = false;
   answers.ledgerRegisterHold = null;
   answers.taskLink = null;
+  answers.taskLinkHolds = [];
 }
 
 function record<T>(name: string, args: readonly unknown[], answer: () => T): T {
@@ -540,10 +547,14 @@ export const commandFakes = {
   windowTitleSet: (_title: string): Promise<void> => Promise.resolve(),
 
   taskLinkTake: (): Promise<TaskLinkResolution | null> =>
-    record("task_link_take", [], () => {
+    record("task_link_take", [], async () => {
       const taken = answers.taskLink;
       answers.taskLink = null;
-      return Promise.resolve(taken);
+      const hold = answers.taskLinkHolds.shift();
+      if (hold !== undefined) {
+        await hold.promise;
+      }
+      return taken;
     }),
 
   onTaskLinkReceived: (handler: () => void): Promise<() => void> =>

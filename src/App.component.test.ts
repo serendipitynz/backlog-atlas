@@ -3074,6 +3074,26 @@ describe("タスクリンクで 1 タスクを開く (doc-3 §8)", () => {
     expect(detailTitle(host)).toBe("隣の題");
   });
 
+  it("取り出しの最中に次のリンクが届いても、古いほうが新しいほうを上書きしない", async () => {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    openSettingsPanel(host);
+    await settled();
+
+    // The first take empties the slot and is still resolving when the second link arrives.
+    const slow = deferred<void>();
+    answers.taskLinkHolds = [slow];
+    emitTaskLink(link("TASK-1"));
+    await settled();
+    emitTaskLink(link("TASK-2"));
+    await settled();
+    slow.resolve();
+    await settled();
+
+    click(byText(host, "footer button", closeWithoutSavingLabel()));
+    await settled();
+    expect(detailTitle(host)).toBe("隣の題");
+  });
+
   it("プロジェクト詳細画面からはスイムレーンへ戻って開く", async () => {
     const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
     click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));

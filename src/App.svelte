@@ -928,15 +928,36 @@
     }
   }
 
+  let taking = false;
+  let takeAgain = false;
+
+  /**
+   * One take at a time. Each take empties the pending slot at once but resolves against the ledger
+   * afterwards, so two overlapping takes can answer out of order and leave the older link standing
+   * over the newer one. An announcement that arrives mid-take is not dropped either: it asks for one
+   * more take once this one is in, which then finds the newest link.
+   */
   async function takeTaskLink(): Promise<void> {
+    if (taking) {
+      takeAgain = true;
+      return;
+    }
+    taking = true;
     try {
-      const taken = await taskLinkTake();
-      if (taken !== null) {
-        pendingTaskLink = taken;
-      }
-    } catch (error) {
-      const detail = commandErrorDetail(asCommandError(error));
-      notice = () => t().shell.taskLinkTakeFailed(detail);
+      do {
+        takeAgain = false;
+        try {
+          const taken = await taskLinkTake();
+          if (taken !== null) {
+            pendingTaskLink = taken;
+          }
+        } catch (error) {
+          const detail = commandErrorDetail(asCommandError(error));
+          notice = () => t().shell.taskLinkTakeFailed(detail);
+        }
+      } while (takeAgain);
+    } finally {
+      taking = false;
     }
   }
 
