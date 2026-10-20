@@ -350,8 +350,7 @@ pub struct SystemLauncher;
 
 impl Launcher for SystemLauncher {
     fn spawn(&self, program: &str, args: &[String]) -> std::io::Result<()> {
-        // Not a 窓なし起動 (decision-50): a console editor named by 起動指定 has no window but the
-        // console one, so hiding it would leave the editor running where nobody can reach it.
+        // decision-50 §2
         #[allow(clippy::disallowed_methods)]
         let child = Command::new(program)
             .args(args)
@@ -427,7 +426,7 @@ impl Launcher for SystemLauncher {
     }
 
     fn spawn_observed(&self, program: &str, args: &[String]) -> std::io::Result<Option<String>> {
-        // Not a 窓なし起動 either (decision-50) — 外部で開く is excluded as a whole.
+        // decision-50 §2
         #[allow(clippy::disallowed_methods)]
         let mut child = Command::new(program)
             .args(args)
