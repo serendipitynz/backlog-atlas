@@ -4,7 +4,7 @@ title: Windows で外部コマンドの起動ごとにコンソール窓がち�
 status: In Review
 assignee: []
 created_date: '2026-10-20 03:03'
-updated_date: '2026-10-20 21:22'
+updated_date: '2026-10-20 23:10'
 labels:
   - 'kind:bug'
   - rust
@@ -27,8 +27,8 @@ Windows でタスクを選ぶたびに、コンソール窓が一瞬現れて消
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Windows の実機で、タスクを選んでも git・gh の起動でコンソール窓が現れない
-- [ ] #2 Backlog CLI が見つかる環境で、起動時の確認と更新でもコンソール窓が現れない
+- [x] #1 Windows の実機で、タスクを選んでも git・gh の起動でコンソール窓が現れない
+- [x] #2 Backlog CLI が見つかる環境で、起動時の確認と更新でもコンソール窓が現れない
 - [x] #3 見えること自体が目的の起動（端末など）は窓を消さず、どの起動を対象外にしたかが doc か decision に書かれている
 - [x] #4 新しい起動箇所が窓を消す指定を付け忘れたら、検査が落ちる
 <!-- AC:END -->
@@ -62,4 +62,10 @@ AC #4 の検査は、ソースの正規表現走査ではなく `src-tauri/clipp
 
 未確認（オーナーの実機確認待ち）: AC #1・#2。release ビルドを Windows に入れて、タスク選択（git・gh）と、CLI がある環境での起動時・更新時（backlog）に窓が出ないこと。開発ビルドは Atlas 自身がコンソールを持つので再現しない。
 未実測で残したもの: Windows の「Visual Studio Code で開く」は `code.cmd` を起動するので、`cmd.exe` の窓がちらつく可能性がある（decision-50 §2）。ちらつきが確認できれば別タスクにする。
+
+Windows 実機の確認（2026-10-21、オーナー。このブランチの release ビルドを NSIS で導入）:
+- AC #1 OK: タスク選択で git・gh が走っても、コンソール窓は出なかった
+- AC #2 OK: Backlog CLI が見つかる環境で、起動時の確認と更新時にも窓は出なかった
+- 確認の準備で分かったこと: fnm 配下に npm で入れた backlog は、Atlas からは見つからない。`fnm_multishells` はシェルごとの PATH で、GUI から起動した Atlas には届かない。版も 1.49.1 で最低版に届いていなかった。CLI を更新し、アプリ設定で backlog.exe の実体パスを指定して確認した（decision-29 の想定どおりの対処）。gh は winget で入れる案内をした。
+- 外部で開く の「Visual Studio Code で開く」では、予想どおり `code.cmd` 経由で cmd.exe の窓が開いた。オーナーの判断で問題なしとし、別タスクは起こさない。decision-50 §2 と Consequences の「未実測」を、この結果に書き換えた。
 <!-- SECTION:NOTES:END -->
