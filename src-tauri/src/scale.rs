@@ -277,7 +277,7 @@ fn thread_count() -> Option<usize> {
     #[cfg(target_os = "macos")]
     {
         // No /proc on macOS. `ps -M` lists one line per thread after its header.
-        let out = std::process::Command::new("ps")
+        let out = crate::subprocess::windowless("ps")
             .args(["-M", "-p", &std::process::id().to_string()])
             .output()
             .ok()?;

@@ -350,6 +350,8 @@ pub struct SystemLauncher;
 
 impl Launcher for SystemLauncher {
     fn spawn(&self, program: &str, args: &[String]) -> std::io::Result<()> {
+        // decision-50 §2
+        #[allow(clippy::disallowed_methods)]
         let child = Command::new(program)
             .args(args)
             // Atlas's own stdio is not a terminal the child may write to or read from: a child
@@ -424,6 +426,8 @@ impl Launcher for SystemLauncher {
     }
 
     fn spawn_observed(&self, program: &str, args: &[String]) -> std::io::Result<Option<String>> {
+        // decision-50 §2
+        #[allow(clippy::disallowed_methods)]
         let mut child = Command::new(program)
             .args(args)
             // Same reasoning as `spawn`: Atlas's stdio is not a terminal this child may use.

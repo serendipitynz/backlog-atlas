@@ -53,7 +53,6 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 // --- version probe / capability (doc-5 §3.2, decision-7, AC #6) ---------------------------------
@@ -1139,7 +1138,7 @@ impl SystemBacklog {
 impl BacklogCli for SystemBacklog {
     fn run(&self, current_dir: Option<&Path>, args: &[String]) -> Result<CliRun, RunError> {
         let program = self.program.program();
-        let mut cmd = Command::new(program);
+        let mut cmd = subprocess::windowless(program);
         if let Some(dir) = current_dir {
             cmd.current_dir(dir);
         }

@@ -1523,7 +1523,7 @@ mod tests {
         let repo = tmp.path.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
 
-        let init = std::process::Command::new("git")
+        let init = crate::subprocess::windowless("git")
             .arg("-C")
             .arg(&repo)
             .arg("init")
@@ -1534,7 +1534,7 @@ mod tests {
                 !detect_git_remote(&ExternalProgram::git(None), &repo),
                 "fresh repo has no remote"
             );
-            let added = std::process::Command::new("git")
+            let added = crate::subprocess::windowless("git")
                 .arg("-C")
                 .arg(&repo)
                 .args(["remote", "add", "origin", "https://example.invalid/x.git"])
