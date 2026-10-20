@@ -1,10 +1,10 @@
 ---
 id: TASK-206
 title: '外部から渡された URL で 1 つのタスクを開けるようにする（backlog-atlas:// スキーム）'
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-09-18 23:01'
-updated_date: '2026-10-19 23:50'
+updated_date: '2026-10-20 03:02'
 labels:
   - 'kind:feature'
 milestone: m-5
