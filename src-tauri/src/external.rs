@@ -121,7 +121,7 @@ impl ExternalProgram {
     /// array; nothing here builds a command line, so the AGENTS rule against shell strings holds by
     /// construction rather than by each caller remembering it.
     pub fn command(&self) -> Command {
-        Command::new(self.program())
+        subprocess::windowless(self.program())
     }
 }
 
@@ -220,7 +220,7 @@ pub fn probe_program(
     program: &Path,
     source: ExternalProgramSource,
 ) -> ExternalProgramReport {
-    let mut spawn = Command::new(program);
+    let mut spawn = subprocess::windowless(program);
     spawn.arg("--version");
     // `gh` would otherwise reach the network for its update notice and print it into the output this
     // panel shows — the same two variables doc-6 §6's 照会 sets, for the same reason.

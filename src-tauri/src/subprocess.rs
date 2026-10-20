@@ -21,6 +21,7 @@
 //! The caller's side of the contract is [`Cancel`]: a handle it may set from another thread to stop
 //! a wait it no longer wants an answer to (decision-19 履歴読取の取消).
 
+use std::ffi::OsStr;
 use std::io::Read;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,6 +38,31 @@ const WAIT_POLL: Duration = Duration::from_millis(20);
 /// the module comment for what they are. One second is far more than either needs when nothing is
 /// wrong, and the whole of it is spent only when something really is still holding on.
 const CLEANUP_GRACE: Duration = Duration::from_secs(1);
+
+/// `CREATE_NO_WINDOW` of the Win32 process creation flags. Spelled out rather than bound through
+/// windows-sys, whose features Cargo.toml scopes to `ShellExecuteW` (decision-15).
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// A `Command` for `program` whose child gets no console window on Windows (decision-50 窓なし起動).
+///
+/// The only constructor of a `Command` outside 外部で開く: `clippy.toml` disallows `Command::new`, so
+/// a launch that bypasses this fails `cargo clippy` rather than flashing a window on one platform.
+#[allow(clippy::disallowed_methods)]
+pub fn windowless(program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    hide_console(&mut command);
+    command
+}
+
+#[cfg(windows)]
+fn hide_console(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_console(_: &mut Command) {}
 
 /// A caller's request to stop waiting, settable from another thread (decision-19 履歴読取の取消).
 ///
