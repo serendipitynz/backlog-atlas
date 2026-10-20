@@ -1,10 +1,10 @@
 ---
 id: TASK-212
 title: Windows で外部コマンドの起動ごとにコンソール窓がちらつくのを止める
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-10-20 03:03'
-updated_date: '2026-10-20 23:10'
+updated_date: '2026-10-20 23:22'
 labels:
   - 'kind:bug'
   - rust
