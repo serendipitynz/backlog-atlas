@@ -29,6 +29,7 @@ import {
   answers,
   deferred,
   emitReload,
+  emitTaskLink,
   ledgerFor,
   madeTo,
   order,
@@ -3003,5 +3004,123 @@ describe("再読込イベント後の選択・未保存・履歴の整合", () =
     // References decide which Pull Requests are looked up, so an edit to them must not leave an
     // answer computed from the previous ones on screen.
     expect(madeTo("task_history_read")).toHaveLength(2);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+describe("タスクリンクで 1 タスクを開く (doc-3 §8)", () => {
+  const LINK = "backlog-atlas://task?root=%2Fwork%2Fatlas&id=TASK-2";
+
+  function link(taskId: string): { state: "resolved"; url: string; slug: string; taskId: string } {
+    return { state: "resolved", url: LINK, slug: "atlas", taskId };
+  }
+
+  function detailTitle(host: HTMLElement): string | null {
+    return host.querySelector('[aria-label="タスク詳細"] h2')?.textContent ?? null;
+  }
+
+  function noticeText(host: HTMLElement): string | null {
+    return host.querySelector('.band[data-band="notice"]')?.textContent ?? null;
+  }
+
+  it("起動のきっかけになったリンクは、読取の後に取り出してそのタスクを開く", async () => {
+    answers.taskLink = link("TASK-2");
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+
+    const names = order();
+    // Taken once the read is in: before it, there is no read to find the id in.
+    expect(names.indexOf("task_link_take")).toBeGreaterThan(names.indexOf("workspace_open"));
+    expect(detailTitle(host)).toBe("隣の題");
+  });
+
+  it("起動中に届いたリンクは、知らせを受けて取り出し、別のタスクから移る", async () => {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
+    await settled();
+    expect(detailTitle(host)).toBe("最初の題");
+
+    emitTaskLink(link("TASK-2"));
+    await settled();
+
+    expect(detailTitle(host)).toBe("隣の題");
+  });
+
+  it("開けないリンクは、理由を通知帯に出して画面を動かさない", async () => {
+    const host = await startWith([loaded("atlas", [TASK])]);
+
+    emitTaskLink({ state: "unregistered", url: LINK, root: "/work/elsewhere" });
+    await settled();
+    expect(noticeText(host)).toContain("/work/elsewhere");
+    expect(detailTitle(host)).toBeNull();
+
+    emitTaskLink(link("TASK-9"));
+    await settled();
+    expect(noticeText(host)).toContain("TASK-9");
+    expect(detailTitle(host)).toBeNull();
+  });
+
+  it("モーダルが出ている間は待ち、閉じてから開く", async () => {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    openSettingsPanel(host);
+    await settled();
+
+    emitTaskLink(link("TASK-2"));
+    await settled();
+    expect(detailTitle(host)).toBeNull();
+
+    click(byText(host, "footer button", closeWithoutSavingLabel()));
+    await settled();
+    expect(detailTitle(host)).toBe("隣の題");
+  });
+
+  it("取り出しの最中に次のリンクが届いても、古いほうが新しいほうを上書きしない", async () => {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    openSettingsPanel(host);
+    await settled();
+
+    // The first take empties the slot and is still resolving when the second link arrives.
+    const slow = deferred<void>();
+    answers.taskLinkHolds = [slow];
+    emitTaskLink(link("TASK-1"));
+    await settled();
+    emitTaskLink(link("TASK-2"));
+    await settled();
+    slow.resolve();
+    await settled();
+
+    click(byText(host, "footer button", closeWithoutSavingLabel()));
+    await settled();
+    expect(detailTitle(host)).toBe("隣の題");
+  });
+
+  it("プロジェクト詳細画面からはスイムレーンへ戻って開く", async () => {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(only(host, '[aria-label="atlas のプロジェクト詳細画面を開く"]'));
+    await settled();
+    expect(host.querySelector("nav.sections")).not.toBeNull();
+
+    emitTaskLink(link("TASK-2"));
+    await settled();
+
+    expect(host.querySelector("nav.sections")).toBeNull();
+    expect(detailTitle(host)).toBe("隣の題");
+  });
+
+  it("編集中のタスクから移るときは、破棄前確認を経る", async () => {
+    const host = await startWith([loaded("atlas", [TASK, NEIGHBOUR])]);
+    click(byText(host, "button.card .title", "最初の題").closest("button.card")!);
+    await settled();
+    click(byText(host, "button.primary", "編集"));
+    fill(only<HTMLInputElement>(host, '.field input[type="text"]'), "書きかけの題");
+
+    emitTaskLink(link("TASK-2"));
+    await settled();
+    expect(confirmBand(host)).not.toBeNull();
+    expect(detailTitle(host)).not.toBe("隣の題");
+
+    click(byText(host, ".band button", "破棄して続ける"));
+    await settled();
+    expect(detailTitle(host)).toBe("隣の題");
   });
 });

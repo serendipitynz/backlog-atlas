@@ -210,6 +210,13 @@ export const ja = {
     projectUnidentified: "対象プロジェクトを特定できません",
     taskUnidentified: "対象タスクを特定できません",
     transitionClosedDetail: "状態遷移を適用しました。保存区分と ID が変わるため、詳細を閉じました。",
+    /** リンクを開けない理由 (doc-3 §8). The value named is the one the user can check against the link. */
+    taskLinkMalformed: (url: string) => `Atlas が開ける形のリンクではありません（${url}）`,
+    taskLinkUnregistered: (root: string) => `リンクが指すプロジェクトは登録されていません（${root}）`,
+    taskLinkUnread: (slug: string, taskId: string) =>
+      `${slug} を読み込めていないため、${taskId} を開けません`,
+    taskLinkNotFound: (slug: string, taskId: string) => `${slug} に ${taskId} が見つかりません`,
+    taskLinkTakeFailed: (detail: string) => `リンクを受け取れませんでした（${detail}）`,
     /**
      * 絞り込みはカードの取捨だけを行う (doc-7 §5.2), so a filter in force can take a just-created card
      * away. Appended to the outcome rather than replacing it — an unchanged cell is otherwise

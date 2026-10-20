@@ -33,6 +33,7 @@ import type {
   ReleaseNotice,
   ReloadEvent,
   TaskHistory,
+  TaskLinkResolution,
   UpdateOperation,
   UpdateRequest,
   UpdateResult,
@@ -221,10 +222,39 @@ export const answers = {
    * hold could not tell a test that had wired them to one flag from one that had not.
    */
   ledgerRegisterHold: null as Deferred<void> | null,
+  /**
+   * 受け取り待ちのリンク (doc-3 §8): what `task_link_take` hands over, once. A test puts a value here
+   * before startup for a link that started the process, or before [`emitTaskLink`] for one that
+   * arrived while it ran.
+   */
+  taskLink: null as TaskLinkResolution | null,
+  /**
+   * Holds handed to successive `task_link_take` calls, one each. The real take empties the slot at
+   * once and resolves against the ledger afterwards, so the fake captures the link before the wait —
+   * which is what lets two overlapping takes answer out of order.
+   */
+  taskLinkHolds: [] as Deferred<void>[],
 };
 
 /** The `project-reloaded` subscribers currently registered, in subscription order. */
 const listeners: ((event: ReloadEvent) => void)[] = [];
+
+/** The `task-link-received` subscribers currently registered. */
+const taskLinkListeners: (() => void)[] = [];
+
+/**
+ * Announce a タスクリンク the way `commands::TASK_LINK_RECEIVED_EVENT` would, with `link` waiting to be
+ * taken. Throws with no subscriber, for [`emitReload`]'s reason.
+ */
+export function emitTaskLink(link: TaskLinkResolution): void {
+  if (taskLinkListeners.length === 0) {
+    throw new Error("emitTaskLink with no subscriber");
+  }
+  answers.taskLink = link;
+  for (const listener of [...taskLinkListeners]) {
+    listener();
+  }
+}
 
 /** True once the app has subscribed — the first thing 起動順序 requires (`App.svelte` onMount). */
 export function subscribed(): boolean {
@@ -250,6 +280,7 @@ export function emitReload(event: ReloadEvent): void {
 export function reset(): void {
   calls.length = 0;
   listeners.length = 0;
+  taskLinkListeners.length = 0;
   answers.cli = { state: "ready", version: CONFIRMED_CLI_VERSION };
   answers.externalPrograms = [
     {
@@ -307,6 +338,8 @@ export function reset(): void {
   answers.externalProgramsHolds = [];
   answers.settingsSaveFails = false;
   answers.ledgerRegisterHold = null;
+  answers.taskLink = null;
+  answers.taskLinkHolds = [];
 }
 
 function record<T>(name: string, args: readonly unknown[], answer: () => T): T {
@@ -512,6 +545,28 @@ export const commandFakes = {
   // those tests are about: what the title says is `title.ts`'s rule, and when it is written is
   // whenever 総件数 or the current screen changed.
   windowTitleSet: (_title: string): Promise<void> => Promise.resolve(),
+
+  taskLinkTake: (): Promise<TaskLinkResolution | null> =>
+    record("task_link_take", [], async () => {
+      const taken = answers.taskLink;
+      answers.taskLink = null;
+      const hold = answers.taskLinkHolds.shift();
+      if (hold !== undefined) {
+        await hold.promise;
+      }
+      return taken;
+    }),
+
+  onTaskLinkReceived: (handler: () => void): Promise<() => void> =>
+    record("on_task_link_received", [], () => {
+      taskLinkListeners.push(handler);
+      return Promise.resolve(() => {
+        const at = taskLinkListeners.indexOf(handler);
+        if (at >= 0) {
+          taskLinkListeners.splice(at, 1);
+        }
+      });
+    }),
 
   onProjectReloaded: (handler: (event: ReloadEvent) => void): Promise<() => void> =>
     record("on_project_reloaded", [], () => {

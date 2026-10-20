@@ -42,6 +42,7 @@
     ledgerReorder,
     ledgerUpdate,
     onProjectReloaded,
+    onTaskLinkReceived,
     pickDirectory,
     projectOpen,
     projectWatchStart,
@@ -58,6 +59,7 @@
     managedFileOpen,
     taskHistoryRead,
     taskHistoryCancel,
+    taskLinkTake,
     updateApply,
     windowTitleSet,
     workspaceOpen,
@@ -65,7 +67,8 @@
   import type { ImageReader } from "./lib/markdown-image";
   import { registeringReason } from "./lib/ledger";
   import type { RemoteLine } from "./lib/git-remote-read";
-  import type { ReleaseNotice } from "./lib/wire";
+  import type { ReleaseNotice, TaskLinkResolution } from "./lib/wire";
+  import { taskLinkStep } from "./lib/task-link";
   import { topBands } from "./lib/band";
   import {
     shortcutHelpLabel,
@@ -861,6 +864,10 @@
    */
   onMount(async () => {
     await workspace.subscribe();
+    // タスクリンク (doc-3 §8). **Not awaited**: a link announced before this resolves is not lost — it
+    // stays 受け取り待ち on the Rust side until the take at the end of startup — so awaiting would only
+    // put an IPC round trip in front of the first draw.
+    void subscribeTaskLinks();
     // Probed here and after every settings save, not per edit: it decides whether edit controls are
     // offered at all (doc-5 §5), and a probe per keystroke-worth of UI would spawn a process for a
     // question that changes only when アプリ設定 does — which is the save (doc-5 §4 順序 1 is why a save
@@ -894,9 +901,89 @@
     // first read had finished.
     void readReleaseNotice();
     await workspace.load();
+    // Last, because a タスクリンク names a task in a read: the link that started this process — or one
+    // that arrived while the read ran — is taken only once there is a read to find it in.
+    taskLinksReady = true;
+    await takeTaskLink();
   });
 
-  onDestroy(() => workspace.release());
+  onDestroy(() => {
+    workspace.release();
+    unlistenTaskLinks?.();
+  });
+
+  // --- タスクリンク (doc-3 §8, decision-49) -------------------------------------------------------
+
+  let unlistenTaskLinks: (() => void) | null = null;
+  let taskLinksReady = $state(false);
+  /** Taken from the boundary and not yet followed — held while a モーダル is up or the read is not in. */
+  let pendingTaskLink = $state<TaskLinkResolution | null>(null);
+
+  async function subscribeTaskLinks(): Promise<void> {
+    try {
+      unlistenTaskLinks = await onTaskLinkReceived(() => void takeTaskLink());
+    } catch (error) {
+      const detail = commandErrorDetail(asCommandError(error));
+      notice = () => t().shell.taskLinkTakeFailed(detail);
+    }
+  }
+
+  let taking = false;
+  let takeAgain = false;
+
+  /**
+   * One take at a time. Each take empties the pending slot at once but resolves against the ledger
+   * afterwards, so two overlapping takes can answer out of order and leave the older link standing
+   * over the newer one. An announcement that arrives mid-take is not dropped either: it asks for one
+   * more take once this one is in, which then finds the newest link.
+   */
+  async function takeTaskLink(): Promise<void> {
+    if (taking) {
+      takeAgain = true;
+      return;
+    }
+    taking = true;
+    try {
+      do {
+        takeAgain = false;
+        try {
+          const taken = await taskLinkTake();
+          if (taken !== null) {
+            pendingTaskLink = taken;
+          }
+        } catch (error) {
+          const detail = commandErrorDetail(asCommandError(error));
+          notice = () => t().shell.taskLinkTakeFailed(detail);
+        }
+      } while (takeAgain);
+    } finally {
+      taking = false;
+    }
+  }
+
+  // A link is followed the way a card press is, so nothing is followed behind a モーダル: the press it
+  // stands for could not have been made there either. It waits for the layer to close instead.
+  $effect(() => {
+    if (pendingTaskLink === null || !taskLinksReady || modalOpen) {
+      return;
+    }
+    const link = pendingTaskLink;
+    pendingTaskLink = null;
+    untrack(() => followTaskLink(link));
+  });
+
+  function followTaskLink(link: TaskLinkResolution): void {
+    const step = taskLinkStep(link, (slug) => workspaceState.loadBySlug[slug]);
+    if (step.state === "refused") {
+      notice = step.reason;
+      return;
+    }
+    const view = workspace.viewAt(step.ref);
+    if (view === null) {
+      return;
+    }
+    goToScreen("swimlane", null, () => open(view));
+  }
 
   // --- アプリ設定 (decision-13, TASK-46) ------------------------------------------------------
 
@@ -958,8 +1045,9 @@
    * Go to another screen. Asks first while the one being left holds 未保存入力 (doc-8 §6.3): its
    * panel is unmounted on the way, so the input is gone as surely as if another task had been opened.
    */
-  function goToScreen(next: Screen, slug: string | null = null): void {
+  function goToScreen(next: Screen, slug: string | null = null, then?: () => void): void {
     if (next === screen && slug === detailSlug) {
+      then?.();
       return;
     }
     overlay.guardDiscard(dirtyOn(screen), () => {
@@ -973,6 +1061,7 @@
       }
       detailSlug = slug;
       screen = next;
+      then?.();
     });
   }
 

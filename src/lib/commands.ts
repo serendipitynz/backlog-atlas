@@ -32,6 +32,7 @@ import type {
   ReleaseNotice,
   ReloadEvent,
   TaskHistory,
+  TaskLinkResolution,
   UpdateOperation,
   UpdateRequest,
   UpdateResult,
@@ -39,6 +40,9 @@ import type {
 
 /** The event a watch-triggered re-read arrives on (`commands::PROJECT_RELOADED_EVENT`). */
 const PROJECT_RELOADED_EVENT = "project-reloaded";
+
+/** The event a タスクリンク's arrival is announced on (`commands::TASK_LINK_RECEIVED_EVENT`). */
+const TASK_LINK_RECEIVED_EVENT = "task-link-received";
 
 /** True when a rejection value is one of the boundary's typed failures. */
 export function isCommandError(value: unknown): value is CommandError {
@@ -354,4 +358,17 @@ export function onProjectReloaded(
   handler: (event: ReloadEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<ReloadEvent>(PROJECT_RELOADED_EVENT, (event) => handler(event.payload));
+}
+
+/**
+ * 受け取り待ちのリンク (doc-3 §8), taken. `null` when none is waiting — the announcement and the startup
+ * take can both reach the same link, and the second one finds it gone.
+ */
+export function taskLinkTake(): Promise<TaskLinkResolution | null> {
+  return invoke<TaskLinkResolution | null>("task_link_take");
+}
+
+/** Subscribe to タスクリンク arrivals. The event carries nothing; answer it with [`taskLinkTake`]. */
+export function onTaskLinkReceived(handler: () => void): Promise<UnlistenFn> {
+  return listen<null>(TASK_LINK_RECEIVED_EVENT, () => handler());
 }

@@ -145,6 +145,12 @@ export const EN: Catalog = {
     taskUnidentified: "The target task cannot be identified",
     transitionClosedDetail:
       "The transition was applied. Its storage division and ID change, so the detail panel was closed.",
+    taskLinkMalformed: (url: string) => `This is not a link Atlas can open (${url})`,
+    taskLinkUnregistered: (root: string) => `The project this link points to is not registered (${root})`,
+    taskLinkUnread: (slug: string, taskId: string) =>
+      `${taskId} cannot be opened because ${slug} has not been read`,
+    taskLinkNotFound: (slug: string, taskId: string) => `${slug} has no ${taskId}`,
+    taskLinkTakeFailed: (detail: string) => `The link could not be received (${detail})`,
     outOfFilter:
       " (the filter in force hides it, so no card is shown. Take the condition off in the filter bar to see it.)",
     taskCreated: (slug: string, column: string) =>

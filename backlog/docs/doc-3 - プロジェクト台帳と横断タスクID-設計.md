@@ -3,7 +3,7 @@ id: doc-3
 title: プロジェクト台帳と横断タスクID 設計
 type: specification
 created_date: '2026-07-21 09:36'
-updated_date: '2026-08-18 21:13'
+updated_date: '2026-10-19 23:22'
 ---
 # プロジェクト台帳と横断タスクID 設計
 
@@ -193,3 +193,118 @@ Cancelled = "Done"
 - 対象 repo・Backlog ルート・コミット不在時の表示は TASK-13 で決める。
 - status のプロジェクト共通／個別は TASK-7、`kind:*` からの Type 導出は TASK-8 で決める。
 - status 別名表（3.3）は台帳エントリの任意属性として、decision-4 の列対応規則の別名対応を与える。別名表・名称一致・未分類区画を用いた正準ステータス列への対応づけとその見せ方はスイムレーン（TASK-11、doc-7）で設計する。
+
+## 8. タスクリンク（外部から 1 タスクを開く URL）
+
+TASK-206 の設計。依存の選定、プロジェクトをパスで指す理由、起動の引継ぎを Windows・Linux に限る理由は decision-49 にある。本節は外部の生成側（work-report のダッシュボードなど）が契約として読む。
+
+- **Atlas の URL スキーム** … 外部から Atlas の 1 タスクを開くために OS へ登録する `backlog-atlas` という URL スキームを指す。
+- **タスクリンク** … Atlas の URL スキームを持ち、1 つのプロジェクトと、その中の 1 つのタスクを指す URL を指す。
+- **指すルート** … タスクリンクの `root` が運ぶ絶対パスを指す。
+- **スキームの関連付け** … Atlas の URL スキームの URL を Atlas の実行ファイルへ渡すよう OS に記録された設定を指す。4.1 の「登録」（台帳への登録）とは別物なので「登録」と呼ばない。
+- **起動の引継ぎ** … 2 つ目に起動した Atlas のプロセスが、引数を既に動いている Atlas へ渡して自らは終了することを指す。
+- **受け取り待ちのリンク** … Atlas が受け取り、画面がまだ取り出していないタスクリンク 1 本を指す。
+
+### 8.1 形
+
+```
+backlog-atlas://task?root=<指すルート>&id=<タスク ID>
+```
+
+- スキームは `backlog-atlas`、ホストは `task` である。パスは空か `/` だけを許す（`backlog-atlas://task/?…` も同じに読む）。フラグメントは持たない。
+- クエリは `root` と `id` をちょうど 1 回ずつ持つ。順は問わない。**ほかの名前・重複・欠落は、形に合わないものとして拒否する**（8.3 の 1）。黙って読み飛ばさないのは、生成側が形からずれたとき、最初の 1 回で気づけるようにするためである。
+- `root` … 指すルート。登録済みの台帳エントリの `project_root` か `backlog_root` を、その機械の絶対パスで書く。相対パスは拒否する。
+- `id` … プロジェクト内のタスク ID（5.1 の右辺と同じもの。通常は `TASK-N`、draft は `DRAFT-N`）。空は拒否する。
+
+### 8.2 符号化
+
+- 値は `application/x-www-form-urlencoded` として解読する。`%XX` は UTF-8 のバイト列を、`+` は空白を表す。
+- **生成側は、値の英数字と `-` `.` `_` `~` 以外をすべて百分率符号化する。** Python なら `urllib.parse.quote(value, safe="")` で、`urllib.parse.urlencode` でもよい。パスの `+` は `%2B` に、空白は `%20`（または `+`）になる。
+- **`|` は必ず符号化する。** Windows の起動の引継ぎは、2 つ目のプロセスの引数を `|` で連結して先の Atlas へ運ぶので、URL に生の `|` があると引数が 2 つに割れ、リンクは何も起こさずに捨てられる（decision-49 の Consequences）。上の規則に従えば `%7C` になる。
+- 例: macOS・Linux は `backlog-atlas://task?root=%2FUsers%2Fme%2Fatlas&id=TASK-206`、Windows は `backlog-atlas://task?root=C%3A%5CUsers%5Cme%5Catlas&id=TASK-206`。
+
+### 8.3 解決と、リンクを開けない理由
+
+次の順に解決し、最初に止まった段の理由を通知帯（doc-11 §4 の ⑤）に出す。画面は動かさない。
+
+1. **形**（8.1）に合うか。合わなければ「Atlas が開ける形のリンクではありません（<URL>）」。
+2. **指すルート** が、台帳エントリの `project_root` か `backlog_root` のどちらかに一致するか。比較は実体パスどうしで行い（シンボリックリンクは解いてから比べる）、4.1 で同じルートの二重登録を拒む比較と同じである。台帳はリンクを受け取った時点のものを読む。一致しなければ「リンクが指すプロジェクトは登録されていません（<指すルート>）」。
+3. **そのプロジェクトを画面が読み込めているか。** ルート読取不能のとき、または台帳を手で編集して足した直後で画面がまだ読んでいないときは「<slug> を読み込めていないため、<id> を開けません」。
+4. **画面が描いている読取結果に、その id のタスクがあるか。** 照合は大文字小文字を区別しない（5.2 の接頭辞の照合と同じ）。同じ id のファイルが 2 件あれば、読み取り順で先のほうを開く（doc-4 §7 — カードを押したときと同じ）。無ければ「<slug> に <id> が見つかりません」。
+
+**1・2 は Rust の側が、3・4 は画面の側が判定する。** 3・4 を画面に置くのは、画面が描いている読取結果から引くためである — Rust の側でもう一度読むと、グリッドとは別の時点の答えになりうる。
+
+解決できたら、カードを押したのと同じ処理でそのタスクの詳細を開く（doc-7 §3）。
+
+- プロジェクト詳細画面にいれば、スイムレーンへ戻ってから開く。
+- 破棄前確認（doc-8 §6.3）は同じに掛かる — 編集中の別タスクから移るなら問いが立つ。
+- **モーダルが出ている間は開かず、閉じてから開く。** カードはモーダルの裏では押せないので、リンクもモーダルの裏では効かせない。
+- 行非表示の行のタスクや、絞り込みで描かれていないタスクも開く。詳細は開き、前後移動はグリッドに無いことを述べる（doc-8 §2.2）。
+
+### 8.4 受け取り
+
+- リンクを受け取ると、Atlas の窓を前面に出す（最小化されていれば戻す）。
+- 受け取ったリンクは 受け取り待ちのリンク として 1 本だけ保持し、画面が取り出すまで残す。取り出す前に次のリンクが来たら、古いものは捨てる。
+- 画面は、起動時の読取が済んだ後に 1 度取り出し、以後は受け取りの知らせを受けるたびに取り出す。**起動のきっかけになったリンクが読取より先に届いても、取り出すのは読取の後なので、探す先がある。**
+- Windows と Linux では、関連付けが立てた 2 つ目のプロセスが起動の引継ぎで引数を先の Atlas へ渡し、自らは終了する。macOS では OS が先の Atlas へ直接渡す（decision-49 §3）。
+
+### 8.5 スキームの関連付け（3 OS、開発ビルドを含む）
+
+配布版はインストーラ（macOS は `.app` そのもの）が関連付けを書く。**開発ビルドは自動では書かない**ので、下の手作業で書く — 理由は decision-49 §4（Windows で配布版の関連付けを上書きしないため）。開発ビルドのパスは、リポジトリの位置に合わせて読み替える。
+
+**macOS**
+
+- 配布版: `.app` の `Info.plist` が `CFBundleURLTypes` を持つ（バンドラが `tauri.conf.json` の `plugins.deep-link` から書く）。`/Applications` に置いて 1 度起動すれば LaunchServices に知られる。
+- 開発ビルド: `pnpm tauri dev` は `.app` を作らないので関連付けを持たない。`.app` を作って LaunchServices に知らせる。
+
+  ```sh
+  pnpm tauri build --debug --bundles app --no-sign
+  LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+  "$LSREG" -f "src-tauri/target/debug/bundle/macos/Backlog Atlas.app"
+  open "backlog-atlas://task?root=%2Fpath%2Fto%2Fproject&id=TASK-1"
+  ```
+
+  外すときは同じパスで `"$LSREG" -u`。**配布版も関連付けを持っていると、どちらが受けるかは LaunchServices が選ぶ**ので、確かめる前に受けさせたくない側を `-u` で外しておく（戻すときは `-f`）。
+
+**Windows**
+
+- 配布版: NSIS と MSI のインストーラが、レジストリの `Software\Classes\backlog-atlas` を書く。
+- 開発ビルド: 開発ビルドの実行ファイルを指すキーを、利用者ごとの領域へ手で書く（PowerShell）。
+
+  ```powershell
+  $exe = "C:\path\to\backlog-atlas\src-tauri\target\debug\backlog-atlas.exe"
+  $key = "HKCU:\Software\Classes\backlog-atlas"
+  New-Item -Path "$key\shell\open\command" -Force | Out-Null
+  Set-ItemProperty -Path $key -Name "(default)" -Value "URL:backlog-atlas protocol"
+  Set-ItemProperty -Path $key -Name "URL Protocol" -Value ""
+  Set-ItemProperty -Path "$key\shell\open\command" -Name "(default)" -Value "`"$exe`" `"%1`""
+  Start-Process "backlog-atlas://task?root=C%3A%5Cpath%5Cto%5Cproject&id=TASK-1"
+  ```
+
+  外すときは `Remove-Item -Path $key -Recurse`。**配布版を利用者ごとに入れていると、これは同じキーを上書きする** — 戻すには、このキーを消してから配布版を入れ直す。開発ビルドの実行ファイルは開発サーバ（`pnpm tauri dev` が起こす Vite）から画面を読むので、確かめるのは `pnpm tauri dev` を動かしたままにする。そのときリンクが立てた 2 つ目のプロセスは、起動の引継ぎで `pnpm tauri dev` の Atlas へ渡す。
+
+**Linux**
+
+- 配布版: `.deb`・`.rpm` は `.desktop` ファイルの `MimeType` に `x-scheme-handler/backlog-atlas` を持ち、パッケージを入れれば関連付けが成り立つ。**その `.desktop` の `Exec=` は `%u` で URL を受け取る** — バンドラ既定のテンプレートは `%u` を付けないので、Atlas は `src-tauri/linux/main.desktop` を `.deb` と `.rpm` の両方のテンプレートに指定している（decision-49 §4）。**AppImage はインストーラを持たないので、Atlas が起動のたびに自分で書く** — `~/.local/share/applications/` に `<実行ファイル名>-handler.desktop` を置き、`xdg-mime default` で既定にする（`xdg-mime` と `update-desktop-database` が要る）。
+- 開発ビルド: `.desktop` ファイルを手で置いて既定にする。
+
+  ```sh
+  mkdir -p ~/.local/share/applications
+  cat > ~/.local/share/applications/backlog-atlas-dev.desktop <<'EOF'
+  [Desktop Entry]
+  Type=Application
+  Name=Backlog Atlas (dev)
+  Exec="/path/to/backlog-atlas/src-tauri/target/debug/backlog-atlas" %u
+  Terminal=false
+  NoDisplay=true
+  MimeType=x-scheme-handler/backlog-atlas;
+  EOF
+  update-desktop-database ~/.local/share/applications
+  xdg-mime default backlog-atlas-dev.desktop x-scheme-handler/backlog-atlas
+  xdg-open "backlog-atlas://task?root=%2Fpath%2Fto%2Fproject&id=TASK-1"
+  ```
+
+  外すときは、その `.desktop` ファイルを消して `update-desktop-database` を流し、`~/.config/mimeapps.list` の `x-scheme-handler/backlog-atlas` の行を消す。Windows と同じ理由で、確かめるのは `pnpm tauri dev` を動かしたままにする。
+- **起動の引継ぎには D-Bus のセッションバスが要る。** 繋がらない環境では、関連付けが立てた 2 つ目のプロセスがそのまま 2 つ目の Atlas になる（decision-49 §3）。
+
+**Windows と Linux では、配布版を動かしたまま開発ビルドを起動すると、開発ビルドは起動の引継ぎで配布版へ渡して終了する**（decision-49 §3 が受け入れた費用）。開発するときは配布版を終了させておく。

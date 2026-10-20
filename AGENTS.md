@@ -201,6 +201,13 @@ Move the state through Backlog CLI calls, like every other task update.
   finding no caller must not conclude it is unused; the app's window is what reads it. **Do not
   answer a future route by re-registering the drag-drop handler** — that would take 列間ドロップ back
   out on Windows to close something the gate already closes on all three.
+- **On Windows and Linux a development build exits at once while an installed Atlas is running**
+  (decision-49 §3). 起動の引継ぎ (`tauri-plugin-single-instance`) keys on the bundle identifier, so the
+  second process hands its arguments to the installed one and quits — not a crash. Quit the installed
+  Atlas before `pnpm tauri dev`. **macOS has no single-instance on purpose**: LaunchServices already
+  delivers a タスクリンク to the running app, so there the plugin would only cost this same exit. **Do not
+  "fix" a development build's missing scheme association by calling `register_all` in debug builds**
+  — on Windows that overwrites the installed Atlas's registry key; doc-3 §8.5 has the manual steps.
 - **アプリ設定ファイル holds 列折畳み・行折畳み・行非表示, and decision-13's 「アプリ設定を持たない値」 no
   longer says otherwise** (decision-13 の 再起動をまたぐ保持の改訂, 2026-08-18). The 1 sentence that had
   excluded the three named 行非表示's 「件数も読めない」 property, which the folds do not have, and for

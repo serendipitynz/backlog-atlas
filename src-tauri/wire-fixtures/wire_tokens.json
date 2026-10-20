@@ -205,6 +205,11 @@
     "completed",
     "archive"
   ],
+  "TaskLinkResolution": [
+    "resolved",
+    "malformed",
+    "unregistered"
+  ],
   "UpdateOutcome": [
     "succeeded",
     "failed"
