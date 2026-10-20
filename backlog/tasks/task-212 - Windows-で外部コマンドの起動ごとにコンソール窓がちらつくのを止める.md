@@ -1,9 +1,10 @@
 ---
 id: TASK-212
 title: Windows で外部コマンドの起動ごとにコンソール窓がちらつくのを止める
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-10-20 03:03'
+updated_date: '2026-10-20 21:22'
 labels:
   - 'kind:bug'
   - rust
@@ -28,6 +29,37 @@ Windows でタスクを選ぶたびに、コンソール窓が一瞬現れて消
 <!-- AC:BEGIN -->
 - [ ] #1 Windows の実機で、タスクを選んでも git・gh の起動でコンソール窓が現れない
 - [ ] #2 Backlog CLI が見つかる環境で、起動時の確認と更新でもコンソール窓が現れない
-- [ ] #3 見えること自体が目的の起動（端末など）は窓を消さず、どの起動を対象外にしたかが doc か decision に書かれている
-- [ ] #4 新しい起動箇所が窓を消す指定を付け忘れたら、検査が落ちる
+- [x] #3 見えること自体が目的の起動（端末など）は窓を消さず、どの起動を対象外にしたかが doc か decision に書かれている
+- [x] #4 新しい起動箇所が窓を消す指定を付け忘れたら、検査が落ちる
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. src-tauri/src/subprocess.rs に、Windows では CREATE_NO_WINDOW を付けた Command を作る関数を 1 つ置く
+2. git・gh（ExternalProgram::command）、backlog（SystemBacklog::run）、--version 確認（probe_program）をその関数経由にする。テストの固定具も同じ関数を使う
+3. editor.rs の 外部で開く の 2 起動は対象外とし、理由付きの #[allow] で通す
+4. src-tauri/clippy.toml の disallowed-methods で std::process::Command::new を禁じ、付け忘れを cargo clippy -D warnings で落とす（AC #4）
+5. decision-50 に、窓を消す起動・消さない起動の区別と検査の機構を書く（AC #3）
+6. cargo test/clippy/fmt、Windows ターゲットの cargo clippy、pnpm test/check/lint
+7. AC #1・#2 は Windows 実機での確認をユーザーに依頼する
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+着手時の判定（2026-10-21、オーナー回答）: 窓を消す起動と消さない起動の区別は新しい decision-50 に書く。外部で開く（editor.rs）は行ごとに分けず、まとめて対象外にする。
+
+実装: `subprocess::windowless(program)` を 1 つ置き、Windows では `CREATE_NO_WINDOW` を付けた `Command` を返す。`ExternalProgram::command`（git・gh。Git 履歴・remote の有無・PR 照会・版の告知）、`probe_program`（設定画面の `--version`）、`SystemBacklog::run`（Backlog CLI の全起動）をこれ経由にした。テストの固定具 7 か所も同じ関数を使う。`#[allow]` が付くのは外部で開く の 2 経路（`Launcher::spawn`・`spawn_observed`）だけ。
+
+AC #4 の検査は、ソースの正規表現走査ではなく `src-tauri/clippy.toml` の `disallowed-methods`（`std::process::Command::new`）にした。clippy は名前解決後の呼び出し先を見るので、別名（`use … as Spawn`）・値渡し（`.map(Spawn::new)`）・完全修飾のどれも報告される（2026-10-21 に別クレートで実測）。CI の rust ジョブ（マージ要件）の `cargo clippy --all-targets -D warnings` で落ちる。
+
+計測・確認（2026-10-21）:
+- 着手時の clippy は 12 か所（本体 5・テスト 7）を報告し、grep の数と一致
+- 変異検査: editor.rs の `#[allow]` を 1 つ外すと clippy が落ち、戻すと通る
+- `cfg(windows)` の枝: macOS からはクレートごと Windows ターゲットで clippy できない（tauri-winres が `llvm-rc` を要する）。`windowless` と枝だけ取り出し、`x86_64-pc-windows-msvc` 向けに `#![deny(warnings)]` でコンパイルが通ることを確認。クレート全体の Windows コンパイルは CI の `rust (windows-latest)` が行う
+- cargo test 484 passed・cargo fmt --check・cargo clippy（1.96.0 と 1.98.0）・pnpm test 1386 passed・pnpm run check・pnpm run lint すべて通過
+
+未確認（オーナーの実機確認待ち）: AC #1・#2。release ビルドを Windows に入れて、タスク選択（git・gh）と、CLI がある環境での起動時・更新時（backlog）に窓が出ないこと。開発ビルドは Atlas 自身がコンソールを持つので再現しない。
+未実測で残したもの: Windows の「Visual Studio Code で開く」は `code.cmd` を起動するので、`cmd.exe` の窓がちらつく可能性がある（decision-50 §2）。ちらつきが確認できれば別タスクにする。
+<!-- SECTION:NOTES:END -->
