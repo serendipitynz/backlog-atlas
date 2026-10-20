@@ -340,7 +340,7 @@ mod tests {
     }
 
     fn command(program: &str, args: &[&str]) -> Command {
-        let mut command = Command::new(program);
+        let mut command = windowless(program);
         command.args(args);
         command
     }
@@ -502,7 +502,7 @@ mod tests {
     /// An `ExitStatus` cannot be constructed portably, so borrow one from a program that exits.
     fn exited_status() -> ExitStatus {
         let (program, args) = echoes();
-        Command::new(program)
+        windowless(program)
             .args(args)
             .stdout(Stdio::null())
             .status()

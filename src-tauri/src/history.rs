@@ -1166,7 +1166,7 @@ mod tests {
     use std::path::PathBuf;
     // Fixture setup only: these tests build real repositories to read back. The module under test
     // no longer names a program — it launches whatever `ExternalProgram` resolved.
-    use std::process::Command;
+    use crate::subprocess::windowless;
     use std::sync::atomic::AtomicU64;
     use std::sync::Mutex;
 
@@ -1977,7 +1977,7 @@ mod tests {
     }
 
     fn git(root: &Path, args: &[&str]) -> bool {
-        Command::new("git")
+        windowless("git")
             .arg("-C")
             .arg(root)
             .args(args)
@@ -2118,7 +2118,7 @@ mod tests {
         }
 
         let probe = |root: &Path, dubious: bool| -> String {
-            let mut command = Command::new("git");
+            let mut command = windowless("git");
             command
                 .arg("-C")
                 .arg(root)

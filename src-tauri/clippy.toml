@@ -1,0 +1,6 @@
+# 窓なし起動 (decision-50): every external program Atlas starts is built by
+# `subprocess::windowless`, so a launch that forgets it fails here instead of flashing a console
+# window on Windows only. 外部で開く's launches are the exception and allow this at the site.
+disallowed-methods = [
+  { path = "std::process::Command::new", reason = "build it with `subprocess::windowless` (decision-50 窓なし起動)" },
+]
