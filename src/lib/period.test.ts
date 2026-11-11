@@ -98,6 +98,12 @@ describe("基準時間帯 (doc-7 §5.2)", () => {
     expect(localDay("2026-02-31T10:00:00Z", UTC)).toBeNull();
   });
 
+  it("refuses an offset that carries the instant past year 9999", () => {
+    // 23:00 at -05:00 is 04:00 UTC on 10000-01-01, which no four-digit form can name.
+    expect(localDay("9999-12-31T23:00:00-05:00", UTC)).toBeNull();
+    expect(localDay("9999-12-31T18:59:59-05:00", UTC)).toBe("9999-12-31");
+  });
+
   it("refuses a value whose date or time does not exist", () => {
     expect(localDay("2026-02-31", UTC)).toBeNull();
     expect(localDay("2026-13-01", UTC)).toBeNull();
@@ -136,6 +142,11 @@ describe("並び順の鍵 (doc-7 §5.4)", () => {
     expect(dateSortKey("2026-07-22")).toBe("2026-07-22");
     expect(dateSortKey("いつか")).toBe("いつか");
     expect(dateSortKey("2026-08-09T22:46:00")).toBe("2026-08-09T22:46:00");
+  });
+
+  it("spells a year below 1000 in four digits, so the key still orders as text", () => {
+    // An offset can carry 0100-01-01 back into year 99.
+    expect(dateSortKey("0100-01-01T00:30+01:00")).toBe("0099-12-31 23:30:00");
   });
 });
 

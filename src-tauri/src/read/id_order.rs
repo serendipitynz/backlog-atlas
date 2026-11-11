@@ -9,7 +9,7 @@
 //! never disagree with itself, so neither implementation constrains the other there.
 //!
 //! No locale is consulted, on either side: the same ledger must not read differently on two
-//! machines (doc-4 §7, the same reason doc-7 §5.4 compares dates as text).
+//! machines (doc-4 §7, the same reason doc-7 §5.4 compares dates without picking a timezone).
 
 use std::cmp::Ordering;
 

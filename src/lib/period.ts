@@ -1,27 +1,30 @@
 /**
- * 更新期間の暦日 (doc-7 §5.2). The one place that turns a frontmatter timestamp — and a 相対指定 —
- * into the `YYYY-MM-DD` a 期間の端 is compared against. What the ends then *do* to a card is
- * `filter.ts`; how they are shown and taken back is `token.ts`.
+ * 更新期間の暦日 (doc-7 §5.2), and the text a 並び順 compares a date by (doc-7 §5.4). The one place
+ * that reads a frontmatter timestamp: it turns one — and a 相対指定 — into the `YYYY-MM-DD` a 期間の端
+ * is compared against, and respells one for the card orders. What the ends then *do* to a card is
+ * `filter.ts`; how they are shown and taken back is `token.ts`; which orders read the key is
+ * `swimlane.ts`.
  *
- * ## Referent table (doc-7 §5.2 term → identifier here)
+ * ## Referent table (doc-7 term → identifier here)
  *
- * | doc-7 §5.2 | here | is |
+ * | doc-7 | here | is |
  * |---|---|---|
+ * | §5.4 日付の比べ方 | [`dateSortKey`] | a timestamped value respelled as its UTC instant, `YYYY-MM-DD HH:MM:SS` |
  * | 暦日 | a `YYYY-MM-DD` string | one day, with no instant in it |
  * | 基準時間帯 | [`ZoneOffset`] / [`SYSTEM_ZONE`] | the zone a written timestamp is read in |
  * | 相対指定 | [`relativeStart`] | いまから X 日 / 週 / 月 → a 始端 |
  * | 解決時点 | the `now` argument | the instant a 相対指定 is turned into a 暦日 at |
  * | 解析できない値 | `localDay` returning `null` | a value in none of the accepted forms |
  *
- * **Why this module reads the machine's zone at all**, when 並び順 has the opposite rule
- * (doc-7 §5.4's 「timezone を発明しない」, and doc-4 §7's 「比較は locale を読まない」 — the
- * second moved there with TASK-165): a 並び順 only needs the
- * *relative* order of two values, and a uniform shift leaves that untouched, so the sort never picks
- * a zone — [`dateSortKey`] only respells each value in UTC, by the zone it names. A 期間 compares each value against an *absolute* boundary the user named, and the
- * boundary is a day on the user's own calendar — 「今日更新したもの」 is a question whose answer
- * depends on where the person asking is. The shift therefore lands directly on which cards survive,
- * and refusing to apply it would not make the screen zone-independent; it would only make it read
- * every timestamp in a zone nobody is in.
+ * **Why this module reads the machine's zone at all**, when 並び順 has the opposite rule (doc-7
+ * §5.4's 「timezone を発明しない」, and doc-4 §7's 「比較は locale を読まない」 — the second moved
+ * there with TASK-165): a 並び順 only needs the *relative* order of two values, and a uniform shift
+ * leaves that untouched, so the sort never picks a zone — [`dateSortKey`] only respells each value
+ * in UTC, by the zone it names. A 期間 compares each value against an *absolute* boundary the user
+ * named, and the boundary is a day on the user's own calendar — 「今日更新したもの」 is a question
+ * whose answer depends on where the person asking is. The shift therefore lands directly on which
+ * cards survive, and refusing to apply it would not make the screen zone-independent; it would only
+ * make it read every timestamp in a zone nobody is in.
  *
  * **Measured, not assumed**: Backlog CLI v1.50.1 writes `created_date` / `updated_date` in **UTC**
  * (measured 2026-08-22 on v1.50.1, TASK-153: a clock reading `2026-08-22 10:27` NZST produced
@@ -170,7 +173,10 @@ function readTimestamp(value: string): Timestamp | null {
     return null;
   }
   const east = (sign === "+" ? 1 : -1) * (Number(offsetHour) * 60 + Number(offsetMinute));
-  return { kind: "instant", ms: wall - east * MINUTE_MS };
+  const ms = wall - east * MINUTE_MS;
+  // An offset can carry 9999-12-31 into year 10000, which no other accepted form can name and which
+  // a four-digit key cannot spell in order.
+  return new Date(ms).getUTCFullYear() > 9999 ? null : { kind: "instant", ms };
 }
 
 /**
@@ -203,7 +209,10 @@ export function dateSortKey(value: string): string {
   if (read === null || read.kind === "day") {
     return value;
   }
-  return new Date(read.ms).toISOString().slice(0, 19).replace("T", " ");
+  const at = new Date(read.ms);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  const day = formatDay(at.getUTCFullYear(), at.getUTCMonth() + 1, at.getUTCDate());
+  return `${day} ${pad(at.getUTCHours())}:${pad(at.getUTCMinutes())}:${pad(at.getUTCSeconds())}`;
 }
 
 /** 今日の暦日 in the reader's zone — the latest day a 端 can usefully name. */
