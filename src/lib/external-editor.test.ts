@@ -306,7 +306,7 @@ describe("CLI で不能な操作の理由 (doc-11 §8)", () => {
     // TASK-192: the route is the same destination for every 不可, so each reason naming it said one
     // thing five times without widening what the reader could do.
     // **Three of those five reasons are gone rather than reworded** (TASK-153): the 最後の 1 件 の
-    // 差し控え that References・dependencies・assignee each carried does not exist on v1.50.1, so what
+    // 差し控え that References・dependencies・assignee each carried has not existed since v1.50.1, so what
     // is left to hold is the 保存区分 side.
     //
     // **The referent guarded here moved on 2026-08-25** (decision-45). It was the 区画's 見出し, because

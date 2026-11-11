@@ -76,7 +76,7 @@ export interface AcDelta {
 /**
  * The AC edit in progress. The two modes are kept apart all the way to the wire because doc-5
  * §3/§3.1 require it: 全体差し替え is a composite that must not be confused with the per-item
- * operations. v1.50.1's single-option `--acceptance-criteria` does replace the whole set, but it
+ * operations. v1.54.0's single-option `--acceptance-criteria` does replace the whole set, but it
  * refuses to run beside `--check-ac` (実測), so it cannot carry the checked state the composite
  * does. Per-item text editing does not exist at all, which is why `delta` has no text field for an
  * existing item.
@@ -419,13 +419,13 @@ export type SavePlan =
 
 /**
  * Renumber a per-item AC edit for the CLI (doc-5 §3). One `task edit` resolves its AC options in
- * two different frames, measured on v1.50.1:
+ * two different frames, measured on v1.54.0:
  *
  * - `--remove-ac` indexes the criteria **as read** — `--remove-ac 1 --remove-ac 3` removes the
  *   first and third, not the first and then the third of what is left.
  * - `--check-ac` / `--uncheck-ac` index the list **after** the removals: on `#1 one / #2 two /
  *   #3 three`, `--remove-ac 1 --check-ac 2` checks `three`, and on a two-item list the same pair
- *   exits 1 with a message opening "Acceptance criterion #2 not found" (v1.50.1 continues it with
+ *   exits 1 with a message opening "Acceptance criterion #2 not found" (v1.54.0 continues it with
  *   the available indexes; only the opening is quoted, because the rest is wording and the failure
  *   is what this note is about — doc-8 §6.5 records that a not-found wording did change between
  *   v1.48.0 and v1.49.3 elsewhere).
@@ -1056,8 +1056,10 @@ export interface TransitionOffer {
 }
 
 /**
- * The transitions a 保存区分 has, or why it has none. `none` is 提示しない (AC #6): completed and
- * archive have no reverse operation in v1.50.1, so no control is drawn for one.
+ * The transitions a 保存区分 has, or why it has none. `none` is 提示しない (AC #6): Atlas has no
+ * reverse operation for completed and archive (decision-51 §6), so no control is drawn for one.
+ * 版差記録: through v1.53.0 the CLI had none either; v1.54.0's `task restore` moves either back to
+ * the board (measured 2026-11-11), and Atlas does not issue it.
  */
 export type TransitionOffers =
   | { state: "offered"; offers: TransitionOffer[] }
@@ -1158,9 +1160,10 @@ function offer(
 }
 
 /**
- * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — v1.50.1 has no way back to the state before
- * the press for any of them (the measurement is in doc-8 §6.5), so there is no line to draw inside
- * the five.
+ * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — Atlas has no way back to the state before
+ * the press for any of them (doc-8 §6.5), so there is no line to draw inside the five. 版差記録:
+ * v1.54.0's `task restore` takes an archive back from the CLI, which Atlas does not issue
+ * (decision-51 §6); through v1.53.0 the CLI had no way back either.
  *
  * **The question is not built from `effect` above.** That line answers 「この控えは何をするか」 before the
  * press and carries the precondition 完了整理 has (`status が Done のときのみ`), which is already
@@ -1174,13 +1177,18 @@ export function transitionConfirmation(offer: TransitionOffer): IssueConfirmatio
 
 // --- 選択肢 (doc-5 §3 の値域) --------------------------------------------------------------
 
-/** `--priority` の値域 (v1.50.1 `task edit --help`). Clearing one is not offered — no CLI option. */
+/**
+ * `--priority` の値域 — what `task edit --priority` accepts on v1.54.0, read off its rejection message
+ * (measured 2026-11-11). Clearing one is not offered — no CLI option, and `--priority ""` exits 0
+ * leaving the value as it was. The note this replaces cited `task edit --help`, which names them
+ * only as "configured priorities" on v1.50.1 as well.
+ */
 export const PRIORITIES = ["high", "medium", "low"] as const;
 
 /**
  * The values a select may offer for a field the CLI can set but not unset. "未設定" is offered only
  * while the field *is* unset, where choosing it changes nothing: offering it on a set field would
- * be a clear operation v1.50.1 does not have (AC #6 — not presented rather than refused later).
+ * be a clear operation v1.54.0 does not have (AC #6 — not presented rather than refused later).
  */
 export interface SelectOption {
   value: string;
