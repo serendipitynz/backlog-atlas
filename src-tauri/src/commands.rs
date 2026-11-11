@@ -3060,10 +3060,12 @@ labels: []\n\
         // 状態遷移の入口 (doc-8 §6.5): each carries the id under the name its 保存区分 uses —
         // `taskId` for the active-side transitions, `draftId` for the draft-side ones (doc-5 §3.3).
         let of = |json: serde_json::Value| serde_json::from_value::<UpdateOperation>(json).unwrap();
-        assert!(matches!(
-            of(serde_json::json!({ "op": "taskComplete", "taskId": "TASK-1" })),
-            UpdateOperation::TaskComplete { task_id } if task_id == "TASK-1"
-        ));
+        // 完了整理 is gone (decision-51 §2): v1.54.0 removed `task complete`, so a frontend still
+        // sending it must be refused at the boundary rather than reach a CLI that exits 1.
+        assert!(serde_json::from_value::<UpdateOperation>(
+            serde_json::json!({ "op": "taskComplete", "taskId": "TASK-1" })
+        )
+        .is_err());
         assert!(matches!(
             of(serde_json::json!({ "op": "taskDemote", "taskId": "TASK-1" })),
             UpdateOperation::TaskDemote { task_id } if task_id == "TASK-1"

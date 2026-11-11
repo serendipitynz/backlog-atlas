@@ -581,7 +581,6 @@ fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> TargetResolut
         | UpdateOperation::MilestoneAdd { .. } => return TargetResolution::NoExistingFile,
 
         UpdateOperation::TaskEdit { task_id, .. }
-        | UpdateOperation::TaskComplete { task_id }
         | UpdateOperation::TaskArchive { task_id }
         | UpdateOperation::TaskDemote { task_id } => ("task", task_id),
         UpdateOperation::DraftPromote { draft_id } | UpdateOperation::DraftArchive { draft_id } => {
@@ -1939,7 +1938,7 @@ task_prefix: \"TASK\"\n";
             .guarded_update(
                 &[
                     status_edit("Done"),
-                    UpdateOperation::TaskComplete {
+                    UpdateOperation::TaskArchive {
                         task_id: "TASK-1".to_string(),
                     },
                 ],
@@ -1973,11 +1972,11 @@ task_prefix: \"TASK\"\n";
         let cli = FakeCli::new();
         let cap = capability(&cli);
         // A single-invocation failure changes nothing on disk (doc-5 §5).
-        cli.push_failure(1, "task complete: task is not Done");
+        cli.push_failure(1, "Task ID TASK-1 is ambiguous");
 
         let result = state
             .guarded_update(
-                &[UpdateOperation::TaskComplete {
+                &[UpdateOperation::TaskArchive {
                     task_id: "TASK-1".to_string(),
                 }],
                 &model,
