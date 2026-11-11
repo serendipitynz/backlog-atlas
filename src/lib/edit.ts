@@ -1041,6 +1041,7 @@ export function editAvailability(
 export type TransitionKind =
   | "taskDemote"
   | "taskArchive"
+  | "taskRestore"
   | "draftPromote"
   | "draftArchive";
 
@@ -1055,14 +1056,21 @@ export interface TransitionOffer {
 }
 
 /**
- * The transitions a 保存区分 has, or why it has none. `none` is 提示しない (AC #6): Atlas has no
- * reverse operation for completed and archive (decision-51 §6), so no control is drawn for one.
- * 版差記録: through v1.53.0 the CLI had none either; v1.54.0's `task restore` moves either back to
- * the board (measured 2026-11-11), and Atlas does not issue it.
+ * The transitions a 保存区分 has, or why it has none. `none` is 提示しない (AC #6) — left for the
+ * cases with nothing to issue, which since TASK-216 includes an archived draft: v1.54.0 has no way
+ * to take one back (`task restore` answers it with not found, measured 2026-11-11).
  */
 export type TransitionOffers =
   | { state: "offered"; offers: TransitionOffer[] }
   | { state: "none"; reason: string };
+
+/**
+ * A draft's id, which is how an archived draft is told from an archived task: doc-4 §3.4 fixes the
+ * `DRAFT` prefix whatever `task_prefix` says, and the read layer degrades a file whose id
+ * contradicts its folder, so an `archive` task carrying this shape sits in archive/drafts.
+ * Case-insensitive like the read layer's own prefix match.
+ */
+const ARCHIVED_DRAFT_ID = /^draft-\d+$/i;
 
 export interface TransitionContext {
   readiness: CliReadiness | null;
@@ -1084,8 +1092,8 @@ export function transitionOffers(
   if (storage === null) {
     return { state: "none", reason: msg().taskDetail.noStorageForTransition };
   }
-  if (storage === "completed" || storage === "archive") {
-    return { state: "none", reason: msg().taskDetail.noWayBackFromClosed };
+  if (storage === "archive" && ARCHIVED_DRAFT_ID.test(id)) {
+    return { state: "none", reason: msg().taskDetail.noWayBackForArchivedDraft };
   }
 
   // Ordered by how fundamental the obstacle is: a file that is gone cannot be transitioned at all,
@@ -1103,18 +1111,23 @@ export function transitionOffers(
       : AVAILABLE;
   })();
 
-  const offers: TransitionOffer[] =
-    storage === "draft"
-      ? [
-          offer("draftPromote", { op: "draftPromote", draftId: id }),
-          offer("draftArchive", { op: "draftArchive", draftId: id }),
-        ]
-      : [
-          offer("taskDemote", { op: "taskDemote", taskId: id }),
-          // Whatever the status: v1.54.0's `task archive` takes a Done task too, and it is the one
-          // way off the board now that `task complete` is gone (decision-51 §2/§3).
-          offer("taskArchive", { op: "taskArchive", taskId: id }),
-        ];
+  let offers: TransitionOffer[];
+  if (storage === "completed" || storage === "archive") {
+    // `task restore` moves either back to tasks/ unchanged (decision-51 の §6 の改訂).
+    offers = [offer("taskRestore", { op: "taskRestore", taskId: id })];
+  } else if (storage === "draft") {
+    offers = [
+      offer("draftPromote", { op: "draftPromote", draftId: id }),
+      offer("draftArchive", { op: "draftArchive", draftId: id }),
+    ];
+  } else {
+    offers = [
+      offer("taskDemote", { op: "taskDemote", taskId: id }),
+      // Whatever the status: v1.54.0's `task archive` takes a Done task too, and it is the one
+      // way off the board now that `task complete` is gone (decision-51 §2/§3).
+      offer("taskArchive", { op: "taskArchive", taskId: id }),
+    ];
+  }
 
   // The 区画-wide obstacle outranks a transition's own, and never revives one already withheld:
   // an offer held back by its 状態 is held back whatever the CLI is doing.
@@ -1144,10 +1157,8 @@ function offer(
 }
 
 /**
- * 実行前確認 (doc-11 §12) for one 状態遷移. All four ask — Atlas has no way back to the state before
- * the press for any of them (doc-8 §6.5), so there is no line to draw inside the four. 版差記録:
- * v1.54.0's `task restore` takes an archive back from the CLI, which Atlas does not issue
- * (decision-51 §6); through v1.53.0 the CLI had no way back either.
+ * 実行前確認 (doc-11 §12) for one 状態遷移. Every transition asks; doc-8 §6.5 says why, and why the
+ * set is not narrowed to the ones that cannot be taken back.
  *
  * **The question is not built from `effect` above.** That line answers 「この控えは何をするか」 before the
  * press, and the question has to say what is about to happen — so the two texts differ per

@@ -391,6 +391,7 @@
   const TRANSITIONS: string[] = [
     "taskDemote",
     "taskArchive",
+    "taskRestore",
     "draftPromote",
     "draftArchive",
   ];

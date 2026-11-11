@@ -757,15 +757,15 @@ export const ja = {
     divergedTaskFile: "タスクファイル（再読込結果に見当たりません）",
     noTaskIdForTransition: "TASK-ID を読めないため状態遷移の対象を指定できません",
     noStorageForTransition: "保存区分を判別できないため状態遷移を提供しません",
-    noWayBackFromClosed: "completed・archive から戻す操作は CLI にないため提供しません",
+    noWayBackForArchivedDraft: "archive の draft を戻す操作は CLI にないため提供しません",
     unsavedBeforeTransition: "未保存の入力があります。保存またはキャンセルしてから実行します",
     /**
-     * 状態遷移 (doc-8 §6.5) — four strings per transition, keyed by `TransitionKind` so a fifth
+     * 状態遷移 (doc-8 §6.5) — four strings per transition, keyed by `TransitionKind` so a sixth
      * cannot be added without the compiler asking what each of its four says.
      *
      * `effect` states 遷移が何を変えるか だけ (doc-11 §8 の結果の予告): the 写像 is on the button and
      * the 保存区分 is on screen beside it, so what is left is whether the id survives and whether the
-     * move can be taken back. **The four are deliberately not parallel** — each says only what its
+     * move can be taken back. **The five are deliberately not parallel** — each says only what its
      * own transition raises.
      *
      * `question` is not built from `effect`: that line answers 「この控えは何をするか」 before the press,
@@ -799,6 +799,13 @@ export const ja = {
         effect: "id・References・dependencies は保持されます",
         question: "このタスクをアーカイブします。id と References・dependencies は保持されます。",
         proceed: "アーカイブする",
+      },
+      taskRestore: {
+        label: "active へ戻す",
+        effect: "id・status・References・dependencies は保持されます",
+        question:
+          "このタスクを active へ戻します。id・status・References・dependencies は保持されます。",
+        proceed: "active へ戻す",
       },
     },
     /** A value the file carries that `config.yml` does not declare (decision-4 未分類 status). */

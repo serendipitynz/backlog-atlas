@@ -706,10 +706,27 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
     expect(offers.offers[0].operation).toEqual({ op: "draftPromote", draftId: "DRAFT-2" });
   });
 
-  it("completed・archive には戻す操作が無いので提示しない", () => {
+  it("completed・archive のタスクには active へ戻すだけを出す", () => {
+    // v1.54.0's `task restore` takes either back to tasks/ (decision-51 の §6 の改訂, TASK-216).
     for (const storageState of ["completed", "archive"] as const) {
-      expect(transitionOffers(taskView({ storageState }), context).state).toBe("none");
+      const offers = transitionOffers(taskView({ storageState, status: "Done" }), context);
+      if (offers.state !== "offered") {
+        throw new Error("expected offers");
+      }
+      expect(offers.offers.map((offer) => offer.kind)).toEqual(["taskRestore"]);
+      expect(offers.offers[0].operation).toEqual({ op: "taskRestore", taskId: "TASK-1" });
+      expect(offers.offers[0].availability.state).toBe("ready");
     }
+  });
+
+  it("archive の draft には戻す操作を出さず、CLI に無いことを理由に述べる", () => {
+    // v1.54.0 has no draft restore, and `task restore DRAFT-N` exits 1 with not found.
+    const offers = transitionOffers(
+      taskView({ storageState: "archive", id: "DRAFT-3", status: "Draft" }),
+      context,
+    );
+    expect(offers.state).toBe("none");
+    expect(offers.state === "none" && offers.reason).toContain("draft");
   });
 
   it("未保存入力があるあいだは遷移を能動化しない", () => {
@@ -738,11 +755,11 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
 describe("実行前確認 (doc-11 §12)", () => {
   const context = { readiness: READY, hasUnsavedInput: false };
 
-  /** Every transition either 保存区分 offers — the four doc-8 §6.5 says all ask. */
+  /** Every transition any 保存区分 offers — the five doc-8 §6.5 says all ask. */
   function everyOffer(): TransitionOffer[] {
-    return ["active", "draft"].flatMap((storageState) => {
+    return (["active", "draft", "archive"] as const).flatMap((storageState) => {
       const offers = transitionOffers(
-        taskView({ storageState: storageState as "active" | "draft", status: "Done" }),
+        taskView({ storageState, status: "Done" }),
         context,
       );
       if (offers.state !== "offered") {
@@ -752,13 +769,14 @@ describe("実行前確認 (doc-11 §12)", () => {
     });
   }
 
-  it("4 件とも問いと進む側の答えを持つ", () => {
+  it("5 件とも問いと進む側の答えを持つ", () => {
     const offers = everyOffer();
     expect(offers.map((offer) => offer.kind)).toEqual([
       "taskDemote",
       "taskArchive",
       "draftPromote",
       "draftArchive",
+      "taskRestore",
     ]);
     for (const offer of offers) {
       const confirmation = transitionConfirmation(offer);
@@ -807,7 +825,7 @@ describe("実行前確認 (doc-11 §12)", () => {
       }
       expect(transitionConfirmation(offer).question).toContain("この操作は戻せません。");
     }
-    for (const kind of ["taskDemote", "draftPromote", "taskArchive"] as const) {
+    for (const kind of ["taskDemote", "draftPromote", "taskArchive", "taskRestore"] as const) {
       const offer = everyOffer().find((entry) => entry.kind === kind);
       if (offer === undefined) {
         throw new Error(`expected ${kind}`);
@@ -834,6 +852,24 @@ describe("実行前確認 (doc-11 §12)", () => {
       expect(text).toContain("References");
       expect(text).toContain("dependencies");
       expect(text).not.toContain("undone");
+    }
+  });
+
+  it("active へ戻すは、v1.54.0 の task restore が保つものを和英とも述べる", () => {
+    const restore = everyOffer().find((entry) => entry.kind === "taskRestore");
+    if (restore === undefined) {
+      throw new Error("expected taskRestore");
+    }
+    const en = CATALOGS.en.taskDetail.transition.taskRestore;
+    for (const text of [
+      restore.effect,
+      transitionConfirmation(restore).question,
+      en.effect,
+      en.question,
+    ]) {
+      for (const kept of ["id", "status", "References", "dependencies"]) {
+        expect(text).toContain(kept);
+      }
     }
   });
 

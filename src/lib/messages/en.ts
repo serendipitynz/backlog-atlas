@@ -560,8 +560,8 @@ export const EN: Catalog = {
     noTaskIdForTransition: "The TASK-ID cannot be read, so no transition has a target to name",
     noStorageForTransition:
       "The storage division cannot be determined, so transitions are not offered",
-    noWayBackFromClosed:
-      "The CLI has no operation that moves a task back from completed or archive, so none is offered",
+    noWayBackForArchivedDraft:
+      "The CLI has no operation that moves an archived draft back, so none is offered",
     unsavedBeforeTransition: "There is unsaved input. Save or cancel it before running this",
     transition: {
       draftPromote: {
@@ -587,6 +587,13 @@ export const EN: Catalog = {
         effect: "the id, References and dependencies are kept",
         question: "This task will be archived. Its id, References and dependencies are kept.",
         proceed: "Archive",
+      },
+      taskRestore: {
+        label: "Move back to active",
+        effect: "the id, status, References and dependencies are kept",
+        question:
+          "This task will be moved back to active. Its id, status, References and dependencies are kept.",
+        proceed: "Move back to active",
       },
     },
     undeclaredValue: (value: string) => `${value} (not declared in config.yml)`,
