@@ -1,10 +1,10 @@
 ---
 id: TASK-213
 title: Backlog CLI v1.54.0〜v1.55.3 への追随方針を決め、doc-5 の誤った実測記述を正す
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-11 02:17'
-updated_date: '2026-11-11 02:47'
+updated_date: '2026-11-11 03:12'
 labels:
   - 'kind:bug'
 milestone: m-4
