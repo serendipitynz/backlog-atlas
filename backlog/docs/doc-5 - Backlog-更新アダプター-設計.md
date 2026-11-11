@@ -3,7 +3,7 @@ id: doc-5
 title: Backlog 更新アダプター 設計
 type: specification
 created_date: '2026-07-21 10:05'
-updated_date: '2026-11-11 05:48'
+updated_date: '2026-11-11 06:10'
 ---
 # Backlog 更新アダプター 設計
 
@@ -92,7 +92,7 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 - **タスク**: 3 章の `task create`/`task edit` 写像に載る操作（title・description・status・ラベル増減・AC 増減/チェック・AC 差し替え・References 全置換・priority・milestone・assignee・dependencies・実装計画/ノート等）。**Final Summary・Definition of Done・Comments の更新はここに含めると決まっており、まだ載っていない**（下項）。assignee は編集側だけが扱う（3 章）。assignee・References・dependencies の全置換は既存値を含めた全集合を渡す（3 章。空集合化は 3 章の表が持つ 3 通りの書き方で行う、3.5）。AC 差し替えは複合操作（`--remove-ac`＋`--ac`＋`--check-ac` を 1 呼び出し、3 章）。
 - **draft**: 状態遷移（`draft promote`／`draft archive`／`task demote`）のみを提供し、draft の内容編集は GUI に出さない（3.3）。
 - **active の状態遷移**: active タスクには内容編集に加え、`task demote`（→ draft）・`task archive`（→ `archive/tasks`、status によらず可）・`task complete` を提供している。**`task complete` は CLI から削除されており、どの status でも失敗するのに、画面は Done のタスクに限って能動化している**（3.7）。v1.53.0 までは逆で、Done のタスクには `task complete` だけが通り、`task archive` は失敗した（版差記録。2026-11-11 に判明）。直す形は decision-51 が決めた。最低バージョン要件を v1.54.0 へ上げ（TASK-208）、その後に完了整理を取り除き、`task archive` を status によらず提供する（TASK-215）。
-- **保存区分別の可否**: 上記タスク操作は保存区分（doc-4 の 3.4）が active のタスクに適用する。completed・archive のタスクは `task edit` が `not found`（終了コード 1）になるため、CLI による内容編集を提供しない（詳細画面での可否は doc-8 の 6.5）。
+- **保存区分別の可否**: 上記タスク操作は保存区分（doc-4 の 3.4）が active のタスクに適用する。completed・archive のタスクは `task edit` が終了コード 1 で拒まれるため、CLI による内容編集を提供しない（詳細画面での可否と、版で変わる拒否の文面は doc-8 の 6.5）。
 - **文書**: 作成（title・type・path）と更新（title・本文全置換・type・path・tags）。本文は全置換のみで、部分編集は「編集後の全文を `--content` で渡す」に帰着させる。
 - **マイルストーン**: 作成（名称・作成時の説明）・**説明の更新**・改称（名称）・削除・アーカイブ。**説明の更新は直接書き込み操作である**（3 章の表、decision-21）。GUI は選んだマイルストーンの説明を編集して保存できる欄を持ち、空にすることもできる。**行頭が `##` の行を含む説明は入力検査で拒む** — 読み取り層は次の `##` で説明の本文範囲を切るので、そのまま許すと保存した文字列の一部が次の読み込みで画面から消える（doc-10 §6）。frontmatter の項目（title を含む）を直接書き換える欄は設けない。
 - **Final Summary・Definition of Done・Comments の更新は提供すると決まっており、その回はまだ来ていない**（2026-08-17、オーナーの判断。TASK-185）。**CLI には 3 つとも手段がある** — `task edit --final-summary` / `--append-final-summary` / `--clear-final-summary`、`--dod` / `--check-dod` / `--uncheck-dod` / `--remove-dod`、`--comment` / `--comment-author`（実測）。**したがって 3.1 の「CLI に手段が無い」はここに当たらず、この段階で提供していない理由は製品判断である** — 3 つは編集セッション（doc-8 §6）を 3 系統ぶん増やし、Definition of Done は AC と同形なので完了状態を伴う全体差し替えの複合操作まで要り、Comments は CLI が追記しか持たない（1 件を消す経路が無い）。**TASK-185 は読み取りと表示だけを入れ、更新は TASK-189 が引き取る。** 引き取り先を台帳に置いてある — 置かないと、この段落だけが約束を持つことになる。

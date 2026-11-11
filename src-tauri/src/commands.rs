@@ -2601,8 +2601,8 @@ ordinal: 1000\n\
 
     #[test]
     fn a_task_the_cli_cannot_edit_is_still_openable() {
-        // doc-8 §6.5 / doc-5 §3.1 point at this route for exactly these tasks (`task edit` answers
-        // "not found" for a completed one), so it must not be gated on 保存区分 or on the CLI probe.
+        // doc-8 §6.5 / doc-5 §3.1 point at this route for exactly these tasks (`task edit` exits 1
+        // for a completed one), so it must not be gated on 保存区分 or on the CLI probe.
         let (temp, entry) = root();
         temp.write(
             "backlog/completed/task-2 - done.md",
