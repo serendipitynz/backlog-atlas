@@ -584,8 +584,8 @@ export const EN: Catalog = {
       },
       taskArchive: {
         label: "Archive",
-        effect: "the id, references and dependencies are kept",
-        question: "This task will be archived. Its id, references and dependencies are kept.",
+        effect: "the id, References and dependencies are kept",
+        question: "This task will be archived. Its id, References and dependencies are kept.",
         proceed: "Archive",
       },
     },

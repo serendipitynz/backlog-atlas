@@ -537,7 +537,7 @@ fn allowed_options(command: &[&str]) -> &'static [&'static str] {
         ["milestone", "add"] => &["--description"],
         ["milestone", "rename"] => &["--no-update-tasks"],
         ["milestone", "remove"] => &["--task-handling", "--reassign-to"],
-        // draft promote/archive, task demote/archive/complete, milestone archive: positional only.
+        // draft promote/archive, task demote/archive, milestone archive: positional only.
         _ => &[],
     }
 }
