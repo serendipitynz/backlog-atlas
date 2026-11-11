@@ -1,10 +1,10 @@
 ---
 id: TASK-214
 title: Backlog CLI v1.55.0 以降が書く ISO 8601 の日付を、更新期間の絞り込みと並び順で読めるようにする
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-11 02:37'
-updated_date: '2026-11-11 03:31'
+updated_date: '2026-11-11 04:35'
 labels:
   - 'kind:bug'
 milestone: m-4
