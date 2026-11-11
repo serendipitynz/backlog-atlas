@@ -3,7 +3,7 @@ id: doc-8
 title: タスク詳細画面 設計（References・PR・Type・Git 履歴）
 type: specification
 created_date: '2026-07-21 10:17'
-updated_date: '2026-11-11 05:48'
+updated_date: '2026-11-11 07:21'
 ---
 # タスク詳細画面 設計（References・PR・Type・Git 履歴）
 
@@ -223,13 +223,13 @@ Git 履歴欄は doc-6 の出力をまとめて見せる。
 
 doc-7 では active だけでなく draft・completed・archive のカードからも詳細画面を開ける。一方、completed・archive 内の TASK-ID への `task edit` は**終了コード 1 で失敗し、そのタスクがアーカイブ済みで読み取り専用である旨を述べる**（実測）。**契約は終了コードのほうで、文面は版で変わる**（下記の版差記録）。詳細画面の編集操作は、対象タスクの保存区分（doc-4 の 3.4）別に定める。
 
-- **active**: 本章の通常編集（`task edit` 系）と、状態遷移 `task demote`／`task archive`／`task complete`（いずれも doc-5 の操作写像）。`task archive` は status によらず成功する（実測）。**`task complete` は CLI から削除されており、status によらず終了コード 1 で失敗する**（実測。doc-5 の 3.7）。GUI は `task complete` を Done のタスクに限って能動化し、対象外では理由付きで無効化しているので、**Done のタスクでは押すと失敗する。** 直す形は decision-51 が決めた（TASK-208 の後に TASK-215 が完了整理を取り除き、`task archive` を status によらず提供する）。**版差記録**: v1.53.0 までは逆で、`task complete` は status が `Done` のときのみ成功し（非 Done では「is not Done」）、`task archive` は status が `Done` のときだけ「is Done」で失敗した。2026-11-11 まで本項は `task archive` を「status を問わず実行できる」と書いていたが、当時の実測基準版では偽だった。
+- **active**: 本章の通常編集（`task edit` 系）と、状態遷移 `task demote`／`task archive`（いずれも doc-5 の操作写像）。`task archive` は status によらず成功し、id と References・dependencies を保つ（実測）。GUI は `task archive` を status によらず能動化する。**完了整理（`task complete`）は 2026-11-11 に画面から下ろした**（decision-51 §2、TASK-215）。CLI から削除されており、status によらず終了コード 1 で失敗するためである（実測。doc-5 の 3.7）。下ろす前は Done のタスクに限って能動化していたので、押すと必ず失敗した。**版差記録**: v1.53.0 までは逆で、`task complete` は status が `Done` のときのみ成功し（非 Done では「is not Done」）、`task archive` は status が `Done` のときだけ「is Done」で失敗した。2026-11-11 まで本項は `task archive` を「status を問わず実行できる」と書いていたが、当時の実測基準版では偽だった。
 - **draft**: `draft promote`／`draft archive` のみ（doc-5 の 3.3）。内容編集は GUI に出さず、理由を述べる（doc-11 §5）。
 - **completed・archive**: CLI による内容編集は提供しない（`task edit` が終了コード 1 で失敗するため）。読み取り専用とし、理由を述べる（doc-11 §5）。
 
 **not found の文面は版で変わる（版差記録）。** v1.48.0 は `Task 4 not found.`、v1.49.3 は `Task not found: TASK-4` を返す（TASK-152 で両版へ同じ操作列を流して比べた。本節の実測のうち、v1.48.0 と v1.49.3 で違いが出たのはこの 1 点だけである）。**2026-08-22 に v1.50.1 で測り直したところ v1.49.3 と同じ文面・同じ終了コードだった**（TASK-153）ので、本記録が名指す 2 版はそのままである。**v1.54.0 で文面がまた変わった** — completed・archive のどちらのタスクにも `Task TASK-N is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore TASK-N` を返す（2026-11-11 に v1.50.1・v1.53.0・v1.54.0 へ同じ操作列を流して比べた。v1.53.0 は v1.50.1 と同じ文面だった）。終了コードは 1 のままである。**本節が契約にしているのは終了コード 1 のほうだけである** — 更新アダプターは成否を終了コードで判定し、stderr は失敗理由としてそのまま画面へ渡す（doc-5 §5）ので、文面に依存する箇所は無い。**したがって本節の本文は文面を引用せず、終了コードで述べている** — 引用すると、次に版が上がったときに文面の変化が契約の変化に見える。
 
-保存区分ごとに、詳細画面は提供する操作だけを能動化し、提供しない操作は理由が分かる形で無効化する（doc-5 の縮退提示に準ずる。無効化の表し方は doc-11 §5）。編集可否は表示（どの区画を出すか）とは別で、参照系（Type・References・Pull Request・Git 履歴）はどの保存区分でも読み取り表示する。**状態遷移は 5 件とも実行前確認を通る**（doc-11 §12。2026-08-11 に二度押し確定から替えた。TASK-137）。控えの語には `…` を付ける（`draft へ差し戻す…`。同 §12 の ②）。**5 件を「逆操作の無いもの」で絞らないのは、Atlas に押す前の状態へ戻す操作が 1 件も無いためである**: アーカイブと完了整理を戻す操作を Atlas は持たず（decision-51 §6）、`task demote` と `draft promote` は互いの行き先へ戻せるものの id を採番し直すので、押す前の TASK-ID のタスクには戻らない（実測）。**版差記録**: 2026-08-11 に `backlog task --help`・`backlog draft --help` で測った当時は、CLI にも戻す操作が無かった（`task` は create・list・edit・view・archive・complete・demote、`draft` は list・create・archive・promote・view だけ）。v1.54.0 で `task restore` が入り、archive・completed のタスクは CLI からなら盤面へ戻せる（2026-11-11 実測）。Atlas はそれを発行しないので、本項は Atlas の画面についての記述である。
+保存区分ごとに、詳細画面は提供する操作だけを能動化し、提供しない操作は理由が分かる形で無効化する（doc-5 の縮退提示に準ずる。無効化の表し方は doc-11 §5）。編集可否は表示（どの区画を出すか）とは別で、参照系（Type・References・Pull Request・Git 履歴）はどの保存区分でも読み取り表示する。**状態遷移は 4 件とも実行前確認を通る**（doc-11 §12。2026-08-11 に二度押し確定から替えた。TASK-137）。控えの語には `…` を付ける（`draft へ差し戻す…`。同 §12 の ②）。**4 件を「逆操作の無いもの」で絞らないのは、Atlas に押す前の状態へ戻す操作が 1 件も無いためである**: アーカイブを戻す操作を Atlas は持たず（decision-51 §6。提供は TASK-216）、`task demote` と `draft promote` は互いの行き先へ戻せるものの id を採番し直すので、押す前の TASK-ID のタスクには戻らない（実測）。**版差記録**: 2026-08-11 に `backlog task --help`・`backlog draft --help` で測った当時は、CLI にも戻す操作が無かった（`task` は create・list・edit・view・archive・complete・demote、`draft` は list・create・archive・promote・view だけ）。v1.54.0 で `task restore` が入り、archive・completed のタスクは CLI からなら盤面へ戻せる（2026-11-11 実測）。Atlas はそれを発行しないので、本項は Atlas の画面についての記述である。
 
 ## 7. 外部エディタ経路
 
