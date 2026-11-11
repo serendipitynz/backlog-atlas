@@ -413,6 +413,25 @@ describe("TASK-132 並び順を選ぶ (doc-7 §5.4)", () => {
     ]);
   });
 
+  it("orders the two written forms and an offset by time, inside one day too (TASK-214)", () => {
+    // One root carries both forms once the CLI moves to v1.55.0: it writes the new one and leaves
+    // the old values alone. Compared as written, ' ' sorts before 'T', so the 09:00 value would come
+    // first whatever its time.
+    const mixed = (key: "updatedDate" | "createdDate") => [
+      taskView({ id: "09:00", [key]: "2026-11-11 09:00" }),
+      taskView({ id: "02:22", [key]: "2026-11-11T02:22:00Z" }),
+      taskView({ id: "01:30", [key]: "2026-11-11T10:30:00+09:00" }),
+      taskView({ id: "23:00", [key]: "2026-11-11T23:00Z" }),
+    ];
+    const byTime = ["01:30", "02:22", "09:00", "23:00"];
+    expect(ordered(mixed("updatedDate"), "updated_asc")).toEqual(byTime);
+    expect(ordered(mixed("updatedDate"), "updated_desc")).toEqual([...byTime].reverse());
+    expect(ordered(mixed("createdDate"), "created_asc")).toEqual(byTime);
+    expect(ordered(mixed("createdDate"), "created_desc")).toEqual([...byTime].reverse());
+    // The 既定の 3 段's last step reads updated_date the same way.
+    expect(ordered(mixed("updatedDate"), "priority_desc")).toEqual([...byTime].reverse());
+  });
+
   it("AC #4 keeps a task with no value last whichever direction is chosen", () => {
     const dates = [
       taskView({ id: "none", updatedDate: null }),

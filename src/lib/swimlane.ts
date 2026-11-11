@@ -48,6 +48,7 @@ import type {
 import { matchesFilter, type CardFilter, type InconsistentLookup } from "./filter";
 import type { IconName } from "./icons/lucide";
 import { msg } from "./messages";
+import { dateSortKey } from "./period";
 
 /** 正準ステータス列 in left-to-right order (decision-4, doc-7 §2). Fixed for every row. */
 export const CANONICAL_COLUMNS: readonly StatusColumn[] = [
@@ -186,10 +187,12 @@ function byPriority(direction: number): Comparator {
   return (a, b) => direction * (priorityRank(a.task.priority) - priorityRank(b.task.priority));
 }
 
-// Backlog writes dates as `YYYY-MM-DD[ HH:MM]`, which orders correctly as text; comparing the
-// strings avoids inventing a timezone for a value that carries none.
 function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function compareDates(a: string, b: string): number {
+  return compareText(dateSortKey(a), dateSortKey(b));
 }
 
 /**
@@ -205,8 +208,8 @@ function compareText(a: string, b: string): number {
  * **No locale is consulted.** `Intl.Collator(…, { numeric: true })` answers this correctly and
  * agreed across en/ja/de/tr/sv when measured, but its result is a function of the runtime's default
  * locale, and the same ledger reading differently on two machines is exactly what the ordering
- * contract promises it will not do — the same reason the dates above are compared as text rather
- * than parsed into a timezone.
+ * contract promises it will not do — the same reason the dates above are compared without picking a
+ * timezone.
  *
  * Outside the digit runs this compares UTF-16 code units, which is an arbitrary order but a total
  * and stable one; what the contract needs of the non-numeric part is only that it never disagrees
@@ -291,10 +294,10 @@ export const CARD_ORDERS: Record<CardOrder, CardOrderRule> = {
   priority_desc: { compare: byPriority(DESC) },
   task_id_asc: { compare: byOptional((view) => view.task.id, compareNumberAware, ASC) },
   task_id_desc: { compare: byOptional((view) => view.task.id, compareNumberAware, DESC) },
-  updated_asc: { compare: byOptional((view) => view.task.updatedDate, compareText, ASC) },
-  updated_desc: { compare: byOptional((view) => view.task.updatedDate, compareText, DESC) },
-  created_asc: { compare: byOptional((view) => view.task.createdDate, compareText, ASC) },
-  created_desc: { compare: byOptional((view) => view.task.createdDate, compareText, DESC) },
+  updated_asc: { compare: byOptional((view) => view.task.updatedDate, compareDates, ASC) },
+  updated_desc: { compare: byOptional((view) => view.task.updatedDate, compareDates, DESC) },
+  created_asc: { compare: byOptional((view) => view.task.createdDate, compareDates, ASC) },
+  created_desc: { compare: byOptional((view) => view.task.createdDate, compareDates, DESC) },
   milestone_asc: { compare: byOptional((view) => view.task.milestone, compareNumberAware, ASC) },
   milestone_desc: { compare: byOptional((view) => view.task.milestone, compareNumberAware, DESC) },
 };
@@ -330,7 +333,7 @@ export const DEFAULT_CARD_ORDER: CardOrder = "priority_desc";
 const TIE_BREAK: readonly Comparator[] = [
   byPriority(DESC),
   byOptional((view) => view.task.ordinal, (x, y) => Math.sign(x - y), ASC),
-  byOptional((view) => view.task.updatedDate, compareText, DESC),
+  byOptional((view) => view.task.updatedDate, compareDates, DESC),
 ];
 
 /**
