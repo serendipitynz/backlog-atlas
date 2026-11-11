@@ -4,7 +4,7 @@ title: Backlog CLI の最低バージョン要件を v1.54.0 へ上げる
 status: In Review
 assignee: []
 created_date: '2026-10-11 19:30'
-updated_date: '2026-11-11 06:01'
+updated_date: '2026-11-11 06:10'
 labels:
   - 'kind:research'
 milestone: m-4
@@ -110,4 +110,8 @@ TASK-213 が使い捨てのディレクトリへ導入した v1.50.1・v1.51.0�
 - `pnpm test`（54 ファイル・1396 件）、`pnpm run check`（0 errors）、`pnpm run lint` が通った。`pnpm run check` が出す `_sandbox/app-check/vite.config.ts` の読み込みエラーは、以前から出ているもので本タスクとは関係が無い。
 - `src-tauri/` で `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test`（485 件）が通った。**`MIN_VERSION` を 1.54.0 にすると、境界試験の `MIN_VERSION.patch > 0` を clippy（1.99.1）が常に偽の比較として拒んだ**ので、`checked_sub` の形へ書き換えた。wire-fixtures は `ATLAS_RECORD_WIRE_FIXTURES=1 cargo test` で再記録した（`cli_readiness.json` の `version` と `command_errors.json` の `minimum`）。
 - 新しく足した試験は、v1.53.0 までのコメント欄の形を読むもの 1 本である。`EVERY_SECTION` の形を v1.54.0 のものに替えても、全節試験が通ることを確かめた。
+
+## レビュー 1 回目（PR #169、Codex）
+
+[P3] 1 件。doc-5 §3.2 の「保存区分別の可否」が、completed・archive への `task edit` を `not found` と書いていた。v1.54.0 の文面は「is archived … read-only」なので、終了コード 1 で述べる形へ直し、文面は doc-8 §6.5 の版差記録へ送った。同じ主張が commands.rs の試験の註にも残っていたので、併せて終了コードで述べる形にした（ほかに同じ主張が無いことは grep で確かめた）。
 <!-- SECTION:NOTES:END -->
