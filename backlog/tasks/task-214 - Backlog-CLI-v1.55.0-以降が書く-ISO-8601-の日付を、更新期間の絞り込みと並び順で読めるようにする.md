@@ -4,7 +4,7 @@ title: Backlog CLI v1.55.0 以降が書く ISO 8601 の日付を、更新期間�
 status: In Review
 assignee: []
 created_date: '2026-11-11 02:37'
-updated_date: '2026-11-11 03:20'
+updated_date: '2026-11-11 03:31'
 labels:
   - 'kind:bug'
 milestone: m-4
@@ -60,7 +60,7 @@ period.ts の localDay が受け付けるのは YYYY-MM-DD と YYYY-MM-DD HH:MM[
 - period.ts: 2 本の正規表現を readTimestamp 1 つにまとめた。受け付けるのは 4 形である。YYYY-MM-DD（暦日）、YYYY-MM-DD HH:MM[:SS]（UTC として読む）、YYYY-MM-DDTHH:MM[:SS]Z、YYYY-MM-DDTHH:MM[:SS]±HH:MM（書かれたオフセットで UTC に直す）。localDay はその結果から暦日を出す。
 - 並び順の鍵 dateSortKey を period.ts に置いた。時刻付きの値は UTC の 'YYYY-MM-DD HH:MM:SS' に綴り直し、時刻なしの値と解析できない値は書かれたまま返す。swimlane.ts の updated・created と既定の 3 段目は、この鍵を文字列として比べる。日付の読み方を 1 か所に保つために、swimlane.ts ではなく period.ts に置いた。
 - 拒む形: T 区切りでゾーンの無い値、空白区切りでオフセットや Z の付いた値、小数秒、コロンの無いオフセット、小文字の t・z、範囲外のオフセット（+24:00・+09:60）。T 区切りでゾーンの無い値を拒むのは、ISO 8601 がそれを書き手のローカル時刻として読むのに、どの時間帯だったかが値から読めないためである。
-- doc-7 §5.2: 基準時間帯の項を「時刻を持つ値」に限定した。版差記録の項（v1.50.1 と v1.55.0 の書式）を足し、受け付ける 2 形を 4 形に改めた。§5.4: 「文字列のまま比べる」を「書式を揃えてから文字列として比べる」に改め、改めた理由を書いた。doc-4 §7 の引用 1 文と、period.ts・swimlane.ts の註で旧規則を引いていた 2 か所も直した。対応表は本文より先に、TASK-214 の対応表 初版として確定した。
+- doc-7 §5.2: 基準時間帯の項を「時刻を持つ値」に限定した。版差記録の項（v1.50.1 と v1.55.0 の書式）を足し、受け付ける 2 形を 4 形に改めた。§5.4: 「文字列のまま比べる」を「書式を揃えてから文字列として比べる」に改め、改めた理由を書いた。doc-4 §7 の引用 1 文と、period.ts・swimlane.ts・read/id_order.rs の註で旧規則を引いていた 3 か所も直した（id_order.rs は PR #168 の 1R で指摘されて直した）。対応表は本文より先に、TASK-214 の対応表 初版として確定した。
 
 ## 検査（AC #5）
 
@@ -74,4 +74,11 @@ period.ts の localDay が受け付けるのは YYYY-MM-DD と YYYY-MM-DD HH:MM[
 ## 規模計測（フロントエンド側だけ、Node/V8）
 
 - 並び順で比較のたびに正規表現を通すようになったので、scripts/scale/frontend.mjs の measureFrontend を修正後と HEAD で比べた。再計算時間は 20,000 タスクで 7.63ms 対 6.99ms、4,000 タスクで 1.91ms 対 1.58ms で、差は 1ms 未満だった。
+
+## レビュー 1R（Claude Code レビュワー）
+
+- [P2] read/id_order.rs の註が §5.4 の旧規則（日付を文字列として比べる）を引いていた。swimlane.ts と同じ形に直した。
+- [P3] period.ts のヘッダが dateSortKey を名指していなかった。冒頭文と対応表に §5.4 の行を足した。
+- [P3] period.ts のヘッダの 1 行が 158 桁だった。100 桁前後に折り直した。
+- [P3] オフセットで 9999-12-31 が 10000 年に繰り上がる値で、toISOString が +010000 の形を返し、並び順の先頭に来ていた。UTC に直した年が 9999 を超える値は解析できない値とし、鍵は formatDay から組み立てるようにした。年の上限の検査は、上限を外すと落ちることを確かめた。
 <!-- SECTION:NOTES:END -->
