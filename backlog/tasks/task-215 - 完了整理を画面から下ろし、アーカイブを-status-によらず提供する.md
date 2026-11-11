@@ -4,7 +4,7 @@ title: 完了整理を画面から下ろし、アーカイブを status によ�
 status: In Review
 assignee: []
 created_date: '2026-11-11 02:40'
-updated_date: '2026-11-11 07:23'
+updated_date: '2026-11-11 07:34'
 labels:
   - 'kind:bug'
 milestone: m-4
@@ -64,4 +64,12 @@ update.rs の UpdateOperation::TaskArchive の註は「succeeds regardless of st
 - 「Done のタスクでアーカイブが能動化する」は旧コードでも通る（旧コードもアーカイブを status で絞っていなかった）。そこで、アーカイブを Done で差し控える変異を入れ、落ちることを別に確かめた。
 - Done のタスクへの `task archive` が v1.54.0 で成功すること（AC #2 の後半）は、TASK-213 と TASK-208 の実測（v1.54.0 で終了コード 0）による。
 - `pnpm test`（54 ファイル・1397 件）、`pnpm run check`（0 errors）、`pnpm run lint`、`src-tauri/` での `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test`（485 件）がすべて通った。wire-fixtures は変わらない（`UpdateOperation` は記録の対象外）。invoke-signature の走査も通った。
+
+## レビュー 1 回目（PR #170、Claude Code）
+
+[P3] 3 件で、すべて直した。
+
+- update.rs の位置引数だけを取るサブコマンドの列挙に、`task complete` が残っていた。
+- 英語版のアーカイブの文が `references` を小文字で書いていた。英語の文言表のほかの箇所と画面の区画名は `References` なので、大文字にそろえ、試験もそれに合わせた。
+- edit.test.ts の註が、タスクのアーカイブを「戻せる」側に分類していた。Atlas から戻せるのは TASK-216 が入ってからである。戻せるのは CLI の `task restore` で、Atlas はまだ発行しないので、確認文は保たれるものを述べる、という形に直した。
 <!-- SECTION:NOTES:END -->
