@@ -205,14 +205,11 @@ pub enum UpdateOperation {
     /// `task demote <TASK-N>` — active → draft, status kept (doc-5 §3.3).
     #[serde(rename_all = "camelCase")]
     TaskDemote { task_id: String },
-    /// `task archive <TASK-N>` — active → archive, succeeds regardless of status (doc-5 §3).
+    /// `task archive <TASK-N>` — active → archive. Succeeds whatever the status and keeps the id,
+    /// References and dependencies (measured 2026-11-11 on v1.54.0, doc-5 §3). It is the one way
+    /// off the board: v1.54.0 removed `task complete` (decision-51 §2).
     #[serde(rename_all = "camelCase")]
     TaskArchive { task_id: String },
-    /// `task complete <TASK-N>` — active → completed. The CLI succeeds only when the task's status
-    /// is `Done`; a non-Done task fails with "is not Done" and is reported as a CLI failure
-    /// (doc-5 §3/§5) — the adapter does not pre-judge status, the CLI owns that rule.
-    #[serde(rename_all = "camelCase")]
-    TaskComplete { task_id: String },
     /// `doc create` (doc-5 §3).
     DocCreate(DocCreate),
     /// `doc update` (doc-5 §3): title / whole-body / type / path / tags.
@@ -500,8 +497,7 @@ impl Invocation {
 }
 
 /// The option flags each sub-command accepts in the confirmed version (v1.54.0 `--help`, doc-5 §3;
-/// measured 2026-11-11). The operation map still issues one sub-command v1.54.0 no longer has,
-/// `task complete`, which fails there with exit 1; TASK-215 takes it out (decision-51 §2).
+/// measured 2026-11-11).
 /// This is the single source of truth for AC #5's "未知オプションは起動前に拒否する": every option
 /// [`plan_operation`] emits is checked against this set, so a flag the confirmed version does not
 /// define is refused before any process starts rather than passed to a CLI that may reject it.
@@ -541,7 +537,7 @@ fn allowed_options(command: &[&str]) -> &'static [&'static str] {
         ["milestone", "add"] => &["--description"],
         ["milestone", "rename"] => &["--no-update-tasks"],
         ["milestone", "remove"] => &["--task-handling", "--reassign-to"],
-        // draft promote/archive, task demote/archive/complete, milestone archive: positional only.
+        // draft promote/archive, task demote/archive, milestone archive: positional only.
         _ => &[],
     }
 }
@@ -629,9 +625,6 @@ pub fn plan_operation(op: &UpdateOperation) -> Result<Vec<Mapped>, RejectReason>
         }
         UpdateOperation::TaskArchive { task_id } => {
             invoked([Invocation::new(&["task", "archive"]).positional(task_id)])
-        }
-        UpdateOperation::TaskComplete { task_id } => {
-            invoked([Invocation::new(&["task", "complete"]).positional(task_id)])
         }
         UpdateOperation::DocCreate(c) => invoked([plan_doc_create(c)]),
         UpdateOperation::DocUpdate { doc_id, update } => {
@@ -2435,12 +2428,6 @@ mod tests {
                 },
                 vec!["task", "archive", "TASK-1"],
             ),
-            (
-                UpdateOperation::TaskComplete {
-                    task_id: "TASK-1".to_string(),
-                },
-                vec!["task", "complete", "TASK-1"],
-            ),
         ] {
             let cli = FakeCli::supported();
             run_one(op, &cli).unwrap();
@@ -2783,12 +2770,12 @@ mod tests {
 
     #[test]
     fn a_non_zero_exit_is_reported_with_stderr() {
-        // task complete on a non-Done task fails with "is not Done" (doc-5 §5) — the adapter does
-        // not pre-judge; it reports the CLI's failure verbatim.
+        // task archive on an id two files carry fails with "is ambiguous" (decision-51 §5) — the
+        // adapter does not pre-judge; it reports the CLI's failure verbatim.
         let cli = FakeCli::supported();
-        cli.push_failure(1, "Task TASK-1 is not Done");
+        cli.push_failure(1, "Task ID TASK-1 is ambiguous");
         let outcome = run_one(
-            UpdateOperation::TaskComplete {
+            UpdateOperation::TaskArchive {
                 task_id: "TASK-1".to_string(),
             },
             &cli,
@@ -2796,9 +2783,9 @@ mod tests {
         .unwrap();
         match outcome {
             UpdateOutcome::Failed(f) => {
-                assert_eq!(f.command.as_deref(), Some("task complete"));
+                assert_eq!(f.command.as_deref(), Some("task archive"));
                 assert_eq!(f.kind, FailureKind::NonZero { code: Some(1) });
-                assert!(f.stderr.contains("is not Done"));
+                assert!(f.stderr.contains("is ambiguous"));
                 assert_eq!(f.completed_before, 0);
                 assert!(!f.reload_required);
             }
@@ -2855,7 +2842,7 @@ mod tests {
                         ..Default::default()
                     },
                 },
-                UpdateOperation::TaskComplete {
+                UpdateOperation::TaskArchive {
                     task_id: "TASK-1".to_string(),
                 },
             ],
@@ -2866,7 +2853,7 @@ mod tests {
         .unwrap();
         match outcome {
             UpdateOutcome::Failed(f) => {
-                assert_eq!(f.command.as_deref(), Some("task complete"));
+                assert_eq!(f.command.as_deref(), Some("task archive"));
                 assert_eq!(f.completed_before, 1);
                 assert!(f.reload_required);
             }

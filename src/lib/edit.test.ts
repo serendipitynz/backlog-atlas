@@ -669,36 +669,29 @@ describe("Type 編集の非提供 (doc-8 §4)", () => {
 describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
   const context = { readiness: READY, hasUnsavedInput: false };
 
-  it("active には demote・archive・complete を出す", () => {
-    const offers = transitionOffers(taskView({ storageState: "active" }), context);
-    if (offers.state !== "offered") {
-      throw new Error("expected offers");
+  it("active には demote・archive だけを出し、完了整理は status によらず出さない", () => {
+    // v1.54.0 removed `task complete` (decision-51 §2): offering it would put a control on screen
+    // that fails on every CLI the floor admits.
+    for (const status of ["To Do", "In Progress", "Done"]) {
+      const offers = transitionOffers(taskView({ storageState: "active", status }), context);
+      if (offers.state !== "offered") {
+        throw new Error("expected offers");
+      }
+      expect(offers.offers.map((offer) => offer.kind)).toEqual(["taskDemote", "taskArchive"]);
     }
-    expect(offers.offers.map((offer) => offer.kind)).toEqual([
-      "taskDemote",
-      "taskArchive",
-      "taskComplete",
-    ]);
   });
 
-  it("task complete は status が Done のときだけ能動化する", () => {
-    const notDone = transitionOffers(taskView({ status: "In Progress" }), context);
-    if (notDone.state !== "offered") {
-      throw new Error("expected offers");
+  it("アーカイブは Done のタスクでも能動化する", () => {
+    // The one way off the board now, and v1.54.0's `task archive` takes a Done task (decision-51 §3).
+    for (const status of ["In Progress", "Done"]) {
+      const offers = transitionOffers(taskView({ status }), context);
+      if (offers.state !== "offered") {
+        throw new Error("expected offers");
+      }
+      const archive = offers.offers.find((offer) => offer.kind === "taskArchive");
+      expect(archive?.availability.state).toBe("ready");
+      expect(archive?.operation).toEqual({ op: "taskArchive", taskId: "TASK-1" });
     }
-    const disabled = notDone.offers.find((offer) => offer.kind === "taskComplete");
-    expect(disabled?.availability.state).toBe("withheld");
-    expect(
-      disabled?.availability.state === "withheld" && disabled.availability.reason,
-    ).toContain("Done");
-
-    const done = transitionOffers(taskView({ status: "Done", column: "done" }), context);
-    if (done.state !== "offered") {
-      throw new Error("expected offers");
-    }
-    expect(done.offers.find((offer) => offer.kind === "taskComplete")?.availability.state).toBe(
-      "ready",
-    );
   });
 
   it("draft には promote・archive だけを出す", () => {
@@ -745,7 +738,7 @@ describe("状態遷移の入口 (doc-5 §3.2/§3.3, doc-8 §6.5)", () => {
 describe("実行前確認 (doc-11 §12)", () => {
   const context = { readiness: READY, hasUnsavedInput: false };
 
-  /** Every transition either 保存区分 offers — the five doc-8 §6.5 says all ask. */
+  /** Every transition either 保存区分 offers — the four doc-8 §6.5 says all ask. */
   function everyOffer(): TransitionOffer[] {
     return ["active", "draft"].flatMap((storageState) => {
       const offers = transitionOffers(
@@ -759,12 +752,11 @@ describe("実行前確認 (doc-11 §12)", () => {
     });
   }
 
-  it("5 件とも問いと進む側の答えを持つ", () => {
+  it("4 件とも問いと進む側の答えを持つ", () => {
     const offers = everyOffer();
     expect(offers.map((offer) => offer.kind)).toEqual([
       "taskDemote",
       "taskArchive",
-      "taskComplete",
       "draftPromote",
       "draftArchive",
     ]);
@@ -795,36 +787,53 @@ describe("実行前確認 (doc-11 §12)", () => {
   });
 
   it("問いは控えの隣の 結果の予告 の言い直しではない", () => {
-    // The effect line answers 「この控えは何をするか」 before the press and carries 完了整理's precondition,
-    // which is already satisfied once the question can stand (doc-11 §12 の註).
+    // The effect line answers 「この控えは何をするか」 before the press; the question says what is about
+    // to happen (doc-11 §12 の註).
     for (const offer of everyOffer()) {
       expect(transitionConfirmation(offer).question).not.toBe(offer.effect);
     }
-    const complete = everyOffer().find((offer) => offer.kind === "taskComplete");
-    if (complete === undefined) {
-      throw new Error("expected taskComplete");
-    }
-    expect(complete.effect).toContain("Done のときのみ");
-    expect(transitionConfirmation(complete).question).not.toContain("Done のときのみ");
   });
 
-  it("片道の遷移は 3 件とも同じ語で戻せないことを述べる", () => {
-    // One wording for the three, because it is one fact about them (the user's word, 2026-08-11 の目視).
-    // The version number that first draft carried belongs to doc-8 §6.5, not to a question about this
-    // press. 差し戻す・昇格 must not pick it up: those two *can* be taken back.
-    for (const kind of ["taskArchive", "taskComplete", "draftArchive"] as const) {
+  it("片道の遷移は戻せないことを述べ、それ以外は述べない", () => {
+    // The user's word, 2026-08-11 の目視. The version number that first draft carried belongs to
+    // doc-8 §6.5, not to a question about this press. 差し戻す・昇格 must not pick it up: those two
+    // *can* be taken back. A task archive does not say it either, though Atlas cannot yet take one
+    // back: v1.54.0's CLI can (`task restore`, which Atlas does not issue until TASK-216), so its
+    // question states what is kept instead (TASK-215).
+    for (const kind of ["draftArchive"] as const) {
       const offer = everyOffer().find((entry) => entry.kind === kind);
       if (offer === undefined) {
         throw new Error(`expected ${kind}`);
       }
       expect(transitionConfirmation(offer).question).toContain("この操作は戻せません。");
     }
-    for (const kind of ["taskDemote", "draftPromote"] as const) {
+    for (const kind of ["taskDemote", "draftPromote", "taskArchive"] as const) {
       const offer = everyOffer().find((entry) => entry.kind === kind);
       if (offer === undefined) {
         throw new Error(`expected ${kind}`);
       }
       expect(transitionConfirmation(offer).question).not.toContain("戻せません");
+    }
+  });
+
+  it("タスクのアーカイブは、v1.54.0 以降の CLI が保つものを和英とも述べる", () => {
+    // v1.54.0's `task archive` keeps the id, References and dependencies (doc-5 §3.7), so a question
+    // that called it irreversible or said nothing of what survives would misdescribe the press.
+    const archive = everyOffer().find((entry) => entry.kind === "taskArchive");
+    if (archive === undefined) {
+      throw new Error("expected taskArchive");
+    }
+    for (const text of [archive.effect, transitionConfirmation(archive).question]) {
+      expect(text).toContain("id");
+      expect(text).toContain("References");
+      expect(text).toContain("dependencies");
+    }
+    const en = CATALOGS.en.taskDetail.transition.taskArchive;
+    for (const text of [en.effect, en.question]) {
+      expect(text).toContain("id");
+      expect(text).toContain("References");
+      expect(text).toContain("dependencies");
+      expect(text).not.toContain("undone");
     }
   });
 

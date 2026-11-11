@@ -1041,7 +1041,6 @@ export function editAvailability(
 export type TransitionKind =
   | "taskDemote"
   | "taskArchive"
-  | "taskComplete"
   | "draftPromote"
   | "draftArchive";
 
@@ -1064,11 +1063,6 @@ export interface TransitionOffer {
 export type TransitionOffers =
   | { state: "offered"; offers: TransitionOffer[] }
   | { state: "none"; reason: string };
-
-/** The status `task complete` requires. Matched literally: the CLI compares the frontmatter
- * value, not Atlas's 正準列 mapping, so a project whose done status is spelled otherwise would be
- * told "enabled" and then fail (doc-5 §3, doc-8 §6.5). */
-const COMPLETABLE_STATUS = "Done";
 
 export interface TransitionContext {
   readiness: CliReadiness | null;
@@ -1117,19 +1111,9 @@ export function transitionOffers(
         ]
       : [
           offer("taskDemote", { op: "taskDemote", taskId: id }),
+          // Whatever the status: v1.54.0's `task archive` takes a Done task too, and it is the one
+          // way off the board now that `task complete` is gone (decision-51 §2/§3).
           offer("taskArchive", { op: "taskArchive", taskId: id }),
-          offer(
-            "taskComplete",
-            { op: "taskComplete", taskId: id },
-            view.task.status === COMPLETABLE_STATUS
-              ? AVAILABLE
-              : withheld(
-                  msg().taskDetail.completableOnly(
-                    COMPLETABLE_STATUS,
-                    view.task.status ?? msg().taskDetail.statusUnreadableShort,
-                  ),
-                ),
-          ),
         ];
 
   // The 区画-wide obstacle outranks a transition's own, and never revives one already withheld:
@@ -1160,15 +1144,14 @@ function offer(
 }
 
 /**
- * 実行前確認 (doc-11 §12) for one 状態遷移. All five ask — Atlas has no way back to the state before
- * the press for any of them (doc-8 §6.5), so there is no line to draw inside the five. 版差記録:
+ * 実行前確認 (doc-11 §12) for one 状態遷移. All four ask — Atlas has no way back to the state before
+ * the press for any of them (doc-8 §6.5), so there is no line to draw inside the four. 版差記録:
  * v1.54.0's `task restore` takes an archive back from the CLI, which Atlas does not issue
  * (decision-51 §6); through v1.53.0 the CLI had no way back either.
  *
  * **The question is not built from `effect` above.** That line answers 「この控えは何をするか」 before the
- * press and carries the precondition 完了整理 has (`status が Done のときのみ`), which is already
- * satisfied by the time this question can stand. What the question has to say is what is about to
- * happen and what will not be undoable — so the two texts differ per transition, not per field.
+ * press, and the question has to say what is about to happen — so the two texts differ per
+ * transition, not per field.
  */
 export function transitionConfirmation(offer: TransitionOffer): IssueConfirmation {
   const text = msg().taskDetail.transition[offer.kind];
