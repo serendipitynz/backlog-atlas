@@ -24,8 +24,9 @@ pub enum ScanDir {
     Completed,
     ArchiveTasks,
     ArchiveDrafts,
-    /// `archive/` itself. v1.50.1 nests archives under `tasks`/`drafts`/`milestones` and puts
-    /// no task file directly here (doc-4 §3.4), but reads must not depend on the generating
+    /// `archive/` itself. v1.54.0 nests archives under `tasks`/`drafts`/`milestones`/`docs`/
+    /// `decisions` and puts no task file directly here (doc-4 §3.4; the last two arrived in v1.54.0
+    /// and are not read, decision-51 §6), but reads must not depend on the generating
     /// version (§4), so a flat `archive/*.md` written by some other version is still picked
     /// up — as a task with an indeterminate storage state (§3.4 last bullet).
     ArchiveRoot,
