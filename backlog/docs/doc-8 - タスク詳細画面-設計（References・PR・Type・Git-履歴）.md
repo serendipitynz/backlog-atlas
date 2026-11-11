@@ -3,7 +3,7 @@ id: doc-8
 title: タスク詳細画面 設計（References・PR・Type・Git 履歴）
 type: specification
 created_date: '2026-07-21 10:17'
-updated_date: '2026-09-17 04:21'
+updated_date: '2026-11-11 02:46'
 ---
 # タスク詳細画面 設計（References・PR・Type・Git 履歴）
 
@@ -223,7 +223,7 @@ Git 履歴欄は doc-6 の出力をまとめて見せる。
 
 doc-7 では active だけでなく draft・completed・archive のカードからも詳細画面を開ける。一方、completed・archive 内の TASK-ID への `task edit` は**終了コード 1 で失敗し、対象が見つからない旨を述べる**（実測）。**契約は終了コードのほうで、文面は版で変わる**（下記の版差記録）。詳細画面の編集操作は、対象タスクの保存区分（doc-4 の 3.4）別に定める。
 
-- **active**: 本章の通常編集（`task edit` 系）と、状態遷移 `task demote`／`task archive`／`task complete`（いずれも doc-5 の操作写像）。`task archive` は status を問わず実行できるが、`task complete` は status が `Done` のときのみ成功する（非 Done では「is not Done」で失敗、実測）。GUI は `task complete` を Done のタスクに限って能動化し、対象外では理由付きで無効化する。
+- **active**: 本章の通常編集（`task edit` 系）と、状態遷移 `task demote`／`task archive`／`task complete`（いずれも doc-5 の操作写像）。`task complete` は status が `Done` のときのみ成功し（非 Done では「is not Done」で失敗、実測）、`task archive` は逆に status が `Done` のときだけ失敗する（「is Done」で失敗、実測。2026-11-11 まで本項は「status を問わず実行できる」と書いていたが、偽だった。doc-5 の 3.7）。GUI は `task complete` を Done のタスクに限って能動化し、対象外では理由付きで無効化する。**`task archive` は status によらず能動化しており、Done のタスクでは押すと失敗する。** 直す形は decision-51 が決めた（TASK-208 の後に TASK-215 が完了整理を取り除き、`task archive` を status によらず提供する）。
 - **draft**: `draft promote`／`draft archive` のみ（doc-5 の 3.3）。内容編集は GUI に出さず、理由を述べる（doc-11 §5）。
 - **completed・archive**: CLI による内容編集は提供しない（`task edit` が終了コード 1 で失敗するため）。読み取り専用とし、理由を述べる（doc-11 §5）。
 
