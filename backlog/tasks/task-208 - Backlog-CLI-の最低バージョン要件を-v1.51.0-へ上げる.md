@@ -1,10 +1,10 @@
 ---
 id: TASK-208
 title: Backlog CLI の最低バージョン要件を v1.54.0 へ上げる
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-10-11 19:30'
-updated_date: '2026-11-11 06:10'
+updated_date: '2026-11-11 07:11'
 labels:
   - 'kind:research'
 milestone: m-4
