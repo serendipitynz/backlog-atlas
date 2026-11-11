@@ -732,7 +732,8 @@ export const EN: Catalog = {
     discardAndContinue: "Discard and continue",
     backToInput: "Back to the input",
     /**
-     * **backlog.md uses both words, in different roles** (measured on the v1.50.1 clone): its side
+     * **backlog.md uses both words, in different roles** (read out of v1.54.0's shipped binary on
+     * 2026-11-11; first measured on the v1.50.1 clone): its side
      * navigation heads the file list `Documents (N)` and states `Documents unavailable`, while
      * `Documentation` is the route, the sidebar tooltip, and the section header the task modal draws
      * over the docs related to *one task*. This 区画 heads a list of the project's doc files with a

@@ -14,16 +14,19 @@ use serde_yaml_ng::Value;
 /// SECTION names this layer maps to a domain field (doc-4 §3.1). Anything else is 未知の
 /// SECTION: kept as a body fragment and flagged (§4).
 ///
-/// **This is the CLI's whole SECTION vocabulary, not a subset it happens to write.** v1.50.1
+/// **This is the CLI's whole SECTION vocabulary, not a subset it happens to write.** v1.54.0
 /// builds every SECTION marker from one table of four entries, and scans for them with the
 /// single pattern
-/// `<!-- (SECTION:[A-Z][A-Z0-9_]*|COMMENTS|COMMENT|AC|DOD):(BEGIN|END) -->` — so the four names
-/// here plus [`Marker`]'s other families are every delimiter a managed task body can carry
-/// (measured on v1.50.1, 2026-08-22). Docs, decisions and milestones carry no marker at all.
+/// `^<!-- (SECTION:[A-Z][A-Z0-9_]*|COMMENTS|COMMENT|AC|DOD):(BEGIN|END) -->[\t ]*$` — so the four
+/// names here plus [`Marker`]'s other families are every delimiter a managed task body can carry
+/// (measured on v1.54.0, 2026-11-11). Docs, decisions and milestones carry no marker at all.
+/// 版差記録: v1.50.1 scanned with the same alternation and no line anchors, so a marker anywhere in
+/// a line was one; v1.51.0 anchored it (read out of each shipped binary, 2026-11-11). The names did
+/// not change, which is what this table depends on.
 const KNOWN_SECTIONS: [&str; 4] = ["DESCRIPTION", "PLAN", "NOTES", "FINAL_SUMMARY"];
 
 /// The `---` line that separates a comment's header from its body, and its body from the next
-/// comment, in the form v1.50.1 writes (measured 2026-08-22).
+/// comment, in the form v1.54.0 writes (measured 2026-11-11).
 const COMMENT_DELIMITER: &str = "---";
 
 /// Why a file has no frontmatter to read. Both are 解析不能 (doc-4 §5), but they are different
@@ -175,7 +178,7 @@ pub struct Body {
     pub acceptance_criteria: Vec<AcceptanceCriterion>,
     /// `DOD:BEGIN`…`DOD:END` items. Typed as the acceptance criterion because the CLI writes
     /// both blocks with the same code — same `- [ ] #N` shape, same numbering, same checked
-    /// state (measured on v1.50.1, 2026-08-22). A second struct of the same three fields would
+    /// state (measured on v1.54.0, 2026-11-11). A second struct of the same three fields would
     /// be a second place for the `#N` rule to drift.
     pub definition_of_done: Vec<AcceptanceCriterion>,
     /// `COMMENTS:BEGIN`…`COMMENTS:END` entries, in the order the file carries them.
@@ -201,8 +204,8 @@ pub struct Body {
 /// the string on screen and the string that can be saved would come apart without anything
 /// failing.
 ///
-/// Both opening forms are accepted because the reader accepts both: v1.50.1's `milestone add`
-/// writes the plain heading (measured 2026-08-22), while task files use the SECTION pair, and a
+/// Both opening forms are accepted because the reader accepts both: v1.54.0's `milestone add`
+/// writes the plain heading (measured 2026-11-11), while task files use the SECTION pair, and a
 /// milestone file hand-edited into the other shape still reads. **Which one opened the range is
 /// returned with it**, because the write is narrower than the read: decision-21 admits only the
 /// shape the CLI itself writes, so the writer refuses a [`DescriptionOpener::Section`] range while
@@ -261,11 +264,11 @@ pub struct DescriptionRange {
 }
 
 /// What a Description was opened by. A value rather than a bool so the two shapes are named where
-/// they are decided about: only [`DescriptionOpener::Heading`] is a shape v1.50.1's `milestone add`
+/// they are decided about: only [`DescriptionOpener::Heading`] is a shape v1.54.0's `milestone add`
 /// writes, and only that one may be written back into (decision-21's first condition).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DescriptionOpener {
-    /// `## Description` — what `milestone add -d` writes (measured 2026-08-22).
+    /// `## Description` — what `milestone add -d` writes (measured 2026-11-11).
     Heading,
     /// A `SECTION:DESCRIPTION` marker pair — a task file's shape, reachable in a milestone file
     /// only by hand-editing.
@@ -420,8 +423,8 @@ enum Marker {
     DodEnd,
     CommentsBegin,
     CommentsEnd,
-    /// One entry inside a `COMMENTS` block. v1.50.1 parses this form but never writes it — it
-    /// writes the `---`-delimited form instead (measured 2026-08-22, both directions) — so a
+    /// One entry inside a `COMMENTS` block. v1.54.0 parses this form but never writes it — it
+    /// writes the `---`-delimited form instead (measured 2026-11-11, both directions) — so a
     /// file can carry it and the reader has to take it.
     CommentBegin,
     CommentEnd,
@@ -453,7 +456,7 @@ fn parse_marker(marker: &str) -> Option<Marker> {
 ///
 /// **A stray `END` must not take an unrelated open block down with it.** The CLI accepts a comment
 /// whose body is exactly another block's marker and writes it into the file verbatim (measured on
-/// v1.50.1, 2026-08-22: `task edit --comment '<!-- DOD:END -->'` succeeds — its refusals cover only
+/// v1.54.0, 2026-11-11: `task edit --comment '<!-- DOD:END -->'` succeeds — its refusals cover only
 /// `<!-- COMMENTS?:` strings and standalone `---` lines), so this is reachable from CLI output and
 /// not only from a hand edit. Replacing before checking the variant loses every comment read so far
 /// and reports the loss under the *other* block's name, which is both the content doc-4 §5 says to
@@ -620,8 +623,8 @@ fn close_dangling(capture: &mut Capture, out: &mut Body) {
 ///
 /// **Two forms reach here, and which one applies is decided by the block, not by the entry** —
 /// the CLI takes the `COMMENT` marker form for the whole block as soon as one opening marker
-/// appears anywhere in it, and the `---`-delimited form otherwise (measured on v1.50.1,
-/// 2026-08-22). Deciding per entry would read a mixed block in a way the writer never produces
+/// appears anywhere in it, and the `---`-delimited form otherwise (measured on v1.54.0,
+/// 2026-11-11). Deciding per entry would read a mixed block in a way the writer never produces
 /// and the CLI never reads.
 fn parse_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static str>) {
     if lines.iter().any(|line| {
@@ -636,7 +639,9 @@ fn parse_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static str>) {
     }
 }
 
-/// The form v1.50.1 writes: header lines, `---`, body, `---`, repeated.
+/// The form v1.54.0 writes: header lines, `---`, body, `---`, repeated, with a blank line on each
+/// side of every `---` (measured 2026-11-11). 版差記録: v1.53.0 and earlier wrote no blank lines
+/// there; both layouts read alike because blank lines around a header or a body are not part of it.
 fn parse_delimited_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static str>) {
     const UNCLOSED: &str = "a COMMENTS entry has no closing `---` delimiter";
     let is_delimiter = |line: &String| line.trim() == COMMENT_DELIMITER;
@@ -671,7 +676,7 @@ fn parse_delimited_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static 
     }
 }
 
-/// The form v1.50.1 reads but does not write: `COMMENT:BEGIN` … `COMMENT:END` around each
+/// The form v1.54.0 reads but does not write: `COMMENT:BEGIN` … `COMMENT:END` around each
 /// entry, whose header is separated from its body by a blank line rather than by `---`.
 fn parse_marked_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static str>) {
     const UNREAD: &str =
@@ -719,7 +724,7 @@ fn parse_marked_comments(lines: &[String]) -> (Vec<Comment>, Option<&'static str
 fn marked_comment(lines: &[String]) -> Option<Comment> {
     // Leading blank lines belong to neither half: the CLI trims the whole entry before it looks
     // for the blank line that ends the header, so an entry opening with one still reads its
-    // `author:` (measured on v1.50.1, 2026-08-22 — a hand-written COMMENT block that begins with
+    // `author:` (measured on v1.54.0, 2026-11-11 — a hand-written COMMENT block that begins with
     // a blank line comes back from `task <id> --plain` with its author). Splitting on the first
     // blank line as it stands would put the header into the body instead.
     let start = lines.iter().position(|line| !line.trim().is_empty())?;
@@ -755,7 +760,7 @@ fn comment_header(lines: &[String]) -> (Option<String>, Option<String>) {
             continue;
         }
         // Lower-cased because the CLI lower-cases the key before comparing it, so `Author:` and
-        // `CREATED:` are fields to it too (measured on v1.50.1, 2026-08-22: a hand-written block
+        // `CREATED:` are fields to it too (measured on v1.54.0, 2026-11-11: a hand-written block
         // with those spellings comes back from `task <id> --plain` with both values read).
         match key.to_ascii_lowercase().as_str() {
             // The two are not normalized alike, because the CLI does not normalize them alike:
@@ -1080,8 +1085,8 @@ notes body
         assert!(parsed.events.is_empty());
     }
 
-    /// A task body exactly as v1.50.1 wrote it, with every section it can write present at once
-    /// (measured 2026-08-22: `task create -d --plan --notes --ac --dod` then
+    /// A task body exactly as v1.54.0 wrote it, with every section it can write present at once
+    /// (measured 2026-11-11: `task create -d --plan --notes --ac --dod` then
     /// `task edit --final-summary`, `--comment`, `--comment --comment-author`).
     const EVERY_SECTION: &str = "\n\
 ## Description\n\
@@ -1117,14 +1122,20 @@ notes body\n\
 \n\
 <!-- COMMENTS:BEGIN -->\n\
 created: 2026-08-16 20:34\n\
+\n\
 ---\n\
+\n\
 first comment\n\
+\n\
 ---\n\
 \n\
 author: someone\n\
 created: 2026-08-16 20:34\n\
+\n\
 ---\n\
+\n\
 second comment\n\
+\n\
 ---\n\
 <!-- COMMENTS:END -->\n\
 \n\
@@ -1166,6 +1177,33 @@ summary body\n\
         assert_eq!(parsed.comments[1].body, "second comment");
     }
 
+    /// 版差記録: through v1.53.0 the `---`-delimited form carried no blank lines around its
+    /// delimiters; v1.54.0 added them (measured 2026-11-11 on v1.50.1, v1.53.0 and v1.54.0). The
+    /// CLI rewrites no comment it did not add, so a root keeps both layouts side by side.
+    #[test]
+    fn the_comment_layout_written_through_v1_53_0_is_read_too() {
+        let parsed = parse_body(
+            "<!-- COMMENTS:BEGIN -->\n\
+created: 2026-08-16 20:34\n\
+---\n\
+first comment\n\
+---\n\
+\n\
+author: someone\n\
+created: 2026-08-16 20:34\n\
+---\n\
+second comment\n\
+---\n\
+<!-- COMMENTS:END -->\n",
+        );
+        assert_eq!(parsed.events.len(), 0, "{:?}", parsed.events);
+        assert_eq!(parsed.comments.len(), 2);
+        assert_eq!(parsed.comments[0].author, None);
+        assert_eq!(parsed.comments[0].body, "first comment");
+        assert_eq!(parsed.comments[1].author.as_deref(), Some("someone"));
+        assert_eq!(parsed.comments[1].body, "second comment");
+    }
+
     #[test]
     fn final_summary_is_a_known_section_rather_than_an_unknown_fragment() {
         let parsed = parse_body(
@@ -1178,8 +1216,8 @@ summary body\n\
 
     #[test]
     fn the_marker_form_of_comments_is_read_too() {
-        // v1.50.1 parses this form and writes the other one, so a file can carry it (measured
-        // 2026-08-22 by hand-writing it and reading the task back through the CLI).
+        // v1.54.0 parses this form and writes the other one, so a file can carry it (measured
+        // 2026-11-11 by hand-writing it and reading the task back through the CLI).
         let parsed = parse_body(
             "<!-- COMMENTS:BEGIN -->\n\
 <!-- COMMENT:BEGIN -->\n\
@@ -1344,7 +1382,7 @@ second\n\
     #[test]
     fn a_marked_comment_opening_with_a_blank_line_still_has_a_header() {
         // The CLI trims the entry before splitting header from body, so the blank line does not
-        // make the entry header-less (measured on v1.50.1, 2026-08-22).
+        // make the entry header-less (measured on v1.54.0, 2026-11-11).
         let parsed = parse_body(
             "<!-- COMMENTS:BEGIN -->\n\
 <!-- COMMENT:BEGIN -->\n\
@@ -1362,7 +1400,7 @@ the real body\n\
 
     #[test]
     fn a_stray_end_marker_does_not_take_the_open_block_with_it() {
-        // `task edit --comment '<!-- DOD:END -->'` succeeds on v1.50.1 (measured 2026-08-22), so
+        // `task edit --comment '<!-- DOD:END -->'` succeeds on v1.54.0 (measured 2026-11-11), so
         // this arrives from the CLI's own output, not only from a hand edit. What is asserted is
         // that the open COMMENTS block survives it — before this, the stray END replaced the
         // capture and every comment read so far went with it, reported under DOD's name.

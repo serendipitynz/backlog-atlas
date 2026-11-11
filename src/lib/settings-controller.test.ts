@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CONFIRMED_CLI_VERSION } from "./confirmed-version";
 import {
   createSettingsController,
   initialSettingsState,
@@ -144,7 +145,7 @@ function harness(
   };
 }
 
-const READY: CliReadiness = { state: "ready", version: "1.50.1" };
+const READY: CliReadiness = { state: "ready", version: CONFIRMED_CLI_VERSION };
 const EDITOR: EditorReadiness = {
   configured: null,
   methods: [{ method: "association", program: "vi", product: "", edits: true }],
@@ -317,7 +318,12 @@ describe("遅い probe は新しい答えを上書きしない", () => {
   it("解決結果の表示 は開くたびに 確認中 へ戻す", async () => {
     const h = harness();
     const programs: ExternalProgramReport[] = [
-      { name: "backlog", program: "backlog", source: "onPath", outcome: { state: "launched", report: "1.50.1" } },
+      {
+        name: "backlog",
+        program: "backlog",
+        source: "onPath",
+        outcome: { state: "launched", report: CONFIRMED_CLI_VERSION },
+      },
     ];
     void h.controller.refreshPrograms();
     h.landPrograms(programs);

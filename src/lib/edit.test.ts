@@ -102,7 +102,7 @@ describe("ラベルの増減", () => {
   });
 
   it("カンマを含むラベルの追加を拒み、2 件に分かれることを理由に述べる", () => {
-    // `--add-label "b,c"` writes `b` と `c` の 2 件 (v1.50.1 実測)。作成モーダルとタグには同じ規則が
+    // `--add-label "b,c"` writes `b` と `c` の 2 件 (v1.54.0 実測)。作成モーダルとタグには同じ規則が
     // 先に掛かっており (doc-10 §7)、同じ入力が作成では拒まれ編集では通る非対称がここで閉じる。
     const session = setField(startSession(taskView({ labels: ["a"] })), "labels", ["a", "b,c"]);
     expect(buildSave(session)).toEqual({
@@ -113,7 +113,7 @@ describe("ラベルの増減", () => {
 
   it("カンマを含む既存ラベルの削除を拒み、削除できないことを理由に述べる", () => {
     // 追加側と結末が違うので理由文も別である: `--remove-label "x,y"` は値を 2 件へ分けたうえで、その
-    // どちらもタスクに無いので 1 件も消さずに終了コード 0 と `Updated` を出す (v1.50.1 実測)。発行すれば
+    // どちらもタスクに無いので 1 件も消さずに終了コード 0 と `Updated` を出す (v1.54.0 実測)。発行すれば
     // 起きなかった削除を成功として報告することになり、ラベルは divergence の突き合わせにも入っていない。
     const session = setField(startSession(taskView({ labels: ["x,y"] })), "labels", []);
     expect(buildSave(session)).toEqual({
@@ -202,15 +202,17 @@ describe("assignee の全置換 (doc-5 §3, TASK-57・TASK-151・TASK-153)", () 
   });
 
   it("最後の 1 件を消すと空集合を送り、解除になる", () => {
-    // `-a ""` が一覧を空にする（v1.50.1 実測）。区切りだけで解析結果が空になる値も同じ要求なので、
+    // `-a ""` が一覧を空にする（v1.54.0 実測）。区切りだけで解析結果が空になる値も同じ要求なので、
     // 同じ空集合として届く。
     const session = setField(startSession(taskView({ assignee: ["@takkyun"] })), "assignee", []);
     expect(editOf(ready(session).action)).toEqual({ assignee: [] });
   });
 
   it("1 件の名前にカンマを含む保存は拒み、2 件に分かれることを理由に述べる", () => {
-    // 編集側の `-a` は値をカンマで分ける（v1.50.1 実測。作成側は分割しない）ので、"dave,erin" を
+    // 編集側の `-a` は値をカンマで分ける（v1.54.0 実測）ので、"dave,erin" を
     // 1 件の assignee として書く手段は無い。発行してから食い違いを知るのではなく保存前に拒む。
+    // 置き換えた註は「作成側は分割しない」と添えていたが、v1.50.1 から作成側も同じく分割する
+    // （doc-5 §3.5）ので偽だった。
     const view = taskView({ assignee: ["dave"] });
     const session = setField(startSession(view), "assignee", ["dave,erin"]);
     expect(buildSave(session)).toEqual({
@@ -267,7 +269,7 @@ describe("References・dependencies の全置換 (doc-5 §3.1)", () => {
 
   it("1 件の参照にカンマを含む保存を拒む", () => {
     // `--ref` は参照ごとに繰り返して渡すので連結は起きないが、**CLI は各値をカンマで分ける**
-    // （v1.50.1 実測）。座標を持つ地図の URL がそのまま当たるので、繰り返し渡していることは
+    // （v1.54.0 実測）。座標を持つ地図の URL がそのまま当たるので、繰り返し渡していることは
     // 掛けない理由にならない。
     const session = setField(
       startSession(taskView({ references: ["https://a.test/1"] })),
@@ -351,7 +353,7 @@ describe("AC の項目単位操作と全体差し替えの区別 (doc-5 §3)", (
   });
 });
 
-// v1.50.1 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
+// v1.54.0 実測: 1 回の task edit の中で --remove-ac は読んだままの番号を、
 // --check-ac / --uncheck-ac は削除後の番号を指す。--ac の追加は末尾に付き番号をずらさない。
 describe("AC 項目単位操作の番号を削除後の並びへ写す", () => {
   const three = taskView({
@@ -374,7 +376,7 @@ describe("AC 項目単位操作の番号を削除後の並びへ写す", () => {
 
   it("項目が 2 件のときも範囲外にならない", () => {
     // 素の番号だと --remove-ac 1 --check-ac 2 になり、CLI は
-    // "Acceptance criterion #2 not found" で始まる文で終了コード 1（2026-08-22 に v1.50.1 で実測）。
+    // "Acceptance criterion #2 not found" で始まる文で終了コード 1（2026-11-11 に v1.54.0 で実測）。
     const two = taskView({ acceptanceCriteria: criteria(["one", false], ["two", false]) });
     let session = toggleAcRemoval(startSession(two), 1);
     session = toggleAcCheck(session, 2);
@@ -653,9 +655,9 @@ describe("Type 編集の非提供 (doc-8 §4)", () => {
     expect(CATALOGS.en.taskDetail.typeNotEditable).not.toContain("on this screen");
   });
 
-  it("states a reason that is true of v1.50.1 (doc-10 §1)", () => {
+  it("states a reason that is true of v1.54.0 (doc-10 §1)", () => {
     // Not "the CLI has no way": `task edit` and `task create` both take `--type` (measured
-    // 2026-08-17). What is absent is an operation on Atlas's side, so neither the flag name nor a
+    // 2026-11-11). What is absent is an operation on Atlas's side, so neither the flag name nor a
     // claim about the CLI belongs in the sentence.
     expect(typeNotEditable()).not.toContain("CLI");
     expect(typeNotEditable()).not.toContain("--type");

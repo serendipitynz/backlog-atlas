@@ -925,7 +925,7 @@ export const ja = {
     keepLeavesDangling:
       "「そのまま保持」では、参照するタスクが解決先の無い milestone 値を持ったまま残ります",
     /**
-     * Why a `##` may not start a line of the 説明 (doc-10 §6). **Not「CLI にできない」** — v1.50.1's
+     * Why a `##` may not start a line of the 説明 (doc-10 §6). **Not「CLI にできない」** — v1.54.0's
      * `milestone add -d` writes such a description without complaint; what happens is that the read
      * stops at the next `##`, so the rest would be saved and invisible. **The parsing rule itself is
      * not on screen** (TASK-188): 「読み取りは次の `##` までを説明として扱う」 is doc-10 §6's sentence

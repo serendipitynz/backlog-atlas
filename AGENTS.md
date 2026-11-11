@@ -23,12 +23,14 @@ start implementing — resolve the contradiction first.
   fix. **The owner decided the milestone half on 2026-09-06**; until then this rule
   bound an agent without exception and only the product wrote that range.
 - **A decision is outside that list, because no CLI call can write one.**
-  `backlog decision` has no `update`/`edit`, and `create`'s options are `<title>`,
-  `-s/--status` and `--plain` — none of which carries a body, so a decision's body is
-  unwritable through the CLI at creation as well as afterwards (measured on v1.50.1;
-  `doc`, by contrast, has `update --content`). **`list` and `--plain` arrived in
-  v1.50.x and changed nothing here** — both are read/output, which is why this bullet
-  names what no option carries rather than counting the options. Every body in `backlog/decisions/` was therefore written by
+  `backlog decision` has no `update`, its `edit` takes only `--status` and `--plain`, and
+  `create`'s options are `<title>`, `-s/--status` and `--plain` — none of which carries a
+  body, so a decision's body is unwritable through the CLI at creation as well as afterwards
+  (measured on v1.54.0; `doc`, by contrast, has `update --content`). **`list` and `--plain`
+  arrived in v1.50.x, and `edit`, `archive`, `restore` and `delete` in v1.54.0, and none of
+  them changed anything here** — the first two are read/output and the rest set a status or
+  move a file, which is why this bullet names what no option carries rather than counting
+  the options. Every body in `backlog/decisions/` was therefore written by
   editing the file, and that is how to write one. **Tasks and documents keep the
   rule above without exception**; a milestone's description is the other value the
   CLI cannot write, and the bullet below fixes its range. **The owner confirmed
@@ -38,9 +40,9 @@ start implementing — resolve the contradiction first.
   session that re-derives a third from silence would be making the move the last
   bullet here forbids.
 - **A milestone's description — the one range written by the product and by an
-  agent alike** (decision-21). `milestone` has no `update`/`edit` in v1.50.1 or in
-  v1.51.0 (the latter measured 2026-09-06, where `rename` gained `--due-date` and
-  still carries nothing for the description), so a description can only be set at
+  agent alike** (decision-21). `milestone` has no `update`/`edit` in v1.54.0 (measured
+  2026-11-11), as in v1.50.1 and v1.51.0 before it (the latter measured 2026-09-06, where
+  `rename` gained `--due-date` and still carries nothing for the description), so a description can only be set at
   creation, and re-creating the milestone changes its id. Atlas therefore
   writes that one range itself: the bytes from the line after the
   `## Description` heading to the line before the next `##` heading (or the end
