@@ -4,7 +4,7 @@ title: completed・archive のタスクを盤面へ戻す操作（task restore�
 status: In Review
 assignee: []
 created_date: '2026-11-11 05:58'
-updated_date: '2026-11-11 08:50'
+updated_date: '2026-11-11 09:02'
 labels:
   - 'kind:feature'
 milestone: m-4
@@ -88,4 +88,12 @@ TASK-208 が入るリリースに本タスクも入れる。入れないと、�
 - `pnpm test`（54 ファイル・1399 件）、`pnpm run check`（0 errors）、`pnpm run lint`、`src-tauri/` での `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test`（485 件）が通った。1 回目の `pnpm test` では、doc-8 で閉じる `**` と次の `**` がつながった 1 か所を emphasis-closing.test.ts が見つけたので、間に空白を入れて直した。
 
 AC #4 を試験でも押さえるため、sync.rs に 1 本足した。archive/tasks にあるタスクへの restore の照合対象が、戻す前の場所のファイルになることを確かめる。これで cargo test は 486 件になり、cargo clippy も通った。
+
+## レビュー 1 回目（PR #171、Claude Code）
+
+[P2] 1 件・[P3] 2 件で、すべて直した。
+
+- [P2] doc-8 §6.5 の「アーカイブと active へ戻すは互いを戻し合う（id も管理ファイルの中身も変わらない。実測）」のうち、アーカイブ側の中身は測っていなかった。v1.54.0 で測った。作成から 61 秒後、`updated_date` が書き換わりうる分解能を越えてからアーカイブし、戻すまでの間、内容ハッシュは変わらなかった（In Progress と Done の 2 件）。文は真だったので doc-8 はそのままにし、測定を decision-51 の「§6 の改訂」節に書き足した。
+- [P3] edit.test.ts の註に「Atlas は TASK-216 まで restore を出さない」が残っていた。文言表の註の「restoring from Atlas is TASK-216」と併せて直した。
+- [P3] decision-51 §6 の項に改訂節への案内が無く、そこで読み止めると TASK-216 より前の答えになっていた。decision-13・decision-31 の形に合わせて「下の『§6 の改訂』を先に読むこと」を書き足した。
 <!-- SECTION:NOTES:END -->
