@@ -815,9 +815,8 @@ describe("実行前確認 (doc-11 §12)", () => {
   it("片道の遷移は戻せないことを述べ、それ以外は述べない", () => {
     // The user's word, 2026-08-11 の目視. The version number that first draft carried belongs to
     // doc-8 §6.5, not to a question about this press. 差し戻す・昇格 must not pick it up: those two
-    // *can* be taken back. A task archive does not say it either, though Atlas cannot yet take one
-    // back: v1.54.0's CLI can (`task restore`, which Atlas does not issue until TASK-216), so its
-    // question states what is kept instead (TASK-215).
+    // *can* be taken back, and so can a task archive and a restore, which undo each other (TASK-216).
+    // Those two state what is kept instead (TASK-215, TASK-216).
     for (const kind of ["draftArchive"] as const) {
       const offer = everyOffer().find((entry) => entry.kind === kind);
       if (offer === undefined) {

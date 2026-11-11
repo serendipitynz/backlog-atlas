@@ -111,7 +111,7 @@ Atlas はこれを doc-5 §5 の CLI 失敗として扱い、stderr を添えた
 
 v1.54.0〜v1.55.3 が開いたもののうち、上の 5 項で扱わなかったものは取り込まない。
 
-- **`task restore`・`task delete`（v1.54.0）**: Atlas はアーカイブを戻す操作も、タスクを消す操作も持たない。doc-8 §6.5 は、
+- **`task restore`・`task delete`（v1.54.0）**: **`task restore` の半分は 2026-11-11 に撤回した。下の「§6 の改訂」を先に読むこと。** Atlas はアーカイブを戻す操作も、タスクを消す操作も持たない。doc-8 §6.5 は、
   5 件の状態遷移に押す前の状態へ戻せるものが無いことを 2026-08-11 の help で確かめているが、`task restore` が入った版では CLI については偽になる。Atlas が戻す操作を持つかは
   CLI の版とは別の製品判断なので、ここでは決めない。その判断までは、doc-8 §6.5 の記述は Atlas の画面についての記述として読む。
 - **`doc archive`・`decision archive` とその restore・delete（v1.54.0）**: Atlas は文書と decision をアーカイブしない。読み取り層は
@@ -155,7 +155,9 @@ TASK-208 が最低バージョン要件を v1.54.0 へ上げたので、complete
 
 - **completed・archive のタスクに「active へ戻す」を出し、`task restore` を発行する。** v1.54.0 の `task restore` は、archive/tasks/ と
   completed/ のタスクを、管理ファイルの中身を 1 バイトも変えずに tasks/ へ移す。id・status・References・dependencies は保たれ、
-  ほかの管理ファイルは書き換わらない（2026-11-11 に v1.54.0 で実測）。控えの語と確認文は、オーナーが選んだ「active へ戻す」で、
+  ほかの管理ファイルは書き換わらない（2026-11-11 に v1.54.0 で実測）。**`task archive` も同じく中身を変えずに移す**ので、
+  アーカイブと「active へ戻す」は互いを押す前の状態へ戻し合う（同日実測。作成から 61 秒後、`updated_date` が書き換わりうる
+  分解能を越えてからアーカイブし、戻すまで内容ハッシュは変わらなかった）。控えの語と確認文は、オーナーが選んだ「active へ戻す」で、
   保たれるものを述べる。
 - **archive の draft には出さない。** v1.54.0 に draft を戻す手段は無く、`task restore DRAFT-N` は not found で終了コード 1 になる
   （実測）。控えを置かずに、CLI に手段が無いことを理由として述べる（doc-11 §5）。

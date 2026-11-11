@@ -773,7 +773,7 @@ export const ja = {
      * cannot be derived from the question either. **A one-way move says 戻せません plainly and names
      * no version** (the user's wording, 2026-08-11; decision-27 §2 later made that the general rule).
      * Task archive stopped saying it on 2026-11-11: v1.54.0 keeps the id and links and can restore
-     * it, so what it says instead is what is kept (TASK-215; restoring from Atlas is TASK-216).
+     * it, so what it says instead is what is kept (TASK-215, TASK-216).
      */
     transition: {
       draftPromote: {
