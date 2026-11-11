@@ -563,9 +563,6 @@ export const EN: Catalog = {
     noWayBackFromClosed:
       "The CLI has no operation that moves a task back from completed or archive, so none is offered",
     unsavedBeforeTransition: "There is unsaved input. Save or cancel it before running this",
-    completableOnly: (status: string, current: string) =>
-      `Available only while the status is ${status} (currently ${current})`,
-    statusUnreadableShort: "unknown",
     transition: {
       draftPromote: {
         label: "Promote to task",
@@ -587,15 +584,9 @@ export const EN: Catalog = {
       },
       taskArchive: {
         label: "Archive",
-        effect: "cannot be undone",
-        question: "This task will be archived. This cannot be undone.",
+        effect: "the id, references and dependencies are kept",
+        question: "This task will be archived. Its id, references and dependencies are kept.",
         proceed: "Archive",
-      },
-      taskComplete: {
-        label: "Clean up into completed",
-        effect: "available only while the status is Done. Cannot be undone",
-        question: "This task will be cleaned up into completed. This cannot be undone.",
-        proceed: "Clean up into completed",
       },
     },
     undeclaredValue: (value: string) => `${value} (not declared in config.yml)`,

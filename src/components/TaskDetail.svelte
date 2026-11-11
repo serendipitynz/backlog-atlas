@@ -473,7 +473,7 @@
 
   /**
    * Every 状態遷移 asks first (doc-11 §12 の実行前確認). Not a general habit — Atlas has no way back to
-   * the state before the press for any of the five (doc-8 §6.5), so an accidental one cannot be undone
+   * the state before the press for any of the four (doc-8 §6.5), so an accidental one cannot be undone
    * from Atlas at all. 版差記録: v1.54.0's `task restore` undoes an archive from the CLI, which Atlas
    * does not issue (decision-51 §6).
    *
