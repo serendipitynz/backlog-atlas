@@ -3,14 +3,14 @@ id: doc-5
 title: Backlog 更新アダプター 設計
 type: specification
 created_date: '2026-07-21 10:05'
-updated_date: '2026-11-11 02:46'
+updated_date: '2026-11-11 05:48'
 ---
 # Backlog 更新アダプター 設計
 
 TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書で導入する語は初出に定義を置く。
 前提は decision-1（Tauri/Rust）・decision-2（読み取りは Backlog 管理ファイルの直接解析、更新は Backlog CLI へ委譲）・doc-3（プロジェクト台帳）・doc-4（読み取り層）。
 
-**実測基準版**: 本書が「実測」と述べる記述は Backlog CLI v1.50.1 で確かめたものである（decision-7 の最低バージョン要件、decision-27）。個々の記述は版を名乗らない — 名乗るのは、2 つ以上の版の違いそのものを述べる版差記録だけである。最低バージョン要件が上がったら、本行の版と本書の実測記述を併せて測り直す。
+**実測基準版**: 本書が「実測」と述べる記述は Backlog CLI v1.54.0 で確かめたものである（decision-7 の最低バージョン要件、decision-27）。個々の記述は版を名乗らない — 名乗るのは、2 つ以上の版の違いそのものを述べる版差記録だけである。最低バージョン要件が上がったら、本行の版と本書の実測記述を併せて測り直す。
 
 ## 1. 用語
 
@@ -50,8 +50,8 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 | draft 昇格（tasks へ） | `draft promote` | `<taskId>`（`DRAFT-N`） |
 | draft アーカイブ | `draft archive` | `<taskId>`（`DRAFT-N`） |
 | タスクの draft 差し戻し | `task demote` | `<taskId>`（`TASK-N`。active → draft） |
-| タスクアーカイブ | `task archive` | `<taskId>`（`TASK-N`。active → `archive/tasks`。**status が `Done` のタスクは「is Done」で失敗**し、それ以外の status では成功。5 章。2026-11-11 まで本行は「status を問わず成功」と書いていたが、偽だった。3.7） |
-| 完了整理 | `task complete` | `<taskId>`（`TASK-N`。**status が `Done` のときのみ**成功。active → `completed`。非 Done では「is not Done」で失敗、5 章） |
+| タスクアーカイブ | `task archive` | `<taskId>`（`TASK-N`。active → `archive/tasks`。**status によらず成功**し、id を予約したまま References・dependencies を保つ。5 章。v1.53.0 までは status が `Done` のタスクを「is Done」で拒んでいた（版差記録、3.7）。2026-11-11 まで本行は「status を問わず成功」と書いていたが、当時の実測基準版では偽だった） |
+| 完了整理 | `task complete` | `<taskId>`（`TASK-N`。**v1.54.0 で CLI から削除され、status によらず終了コード 1 で失敗する**。本行は TASK-215 が落とす（decision-51 §2）。v1.53.0 までは status が `Done` のときのみ成功して active → `completed` へ移し、非 Done では「is not Done」で失敗した（版差記録、3.7）） |
 | 文書作成 | `doc create` | `<title>`、`-t <type>`（readme/guide/specification/other）、`-p <path>` |
 | 文書更新 | `doc update` | `<docId>`、`--title <title>` / `--content <markdown>`（本文全置換） / `-t <type>` / `-p <path>` / `--tags <tags>` |
 | マイルストーン作成 | `milestone add` | `<name>`、`-d <description>` |
@@ -91,7 +91,7 @@ TASK-9 の設計。用語は [doc-1](doc-1)・[doc-2](doc-2) に従い、本書�
 
 - **タスク**: 3 章の `task create`/`task edit` 写像に載る操作（title・description・status・ラベル増減・AC 増減/チェック・AC 差し替え・References 全置換・priority・milestone・assignee・dependencies・実装計画/ノート等）。**Final Summary・Definition of Done・Comments の更新はここに含めると決まっており、まだ載っていない**（下項）。assignee は編集側だけが扱う（3 章）。assignee・References・dependencies の全置換は既存値を含めた全集合を渡す（3 章。空集合化は 3 章の表が持つ 3 通りの書き方で行う、3.5）。AC 差し替えは複合操作（`--remove-ac`＋`--ac`＋`--check-ac` を 1 呼び出し、3 章）。
 - **draft**: 状態遷移（`draft promote`／`draft archive`／`task demote`）のみを提供し、draft の内容編集は GUI に出さない（3.3）。
-- **active の状態遷移**: active タスクには内容編集に加え、`task demote`（→ draft）・`task archive`（→ `archive/tasks`、status が `Done` 以外のとき可）・`task complete`（→ `completed`、status が `Done` のときのみ可）を提供する。`task complete` は非 Done では失敗するため（5 章）、Done のタスクに限って能動化する。**`task archive` は Done のタスクで失敗するのに、画面は status によらず能動化している**（2026-11-11 に判明。3.7）。これを直す形は decision-51 が決めた。最低バージョン要件を上げ（TASK-208）、その後に完了整理を取り除き、`task archive` を status によらず提供する（TASK-215）。
+- **active の状態遷移**: active タスクには内容編集に加え、`task demote`（→ draft）・`task archive`（→ `archive/tasks`、status によらず可）・`task complete` を提供している。**`task complete` は CLI から削除されており、どの status でも失敗するのに、画面は Done のタスクに限って能動化している**（3.7）。v1.53.0 までは逆で、Done のタスクには `task complete` だけが通り、`task archive` は失敗した（版差記録。2026-11-11 に判明）。直す形は decision-51 が決めた。最低バージョン要件を v1.54.0 へ上げ（TASK-208）、その後に完了整理を取り除き、`task archive` を status によらず提供する（TASK-215）。
 - **保存区分別の可否**: 上記タスク操作は保存区分（doc-4 の 3.4）が active のタスクに適用する。completed・archive のタスクは `task edit` が `not found`（終了コード 1）になるため、CLI による内容編集を提供しない（詳細画面での可否は doc-8 の 6.5）。
 - **文書**: 作成（title・type・path）と更新（title・本文全置換・type・path・tags）。本文は全置換のみで、部分編集は「編集後の全文を `--content` で渡す」に帰着させる。
 - **マイルストーン**: 作成（名称・作成時の説明）・**説明の更新**・改称（名称）・削除・アーカイブ。**説明の更新は直接書き込み操作である**（3 章の表、decision-21）。GUI は選んだマイルストーンの説明を編集して保存できる欄を持ち、空にすることもできる。**行頭が `##` の行を含む説明は入力検査で拒む** — 読み取り層は次の `##` で説明の本文範囲を切るので、そのまま許すと保存した文字列の一部が次の読み込みで画面から消える（doc-10 §6）。frontmatter の項目（title を含む）を直接書き換える欄は設けない。
@@ -112,7 +112,7 @@ draft（doc-4 の保存区分 draft。frontmatter の id は `DRAFT-N`）に対�
 | draft アーカイブ | `draft archive <DRAFT-N>` | draft ／ `DRAFT-N` ／ 任意 status → archive ／ `DRAFT-N`（保持） ／ status 保持 |
 
 - promote・demote は保存先だけでなく id を付け替える（`DRAFT-N` ↔ `TASK-M`、番号も採番し直す）。promote の status 変化は**条件付き**で、status が `Draft` の draft のみ `default_status` へ変わり、通常 status を持つ draft（`task demote` 由来）は status を保持する（実測）。archive は id・status を保持して `archive/drafts` へ移す。したがって draft の status は一律 `Draft` ではない（`draft create` 直後だけが `Draft`。doc-4 の 3.4）。
-- **内容編集は提供しない**: draft の title・description・AC・References 等の編集は GUI から提供しない。CLI には draft を対象にした `task edit` 相当が無いためで、decision-2 の CLI 委譲を保つ限り Atlas も提供できない。 **この理由は v1.51.0 の `draft edit` で上位版について成り立たなくなり、decision-48 は内容編集を提供すると決めた**（3.6）。最低バージョン要件を v1.51.0 へ上げたうえで提供するまでは（TASK-208・TASK-209）、本項は実測基準版について真の記述として残る。内容を編集したい場合は、`draft promote` で通常タスクにしてから `task edit` 系で編集するか、外部エディタ経路（doc-8）で直接編集する。
+- **内容編集はまだ提供していない**: draft の title・description・AC・References 等の編集は GUI から提供していない。**提供しない理由は、もう CLI の手段ではない** — 実測基準版の CLI は `draft edit` を持つ（v1.51.0 で新設。3.6）。decision-48 は内容編集を提供すると決め、操作写像へ足すのは TASK-209 である。**本項は v1.50.1 が実測基準版だった間「CLI には draft を対象にした `task edit` 相当が無いため、decision-2 の CLI 委譲を保つ限り Atlas も提供できない」と書いていた**（版差記録。TASK-208 が実測基準版を上げたときに改めた）。内容を編集したい場合は、`draft promote` で通常タスクにしてから `task edit` 系で編集するか、外部エディタ経路（doc-8）で直接編集する。
 - **id と横断タスクID**: draft の横断タスクID 右辺は `DRAFT-N`（doc-3 の 5.1）。対象 ID は `draft promote`／`draft archive` が `DRAFT-N`、`task demote` が `TASK-N`。アダプターは対象プロジェクトを作業ディレクトリに固定するため slug 前置は不要（doc-3 の 5.3）。
 - draft をスイムレーン／詳細に表示するか、既定でフィルタするかは doc-7（TASK-11）で扱う。本アダプターは表示可否に依らず、上記状態遷移だけを操作写像に載せる。
 
@@ -151,7 +151,7 @@ v1.50.1 が新たに受け取るオプションのうち、Atlas が使わない
 
 ### 3.6 v1.50.1 から v1.53.0 で変わった挙動（TASK-202 実測）
 
-本書の実測基準版は冒頭が宣言している。下の各項は、実測基準版より新しい版で何が変わったかの記録である。基準版で書いた記述を、上位版の利用者について読み直すときに要る。2026-10-12 に、v1.50.1・v1.51.0・v1.52.0・v1.53.0 を使い捨てのディレクトリへ並べて導入し、全サブコマンドの help のオプション集合を比べた。あわせて、Atlas が発行する形の操作列を 4 版へ流し、管理ファイルを比べた。追随するかどうかの判断は decision-48 が持つ。
+下の各項は、v1.50.1 から v1.53.0 までに何が変わったかの記録である。書いた時点ではこの版域が実測基準版より新しかったが、TASK-208 が実測基準版をこの版域より上へ上げたので、いまは 3.4・3.5 と同じく、旧版で書かれた実装・doc を読み直すときに要る。2026-10-12 に、v1.50.1・v1.51.0・v1.52.0・v1.53.0 を使い捨てのディレクトリへ並べて導入し、全サブコマンドの help のオプション集合を比べた。あわせて、Atlas が発行する形の操作列を 4 版へ流し、管理ファイルを比べた。追随するかどうかの判断は decision-48 が持つ。
 
 - **Atlas が発行する 13 サブコマンド・36 オプションは 4 版すべてにあり、削除も改名も無い。** 操作列で書かれる管理ファイルは、日付と次項の 2 手を除いて 4 版でバイト単位まで一致した。
 - **予約マーカー行の扱いが変わった。** 予約マーカー行とは、本文の欄に渡す文字列のうち、行全体が管理ファイルの節境界コメントと一致する行を指す。v1.50.1 はそれを黙って書き、書かれたファイルは読み取り層で想定外スキーマになる。v1.51.0 以降は、その欄自身の節の境界行に限って、理由を stderr に出して終了コード 1 で拒む。拒否は呼び出し全体に掛かり、同じ呼び出しのほかの欄も書かれない。**他の節の境界行は v1.53.0 でも書かれる** — description・plan・notes の 3 欄に 7 種を入れた 21 通りのうち、拒まれたのは 3 通りだけだった。**CLI の拒否文が勧める回避（行頭に空白を 1 つ入れる）は Atlas では回避にならない** — v1.53.0 はその行を本文の文字として書いて読むが、読み取り層は前後の空白を落として境界と認識し、そのタスクを縮退させる。行末に空白を足した境界行は v1.53.0 も拒んだ。Atlas 側で発行前に拒むこと、その範囲を読み取り層の認識と CLI の各版の認識のどちらに合わせるかは、TASK-211 が行う（decision-48 §6）。
@@ -167,7 +167,7 @@ v1.51.0 以降が新たに受け取るもののうち、Atlas が使わないも
 
 ### 3.7 v1.53.0 から v1.55.3 で変わった挙動（TASK-213 実測）
 
-3.6 と同じく、実測基準版より新しい版で何が変わったかの記録である。2026-11-11 に、v1.50.1・v1.51.0・v1.52.0・v1.53.0・v1.54.0・v1.55.3 を使い捨てのディレクトリへ並べて導入し、3.6 と同じ形で測った。今回の操作列には、3.6 の操作列に無かった Done のタスクのアーカイブを含めた。追随するかどうかの判断は decision-51 が持つ。
+3.6 と同じく、版の間で何が変わったかの記録である。v1.54.0 は TASK-208 が上げた後の実測基準版で、v1.55.0 以降の項だけが実測基準版より新しい版の差である。2026-11-11 に、v1.50.1・v1.51.0・v1.52.0・v1.53.0・v1.54.0・v1.55.3 を使い捨てのディレクトリへ並べて導入し、3.6 と同じ形で測った。今回の操作列には、3.6 の操作列に無かった Done のタスクのアーカイブを含めた。追随するかどうかの判断は decision-51 が持つ。
 
 - **`task complete` は v1.54.0 で削除された。** v1.54.0 以降では status によらず終了コード 1 になり、ファイルは動かない。stderr は `task archive` を勧める 1 行である。アダプターは終了コードで判定する（5 章）ので、成功と誤って報告されることは無い。Atlas が発行する残りの 12 サブコマンド・36 オプションは、v1.53.0・v1.54.0・v1.55.3 のすべてにあった。
 - **Done のタスクへの `task archive` は、v1.53.0 までは失敗し、v1.54.0 から成功する。** v1.50.1〜v1.53.0 は「is Done」で終了コード 1 を返し、stderr で `task complete` を勧める。3 章の表は 2026-11-11 まで「status を問わず成功」と書いていたが、実測基準版でも偽だった。3.6 の操作列は非 Done のタスクだけをアーカイブしていたので、この違いを通らなかった。
