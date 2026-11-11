@@ -1,10 +1,10 @@
 ---
 id: TASK-215
 title: 完了整理を画面から下ろし、アーカイブを status によらず提供する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-11 02:40'
-updated_date: '2026-11-11 07:34'
+updated_date: '2026-11-11 08:27'
 labels:
   - 'kind:bug'
 milestone: m-4
