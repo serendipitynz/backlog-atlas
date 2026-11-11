@@ -210,6 +210,11 @@ pub enum UpdateOperation {
     /// off the board: v1.54.0 removed `task complete` (decision-51 §2).
     #[serde(rename_all = "camelCase")]
     TaskArchive { task_id: String },
+    /// `task restore <TASK-N>` — archive or completed → active. Moves the file back unchanged, so
+    /// the id, status, References and dependencies stay as they were (measured 2026-11-11 on
+    /// v1.54.0, decision-51 の §6 の改訂). An archived draft has no such operation in the CLI.
+    #[serde(rename_all = "camelCase")]
+    TaskRestore { task_id: String },
     /// `doc create` (doc-5 §3).
     DocCreate(DocCreate),
     /// `doc update` (doc-5 §3): title / whole-body / type / path / tags.
@@ -537,7 +542,7 @@ fn allowed_options(command: &[&str]) -> &'static [&'static str] {
         ["milestone", "add"] => &["--description"],
         ["milestone", "rename"] => &["--no-update-tasks"],
         ["milestone", "remove"] => &["--task-handling", "--reassign-to"],
-        // draft promote/archive, task demote/archive, milestone archive: positional only.
+        // draft promote/archive, task demote/archive/restore, milestone archive: positional only.
         _ => &[],
     }
 }
@@ -625,6 +630,9 @@ pub fn plan_operation(op: &UpdateOperation) -> Result<Vec<Mapped>, RejectReason>
         }
         UpdateOperation::TaskArchive { task_id } => {
             invoked([Invocation::new(&["task", "archive"]).positional(task_id)])
+        }
+        UpdateOperation::TaskRestore { task_id } => {
+            invoked([Invocation::new(&["task", "restore"]).positional(task_id)])
         }
         UpdateOperation::DocCreate(c) => invoked([plan_doc_create(c)]),
         UpdateOperation::DocUpdate { doc_id, update } => {
@@ -2427,6 +2435,12 @@ mod tests {
                     task_id: "TASK-1".to_string(),
                 },
                 vec!["task", "archive", "TASK-1"],
+            ),
+            (
+                UpdateOperation::TaskRestore {
+                    task_id: "TASK-1".to_string(),
+                },
+                vec!["task", "restore", "TASK-1"],
             ),
         ] {
             let cli = FakeCli::supported();
