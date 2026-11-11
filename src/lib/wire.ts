@@ -784,6 +784,7 @@ export type UpdateOperation =
   | { op: "draftArchive"; draftId: string }
   | { op: "taskDemote"; taskId: string }
   | { op: "taskArchive"; taskId: string }
+  | { op: "taskRestore"; taskId: string }
   | { op: "docCreate"; title: string; docType?: string; path?: string }
   | { op: "docUpdate"; docId: string; update: DocUpdate }
   | { op: "milestoneAdd"; name: string; description?: string }

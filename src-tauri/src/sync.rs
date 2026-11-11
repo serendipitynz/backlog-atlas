@@ -582,6 +582,7 @@ fn operation_target(op: &UpdateOperation, model: &ProjectModel) -> TargetResolut
 
         UpdateOperation::TaskEdit { task_id, .. }
         | UpdateOperation::TaskArchive { task_id }
+        | UpdateOperation::TaskRestore { task_id }
         | UpdateOperation::TaskDemote { task_id } => ("task", task_id),
         UpdateOperation::DraftPromote { draft_id } | UpdateOperation::DraftArchive { draft_id } => {
             ("draft", draft_id)
@@ -2075,6 +2076,30 @@ task_prefix: \"TASK\"\n";
             ),
             TargetResolution::Unresolvable { .. }
         ));
+    }
+
+    #[test]
+    fn a_restore_is_checked_against_the_file_where_it_lies_before_the_move() {
+        // `task restore` moves the archived file back to tasks/ unchanged (decision-51 の §6 の改訂),
+        // so the file read — and the one an external edit would race — is the archived one.
+        let temp = minimal_root();
+        temp.write("archive/tasks/task-2 - b.md", &task_file("TASK-2", "Done"));
+        let source = WorkingTree::new(&temp.path);
+        let (model, _state) = SyncState::initialize("atlas", &source, &FsVersions).unwrap();
+
+        assert_eq!(
+            operation_target(
+                &UpdateOperation::TaskRestore {
+                    task_id: "TASK-2".to_string()
+                },
+                &model
+            ),
+            TargetResolution::Checkable(vec![temp
+                .path
+                .join("archive")
+                .join("tasks")
+                .join("task-2 - b.md")])
+        );
     }
 
     // --- doc-9 §4.2.2: the 書き換え対象集合 of a milestone operation ------------------------------

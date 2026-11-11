@@ -3067,6 +3067,10 @@ labels: []\n\
         )
         .is_err());
         assert!(matches!(
+            of(serde_json::json!({ "op": "taskRestore", "taskId": "TASK-1" })),
+            UpdateOperation::TaskRestore { task_id } if task_id == "TASK-1"
+        ));
+        assert!(matches!(
             of(serde_json::json!({ "op": "taskDemote", "taskId": "TASK-1" })),
             UpdateOperation::TaskDemote { task_id } if task_id == "TASK-1"
         ));
