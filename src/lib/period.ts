@@ -11,13 +11,13 @@
  * | 基準時間帯 | [`ZoneOffset`] / [`SYSTEM_ZONE`] | the zone a written timestamp is read in |
  * | 相対指定 | [`relativeStart`] | いまから X 日 / 週 / 月 → a 始端 |
  * | 解決時点 | the `now` argument | the instant a 相対指定 is turned into a 暦日 at |
- * | 解析できない値 | `localDay` returning `null` | a value in neither accepted form |
+ * | 解析できない値 | `localDay` returning `null` | a value in none of the accepted forms |
  *
  * **Why this module reads the machine's zone at all**, when 並び順 has the opposite rule
- * (doc-7 §5.4's 「日付を文字列のまま比べる」, and doc-4 §7's 「比較は locale を読まない」 — the
+ * (doc-7 §5.4's 「timezone を発明しない」, and doc-4 §7's 「比較は locale を読まない」 — the
  * second moved there with TASK-165): a 並び順 only needs the
- * *relative* order of two values, and a uniform shift leaves that untouched, so the sort can stay on
- * the raw strings. A 期間 compares each value against an *absolute* boundary the user named, and the
+ * *relative* order of two values, and a uniform shift leaves that untouched, so the sort never picks
+ * a zone — [`dateSortKey`] only respells each value in UTC, by the zone it names. A 期間 compares each value against an *absolute* boundary the user named, and the
  * boundary is a day on the user's own calendar — 「今日更新したもの」 is a question whose answer
  * depends on where the person asking is. The shift therefore lands directly on which cards survive,
  * and refusing to apply it would not make the screen zone-independent; it would only make it read
@@ -70,20 +70,24 @@ export function usableCount(count: number): boolean {
 }
 
 /**
- * The two forms a `created_date` / `updated_date` is accepted in. Both occur in real ledgers: this
- * repository's own `backlog/tasks/` holds nine tasks whose `updated_date` is a bare `2026-07-22`
- * alongside the timestamped ones the current CLI writes.
+ * The forms a `created_date` / `updated_date` is accepted in (doc-7 §5.2). The first three occur in
+ * real ledgers: this repository's own `backlog/tasks/` holds nine tasks whose `updated_date` is a
+ * bare `2026-07-22`, v1.50.1 writes `'2026-08-09 22:46'`, and v1.55.3 writes
+ * `'2026-11-11T02:22:00Z'` (measured 2026-11-11, TASK-213) without rewriting the values already in
+ * a file, so one root carries both timestamped forms.
  *
- * Seconds are allowed even though v1.50.1 writes none, because a value carrying them still names one
- * instant unambiguously and the cost of refusing it is a card silently vanishing while the 期間 is on.
- * Anything else — an ISO `T` separator, a trailing `Z`, an explicit `+09:00` — is 解析できない rather
- * than guessed at: a written offset would contradict the 基準時間帯 this module applies, and
- * accepting it as if it agreed is exactly the invention doc-7 §5.4 refuses.
+ * A space-separated value names no zone and is read as UTC because that is what the CLI wrote it in.
+ * A `T`-separated value has to name its zone — `Z` or `±HH:MM` — and is moved to UTC by what it
+ * names, which converts rather than invents. A `T` value naming no zone is 解析できない: ISO 8601
+ * reads it as local time, which zone that was is exactly what the file no longer says.
  */
 const DAY_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
-const WITH_TIME = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?$/;
+const SPACED = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?$/;
+const ZONED = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:(Z)|([+-])(\d{2}):(\d{2}))$/;
 
 const MINUTE_MS = 60_000;
+
+type Timestamp = { kind: "day"; day: string } | { kind: "instant"; ms: number };
 
 /**
  * 実在する暦日・時刻としての値、または `null`. `Date.UTC` normalises overflow (2026-02-31 becomes
@@ -121,6 +125,54 @@ function dayAt(instantMs: number, zone: ZoneOffset): string {
   return formatDay(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
 }
 
+function readTimestamp(value: string): Timestamp | null {
+  const plain = DAY_ONLY.exec(value);
+  if (plain !== null) {
+    const [, year, month, day] = plain;
+    const real = utcInstant(Number(year), Number(month), Number(day), 0, 0, 0);
+    return real === null ? null : { kind: "day", day: value };
+  }
+
+  const spaced = SPACED.exec(value);
+  if (spaced !== null) {
+    const [, year, month, day, hour, minute, second] = spaced;
+    const ms = utcInstant(
+      Number(year),
+      Number(month),
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second ?? "0"),
+    );
+    return ms === null ? null : { kind: "instant", ms };
+  }
+
+  const zoned = ZONED.exec(value);
+  if (zoned === null) {
+    return null;
+  }
+  const [, year, month, day, hour, minute, second, utc, sign, offsetHour, offsetMinute] = zoned;
+  const wall = utcInstant(
+    Number(year),
+    Number(month),
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second ?? "0"),
+  );
+  if (wall === null) {
+    return null;
+  }
+  if (utc !== undefined) {
+    return { kind: "instant", ms: wall };
+  }
+  if (Number(offsetHour) > 23 || Number(offsetMinute) > 59) {
+    return null;
+  }
+  const east = (sign === "+" ? 1 : -1) * (Number(offsetHour) * 60 + Number(offsetMinute));
+  return { kind: "instant", ms: wall - east * MINUTE_MS };
+}
+
 /**
  * The 暦日 one `updated_date` falls on, or `null` for a missing or 解析できない value (doc-7 §5.2).
  *
@@ -133,28 +185,25 @@ export function localDay(value: string | null, zone: ZoneOffset = SYSTEM_ZONE): 
   if (value === null) {
     return null;
   }
-
-  const plain = DAY_ONLY.exec(value);
-  if (plain !== null) {
-    const [, year, month, day] = plain;
-    const real = utcInstant(Number(year), Number(month), Number(day), 0, 0, 0);
-    return real === null ? null : value;
-  }
-
-  const stamped = WITH_TIME.exec(value);
-  if (stamped === null) {
+  const read = readTimestamp(value);
+  if (read === null) {
     return null;
   }
-  const [, year, month, day, hour, minute, second] = stamped;
-  const instant = utcInstant(
-    Number(year),
-    Number(month),
-    Number(day),
-    Number(hour),
-    Number(minute),
-    Number(second ?? "0"),
-  );
-  return instant === null ? null : dayAt(instant, zone);
+  return read.kind === "day" ? read.day : dayAt(read.ms, zone);
+}
+
+/**
+ * The text a 並び順 compares a date by (doc-7 §5.4): a timestamped value as its UTC instant in one
+ * spelling, `YYYY-MM-DD HH:MM:SS`, so that the two forms one root carries order by time and not by
+ * how they were written. A value with no time, and a 解析できない one, come back as they stand —
+ * the first has no instant to spell, and the second keeps the place it had before this existed.
+ */
+export function dateSortKey(value: string): string {
+  const read = readTimestamp(value);
+  if (read === null || read.kind === "day") {
+    return value;
+  }
+  return new Date(read.ms).toISOString().slice(0, 19).replace("T", " ");
 }
 
 /** 今日の暦日 in the reader's zone — the latest day a 端 can usefully name. */

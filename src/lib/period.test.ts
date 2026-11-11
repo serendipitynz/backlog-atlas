@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dateSortKey,
   localDay,
   relativeStart,
   todayLocal,
@@ -46,18 +47,55 @@ describe("基準時間帯 (doc-7 §5.2)", () => {
     }
   });
 
-  it("accepts seconds, which name the same instant, and nothing beyond the two written forms", () => {
+  it("accepts seconds, which name the same instant", () => {
     expect(localDay("2026-08-09 22:46:30", UTC)).toBe("2026-08-09");
+  });
+
+  it("reads the form v1.55.0 and later write as the UTC instant it names (TASK-214)", () => {
+    // The same instant as the measured case above, written the way the CLI writes it now.
+    const written = "2026-08-09T22:46:00Z";
+    expect(localDay(written, UTC)).toBe("2026-08-09");
+    expect(localDay(written, NZST)).toBe("2026-08-10");
+    expect(localDay(written, HAWAII)).toBe("2026-08-09");
+    expect(localDay("2026-08-09T22:46Z", NZST)).toBe("2026-08-10");
+  });
+
+  it("moves a written offset to UTC before reading the 暦日 (TASK-214)", () => {
+    // 07:46 at +09:00 is 22:46 UTC the day before — the measured instant once more.
+    expect(localDay("2026-08-10T07:46:00+09:00", UTC)).toBe("2026-08-09");
+    expect(localDay("2026-08-10T07:46:00+09:00", NZST)).toBe("2026-08-10");
+    // A negative offset moves the other way: 20:00 at -05:00 is 01:00 UTC the next day.
+    expect(localDay("2026-08-09T20:00-05:00", UTC)).toBe("2026-08-10");
+    // An offset that is not a whole hour moves by its minutes too.
+    expect(localDay("2026-08-10T12:44+12:45", UTC)).toBe("2026-08-09");
+    expect(localDay("2026-08-10T12:45+12:45", UTC)).toBe("2026-08-10");
+  });
+
+  it("reads nothing beyond the four accepted forms", () => {
     for (const value of [
       "",
-      "2026-08-09T22:46:00Z",
+      // A `T` value that names no zone: ISO 8601 reads it as local time, and the file no longer says
+      // whose.
+      "2026-08-09T22:46:00",
+      // An offset on a space-separated value, a compact offset, and fractional seconds.
       "2026-08-09 22:46 +09:00",
+      "2026-08-09 22:46Z",
+      "2026-08-09T22:46:00+0900",
+      "2026-08-09T22:46:00.123Z",
+      "2026-08-09t22:46:00z",
       "2026-8-9",
       "2026-08-09 22",
       "yesterday",
     ]) {
       expect(localDay(value, UTC)).toBeNull();
     }
+  });
+
+  it("refuses an offset no clock has", () => {
+    expect(localDay("2026-08-09T22:46:00+24:00", UTC)).toBeNull();
+    expect(localDay("2026-08-09T22:46:00+09:60", UTC)).toBeNull();
+    expect(localDay("2026-08-09T24:00:00Z", UTC)).toBeNull();
+    expect(localDay("2026-02-31T10:00:00Z", UTC)).toBeNull();
   });
 
   it("refuses a value whose date or time does not exist", () => {
@@ -77,6 +115,27 @@ describe("基準時間帯 (doc-7 §5.2)", () => {
     const now = new Date("2026-08-09T22:46:00Z");
     expect(todayLocal(now, UTC)).toBe("2026-08-09");
     expect(todayLocal(now, NZST)).toBe("2026-08-10");
+  });
+});
+
+describe("並び順の鍵 (doc-7 §5.4)", () => {
+  it("spells every timestamped form of one instant the same way", () => {
+    for (const value of [
+      "2026-08-09 22:46",
+      "2026-08-09 22:46:00",
+      "2026-08-09T22:46:00Z",
+      "2026-08-09T22:46Z",
+      "2026-08-10T07:46:00+09:00",
+      "2026-08-09T17:46-05:00",
+    ]) {
+      expect(dateSortKey(value)).toBe("2026-08-09 22:46:00");
+    }
+  });
+
+  it("leaves a value with no time, and one it cannot read, as they stand", () => {
+    expect(dateSortKey("2026-07-22")).toBe("2026-07-22");
+    expect(dateSortKey("いつか")).toBe("いつか");
+    expect(dateSortKey("2026-08-09T22:46:00")).toBe("2026-08-09T22:46:00");
   });
 });
 

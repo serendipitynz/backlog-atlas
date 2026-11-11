@@ -268,6 +268,17 @@ describe("更新期間 (doc-7 §5.2)", () => {
     expect(keeps(updated(stamped), period(day as string))).toBe(true);
   });
 
+  it("keeps a task whose updated_date is in the form v1.55.0 and later write (TASK-214)", () => {
+    // Before TASK-214 this value was 解析できない, so every task the current CLI had touched left
+    // the board as soon as an end was set — 「今日」 included.
+    const stamped = "2026-08-09T22:46:00Z";
+    const day = localDay(stamped);
+    expect(day).not.toBeNull();
+    expect(keeps(updated(stamped), period(day as string, day as string))).toBe(true);
+    expect(keeps(updated(stamped), period(day as string))).toBe(true);
+    expect(keeps(updated(stamped), period("", day as string))).toBe(true);
+  });
+
   it("drops a task whose 暦日 cannot be read, while an end is in force (AC #4)", () => {
     const missing = updated(null);
     const unreadable = updated("いつか");
