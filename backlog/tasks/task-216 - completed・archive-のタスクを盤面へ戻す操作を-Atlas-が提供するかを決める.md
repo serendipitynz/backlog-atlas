@@ -1,10 +1,10 @@
 ---
 id: TASK-216
 title: completed・archive のタスクを盤面へ戻す操作（task restore）を提供する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-11 05:58'
-updated_date: '2026-11-11 09:02'
+updated_date: '2026-11-11 09:12'
 labels:
   - 'kind:feature'
 milestone: m-4
