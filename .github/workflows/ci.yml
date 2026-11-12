@@ -119,15 +119,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The first seven are README's "Building from source" list, unchanged — the third copy the
-      # comment above is about. `webkit2gtk-driver` is this job's own: it provides WebKitWebDriver,
-      # which tauri-driver starts. `xvfb` is on the image already and installed anyway, so that what
-      # this job needs is written here rather than inferred from an image nobody in this tree pins.
+      # Everything before `webkit2gtk-driver` is README's "Building from source" list, unchanged —
+      # the third copy the comment above is about. `webkit2gtk-driver` is this job's own: it
+      # provides WebKitWebDriver, which tauri-driver starts. `xvfb` is on the image already and
+      # installed anyway, so that what this job needs is written here rather than inferred from an
+      # image nobody in this tree pins.
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xdg-utils \
             webkit2gtk-driver xvfb
 
       - uses: pnpm/action-setup@v4

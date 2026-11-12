@@ -297,6 +297,13 @@ jobs:
       # (build-essential, curl, wget, file, pkg-config, libssl-dev) — they are
       # repeated anyway so the two lists stay comparable line by line.
       #
+      # xdg-utils is the one entry the two runner images disagree on: the x64
+      # image carries it and ubuntu-24.04-arm does not. The AppImage step needs
+      # it once a deep-link scheme is configured — Tauri's bundler copies
+      # /usr/bin/xdg-mime into the AppImage so the AppImage can register the
+      # scheme itself — so without it only the arm row fails, after the .deb and
+      # .rpm are already built (v0.3.0's first run, TASK-218).
+      #
       # Keyed on matrix.linux rather than on the runner label, here and in the
       # two .deb checks below: with two Linux rows, a condition naming one label
       # would leave the other's bundle unverified — and unlike this step, whose
@@ -307,7 +314,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+            pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xdg-utils
 
       # No version here: the pin is `packageManager` in package.json, which this
       # action reads. Same reason setup-node reads .node-version below — one pin
