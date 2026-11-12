@@ -122,7 +122,7 @@ On Linux the WebView's development headers are needed too (Ubuntu 24.04 or newer
 
 ```sh
 sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-  pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xdg-utils
 ```
 
 ### Build
