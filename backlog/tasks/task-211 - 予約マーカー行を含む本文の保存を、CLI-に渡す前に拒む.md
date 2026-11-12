@@ -4,10 +4,10 @@ title: 予約マーカー行を含む本文の保存を、CLI に渡す前に拒
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:31'
-updated_date: '2026-10-11 19:40'
+updated_date: '2026-11-11 09:31'
 labels:
   - 'kind:bug'
-milestone: m-4
+milestone: m-5
 dependencies: []
 priority: high
 ordinal: 202700

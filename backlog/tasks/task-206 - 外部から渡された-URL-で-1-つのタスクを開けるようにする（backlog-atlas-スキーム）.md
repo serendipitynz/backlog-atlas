@@ -4,10 +4,10 @@ title: '外部から渡された URL で 1 つのタスクを開けるように�
 status: Done
 assignee: []
 created_date: '2026-09-18 23:01'
-updated_date: '2026-10-20 03:02'
+updated_date: '2026-11-11 09:32'
 labels:
   - 'kind:feature'
-milestone: m-5
+milestone: m-4
 dependencies: []
 references:
   - work-report/_sandbox/handoff/dashboard-youtrack-and-atlas.md

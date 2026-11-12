@@ -4,10 +4,10 @@ title: draft の内容を画面から編集できるようにする
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:31'
-updated_date: '2026-11-11 02:41'
+updated_date: '2026-11-11 09:31'
 labels:
   - 'kind:feature'
-milestone: m-4
+milestone: m-5
 dependencies:
   - TASK-208
 priority: medium

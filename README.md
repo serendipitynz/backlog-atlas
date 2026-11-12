@@ -25,6 +25,11 @@ Ubuntu 24.04 or newer).
   dragged between columns to change its status.
 - View and edit task detail, with the body rendered as Markdown and diagram fences drawn
   by mermaid.
+- Archive a task whatever its status, and move a completed or archived task back to active.
+- Open one task from a link another tool hands over —
+  `backlog-atlas://task?root=<project path>&id=<TASK-ID>`, with both values
+  percent-encoded. Installing Atlas associates the scheme with it (an AppImage does so each
+  time it starts); the form is specified in `backlog/docs/` (doc-3 §8).
 - Extract Pull Request URLs from a task's References, and look up its Git commits and Pull
   Requests from the task ID.
 - Derive Type from `kind:*` labels and the frontmatter, shown apart from ordinary labels.
@@ -95,7 +100,7 @@ Get-ChildItem "$(npm prefix -g)\node_modules\backlog.md\node_modules\backlog.md-
 
 ## Updating
 
-v0.2.0 does not update itself. New versions are published on the
+v0.3.0 does not update itself. New versions are published on the
 [Releases page](https://github.com/serendipitynz/backlog-atlas/releases); download a build and
 replace your copy.
 

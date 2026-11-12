@@ -151,8 +151,8 @@ function readNpmTexts(path) {
 // --- cargo side -----------------------------------------------------------
 
 // One --filter-platform pass per shipped triple, unioned. Asking cargo for the
-// unfiltered graph instead would be 442 crates rather than 352: it resolves
-// every platform the lockfile can describe, so the notice would claim Android,
+// unfiltered graph instead would resolve every platform the lockfile can
+// describe (doc-13 §4.5 has both counts), so the notice would claim Android,
 // wasm, Redox, iOS and the GNU-ABI Windows crates ship inside these bundles,
 // and none of them do.
 function collectCargo() {
@@ -321,9 +321,8 @@ function listTar(buffer, path) {
 
 // --- SPDX fallback --------------------------------------------------------
 
-// Nineteen crates publish no notice of their own — the objc2 and unic families,
-// selectors, tauri-plugin, alloc-stdlib — declaring only an SPDX expression in
-// Cargo.toml. The standard text of each identifier in that expression stands in
+// Some crates publish no notice of their own (doc-13 §4.3 counts them), declaring
+// only an SPDX expression in Cargo.toml. The standard text of each identifier in that expression stands in
 // for them, kept in scripts/spdx/ so a new identifier is a visible addition
 // rather than something the generator invents.
 function spdxIdentifiers(expression) {

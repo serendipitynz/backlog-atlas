@@ -31,9 +31,9 @@ Line endings are the only thing normalized. No text below is otherwise altered.
 
 Generated from these inputs (a digest that no longer matches means this file
 is stale — regenerate it with the command at the top of the generator):
-  scripts/generate-third-party-licenses.mjs       sha256 079876625b911dce93dd84e8c7fcf66adb7347ea3f4b8a8f258948c24383ab06
+  scripts/generate-third-party-licenses.mjs       sha256 d800872e58965f1b660d31adc7aa80dfff290afa10feb0c9b2bbdc34c46c922d
   pnpm-lock.yaml                                  sha256 948d2592104f09ac83c5f659ff938e20ef820c8928e6546129fec5846a9a4e0c
-  src-tauri/Cargo.lock                            sha256 1e662129042d4b53bf9fc422b0f6d7f432ecf0effc73f9ad3d868c531b83f08b
+  src-tauri/Cargo.lock                            sha256 ca819ba153668f74c113d577054143e05811d601c38ea71f095a128f981d1498
   THIRD-PARTY-NOTICES.md                          sha256 622dc24de844b684d63eee93e654819af4114709340a9ac0c201d3fe776f3f9b
   scripts/spdx/Apache-2.0.txt                     sha256 074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff
   scripts/spdx/BSD-3-Clause.txt                   sha256 5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d

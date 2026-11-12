@@ -3,7 +3,7 @@ id: doc-13
 title: タグから利用者が受け取る資産までの配布層 設計
 type: specification
 created_date: '2026-08-18 23:59'
-updated_date: '2026-08-24 11:12'
+updated_date: '2026-11-11 09:34'
 ---
 # タグから利用者が受け取る資産までの配布層 設計
 
@@ -185,7 +185,8 @@ digest を一度に変え、しかも通知の頭を解析不能にする** — 
 `unic` 族 5 件、`webview2-com` 族 3 件、`dlopen2` 族 2 件、`alloc-stdlib`・`block2`・`dispatch2`・
 `libappindicator-sys`・`selectors`・`tauri-plugin` が各 1 件。**`AGENTS.md` はここを 19 件と書き、
 族の一覧から `block2` と `dispatch2` を落としていた。書かれた時点から偽だったので、古びたのではない**
-（TASK-193 が数え直した）。
+（TASK-193 が数え直した）。**2026-11-11 に v0.3.0 の回 (TASK-217) が数え直しても 25 件で、族の内訳も
+同じだった** — decision-49 の 2 つの plugin が持ち込んだ crate はどれも本文を publish している。
 
 ### 4.4 バンドルが通知を運ぶ経路
 
@@ -206,9 +207,10 @@ digest を一度に変え、しかも通知の頭を解析不能にする** — 
 
 ### 4.5 数え直した値
 
-**2026-08-19 の実測。** 5 トリプルの和集合は **353 crate** で、`--filter-platform` を外したグラフは
-**443 crate** である（どちらもルートを除く）。**`AGENTS.md` は 352 と 442 を書いていた** — decision-38 が
-`tauri-plugin-window-state` を足したぶんが両方に 1 ずつ乗っている。**数を書き直す回は、両方を同じ日に測る** —
+**2026-11-11 の実測（TASK-217）。** 5 トリプルの和集合は **402 crate** で、`--filter-platform` を外したグラフは
+**491 crate** である（どちらもルートを除く）。**前回 2026-08-19 の値は 353 と 443 だった** — その間に
+decision-49 が `tauri-plugin-deep-link` と `tauri-plugin-single-instance` を足し、和集合の増分 49 の
+大半は Linux の single-instance が使う zbus の一群である。**数を書き直す回は、両方を同じ日に測る** —
 片方だけ動かすと、差が縮んだのか片方が古いのかを後から区別できない。
 
 ## 5. バンドルの metadata

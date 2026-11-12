@@ -1,10 +1,9 @@
 # Standard licence texts
 
 `generate-third-party-licenses.mjs` falls back to these when a dependency declares a
-licence but publishes no text of its own. Nineteen crates in the current tree do that —
-the `objc2` and `unic` families, `selectors`, `tauri-plugin`, `alloc-stdlib`,
-`webview2-com`, `dlopen2`, `libappindicator-sys` — and their `Cargo.toml` carries an SPDX
-expression and nothing else.
+licence but publishes no text of its own. Such a crate's `Cargo.toml` carries an SPDX
+expression and nothing else; how many of them the current tree holds, and which families
+they come from, is measured in doc-13 §4.3 rather than restated here.
 
 **These files are the SPDX license list's own text, fetched on 2026-08-14 from
 `https://raw.githubusercontent.com/spdx/license-list-data/main/text/<identifier>.txt`.**
