@@ -4,9 +4,10 @@ title: タスクとマイルストーンの due_date を読み、画面に表示
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:31'
+updated_date: '2026-11-11 09:31'
 labels:
   - 'kind:feature'
-milestone: m-4
+milestone: m-5
 dependencies: []
 priority: low
 ordinal: 201700

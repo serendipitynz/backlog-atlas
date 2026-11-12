@@ -4,12 +4,12 @@ title: 起動時の全ルート読取を直列から変える
 status: To Do
 assignee: []
 created_date: '2026-08-23 08:29'
-updated_date: '2026-10-18 22:53'
+updated_date: '2026-11-11 09:31'
 labels:
   - performance
   - 'kind:chore'
   - 着手時選択
-milestone: m-4
+milestone: m-5
 dependencies: []
 priority: low
 ordinal: 190700

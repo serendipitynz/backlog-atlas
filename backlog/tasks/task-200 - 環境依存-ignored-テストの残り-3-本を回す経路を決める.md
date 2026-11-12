@@ -4,11 +4,12 @@ title: 環境依存 ignored テストの残り 3 本を回す経路を決める
 status: To Do
 assignee: []
 created_date: '2026-08-24 00:51'
+updated_date: '2026-11-11 09:31'
 labels:
   - test
   - rust
   - 'kind:chore'
-milestone: m-4
+milestone: m-5
 dependencies:
   - TASK-108
 priority: low

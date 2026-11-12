@@ -4,9 +4,9 @@ title: コード註の残り、8 行未満の本文註を decision-41 の軸で�
 status: To Do
 assignee: []
 created_date: '2026-08-23 02:45'
-updated_date: '2026-08-23 04:17'
+updated_date: '2026-11-11 09:31'
 labels: []
-milestone: m-4
+milestone: m-5
 dependencies:
   - TASK-107
 priority: low

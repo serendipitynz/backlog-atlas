@@ -4,10 +4,10 @@ title: Final Summary・Definition of Done・Comments を画面から更新でき
 status: To Do
 assignee: []
 created_date: '2026-08-16 21:06'
-updated_date: '2026-08-16 21:18'
+updated_date: '2026-11-11 09:31'
 labels:
   - rust
-milestone: m-4
+milestone: m-5
 dependencies: []
 ordinal: 180700
 ---

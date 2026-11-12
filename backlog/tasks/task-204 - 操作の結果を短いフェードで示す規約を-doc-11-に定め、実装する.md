@@ -4,13 +4,13 @@ title: 操作の結果を短いフェードで示す規約を doc-11 に定め�
 status: To Do
 assignee: []
 created_date: '2026-09-05 23:59'
-updated_date: '2026-10-18 22:53'
+updated_date: '2026-11-11 09:31'
 labels:
   - ui
   - design-system
   - 'kind:feature'
   - 決定先行
-milestone: m-4
+milestone: m-5
 dependencies:
   - TASK-201
 priority: medium
