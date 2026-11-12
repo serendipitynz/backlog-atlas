@@ -24,8 +24,8 @@ Ubuntu なら 24.04 以降）。
   カードを列間へドラッグするとステータスが変わる。
 - タスク詳細を表示・編集する。本文は Markdown として整形表示し、作図フェンスは mermaid で描く。
 - タスクを status によらずアーカイブし、completed・archive のタスクを active へ戻す。
-- 他の道具が渡すリンク `backlog-atlas://task?root=<プロジェクトのパス>&id=<TASK-ID>` から 1 つの
-  タスクを開く。スキームは Atlas を導入すると関連付けられ（AppImage は起動のたびに自分で関連付ける）、
+- 他の道具が渡すリンク `backlog-atlas://task?root=<プロジェクトのパス>&id=<TASK-ID>`（値は百分率符号化する）
+  から 1 つのタスクを開く。スキームは Atlas を導入すると関連付けられ（AppImage は起動のたびに自分で関連付ける）、
   リンクの形は `backlog/docs/` の doc-3 §8 が定めている。
 - References から Pull Request の URL を取り出し、タスク ID から Git コミットと Pull Request を引く。
 - Type を `kind:*` ラベルと frontmatter から導き、ラベルとは分けて表示する。
