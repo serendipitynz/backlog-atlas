@@ -1,10 +1,10 @@
 ---
 id: TASK-217
 title: v0.3.0 を公開する
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-11 09:31'
-updated_date: '2026-11-11 09:36'
+updated_date: '2026-11-12 20:21'
 labels:
   - release
   - 'kind:chore'
@@ -31,10 +31,10 @@ m-4 の途中で v0.3.0 のタグを打ち、リリースを公開する。**手
 - [x] #1 README.md と README.ja.md を出荷するビルドと突き合わせてある (doc-13 §2。動作環境と Linux の下限・対応アーキテクチャ・Backlog CLI の最低バージョン要件・更新の届き方・できることの一覧)
 - [x] #2 m-4 の To Do を v0.3.0 公開後のマイルストーンへ移し、m-4 の説明を実際に出した範囲に合わせてある
 - [x] #3 doc-13 §4.3・§4.5 の実測値を測り直し、動いていれば doc-13 を改訂してある
-- [ ] #4 タグと package.json・src-tauri/tauri.conf.json・src-tauri/Cargo.toml・src-tauri/Cargo.lock の 4 ファイルの版が一致している
-- [ ] #5 リリースワークフローの 5 ジョブ (macOS・Linux x86_64・Linux arm64・Windows・下書き作成) がすべて success で終わっている
-- [ ] #6 ドラフトの資産が 3 プラットフォームぶん揃い、.app.tar.gz が載っていない
-- [ ] #7 ドラフトのリリースノートを読んだうえで、手で公開した
+- [x] #4 タグと package.json・src-tauri/tauri.conf.json・src-tauri/Cargo.toml・src-tauri/Cargo.lock の 4 ファイルの版が一致している
+- [x] #5 リリースワークフローの 5 ジョブ (macOS・Linux x86_64・Linux arm64・Windows・下書き作成) がすべて success で終わっている
+- [x] #6 ドラフトの資産が 3 プラットフォームぶん揃い、.app.tar.gz が載っていない
+- [x] #7 ドラフトのリリースノートを読んだうえで、手で公開した
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -75,4 +75,13 @@ m-4 の途中で v0.3.0 のタグを打ち、リリースを公開する。**手
 ## タグ以降に残るもの
 
 AC #4〜#7 はタグを打ってからである。AC #4 はリリースワークフローの create-release ジョブが 4 マニフェストとタグを突き合わせる段で答える。
+
+## タグと公開 (AC #4〜#7)
+
+- **タグ v0.3.0 は PR #172 のマージコミット 4f4ab23 に打った** (2026-11-12)。v0.2.0 に倣って軽量タグにした (v0.1.0 だけは注釈付きで、前例は揃っていない)。
+- **AC #4**: 2 回の実行の create-release ジョブがどちらも success で、その中の 4 マニフェストとタグの突き合わせが通っている。
+- **AC #5 は 1 回目では満たせなかった。** タグの push で走った run 43211169435 は、`build (ubuntu-24.04-arm, true)` だけが AppImage の段で `xdg-mime binary not found` を出して落ちた。原因と修正は TASK-218 (PR #173) — decision-49 の deep-link スキームで Tauri の AppImage バンドラが `/usr/bin/xdg-mime` を写すようになり、arm のランナーイメージだけが `xdg-utils` を持っていなかった。
+- **タグは動かさずに作り直した。** PR #173 のマージ後、main から `--ref` 無しで `workflow_dispatch` した run 43288255413 は、workflow を main から、ソースをタグ (4f4ab23) から取り、既存の draft を再利用した。5 ジョブすべて success。arm の行はログで `xdg-utils` の導入・`HEAD is now at 4f4ab23`・aarch64.AppImage のバンドルとアップロードを確かめた。
+- **AC #6**: draft の資産は v0.2.0 と同じ 10 個 — macOS の universal.dmg、Windows の .msi と x64-setup.exe、Linux x86_64 と arm64 の .deb・.rpm・.AppImage、THIRD-PARTY-LICENSES.txt。`.app.tar.gz` は無い。
+- **AC #7**: オーナーがリリースノートを読み、2026-11-12T20:20:44Z に手で公開した。v0.3.0 が Latest になっている。リリースノートは PR #159〜#172 の 14 件で、PR #173 はタグより後のビルド手順の変更なので載っていない。
 <!-- SECTION:NOTES:END -->
