@@ -1,10 +1,10 @@
 ---
 id: TASK-218
 title: ubuntu-24.04-arm の AppImage が xdg-mime を欠いて作れない
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-12 18:43'
-updated_date: '2026-11-12 18:44'
+updated_date: '2026-11-12 19:28'
 labels:
   - release
   - 'kind:bug'
@@ -25,8 +25,8 @@ Linux の apt リストに `xdg-utils` を足す。AGENTS の Toolchain が言�
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Linux の apt リスト 3 か所 (README 和英・release.yml・ci.yml の e2e) に xdg-utils が並んで入っている
-- [ ] #2 main から workflow_dispatch で v0.3.0 を作り直し、5 ジョブすべてが success
-- [ ] #3 draft に arm64 の .deb・.rpm・.AppImage が揃い、資産が v0.2.0 と同じ 10 個 (.app.tar.gz 無し) になる
+- [x] #2 main から workflow_dispatch で v0.3.0 を作り直し、5 ジョブすべてが success
+- [x] #3 draft に arm64 の .deb・.rpm・.AppImage が揃い、資産が v0.2.0 と同じ 10 個 (.app.tar.gz 無し) になる
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -47,4 +47,10 @@ Linux の apt リストに `xdg-utils` を足す。AGENTS の Toolchain が言�
 ## 検証
 
 `pnpm test` (54 files / 1399 tests)・`pnpm run check` (0 errors)・`pnpm run lint` は緑。2 つの workflow は YAML として読めることを確かめた。**arm の AppImage が通ることはマージ後の `workflow_dispatch` でしか確かめられない** — PR の CI は arm のランナーで AppImage を作らない。AC #2・#3 はその実行が答える。
+
+## マージ後の作り直し (AC #2・#3)
+
+- **PR #173 のマージ (d7cac06) の後、main から `--ref` 無しで `gh workflow run release.yml -f tag=v0.3.0` を実行した** (run 43288255413)。create-release と 4 つの build、計 5 ジョブすべて success。
+- **arm の行のログを結論だけでなく読んだ。** 依存の段で `Setting up xdg-utils (1.1.3-4.1ubuntu3)`、checkout は `HEAD is now at 4f4ab23` (タグ v0.3.0 のソース)、`Bundling Backlog Atlas_0.3.0_aarch64.AppImage` を通って `Finished 3 bundles`、arm64 の .deb・.rpm・.AppImage をアップロードした。
+- **draft の資産は v0.2.0 と同じ 10 個になった** — 4 プラットフォームの 9 個と THIRD-PARTY-LICENSES.txt。`.app.tar.gz` は無い。既存の draft が再利用され、x64・macOS・Windows の資産は tauri-action が同名を消して上げ直した。
 <!-- SECTION:NOTES:END -->
